@@ -210,10 +210,8 @@ jobs:
           set -e
 
           ./gradlew assembleDebug \
-            --no-daemon \
-            --stacktrace \
-            --info
-
+            --info \
+            --warning-mode all
       # ============================================================
       # 11. LOCALIZAR APK
       # ============================================================
