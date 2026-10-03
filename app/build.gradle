@@ -7,13 +7,13 @@ plugins {
 android {
     signingConfigs {
         debug {
-            storeFile file('D:\\2.10 OpenSource\\keystore_playmarket2.jks')
+            storeFile file('.\\keystore_playmarket2.jks')
             storePassword 'hayk2010'
             keyAlias 'key0'
             keyPassword 'hayk2010'
         }
         release {
-            storeFile file('D:\\2.10 OpenSource\\keystore_playmarket2.jks')
+            storeFile file('.\\keystore_playmarket2.jks')
             storePassword 'hayk2010'
             keyPassword 'hayk2010'
             keyAlias 'key0'
