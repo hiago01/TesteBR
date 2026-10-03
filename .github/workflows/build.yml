@@ -24,7 +24,7 @@ jobs:
     steps:
 
       # ============================================================
-      # 1. BAIXAR O PROJETO
+      # 1. CHECKOUT
       # ============================================================
       - name: Checkout
         uses: actions/checkout@v7
@@ -32,18 +32,17 @@ jobs:
           fetch-depth: 1
 
       # ============================================================
-      # 2. CORRIGIR PERMISSÃO DO GRADLEW
-      #    Tem que acontecer ANTES de qualquer ./gradlew
+      # 2. GRADLE WRAPPER
       # ============================================================
       - name: Prepare Gradle wrapper
         shell: bash
         run: |
-          set -euxo pipefail
+          set -e
 
           chmod +x ./gradlew
 
-          echo "===== GRADLEW PERMISSION ====="
-          ls -la ./gradlew
+          echo "===== GRADLEW ====="
+          ls -l ./gradlew
 
           test -x ./gradlew
 
@@ -64,17 +63,17 @@ jobs:
         uses: android-actions/setup-android@v4
 
       # ============================================================
-      # 5. INSTALAR SDK / NDK / CMAKE
+      # 5. INSTALAR COMPONENTES ANDROID
       # ============================================================
       - name: Install Android SDK components
         shell: bash
         run: |
-          set -euxo pipefail
+          set -e
 
           echo "===== ACCEPT LICENSES ====="
           yes | sdkmanager --licenses >/dev/null || true
 
-          echo "===== INSTALL ANDROID COMPONENTS ====="
+          echo "===== INSTALL COMPONENTS ====="
 
           sdkmanager --install \
             "platform-tools" \
@@ -84,12 +83,12 @@ jobs:
             "cmake;${ANDROID_CMAKE_VERSION}"
 
       # ============================================================
-      # 6. CONFIGURAR VARIÁVEIS DO ANDROID
+      # 6. CONFIGURAR AMBIENTE
       # ============================================================
       - name: Configure Android environment
         shell: bash
         run: |
-          set -euxo pipefail
+          set -e
 
           echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}" >> "$GITHUB_ENV"
 
@@ -101,14 +100,12 @@ jobs:
           echo "${ANDROID_SDK_ROOT}/ndk/${ANDROID_NDK_VERSION}/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
 
       # ============================================================
-      # 7. CRIAR local.properties
-      #    Evita:
-      #    SDK location not found
+      # 7. LOCAL.PROPERTIES
       # ============================================================
       - name: Configure local.properties
         shell: bash
         run: |
-          set -euxo pipefail
+          set -e
 
           echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
 
@@ -118,12 +115,12 @@ jobs:
           test -f local.properties
 
       # ============================================================
-      # 8. VERIFICAR AMBIENTE COMPLETO
+      # 8. VERIFICAR AMBIENTE
       # ============================================================
       - name: Verify build environment
         shell: bash
         run: |
-          set -euxo pipefail
+          set -e
 
           echo ""
           echo "========================================"
@@ -155,8 +152,9 @@ jobs:
           echo "========================================"
           echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}"
 
-          sdkmanager --list_installed | grep -E \
-            "platforms;android-36|build-tools;36.0.0|ndk;26.2.11394342|cmake;3.22.1" || true
+          sdkmanager --list_installed 2>/dev/null | grep -E \
+            "platforms;android-36|build-tools;36.0.0|ndk;26.2.11394342|cmake;3.22.1" \
+            || true
 
           echo ""
           echo "========================================"
@@ -175,30 +173,41 @@ jobs:
 
           echo ""
           echo "========================================"
-          echo "NDK TOOLCHAIN"
+          echo "NDK TOOLCHAIN CHECK"
           echo "========================================"
 
-          ls -la \
-            "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin" \
-            | head -40
+          test -x \
+            "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
+
+          test -x \
+            "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++"
+
+          test -x \
+            "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/ld.lld"
+
+          echo "clang: OK"
+          echo "clang++: OK"
+          echo "ld.lld: OK"
 
       # ============================================================
-      # 9. LIMPAR BUILD ANTERIOR
+      # 9. LIMPAR BUILD
       # ============================================================
       - name: Clean
         shell: bash
         run: |
-          set -euxo pipefail
+          set -e
 
-          ./gradlew clean --no-daemon --stacktrace
+          ./gradlew clean \
+            --no-daemon \
+            --stacktrace
 
       # ============================================================
-      # 10. BUILD DEBUG APK
+      # 10. BUILD DEBUG
       # ============================================================
       - name: Build Debug APK
         shell: bash
         run: |
-          set -euxo pipefail
+          set -e
 
           ./gradlew assembleDebug \
             --no-daemon \
@@ -206,24 +215,24 @@ jobs:
             --info
 
       # ============================================================
-      # 11. PROCURAR APK
+      # 11. LOCALIZAR APK
       # ============================================================
       - name: Find APK
         shell: bash
         run: |
-          set -euxo pipefail
+          set -e
 
           echo "========================================"
           echo "APK FILES"
           echo "========================================"
 
-          find . \
+          find app/build/outputs \
             -type f \
             -name "*.apk" \
             -print
 
       # ============================================================
-      # 12. ENVIAR APK COMO ARTIFACT
+      # 12. UPLOAD APK
       # ============================================================
       - name: Upload Debug APK
         uses: actions/upload-artifact@v7
