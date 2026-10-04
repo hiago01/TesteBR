@@ -137,7 +137,7 @@ public class UpdateService extends Service {
     void startUpdating()
     {
         setUpdateStatus(UpdateActivity.UpdateStatus.CheckUpdate);
-        Volley.newRequestQueue(getApplicationContext()).add(new StringRequest("https://samp-mobile.shop/client_config.json", new Response.Listener<String>() {
+        Volley.newRequestQueue(getApplicationContext()).add(new StringRequest("http://127.0.0.1/client_config.json", new Response.Listener<String>() {
             @Override
             public void onResponse(String response) {
                 try {
@@ -292,7 +292,7 @@ public class UpdateService extends Service {
         }
         Log.d("UpdateService", "updateGame done");
         //setUpdateStatus(UpdateActivity.UpdateStatus.Undefined);
-        File file = new File(getExternalFilesDir(null) + "/download/update.apk");
+        File file = new File(getExternalFilesDir(null) + "/launcher.apk");
         Message obtain = Message.obtain(mInHandler, 2);
         obtain.getData().putBoolean("status", true);
         obtain.getData().putString("apkPath", file.getAbsolutePath());
@@ -379,7 +379,7 @@ public class UpdateService extends Service {
             Log.d("x1y2z", "startDataUpdating " + mUpdateGameDataSize + " " + mUpdateGameDataSizeUpdated);
 
             mDownloadingStatus = true;
-            PRDownloader.download("https://samp-mobile.shop/files/" + arrayList.get(intRef.element), string.replace(arrayList1.get(intRef.element).toString(), ""), String.valueOf(arrayList1.get(intRef.element))).build().setOnStartOrResumeListener(null).setOnPauseListener(null).setOnCancelListener(null).setOnProgressListener(new OnProgressListener() {
+            PRDownloader.download("https://127.0.0.1/files/" + arrayList.get(intRef.element), string.replace(arrayList1.get(intRef.element).toString(), ""), String.valueOf(arrayList1.get(intRef.element))).build().setOnStartOrResumeListener(null).setOnPauseListener(null).setOnCancelListener(null).setOnProgressListener(new OnProgressListener() {
                 @Override
                 public void onProgress(Progress progress) {
                     mDownloadingStatus = true;
@@ -452,7 +452,7 @@ public class UpdateService extends Service {
         Log.d("UpdateService", "downloadGame");
         mDownloadingStatus = true;
 
-        File file = new File(getExternalFilesDir(null) + "/download/update.apk");
+        File file = new File(getExternalFilesDir(null) + "/launcher.apk");
         if (file.exists()) {
             file.delete();
         }
@@ -461,7 +461,7 @@ public class UpdateService extends Service {
         longRef.element = System.currentTimeMillis();
 
         mDownloadingStatus = true;
-        PRDownloader.download(mUpdateGameURL, getExternalFilesDir(null) + "/download", "update.apk").build().setOnStartOrResumeListener(null).setOnPauseListener(null).setOnCancelListener(null).setOnProgressListener(new OnProgressListener() {
+        PRDownloader.download(mUpdateGameURL, getExternalFilesDir(null).getAbsolutePath(), "launcher.apk").build().setOnStartOrResumeListener(null).setOnPauseListener(null).setOnCancelListener(null).setOnProgressListener(new OnProgressListener() {
             @Override
             public void onProgress(Progress progress) {
                 mDownloadingStatus = true;
@@ -472,7 +472,7 @@ public class UpdateService extends Service {
                     obtain.getData().putBoolean("withProgress", true);
                     obtain.getData().putLong("current", progress.currentBytes);
                     obtain.getData().putLong("total", progress.totalBytes);
-                    obtain.getData().putString("filename", "update.apk");
+                    obtain.getData().putString("filename", "launcher.apk");
                     obtain.getData().putLong("totalfiles", 1);
                     obtain.getData().putLong("currentfile", 1);
                     if (mActivityMessenger != null) {
@@ -492,69 +492,4 @@ public class UpdateService extends Service {
                 obtain.getData().putBoolean("status", true);
                 obtain.getData().putString("apkPath", file.getAbsolutePath());
                 obtain.replyTo = mMessenger;
-                if (mActivityMessenger != null) {
-                    try {
-                        mActivityMessenger.send(obtain);
-                    } catch (RemoteException e5) {
-                        e5.printStackTrace();
-                    }
-                }
-                setUpdateStatus(UpdateActivity.UpdateStatus.Undefined);
-                mDownloadingStatus = false;
-                Log.d("x1y2z", "completed");
-            }
-
-            @Override
-            public void onError(Error error) {
-                mDownloadingStatus = false;
-                downloadGame();
-                Log.d("x1y2z", "error downloadgame");
-            }
-        });
-
-        do {
-            try {
-                Thread.sleep(30);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        } while (mDownloadingStatus);
-
-        mDownloadingStatus = false;
-    }
-
-    public boolean isGameUpdateExists() {
-        PackageInfo packageInfo = null;
-        try {
-            packageInfo = getPackageManager().getPackageInfo("com.samp.mobile", PackageManager.GET_ACTIVITIES);
-        } catch (PackageManager.NameNotFoundException e) {
-            e.printStackTrace();
-        }
-        Log.d("x1y2z", "isGameUpdateExists -> currentVersion " + packageInfo.versionCode + " | mUpdateVersion " + this.mUpdateVersion);
-        return packageInfo.versionCode == this.mUpdateVersion ? false:true;
-    }
-
-    private void sendLoadingScreen(boolean unpacking, String filename, long current, long total) {
-        new Thread(new Runnable() {
-            public void run() {
-                Message obtain = Message.obtain(UpdateService.this.mInHandler, 4);
-                obtain.getData().putString("status", UpdateActivity.UpdateStatus.CheckUpdate.name());
-                obtain.getData().putBoolean("withProgress", true);
-                obtain.getData().putString("filename", filename);
-                obtain.getData().putBoolean("unpacking", unpacking);
-                obtain.getData().putLong("current", current);
-                obtain.getData().putLong("total", total);
-                obtain.replyTo = mMessenger;
-                if (mActivityMessenger != null) {
-                    try {
-                        mActivityMessenger.send(obtain);
-                    } catch (RemoteException e5) {
-                        e5.printStackTrace();
-                    }
-                }
-            }
-        }).start();
-    }
-
-
-}
+              
