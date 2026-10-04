@@ -100,7 +100,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
 
-        File file = new File(getExternalFilesDir(null) + "/download/update.apk");
+        File file = new File(getExternalFilesDir(null) + "/launcher.apk");
         if (file.exists()) {
             file.delete();
         }
@@ -162,7 +162,7 @@ public class MainActivity extends AppCompatActivity {
     public boolean getServersInfo()
     {
         final boolean[] z = {false};
-        Volley.newRequestQueue(getApplicationContext()).add(new StringRequest("https://samp-mobile.shop/hosted.json", new Response.Listener<String>() {
+        Volley.newRequestQueue(getApplicationContext()).add(new StringRequest("http://127.0.0.1:8080/servers.json", new Response.Listener<String>() {
 
             @Override
             public void onResponse(String response) {
