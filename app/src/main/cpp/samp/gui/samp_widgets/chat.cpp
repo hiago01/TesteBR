@@ -5,7 +5,7 @@
 #include <algorithm>
 #include "../settings.h"
 #include "java/jniutil.h"
-
+#include "../../game/RW/sprite2d.h"
 extern UI* pUI;
 extern CGame* pGame;
 extern CNetGame* pNetGame;
@@ -102,9 +102,33 @@ void Chat::touchPopEvent()
 
 void Chat::keyboardEvent(const std::string& input)
 {
-	if (input.length() > 0 && pNetGame)
-	{
-		if (input[0] == '/') pNetGame->SendChatCommand(input.c_str());
-		else pNetGame->SendChatMessage(input.c_str());
-	}
+
+if (input.length() > 0 && pNetGame)
+{
+        if (input == "/testepng")
+        {
+                bool result = CSprite2d_TestCustomRadarDisc();
+
+                if (result)
+                {
+                        addDebugMessage(
+                                "[TESTE PNG] radardisc.png carregado com sucesso!"
+                        );
+                }
+                else
+                {
+                        addDebugMessage(
+                                "[TESTE PNG] Falha ao carregar radardisc.png"
+                        );
+                }
+
+                return;
+        }
+
+             if (input[0] == '/')
+                pNetGame->SendChatCommand(input.c_str());
+                else
+                pNetGame->SendChatMessage(input.c_str());
+        }
+
 }

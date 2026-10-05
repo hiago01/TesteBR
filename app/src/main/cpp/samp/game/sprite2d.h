@@ -54,4 +54,5 @@ public:
 	void SetVertices(RwIm2DVertex *vertices, const CRect &posn, const CRGBA &color1, const CRGBA &color2, const CRGBA &color3, const CRGBA &color4, float u1, float v1, float u2, float v2, float u3, float v3, float u4, float v4);
 
 	void SetVertices(const CRect &posn, const CRGBA &color1, const CRGBA &color2, const CRGBA &color3, const CRGBA &color4);
+bool CSprite2d_TestCustomRadarDisc();
 };

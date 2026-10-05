@@ -388,7 +388,28 @@ void CSprite2d__SetTexture_hook(
         custom->refCount
     );
 }
+bool CSprite2d_TestCustomRadarDisc()
+{
+    // Permite tentar novamente mesmo se uma tentativa anterior falhou
+    g_CustomRadarDiscTried = false;
 
+    RwTexture* texture = LoadCustomRadarDisc();
+
+    if (texture)
+    {
+        RadarDiscDebugFmt(
+            "[RADAR DISC] TESTE OK! textura=%p ref=%d",
+            texture,
+            texture->refCount
+        );
+
+        return true;
+    }
+
+    RadarDiscDebug("[RADAR DISC] TESTE FALHOU!");
+
+    return false;
+}
 // set texture by name from current txd
 // 0x727270
 void CSprite2d::SetTexture(const char* name)
