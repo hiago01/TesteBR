@@ -7,6 +7,9 @@
 #include "../vendor/armhook/patch.h"
 #include "Scene.h"
 #include "RW/RenderWare.h"
+#include "../gui/gui.h"
+
+extern UI* pUI;
 
 // ============================================================
 // DEBUG DO RADAR DISC - LOG + CHAT
