@@ -76,43 +76,69 @@ PLAYERID FindActorIDFromGtaPtr(CPedGTA* pPed)
 
 	return INVALID_PLAYER_ID;
 }
+
 /* =============================================================================== */
 
-using CSprite2d_DrawRect_t =
-    void (*)(const CRGBA*, const CRect*);
 
-static CSprite2d_DrawRect_t CSprite2d__DrawRect =
-    reinterpret_cast<CSprite2d_DrawRect_t>(
-        g_libGTASA + 0x06EE91C
-    );
+/* RADAR DEBUG - START */
+
+static bool g_InRadarDraw = false;
+static int g_RadarDrawDebugCount = 0;
+static int g_RadarRectDebugCount = 0;
+
+void (*CHud__DrawRadar)(void);
+
+void CHud__DrawRadar_hook()
+{
+    g_InRadarDraw = true;
+
+    if (pUI && pUI->chat() && g_RadarDrawDebugCount < 3)
+    {
+        pUI->chat()->addDebugMessage(
+            "[RADAR] CHud::DrawRadar #%d",
+            g_RadarDrawDebugCount + 1
+        );
+
+        g_RadarDrawDebugCount++;
+    }
+
+    CHud__DrawRadar();
+
+    g_InRadarDraw = false;
+}
+
+void (*CSprite2d__DrawRect)(
+    const CRect* rect,
+    const CRGBA* color
+);
 
 void CSprite2d__DrawRect_hook(
-        const CRGBA* color,
-        const CRect* rect)
+    const CRect* rect,
+    const CRGBA* color
+)
 {
     if (g_InRadarDraw && rect)
     {
-        static int radarRectCount = 0;
-
-        if (pUI && pUI->chat() && radarRectCount < 20)
+        if (pUI && pUI->chat() && g_RadarRectDebugCount < 20)
         {
             pUI->chat()->addDebugMessage(
-                "[RADAR] Rect #%d L=%.1f T=%.1f R=%.1f B=%.1f",
-                radarRectCount + 1,
+                "[RADAR] RECT #%d L=%.1f T=%.1f R=%.1f B=%.1f",
+                g_RadarRectDebugCount + 1,
                 rect->left,
                 rect->top,
                 rect->right,
                 rect->bottom
             );
 
-            radarRectCount++;
+            g_RadarRectDebugCount++;
         }
     }
 
-    CSprite2d__DrawRect(color, rect);
+    CSprite2d__DrawRect(rect, color);
 }
 
-/* =============================================================================== */
+/* RADAR DEBUG - END */
+
 
 void RenderEffects() {
 //	RenderEffects();
@@ -165,9 +191,6 @@ void Render2dStuff_hook()
     if (pUI) pUI->render();
     return;
 }*/
-
-
-
 void Render2dStuff()
 {
     if( CHook::CallFunction<bool>(g_libGTASA + 0x24EA90) ) // emu_IsAltRenderTarget()
@@ -1274,9 +1297,7 @@ void InstallSAMPHooks()
 	//CHook::InstallPLT(g_libGTASA + 0x6710C4, (uintptr_t)Idle_hook, (uintptr_t*)&Idle);
 	//CHook::InstallPLT(g_libGTASA + 0x675DE4, (uintptr_t)AND_TouchEvent_hook, (uintptr_t*)&AND_TouchEvent);
 	// splashscreen
-	//ARMHook::
-
-(g_libGTASA + 0x43AF28, (uintptr_t)DisplayScreen_hook, (uintptr_t*)&DisplayScreen);
+	//ARMHook::installHook(g_libGTASA + 0x43AF28, (uintptr_t)DisplayScreen_hook, (uintptr_t*)&DisplayScreen);
 	// gangzones
 	//CHook::InstallPLT(g_libGTASA + 0x67196C, (uintptr_t)CRadar_DrawRadarGangOverlay_hook, (uintptr_t*)&CRadar_DrawRadarGangOverlay);
 	// radar
@@ -1482,7 +1503,7 @@ unsigned int MainMenuScreen__Update_hook(uintptr_t thiz, float a2)
 void (*StartGameScreen__OnNewGameCheck)();
 void StartGameScreen__OnNewGameCheck_hook()
 {
-    // отключить кнопку начать игру
+    // Ð¾Ñ‚ÐºÐ»ÑŽÑ‡Ð¸Ñ‚ÑŒ ÐºÐ½Ð¾Ð¿ÐºÑƒ Ð½Ð°Ñ‡Ð°Ñ‚ÑŒ Ð¸Ð³Ñ€Ñƒ
     if(g_bPlaySAMP)
         return;
 
@@ -1640,27 +1661,27 @@ void (*RLEDecompress)(uint8_t* pDest, size_t uiDestSize, uint8_t const* pSrc, si
 void RLEDecompress_hook(uint8_t* pDest, size_t uiDestSize, const uint8_t* pSrc, size_t uiSegSize, uint32_t uiEscape) {
 
     if (!pDest || !pSrc || uiDestSize == 0 || uiSegSize == 0) {
-        // Обработка некорректных входных данных или размеров
-        // Здесь можно сгенерировать исключение или вернуть код ошибки
+        // ÐžÐ±Ñ€Ð°Ð±Ð¾Ñ‚ÐºÐ° Ð½ÐµÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ñ‹Ñ… Ð²Ñ…Ð¾Ð´Ð½Ñ‹Ñ… Ð´Ð°Ð½Ð½Ñ‹Ñ… Ð¸Ð»Ð¸ Ñ€Ð°Ð·Ð¼ÐµÑ€Ð¾Ð²
+        // Ð—Ð´ÐµÑÑŒ Ð¼Ð¾Ð¶Ð½Ð¾ ÑÐ³ÐµÐ½ÐµÑ€Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ Ð¸ÑÐºÐ»ÑŽÑ‡ÐµÐ½Ð¸Ðµ Ð¸Ð»Ð¸ Ð²ÐµÑ€Ð½ÑƒÑ‚ÑŒ ÐºÐ¾Ð´ Ð¾ÑˆÐ¸Ð±ÐºÐ¸
         return;
     }
 
     const uint8_t* pTempSrc = pSrc;
     const uint8_t* const pEndOfDest = pDest + uiDestSize;
-    const uint8_t* const pEndOfSrc = pSrc + dwRLEDecompressSourceSize; // Предполагается, что dwRLEDecompressSourceSize определено правильно
+    const uint8_t* const pEndOfSrc = pSrc + dwRLEDecompressSourceSize; // ÐŸÑ€ÐµÐ´Ð¿Ð¾Ð»Ð°Ð³Ð°ÐµÑ‚ÑÑ, Ñ‡Ñ‚Ð¾ dwRLEDecompressSourceSize Ð¾Ð¿Ñ€ÐµÐ´ÐµÐ»ÐµÐ½Ð¾ Ð¿Ñ€Ð°Ð²Ð¸Ð»ÑŒÐ½Ð¾
 
     try {
         while (pDest < pEndOfDest && pTempSrc < pEndOfSrc) {
             if (*pTempSrc == uiEscape) {
                 if (pTempSrc + 1 >= pEndOfSrc || pTempSrc[1] == 0 || pTempSrc + 2 + uiSegSize > pEndOfSrc) {
-                    // Обработка ошибки, неверное значение ucCurSeg или недостаточно данных в исходном буфере
+                    // ÐžÐ±Ñ€Ð°Ð±Ð¾Ñ‚ÐºÐ° Ð¾ÑˆÐ¸Ð±ÐºÐ¸, Ð½ÐµÐ²ÐµÑ€Ð½Ð¾Ðµ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ ucCurSeg Ð¸Ð»Ð¸ Ð½ÐµÐ´Ð¾ÑÑ‚Ð°Ñ‚Ð¾Ñ‡Ð½Ð¾ Ð´Ð°Ð½Ð½Ñ‹Ñ… Ð² Ð¸ÑÑ…Ð¾Ð´Ð½Ð¾Ð¼ Ð±ÑƒÑ„ÐµÑ€Ðµ
                     throw std::runtime_error("rled error 1");
                 }
 
                 uint8_t ucCurSeg = pTempSrc[1];
                 while (ucCurSeg--) {
                     if (pDest + uiSegSize > pEndOfDest) {
-                        // Обработка ошибки, недостаточно места в целевом буфере
+                        // ÐžÐ±Ñ€Ð°Ð±Ð¾Ñ‚ÐºÐ° Ð¾ÑˆÐ¸Ð±ÐºÐ¸, Ð½ÐµÐ´Ð¾ÑÑ‚Ð°Ñ‚Ð¾Ñ‡Ð½Ð¾ Ð¼ÐµÑÑ‚Ð° Ð² Ñ†ÐµÐ»ÐµÐ²Ð¾Ð¼ Ð±ÑƒÑ„ÐµÑ€Ðµ
                         throw std::runtime_error("rled error 2");
                     }
                     memcpy(pDest, pTempSrc + 2, uiSegSize);
@@ -1669,7 +1690,7 @@ void RLEDecompress_hook(uint8_t* pDest, size_t uiDestSize, const uint8_t* pSrc, 
                 pTempSrc += 2 + uiSegSize;
             } else {
                 if (pDest + uiSegSize > pEndOfDest || pTempSrc + uiSegSize > pEndOfSrc) {
-                    // Обработка ошибки, недостаточно данных в исходном буфере или недостаточно места в целевом буфере
+                    // ÐžÐ±Ñ€Ð°Ð±Ð¾Ñ‚ÐºÐ° Ð¾ÑˆÐ¸Ð±ÐºÐ¸, Ð½ÐµÐ´Ð¾ÑÑ‚Ð°Ñ‚Ð¾Ñ‡Ð½Ð¾ Ð´Ð°Ð½Ð½Ñ‹Ñ… Ð² Ð¸ÑÑ…Ð¾Ð´Ð½Ð¾Ð¼ Ð±ÑƒÑ„ÐµÑ€Ðµ Ð¸Ð»Ð¸ Ð½ÐµÐ´Ð¾ÑÑ‚Ð°Ñ‚Ð¾Ñ‡Ð½Ð¾ Ð¼ÐµÑÑ‚Ð° Ð² Ñ†ÐµÐ»ÐµÐ²Ð¾Ð¼ Ð±ÑƒÑ„ÐµÑ€Ðµ
                     throw std::runtime_error("rled error 3");
                 }
                 memcpy(pDest, pTempSrc, uiSegSize);
@@ -1843,24 +1864,30 @@ void InstallSpecialHooks()
 void SetUpGLHooks();
 void InstallHooks()
 {
+    /* RADAR DEBUG */
+
+    CHook::InlineHook(
+        "_ZN4CHud9DrawRadarEv",
+        &CHud__DrawRadar_hook,
+        &CHud__DrawRadar
+    );
+
+    CHook::InlineHook(
+        "_ZN9CSprite2d8DrawRectERK5CRectRK5CRGBA",
+        &CSprite2d__DrawRect_hook,
+        &CSprite2d__DrawRect
+    );
+
+
     //SetUpGLHooks();
     CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
     CHook::Redirect("_Z13RenderEffectsv", &RenderEffects);
-
     CHook::InlineHook("_Z14AND_TouchEventiiii", &AND_TouchEvent_hook, &AND_TouchEvent);
 
     CHook::Redirect("_ZN11CHudColours12GetIntColourEh", &CHudColours__GetIntColour); // dangerous
     CHook::Redirect("_ZN6CRadar19GetRadarTraceColourEjhh", &CRadar__GetRadarTraceColor); // dangerous
-
-CHook::InlineHook(
-    "_ZN9CSprite2d8DrawRectERK5CRectRK5CRGBA",
-    &CSprite2d__DrawRect_hook,
-    &CSprite2d__DrawRect
-);
-
-CHook::InlineHook("_ZN6CRadar12SetCoordBlipE9eBlipType7CVectorj12eBlipDisplayPc", &CRadar__SetCoordBlip_hook, &CRadar__SetCoordBlip);
+    CHook::InlineHook("_ZN6CRadar12SetCoordBlipE9eBlipType7CVectorj12eBlipDisplayPc", &CRadar__SetCoordBlip_hook, &CRadar__SetCoordBlip);
     CHook::InlineHook("_ZN6CRadar20DrawRadarGangOverlayEb", &CRadar_DrawRadarGangOverlay_hook, &CRadar_DrawRadarGangOverlay);
-   // CHook::InlineHook("_ZN4CHud9DrawRadarEv", &CHud__DrawRadar_hook, &CHud__DrawRadar); // Debug do radar
 
     CHook::Redirect("_Z10GetTexturePKc", &CUtil::GetTexture);
 
