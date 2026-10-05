@@ -1825,6 +1825,26 @@ void SetUpGLHooks();
 void InstallHooks()
 {
     //SetUpGLHooks();
+
+    /* RADAR DEBUG */
+    CHook::InlineHook(
+        "_ZN4CHud9DrawRadarEv",
+        &CHud__DrawRadar_hook,
+        &CHud__DrawRadar
+    );
+
+    /* CRadar::DrawMap DEBUG INSTALL */
+    CHook::InlineHook(
+        "_ZN6CRadar7DrawMapEv",
+        &CRadar__DrawMap_hook,
+        &CRadar__DrawMap
+    );
+
+    CHook::InlineHook(
+        "_ZN6CRadar7DrawMapEv",
+        &CRadar__DrawMap_hook,
+        &CRadar__DrawMap
+    );
 CHook::InlineHook(
     "_ZN6CRadar7DrawMapEv",
     &CRadar__DrawMap_hook,
