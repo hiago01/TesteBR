@@ -79,6 +79,20 @@ PLAYERID FindActorIDFromGtaPtr(CPedGTA* pPed)
 
 /* =============================================================================== */
 
+void (*CHud__DrawRadar)(void);
+
+void CHud__DrawRadar_hook()
+{
+    // Executa o radar original do GTA
+    CHud__DrawRadar();
+
+    // =========================================================
+    // RADAR MODERNO - TESTE
+    // O desenho será colocado aqui.
+    // =========================================================
+}
+
+
 void RenderEffects() {
 //	RenderEffects();
     CHook::CallFunction<void>(g_libGTASA + 0x6C1D6C);
@@ -130,6 +144,9 @@ void Render2dStuff_hook()
     if (pUI) pUI->render();
     return;
 }*/
+
+
+
 void Render2dStuff()
 {
     if( CHook::CallFunction<bool>(g_libGTASA + 0x24EA90) ) // emu_IsAltRenderTarget()
@@ -1806,6 +1823,13 @@ void InstallHooks()
     //SetUpGLHooks();
     CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
     CHook::Redirect("_Z13RenderEffectsv", &RenderEffects);
+
+CHook::InlineHook(
+    "_ZN4CHud9DrawRadarEv",
+    &CHud__DrawRadar_hook,
+    &CHud__DrawRadar
+);
+
     CHook::InlineHook("_Z14AND_TouchEventiiii", &AND_TouchEvent_hook, &AND_TouchEvent);
 
     CHook::Redirect("_ZN11CHudColours12GetIntColourEh", &CHudColours__GetIntColour); // dangerous
