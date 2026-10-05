@@ -78,35 +78,112 @@ PLAYERID FindActorIDFromGtaPtr(CPedGTA* pPed)
 }
 /* =============================================================================== */
 /* =============================================================================== */
-/* RADAR POSITION */
+/* RADAR DEBUG */
 
-/* =============================================================================== */
-/* RADAR REAL POSITION TEST */
+/*
+ * Debug do radar através do próprio chat do jogo.
+ *
+ * CHud::DrawRadar()
+ * libGTASA + 0x51CFF0
+ *
+ * CSprite2d::DrawRect()
+ * libGTASA + 0x06EE91C
+ */
 
-using CSprite2d_DrawRect_t = void (*)(CSprite2d*, const CRect&, const CRGBA&);
+using CSprite2d_DrawRect_t =
+    void (*)(CSprite2d*, const CRect&, const CRGBA&);
 
 static CSprite2d_DrawRect_t CSprite2d__DrawRect =
-    reinterpret_cast<CSprite2d_DrawRect_t>(g_libGTASA + 0x06EE91C);
+    reinterpret_cast<CSprite2d_DrawRect_t>(
+        g_libGTASA + 0x06EE91C
+    );
 
-static bool g_MoveRadar = true;
+/*
+ * Indica que estamos dentro de CHud::DrawRadar().
+ * Assim não mostramos DrawRect() de outras partes do jogo.
+ */
+static bool g_InRadarDraw = false;
 
+/*
+ * Controla a quantidade de mensagens enviadas ao chat.
+ */
+static int g_RadarDebugCount = 0;
+
+/*
+ * Ponteiro para CHud::DrawRadar().
+ */
+void (*CHud__DrawRadar)(void);
+
+/*
+ * Hook do CHud::DrawRadar().
+ */
+void CHud__DrawRadar_hook()
+{
+    /*
+     * Mostra somente as primeiras 3 chamadas.
+     */
+    if (pUI && pUI->chat() && g_RadarDebugCount < 3)
+    {
+        pUI->chat()->addDebugMessage(
+            "[RADAR] CHud::DrawRadar chamado #%d",
+            g_RadarDebugCount + 1
+        );
+
+        g_RadarDebugCount++;
+    }
+
+    /*
+     * Ativa o filtro somente durante o DrawRadar original.
+     */
+    g_InRadarDraw = true;
+
+    CHud__DrawRadar();
+
+    g_InRadarDraw = false;
+}
+
+/*
+ * Hook do DrawRect nativo.
+ */
 void CSprite2d__DrawRect_hook(
         CSprite2d* thiz,
         const CRect& rect,
         const CRGBA& color)
 {
-    CRect newRect = rect;
-
-    if (g_MoveRadar)
+    /*
+     * Só registra DrawRect() quando estamos dentro
+     * de CHud::DrawRadar().
+     */
+    if (g_InRadarDraw)
     {
-        newRect.left   += 100.0f;
-        newRect.right  += 100.0f;
-        newRect.top    += 50.0f;
-        newRect.bottom += 50.0f;
+        static int radarRectCount = 0;
+
+        /*
+         * Mostra somente os primeiros 20 retângulos.
+         */
+        if (pUI && pUI->chat() && radarRectCount < 20)
+        {
+            pUI->chat()->addDebugMessage(
+                "[RADAR] Rect #%d L=%.1f T=%.1f R=%.1f B=%.1f",
+                radarRectCount + 1,
+                rect.left,
+                rect.top,
+                rect.right,
+                rect.bottom
+            );
+
+            radarRectCount++;
+        }
     }
 
-    CSprite2d__DrawRect(thiz, newRect, color);
+    /*
+     * IMPORTANTE:
+     * Não alteramos absolutamente nada no radar.
+     * Apenas chamamos a função original.
+     */
+    CSprite2d__DrawRect(thiz, rect, color);
 }
+
 /* =============================================================================== */
 
 void RenderEffects() {
@@ -1853,6 +1930,7 @@ CHook::InlineHook(
 
 CHook::InlineHook("_ZN6CRadar12SetCoordBlipE9eBlipType7CVectorj12eBlipDisplayPc", &CRadar__SetCoordBlip_hook, &CRadar__SetCoordBlip);
     CHook::InlineHook("_ZN6CRadar20DrawRadarGangOverlayEb", &CRadar_DrawRadarGangOverlay_hook, &CRadar_DrawRadarGangOverlay);
+    CHook::InlineHook("_ZN4CHud9DrawRadarEv", &CHud__DrawRadar_hook, &CHud__DrawRadar); // Debug do radar
 
     CHook::Redirect("_Z10GetTexturePKc", &CUtil::GetTexture);
 

@@ -35,7 +35,7 @@ bool CStreaming::TryLoadModel(int modelId) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
             if (count > 30) {
-                pUI->chat()->addDebugMessage("{ff0000} Error loading model %d", modelId);
+                pUI->chat()->addDebugMessage("{ff0000} Erro ao carregar o modelo %d", modelId);
                 return false;
             }
         }

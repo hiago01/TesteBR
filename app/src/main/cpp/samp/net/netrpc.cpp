@@ -150,7 +150,7 @@ void InitGame(RPCParameters* rpcParams)
 	Log::addParameter("szHostName", pNetGame->m_szHostName);
 	Log::addParameter("iVehicleFriendlyFire", pNetGame->m_pNetSet->iVehicleFriendlyFire);
 
-	if (pUI) pUI->chat()->addDebugMessage("Connected to {B9C9BF}%.64s", Encoding::cp2utf(pNetGame->m_szHostName).c_str());
+	if (pUI) pUI->chat()->addDebugMessage("Conectado a {B9C9BF}%.64s", Encoding::cp2utf(pNetGame->m_szHostName).c_str());
 
 	pNetGame->SetGameState(GAMESTATE_CONNECTED);
 
@@ -648,7 +648,7 @@ void WorldPlayerAdd(RPCParameters *rpcParams)
 				}
 			}
 			else {
-				if (pUI) pUI->chat()->addDebugMessage("Warning: Couldn't spawn player(%u)", playerId);
+				if (pUI) pUI->chat()->addDebugMessage("Aviso: Não foi possível criar o jogador(%u)", playerId);
 			}
 		}
 	}
