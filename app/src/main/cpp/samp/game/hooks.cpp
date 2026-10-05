@@ -143,11 +143,17 @@ void (*CRadar__DrawMap)(void);
 
 void CRadar__DrawMap_hook()
 {
+    CRect* radarRect =
+        reinterpret_cast<CRect*>(g_libGTASA + 0xC24614);
+
     if (pUI && pUI->chat() && g_RadarMapDebugCount < 5)
     {
         pUI->chat()->addDebugMessage(
-            "[RADAR] CRadar::DrawMap #%d",
-            g_RadarMapDebugCount + 1
+            "[RADAR] Rect L=%.1f T=%.1f R=%.1f B=%.1f",
+            radarRect->left,
+            radarRect->top,
+            radarRect->right,
+            radarRect->bottom
         );
 
         g_RadarMapDebugCount++;
