@@ -92,10 +92,8 @@ void (*CHud__DrawRadar)(void);
 
 void CHud__DrawRadar_hook()
 {
-    // Desenha o radar original primeiro
     CHud__DrawRadar();
 
-    // CRadar::m_radarRect
     CRect* radarRect =
         reinterpret_cast<CRect*>(g_libGTASA + 0xC24614);
 
@@ -104,56 +102,42 @@ void CHud__DrawRadar_hook()
 
     const float border = 4.0f;
 
-    CRGBA color(255, 255, 255, 220);
-
     const float left   = radarRect->left;
     const float top    = radarRect->top;
     const float right  = radarRect->right;
     const float bottom = radarRect->bottom;
 
+    CRGBA color(255, 255, 255, 220);
+
+    CRect rect;
+
     // Superior
-    DrawRadarRect(
-        CRect(
-            left,
-            top,
-            right,
-            top + border
-        ),
-        color
-    );
+    rect.left   = left;
+    rect.top    = top;
+    rect.right  = right;
+    rect.bottom = top + border;
+    CSprite2d::DrawRect(rect, color);
 
     // Inferior
-    DrawRadarRect(
-        CRect(
-            left,
-            bottom - border,
-            right,
-            bottom
-        ),
-        color
-    );
+    rect.left   = left;
+    rect.top    = bottom - border;
+    rect.right  = right;
+    rect.bottom = bottom;
+    CSprite2d::DrawRect(rect, color);
 
     // Esquerda
-    DrawRadarRect(
-        CRect(
-            left,
-            top,
-            left + border,
-            bottom
-        ),
-        color
-    );
+    rect.left   = left;
+    rect.top    = top;
+    rect.right  = left + border;
+    rect.bottom = bottom;
+    CSprite2d::DrawRect(rect, color);
 
     // Direita
-    DrawRadarRect(
-        CRect(
-            right - border,
-            top,
-            right,
-            bottom
-        ),
-        color
-    );
+    rect.left   = right - border;
+    rect.top    = top;
+    rect.right  = right;
+    rect.bottom = bottom;
+    CSprite2d::DrawRect(rect, color);
 }
 
 void RenderEffects() {
