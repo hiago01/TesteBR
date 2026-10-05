@@ -17,6 +17,13 @@ public class ConfigValidator {
             file.getParentFile().mkdirs();
             copyAsset(context.getAssets(), "settings.ini", file.toString());
         }
+
+        // Custom radar texture
+        File radarFile = new File(externalFilesDir, "SAMP/radar/radardisc.png");
+        if (!radarFile.exists()) {
+            radarFile.getParentFile().mkdirs();
+            copyAsset(context.getAssets(), "radar/radardisc.png", radarFile.toString());
+        }
         /*File file2 = new File(externalFilesDir, "gta_sa.set");
         if (!file2.exists()) {
             file2.getParentFile().mkdirs();
