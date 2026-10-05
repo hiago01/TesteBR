@@ -89,40 +89,72 @@ static void DrawRadarRect(const CRect& rect, const CRGBA& color)
 }
 
 void (*CHud__DrawRadar)(void);
+
 void CHud__DrawRadar_hook()
 {
+    // Desenha o radar original primeiro
     CHud__DrawRadar();
 
-    const float left   = 20.0f;
-    const float top    = 500.0f;
-    const float right  = 220.0f;
-    const float bottom = 700.0f;
+    // CRadar::m_radarRect
+    CRect* radarRect =
+        reinterpret_cast<CRect*>(g_libGTASA + 0xC24614);
+
+    if (!radarRect)
+        return;
 
     const float border = 4.0f;
 
     CRGBA color(255, 255, 255, 220);
 
+    const float left   = radarRect->left;
+    const float top    = radarRect->top;
+    const float right  = radarRect->right;
+    const float bottom = radarRect->bottom;
+
+    // Superior
     DrawRadarRect(
-        CRect(left, top, right, top + border),
+        CRect(
+            left,
+            top,
+            right,
+            top + border
+        ),
         color
     );
 
+    // Inferior
     DrawRadarRect(
-        CRect(left, bottom - border, right, bottom),
+        CRect(
+            left,
+            bottom - border,
+            right,
+            bottom
+        ),
         color
     );
 
+    // Esquerda
     DrawRadarRect(
-        CRect(left, top, left + border, bottom),
+        CRect(
+            left,
+            top,
+            left + border,
+            bottom
+        ),
         color
     );
 
+    // Direita
     DrawRadarRect(
-        CRect(right - border, top, right, bottom),
+        CRect(
+            right - border,
+            top,
+            right,
+            bottom
+        ),
         color
     );
 }
-
 
 void RenderEffects() {
 //	RenderEffects();
