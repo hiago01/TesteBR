@@ -76,17 +76,237 @@ PLAYERID FindActorIDFromGtaPtr(CPedGTA* pPed)
 
 	return INVALID_PLAYER_ID;
 }
-/* RADAR MAP DEBUG - START */
+/* RADAR REAL POSITION - START
+ *
+ * The radar screen rectangle is reached through:
+ *
+ *   g_libGTASA + 0x850910 -> radar/UI state pointer
+ *   state + 0x508          -> screen rect pointer
+ *   rect + 0x2C            -> LEFT
+ *   rect + 0x30            -> TOP
+ *   rect + 0x34            -> RIGHT
+ *   rect + 0x38            -> BOTTOM
+ *
+ * The normal radar transform also uses:
+ *
+ *   g_libGTASA + 0x8519B0 -> radar transform state
+ *   +0x8C                  -> transform mode flag
+ *   +0x78                  -> scale
+ *   +0x7C                  -> X screen offset
+ *   +0x80                  -> 2 * Y screen offset
+ *
+ * We temporarily move both coordinate systems while CHud::DrawRadar()
+ * is executing, then restore the original values immediately.
+ *
+ * This keeps the GTA radar world/map logic intact while moving:
+ *   - radar map
+ *   - radar background
+ *   - blips
+ *   - player/"you are here" marker
+ *   - radar mask/transform-based elements
+ *
+ * TEST POSITION:
+ *   X = +300.0f
+ *   Y =   +0.0f
+ *
+ * Change only g_RadarOffsetX/Y to choose another position.
+ */
 
-/* RADAR DEBUG - START */
+/* RADAR MOVE CONFIG */
+static float g_RadarOffsetX = 300.0f;
+static float g_RadarOffsetY = 0.0f;
 
+/* RADAR DEBUG */
 static bool g_InRadarDraw = false;
 static int g_RadarDrawDebugCount = 0;
 static int g_RadarRectDebugCount = 0;
-/* RADAR SPRITE DRAW DEBUG - START */
-
 static int g_RadarSpriteDrawDebugCount = 0;
+static int g_RadarMapDebugCount = 0;
+static int g_RadarScreenDebugCount = 0;
+static int g_RadarMoveDebugCount = 0;
 
+struct RadarScreenRect
+{
+    float left;
+    float top;
+    float right;
+    float bottom;
+};
+
+static RadarScreenRect* GetRadarScreenRect()
+{
+    if (!g_libGTASA)
+        return nullptr;
+
+    /*
+     * Disassembly:
+     *
+     *   adrp x8, 0x850000
+     *   ldr  x8, [x8, #0x910]
+     *   ldr  x21,[x8, #0x508]
+     *
+     * So:
+     *   *(uintptr_t*)(base + 0x850910) -> radar state
+     *   *(uintptr_t*)(radar state + 0x508) -> screen rect
+     */
+    uintptr_t radarState =
+        *reinterpret_cast<uintptr_t*>(
+            g_libGTASA + 0x850910
+        );
+
+    if (!radarState)
+        return nullptr;
+
+    uintptr_t rectAddress =
+        *reinterpret_cast<uintptr_t*>(
+            radarState + 0x508
+        );
+
+    if (!rectAddress)
+        return nullptr;
+
+    return reinterpret_cast<RadarScreenRect*>(
+        rectAddress + 0x2C
+    );
+}
+
+static uintptr_t GetRadarTransformState()
+{
+    if (!g_libGTASA)
+        return 0;
+
+    /*
+     * TransformRadarPointToScreenSpace and DrawRadarMask use:
+     *
+     *   adrp x8, 0x851000
+     *   ldr  x8, [x8, #0x9B0]
+     */
+    return *reinterpret_cast<uintptr_t*>(
+        g_libGTASA + 0x8519B0
+    );
+}
+
+/*
+ * Move the radar coordinate systems before the original
+ * CHud::DrawRadar() starts.
+ */
+static void BeginRadarMove(
+    RadarScreenRect*& rect,
+    uintptr_t& transformState,
+    float& oldLeft,
+    float& oldTop,
+    float& oldRight,
+    float& oldBottom,
+    bool& rectChanged,
+    float& oldTransformX,
+    float& oldTransformY,
+    bool& transformChanged
+)
+{
+    rect = GetRadarScreenRect();
+
+    transformState = GetRadarTransformState();
+
+    rectChanged = false;
+    transformChanged = false;
+
+    if (rect)
+    {
+        oldLeft   = rect->left;
+        oldTop    = rect->top;
+        oldRight  = rect->right;
+        oldBottom = rect->bottom;
+
+        rect->left   += g_RadarOffsetX;
+        rect->right  += g_RadarOffsetX;
+        rect->top    += g_RadarOffsetY;
+        rect->bottom += g_RadarOffsetY;
+
+        rectChanged = true;
+    }
+
+    /*
+     * Normal TransformRadarPointToScreenSpace() path:
+     *
+     *   OUT.X = IN.X * state[0x78] + state[0x7C]
+     *
+     *   OUT.Y = state[0x80] * 0.5
+     *            - IN.Y * state[0x78]
+     *
+     * Therefore a screen movement of:
+     *
+     *   +X -> +g_RadarOffsetX in 0x7C
+     *   +Y -> +2*g_RadarOffsetY in 0x80
+     *
+     * is required.
+     *
+     * We only modify these when the transform mode flag (+0x8C)
+     * is enabled. In the other mode the screen rect above is used.
+     */
+    if (transformState)
+    {
+        uint8_t transformMode =
+            *reinterpret_cast<uint8_t*>(
+                transformState + 0x8C
+            );
+
+        if (transformMode)
+        {
+            float* transformX =
+                reinterpret_cast<float*>(
+                    transformState + 0x7C
+                );
+
+            float* transformY =
+                reinterpret_cast<float*>(
+                    transformState + 0x80
+                );
+
+            oldTransformX = *transformX;
+            oldTransformY = *transformY;
+
+            *transformX += g_RadarOffsetX;
+            *transformY += g_RadarOffsetY * 2.0f;
+
+            transformChanged = true;
+        }
+    }
+}
+
+static void EndRadarMove(
+    RadarScreenRect* rect,
+    uintptr_t transformState,
+    float oldLeft,
+    float oldTop,
+    float oldRight,
+    float oldBottom,
+    bool rectChanged,
+    float oldTransformX,
+    float oldTransformY,
+    bool transformChanged
+)
+{
+    if (transformChanged && transformState)
+    {
+        *reinterpret_cast<float*>(
+            transformState + 0x7C
+        ) = oldTransformX;
+
+        *reinterpret_cast<float*>(
+            transformState + 0x80
+        ) = oldTransformY;
+    }
+
+    if (rectChanged && rect)
+    {
+        rect->left   = oldLeft;
+        rect->top    = oldTop;
+        rect->right  = oldRight;
+        rect->bottom = oldBottom;
+    }
+}
+
+/* CSprite2d::Draw(CRect, CRGBA) */
 void (*CSprite2d__Draw)(
     void* thiz,
     const CRect* rect,
@@ -119,34 +339,22 @@ void CSprite2d__Draw_hook(
     CSprite2d__Draw(thiz, rect, color);
 }
 
-/* RADAR SPRITE DRAW DEBUG - END */
-void (*CHud__DrawRadar)(void);
-
-void CHud__DrawRadar_hook()
-{
-    g_InRadarDraw = true;
-
-    if (pUI && pUI->chat() && g_RadarDrawDebugCount < 3)
-    {
-        pUI->chat()->addDebugMessage(
-            "[RADAR] CHud::DrawRadar #%d",
-            g_RadarDrawDebugCount + 1
-        );
-
-        g_RadarDrawDebugCount++;
-    }
-
-    CHud__DrawRadar();
-
-    g_InRadarDraw = false;
-}
-
+/*
+ * IMPORTANT:
+ * Correct ABI for CSprite2d::DrawRect:
+ *
+ *   X0 = CSprite2d* this
+ *   X1 = CRect*
+ *   X2 = CRGBA*
+ */
 void (*CSprite2d__DrawRect)(
+    void* thiz,
     const CRect* rect,
     const CRGBA* color
 );
 
 void CSprite2d__DrawRect_hook(
+    void* thiz,
     const CRect* rect,
     const CRGBA* color
 )
@@ -168,13 +376,100 @@ void CSprite2d__DrawRect_hook(
         }
     }
 
-    CSprite2d__DrawRect(rect, color);
+    CSprite2d__DrawRect(thiz, rect, color);
 }
 
-/* RADAR DEBUG - END */
+void (*CHud__DrawRadar)(void);
 
-static int g_RadarMapDebugCount = 0;
+void CHud__DrawRadar_hook()
+{
+    RadarScreenRect* radarRect = nullptr;
+    uintptr_t transformState = 0;
 
+    float oldLeft = 0.0f;
+    float oldTop = 0.0f;
+    float oldRight = 0.0f;
+    float oldBottom = 0.0f;
+
+    bool rectChanged = false;
+
+    float oldTransformX = 0.0f;
+    float oldTransformY = 0.0f;
+
+    bool transformChanged = false;
+
+    BeginRadarMove(
+        radarRect,
+        transformState,
+        oldLeft,
+        oldTop,
+        oldRight,
+        oldBottom,
+        rectChanged,
+        oldTransformX,
+        oldTransformY,
+        transformChanged
+    );
+
+    g_InRadarDraw = true;
+
+    if (pUI && pUI->chat() && g_RadarDrawDebugCount < 3)
+    {
+        pUI->chat()->addDebugMessage(
+            "[RADAR] CHud::DrawRadar #%d",
+            g_RadarDrawDebugCount + 1
+        );
+
+        g_RadarDrawDebugCount++;
+    }
+
+    if (pUI && pUI->chat() && g_RadarMoveDebugCount < 3)
+    {
+        if (radarRect)
+        {
+            pUI->chat()->addDebugMessage(
+                "[RADAR MOVE] X=+%.1f Y=+%.1f -> L=%.1f T=%.1f R=%.1f B=%.1f",
+                g_RadarOffsetX,
+                g_RadarOffsetY,
+                radarRect->left,
+                radarRect->top,
+                radarRect->right,
+                radarRect->bottom
+            );
+        }
+        else
+        {
+            pUI->chat()->addDebugMessage(
+                "[RADAR MOVE] rect not found"
+            );
+        }
+
+        g_RadarMoveDebugCount++;
+    }
+
+    CHud__DrawRadar();
+
+    g_InRadarDraw = false;
+
+    /*
+     * Restore the original GTA values immediately after
+     * the complete radar rendering pass.
+     */
+    EndRadarMove(
+        radarRect,
+        transformState,
+        oldLeft,
+        oldTop,
+        oldRight,
+        oldBottom,
+        rectChanged,
+        oldTransformX,
+        oldTransformY,
+        transformChanged
+    );
+}
+
+/* CRadar::DrawMap debug */
 void (*CRadar__DrawMap)(void);
 
 void CRadar__DrawMap_hook()
@@ -211,12 +506,7 @@ void CRadar__DrawMap_hook()
     CRadar__DrawMap();
 }
 
-/* RADAR MAP DEBUG - END */
-
-/* RADAR SCREEN TRANSFORM DEBUG - START */
-
-static int g_RadarScreenDebugCount = 0;
-
+/* CRadar::TransformRadarPointToScreenSpace debug */
 void (*CRadar__TransformRadarPointToScreenSpace)(
     CVector2D& out,
     const CVector2D& in
@@ -227,6 +517,11 @@ void CRadar__TransformRadarPointToScreenSpace_hook(
     const CVector2D& in
 )
 {
+    /*
+     * The radar transform state has already been temporarily
+     * shifted by CHud::DrawRadar_hook(), so the original function
+     * itself produces the shifted screen position.
+     */
     CRadar__TransformRadarPointToScreenSpace(out, in);
 
     if (pUI && pUI->chat() && g_RadarScreenDebugCount < 20)
@@ -243,7 +538,7 @@ void CRadar__TransformRadarPointToScreenSpace_hook(
     }
 }
 
-/* RADAR SCREEN TRANSFORM DEBUG - END */
+/* RADAR REAL POSITION - END */
 
 /* =============================================================================== */
 
