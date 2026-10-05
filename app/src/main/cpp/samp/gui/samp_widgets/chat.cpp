@@ -5,7 +5,7 @@
 #include <algorithm>
 #include "../settings.h"
 #include "java/jniutil.h"
-#include "../../game/RW/sprite2d.h"
+#include "../../game/sprite2d.h"
 extern UI* pUI;
 extern CGame* pGame;
 extern CNetGame* pNetGame;
