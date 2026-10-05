@@ -4,6 +4,11 @@
 #include "rgba.h"
 #include "Core/Rect.h"
 
+class CSprite2d;
+
+extern void (*CSprite2d__SetTexture)(CSprite2d* thiz, char* name);
+void CSprite2d__SetTexture_hook(CSprite2d* thiz, char* name);
+
 class CSprite2d
 {
 public:

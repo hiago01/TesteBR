@@ -4,6 +4,7 @@
 #include "sprite2d.h"
 #include "../vendor/armhook/patch.h"
 #include "Scene.h"
+#include "RW/RenderWare.h"
 
 void CSprite2d::Draw(float x, float y, float width, float height, CRGBA* color)
 {
@@ -126,6 +127,234 @@ RwTexture* CSprite2d::LoadPngTex(const char* name) {
 	sprite->SetTexture(name);
 
 	return sprite->m_pTexture;
+}
+
+// ============================================================
+// CUSTOM RADAR DISC
+// Carrega SAMP/radar/radardisc.png e substitui a textura
+// nativa "radardisc".
+// ============================================================
+
+static RwTexture* g_CustomRadarDiscTexture = nullptr;
+static bool g_CustomRadarDiscTried = false;
+
+static RwTexture* LoadCustomRadarDisc()
+{
+    if (g_CustomRadarDiscTexture)
+        return g_CustomRadarDiscTexture;
+
+    if (!g_pszStorage)
+    {
+        FLog("[RADAR DISC] g_pszStorage ainda NULL");
+        return nullptr;
+    }
+
+    if (g_CustomRadarDiscTried)
+        return nullptr;
+
+    g_CustomRadarDiscTried = true;
+
+    char path[512];
+    snprintf(
+        path,
+        sizeof(path),
+        "%sSAMP/radar/radardisc.png",
+        g_pszStorage
+    );
+
+    FLog("[RADAR DISC] Carregando: %s", path);
+
+    if (!RtPNGImageRead)
+    {
+        FLog("[RADAR DISC] RtPNGImageRead NULL");
+        return nullptr;
+    }
+
+    RwImage* image = RtPNGImageRead(path);
+
+    if (!image)
+    {
+        FLog("[RADAR DISC] ERRO: PNG nao carregou");
+        return nullptr;
+    }
+
+    FLog(
+        "[RADAR DISC] PNG OK: %dx%d depth=%d",
+        image->width,
+        image->height,
+        image->depth
+    );
+
+    int width = image->width;
+    int height = image->height;
+    int depth = image->depth;
+    int flags = 0;
+
+    if (!RwImageFindRasterFormat)
+    {
+        FLog("[RADAR DISC] RwImageFindRasterFormat NULL");
+        RwImageDestroy(image);
+        return nullptr;
+    }
+
+    RwImageFindRasterFormat(
+        image,
+        rwRASTERTYPETEXTURE,
+        &width,
+        &height,
+        &depth,
+        &flags
+    );
+
+    if (!RwRasterCreate)
+    {
+        FLog("[RADAR DISC] RwRasterCreate NULL");
+        RwImageDestroy(image);
+        return nullptr;
+    }
+
+    RwRaster* raster = RwRasterCreate(
+        width,
+        height,
+        depth,
+        flags
+    );
+
+    if (!raster)
+    {
+        FLog("[RADAR DISC] ERRO: RwRasterCreate");
+        RwImageDestroy(image);
+        return nullptr;
+    }
+
+    if (!RwRasterSetFromImage)
+    {
+        FLog("[RADAR DISC] RwRasterSetFromImage NULL");
+
+        if (RwRasterDestroy)
+            RwRasterDestroy(raster);
+
+        RwImageDestroy(image);
+        return nullptr;
+    }
+
+    if (!RwRasterSetFromImage(raster, image))
+    {
+        FLog("[RADAR DISC] ERRO: RwRasterSetFromImage");
+
+        if (RwRasterDestroy)
+            RwRasterDestroy(raster);
+
+        RwImageDestroy(image);
+        return nullptr;
+    }
+
+    if (!RwTextureCreate)
+    {
+        FLog("[RADAR DISC] RwTextureCreate NULL");
+
+        if (RwRasterDestroy)
+            RwRasterDestroy(raster);
+
+        RwImageDestroy(image);
+        return nullptr;
+    }
+
+    g_CustomRadarDiscTexture = RwTextureCreate(raster);
+
+    RwImageDestroy(image);
+
+    if (!g_CustomRadarDiscTexture)
+    {
+        FLog("[RADAR DISC] ERRO: RwTextureCreate retornou NULL");
+
+        if (RwRasterDestroy)
+            RwRasterDestroy(raster);
+
+        return nullptr;
+    }
+
+    FLog(
+        "[RADAR DISC] TEXTURA CRIADA: %p ref=%d",
+        g_CustomRadarDiscTexture,
+        g_CustomRadarDiscTexture->refCount
+    );
+
+    return g_CustomRadarDiscTexture;
+}
+
+
+// Ponteiro para a funcao original.
+void (*CSprite2d__SetTexture)(
+    CSprite2d* thiz,
+    char* name
+) = nullptr;
+
+
+// Hook do SetTexture.
+// Somente "radardisc" sera substituido.
+void CSprite2d__SetTexture_hook(
+    CSprite2d* thiz,
+    char* name
+)
+{
+    if (!thiz || !name)
+    {
+        if (CSprite2d__SetTexture)
+            CSprite2d__SetTexture(thiz, name);
+
+        return;
+    }
+
+    if (strcmp(name, "radardisc") != 0)
+    {
+        CSprite2d__SetTexture(thiz, name);
+        return;
+    }
+
+    FLog("[RADAR DISC] SetTexture(\"radardisc\")");
+
+    RwTexture* custom = LoadCustomRadarDisc();
+
+    // Se nao conseguiu carregar, deixa o jogo original trabalhar.
+    if (!custom)
+    {
+        FLog("[RADAR DISC] Fallback para textura original");
+
+        CSprite2d__SetTexture(thiz, name);
+        return;
+    }
+
+    // Ja esta usando nossa textura.
+    // Evita aumentar refCount varias vezes.
+    if (thiz->m_pTexture == custom)
+    {
+        FLog("[RADAR DISC] Ja esta usando textura custom");
+        return;
+    }
+
+    // Primeiro deixa a funcao original criar/configurar
+    // a textura normalmente. Isso tambem cuida da textura
+    // anterior do objeto.
+    CSprite2d__SetTexture(thiz, name);
+
+    // A funcao original acabou de colocar a radardisc nativa.
+    // Descartamos essa textura e colocamos a nossa.
+    if (thiz->m_pTexture && thiz->m_pTexture != custom)
+    {
+        RwTextureDestroy(thiz->m_pTexture);
+    }
+
+    // O CSprite2d passa a possuir uma referencia da textura.
+    ++custom->refCount;
+
+    thiz->m_pTexture = custom;
+
+    FLog(
+        "[RADAR DISC] SUBSTITUIDA! tex=%p ref=%d",
+        custom,
+        custom->refCount
+    );
 }
 
 // set texture by name from current txd

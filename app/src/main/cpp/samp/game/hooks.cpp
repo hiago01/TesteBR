@@ -2209,6 +2209,12 @@ CHook::InlineHook(
     &CSprite2d__SetMaskVertices
 );
 
+CHook::InlineHook(
+    "_ZN9CSprite2d10SetTextureEPc",
+    &CSprite2d__SetTexture_hook,
+    &CSprite2d__SetTexture
+);
+
     //SetUpGLHooks();
 CHook::InlineHook(
         "_ZN4CHud9DrawRadarEv",
