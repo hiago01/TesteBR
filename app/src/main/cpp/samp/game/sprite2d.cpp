@@ -1,10 +1,39 @@
 #include "../main.h"
+#include <cstdarg>
+#include <cstdio>
 #include "game.h"
 
 #include "sprite2d.h"
 #include "../vendor/armhook/patch.h"
 #include "Scene.h"
 #include "RW/RenderWare.h"
+
+// ============================================================
+// DEBUG DO RADAR DISC - LOG + CHAT
+// ============================================================
+static void RadarDiscDebug(const char* message)
+{
+    FLog("%s", message);
+
+    if (pUI && pUI->chat())
+        pUI->chat()->addDebugMessage("%s", message);
+}
+
+static void RadarDiscDebugFmt(const char* format, ...)
+{
+    char buffer[512];
+
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+
+    FLog("%s", buffer);
+
+    if (pUI && pUI->chat())
+        pUI->chat()->addDebugMessage("%s", buffer);
+}
+
 
 void CSprite2d::Draw(float x, float y, float width, float height, CRGBA* color)
 {
@@ -145,7 +174,7 @@ static RwTexture* LoadCustomRadarDisc()
 
     if (!g_pszStorage)
     {
-        FLog("[RADAR DISC] g_pszStorage ainda NULL");
+        RadarDiscDebug("[RADAR DISC] g_pszStorage ainda NULL");
         return nullptr;
     }
 
@@ -162,11 +191,11 @@ static RwTexture* LoadCustomRadarDisc()
         g_pszStorage
     );
 
-    FLog("[RADAR DISC] Carregando: %s", path);
+    RadarDiscDebugFmt("[RADAR DISC] Carregando: %s", path);
 
     if (!RtPNGImageRead)
     {
-        FLog("[RADAR DISC] RtPNGImageRead NULL");
+        RadarDiscDebug("[RADAR DISC] RtPNGImageRead NULL");
         return nullptr;
     }
 
@@ -174,11 +203,11 @@ static RwTexture* LoadCustomRadarDisc()
 
     if (!image)
     {
-        FLog("[RADAR DISC] ERRO: PNG nao carregou");
+        RadarDiscDebug("[RADAR DISC] ERRO: PNG nao carregou");
         return nullptr;
     }
 
-    FLog(
+    RadarDiscDebugFmt(
         "[RADAR DISC] PNG OK: %dx%d depth=%d",
         image->width,
         image->height,
@@ -192,7 +221,7 @@ static RwTexture* LoadCustomRadarDisc()
 
     if (!RwImageFindRasterFormat)
     {
-        FLog("[RADAR DISC] RwImageFindRasterFormat NULL");
+        RadarDiscDebug("[RADAR DISC] RwImageFindRasterFormat NULL");
         RwImageDestroy(image);
         return nullptr;
     }
@@ -208,7 +237,7 @@ static RwTexture* LoadCustomRadarDisc()
 
     if (!RwRasterCreate)
     {
-        FLog("[RADAR DISC] RwRasterCreate NULL");
+        RadarDiscDebug("[RADAR DISC] RwRasterCreate NULL");
         RwImageDestroy(image);
         return nullptr;
     }
@@ -222,14 +251,14 @@ static RwTexture* LoadCustomRadarDisc()
 
     if (!raster)
     {
-        FLog("[RADAR DISC] ERRO: RwRasterCreate");
+        RadarDiscDebug("[RADAR DISC] ERRO: RwRasterCreate");
         RwImageDestroy(image);
         return nullptr;
     }
 
     if (!RwRasterSetFromImage)
     {
-        FLog("[RADAR DISC] RwRasterSetFromImage NULL");
+        RadarDiscDebug("[RADAR DISC] RwRasterSetFromImage NULL");
 
         if (RwRasterDestroy)
             RwRasterDestroy(raster);
@@ -240,7 +269,7 @@ static RwTexture* LoadCustomRadarDisc()
 
     if (!RwRasterSetFromImage(raster, image))
     {
-        FLog("[RADAR DISC] ERRO: RwRasterSetFromImage");
+        RadarDiscDebug("[RADAR DISC] ERRO: RwRasterSetFromImage");
 
         if (RwRasterDestroy)
             RwRasterDestroy(raster);
@@ -251,7 +280,7 @@ static RwTexture* LoadCustomRadarDisc()
 
     if (!RwTextureCreate)
     {
-        FLog("[RADAR DISC] RwTextureCreate NULL");
+        RadarDiscDebug("[RADAR DISC] RwTextureCreate NULL");
 
         if (RwRasterDestroy)
             RwRasterDestroy(raster);
@@ -266,7 +295,7 @@ static RwTexture* LoadCustomRadarDisc()
 
     if (!g_CustomRadarDiscTexture)
     {
-        FLog("[RADAR DISC] ERRO: RwTextureCreate retornou NULL");
+        RadarDiscDebug("[RADAR DISC] ERRO: RwTextureCreate retornou NULL");
 
         if (RwRasterDestroy)
             RwRasterDestroy(raster);
@@ -274,7 +303,7 @@ static RwTexture* LoadCustomRadarDisc()
         return nullptr;
     }
 
-    FLog(
+    RadarDiscDebugFmt(
         "[RADAR DISC] TEXTURA CRIADA: %p ref=%d",
         g_CustomRadarDiscTexture,
         g_CustomRadarDiscTexture->refCount
@@ -312,14 +341,14 @@ void CSprite2d__SetTexture_hook(
         return;
     }
 
-    FLog("[RADAR DISC] SetTexture(\"radardisc\")");
+    RadarDiscDebug("[RADAR DISC] SetTexture(\"radardisc\")");
 
     RwTexture* custom = LoadCustomRadarDisc();
 
     // Se nao conseguiu carregar, deixa o jogo original trabalhar.
     if (!custom)
     {
-        FLog("[RADAR DISC] Fallback para textura original");
+        RadarDiscDebug("[RADAR DISC] Fallback para textura original");
 
         CSprite2d__SetTexture(thiz, name);
         return;
@@ -329,7 +358,7 @@ void CSprite2d__SetTexture_hook(
     // Evita aumentar refCount varias vezes.
     if (thiz->m_pTexture == custom)
     {
-        FLog("[RADAR DISC] Ja esta usando textura custom");
+        RadarDiscDebug("[RADAR DISC] Ja esta usando textura custom");
         return;
     }
 
@@ -350,7 +379,7 @@ void CSprite2d__SetTexture_hook(
 
     thiz->m_pTexture = custom;
 
-    FLog(
+    RadarDiscDebugFmt(
         "[RADAR DISC] SUBSTITUIDA! tex=%p ref=%d",
         custom,
         custom->refCount
