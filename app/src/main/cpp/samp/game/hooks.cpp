@@ -306,6 +306,58 @@ static void EndRadarMove(
     }
 }
 
+// ============================================================
+// RADAR MASK - alteração segura dos 8 vértices
+// ============================================================
+
+static bool g_InRadarMask = false;
+static int g_RadarMaskDebugCount = 0;
+
+void (*CRadar__DrawRadarMask)(void);
+
+void (*CSprite2d__SetMaskVertices)(
+    int count,
+    float* vertices
+);
+
+void CRadar__DrawRadarMask_hook()
+{
+    bool previous = g_InRadarMask;
+    g_InRadarMask = true;
+
+    CRadar__DrawRadarMask();
+
+    g_InRadarMask = previous;
+}
+
+void CSprite2d__SetMaskVertices_hook(
+    int count,
+    float* vertices
+)
+{
+    if (g_InRadarMask && count == 8 && vertices)
+    {
+        if (pUI && pUI->chat() && g_RadarMaskDebugCount < 4)
+        {
+            pUI->chat()->addDebugMessage(
+                "[RADAR MASK] SetMaskVertices(8)"
+            );
+
+            g_RadarMaskDebugCount++;
+        }
+
+        // ====================================================
+        // POR ENQUANTO NÃO ALTERAMOS OS VÉRTICES.
+        // Apenas interceptamos a chamada.
+        // ====================================================
+    }
+
+    CSprite2d__SetMaskVertices(
+        count,
+        vertices
+    );
+}
+
 /* CSprite2d::Draw(CRect, CRGBA) */
 void (*CSprite2d__Draw)(
     void* thiz,
@@ -2266,6 +2318,19 @@ void InstallSpecialHooks()
 void SetUpGLHooks();
 void InstallHooks()
 {
+
+CHook::InlineHook(
+    "_ZN6CRadar13DrawRadarMaskEv",
+    &CRadar__DrawRadarMask_hook,
+    &CRadar__DrawRadarMask
+);
+
+CHook::InlineHook(
+    "_ZN9CSprite2d15SetMaskVerticesEiPff",
+    &CSprite2d__SetMaskVertices_hook,
+    &CSprite2d__SetMaskVertices
+);
+
     //SetUpGLHooks();
 CHook::InlineHook(
     "_ZN9CSprite2d4DrawERK5CRectRK5CRGBA",
@@ -2298,7 +2363,7 @@ CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
     CHook::Redirect("_ZN11CHudColours12GetIntColourEh", &CHudColours__GetIntColour); // dangerous
     CHook::Redirect("_ZN6CRadar19GetRadarTraceColourEjhh", &CRadar__GetRadarTraceColor); // dangerous
     CHook::InlineHook("_ZN6CRadar12SetCoordBlipE9eBlipType7CVectorj12eBlipDisplayPc", &CRadar__SetCoordBlip_hook, &CRadar__SetCoordBlip);
-    CHook::InlineHook("_ZN6CRadar20DrawRadarGangOverlayEb", &CRadar_DrawRadarGangOverlay_hook, &CRadar_DrawRadarGangOverlay);
+    CHook::InlineHook("_ZN6CRadar20DrawRadarGangOverlayEb", & CRadar_DrawRadarGangOverlay_hook, &CRadar_DrawRadarGangOverlay);
 
     CHook::Redirect("_Z10GetTexturePKc", &CUtil::GetTexture);
 
