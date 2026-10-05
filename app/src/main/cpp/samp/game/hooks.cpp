@@ -116,15 +116,6 @@ PLAYERID FindActorIDFromGtaPtr(CPedGTA* pPed)
 static float g_RadarOffsetX = 300.0f;
 static float g_RadarOffsetY = 0.0f;
 
-/*
- * RADAR MOVE CONFIG
- *
- * The radar position is changed only while CHud::DrawRadar()
- * is executing and restored immediately afterwards.
- */
-static float g_RadarOffsetX = 300.0f;
-static float g_RadarOffsetY = 0.0f;
-
 struct RadarScreenRect
 {
     float left;
@@ -138,6 +129,17 @@ static RadarScreenRect* GetRadarScreenRect()
     if (!g_libGTASA)
         return nullptr;
 
+    /*
+     * Disassembly:
+     *
+     *   adrp x8, 0x850000
+     *   ldr  x8, [x8, #0x910]
+     *   ldr  x21,[x8, #0x508]
+     *
+     * So:
+     *   *(uintptr_t*)(base + 0x850910) -> radar state
+     *   *(uintptr_t*)(radar state + 0x508) -> screen rect
+     */
     uintptr_t radarState =
         *reinterpret_cast<uintptr_t*>(
             g_libGTASA + 0x850910
@@ -164,11 +166,21 @@ static uintptr_t GetRadarTransformState()
     if (!g_libGTASA)
         return 0;
 
+    /*
+     * TransformRadarPointToScreenSpace and DrawRadarMask use:
+     *
+     *   adrp x8, 0x851000
+     *   ldr  x8, [x8, #0x9B0]
+     */
     return *reinterpret_cast<uintptr_t*>(
         g_libGTASA + 0x8519B0
     );
 }
 
+/*
+ * Move the radar coordinate systems before the original
+ * CHud::DrawRadar() starts.
+ */
 static void BeginRadarMove(
     RadarScreenRect*& rect,
     uintptr_t& transformState,
@@ -183,6 +195,7 @@ static void BeginRadarMove(
 )
 {
     rect = GetRadarScreenRect();
+
     transformState = GetRadarTransformState();
 
     rectChanged = false;
@@ -203,6 +216,24 @@ static void BeginRadarMove(
         rectChanged = true;
     }
 
+    /*
+     * Normal TransformRadarPointToScreenSpace() path:
+     *
+     *   OUT.X = IN.X * state[0x78] + state[0x7C]
+     *
+     *   OUT.Y = state[0x80] * 0.5
+     *            - IN.Y * state[0x78]
+     *
+     * Therefore a screen movement of:
+     *
+     *   +X -> +g_RadarOffsetX in 0x7C
+     *   +Y -> +2*g_RadarOffsetY in 0x80
+     *
+     * is required.
+     *
+     * We only modify these when the transform mode flag (+0x8C)
+     * is enabled. In the other mode the screen rect above is used.
+     */
     if (transformState)
     {
         uint8_t transformMode =
@@ -267,12 +298,11 @@ static void EndRadarMove(
 }
 
 // ============================================================
-// RADAR MASK - diagnóstico mínimo
+// RADAR MASK - alteração segura dos 8 vértices
 // ============================================================
 
 static bool g_InRadarMask = false;
-static int g_RadarMaskDrawDebugCount = 0;
-static int g_RadarMaskVerticesDebugCount = 0;
+static int g_RadarMaskDebugCount = 0;
 
 void (*CRadar__DrawRadarMask)(void);
 
@@ -283,22 +313,19 @@ void (*CSprite2d__SetMaskVertices)(
 
 void CRadar__DrawRadarMask_hook()
 {
-    bool previous = g_InRadarMask;
-    g_InRadarMask = true;
+    static int debugCount = 0;
 
-    /*
-     * Único diagnóstico mantido nesta etapa.
-     * Limitado a 3 mensagens para não poluir o chat.
-     */
-    if (pUI && pUI->chat() && g_RadarMaskDrawDebugCount < 3)
+    if (pUI && pUI->chat() && debugCount < 3)
     {
         pUI->chat()->addDebugMessage(
             "[RADAR MASK] DrawRadarMask #%d",
-            g_RadarMaskDrawDebugCount + 1
+            debugCount + 1
         );
-
-        g_RadarMaskDrawDebugCount++;
+        debugCount++;
     }
+
+    bool previous = g_InRadarMask;
+    g_InRadarMask = true;
 
     CRadar__DrawRadarMask();
 
@@ -312,29 +339,19 @@ void CSprite2d__SetMaskVertices_hook(
 {
     if (g_InRadarMask && count == 8 && vertices)
     {
-        /*
-         * Diagnóstico mínimo: confirma se os 8 vértices
-         * realmente passam por este símbolo.
-         */
-        if (pUI && pUI->chat() && g_RadarMaskVerticesDebugCount < 3)
+        static int debugCount = 0;
+
+        if (pUI && pUI->chat() && debugCount < 3)
         {
             pUI->chat()->addDebugMessage(
                 "[RADAR MASK] SetMaskVertices(8) #%d",
-                g_RadarMaskVerticesDebugCount + 1
+                debugCount + 1
             );
-
-            g_RadarMaskVerticesDebugCount++;
+            debugCount++;
         }
-
-        /*
-         * NÃO modificar os vértices nesta etapa.
-         */
     }
 
-    CSprite2d__SetMaskVertices(
-        count,
-        vertices
-    );
+    CSprite2d__SetMaskVertices(count, vertices);
 }
 
 void (*CHud__DrawRadar)(void);
@@ -371,6 +388,10 @@ void CHud__DrawRadar_hook()
 
     CHud__DrawRadar();
 
+    /*
+     * Restore the original GTA values immediately after
+     * the complete radar rendering pass.
+     */
     EndRadarMove(
         radarRect,
         transformState,
@@ -2132,12 +2153,6 @@ CHook::InlineHook(
         &CHud__DrawRadar_hook,
         &CHud__DrawRadar
     );
-
-CHook::InlineHook(
-    "_ZN6CRadar7DrawMapEv",
-    &CRadar__DrawMap_hook,
-    &CRadar__DrawMap
-);
 
 CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
     CHook::Redirect("_Z13RenderEffectsv", &RenderEffects);
