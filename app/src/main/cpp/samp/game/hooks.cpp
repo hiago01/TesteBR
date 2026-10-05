@@ -78,6 +78,65 @@ PLAYERID FindActorIDFromGtaPtr(CPedGTA* pPed)
 }
 /* RADAR MAP DEBUG - START */
 
+/* RADAR DEBUG - START */
+
+static bool g_InRadarDraw = false;
+static int g_RadarDrawDebugCount = 0;
+static int g_RadarRectDebugCount = 0;
+
+void (*CHud__DrawRadar)(void);
+
+void CHud__DrawRadar_hook()
+{
+    g_InRadarDraw = true;
+
+    if (pUI && pUI->chat() && g_RadarDrawDebugCount < 3)
+    {
+        pUI->chat()->addDebugMessage(
+            "[RADAR] CHud::DrawRadar #%d",
+            g_RadarDrawDebugCount + 1
+        );
+
+        g_RadarDrawDebugCount++;
+    }
+
+    CHud__DrawRadar();
+
+    g_InRadarDraw = false;
+}
+
+void (*CSprite2d__DrawRect)(
+    const CRect* rect,
+    const CRGBA* color
+);
+
+void CSprite2d__DrawRect_hook(
+    const CRect* rect,
+    const CRGBA* color
+)
+{
+    if (g_InRadarDraw && rect)
+    {
+        if (pUI && pUI->chat() && g_RadarRectDebugCount < 20)
+        {
+            pUI->chat()->addDebugMessage(
+                "[RADAR] RECT #%d L=%.1f T=%.1f R=%.1f B=%.1f",
+                g_RadarRectDebugCount + 1,
+                rect->left,
+                rect->top,
+                rect->right,
+                rect->bottom
+            );
+
+            g_RadarRectDebugCount++;
+        }
+    }
+
+    CSprite2d__DrawRect(rect, color);
+}
+
+/* RADAR DEBUG - END */
+
 static int g_RadarMapDebugCount = 0;
 
 void (*CRadar__DrawMap)(void);
@@ -1826,25 +1885,12 @@ void InstallHooks()
 {
     //SetUpGLHooks();
 
-    /* RADAR DEBUG */
-    CHook::InlineHook(
+CHook::InlineHook(
         "_ZN4CHud9DrawRadarEv",
         &CHud__DrawRadar_hook,
         &CHud__DrawRadar
     );
 
-    /* CRadar::DrawMap DEBUG INSTALL */
-    CHook::InlineHook(
-        "_ZN6CRadar7DrawMapEv",
-        &CRadar__DrawMap_hook,
-        &CRadar__DrawMap
-    );
-
-    CHook::InlineHook(
-        "_ZN6CRadar7DrawMapEv",
-        &CRadar__DrawMap_hook,
-        &CRadar__DrawMap
-    );
 CHook::InlineHook(
     "_ZN6CRadar7DrawMapEv",
     &CRadar__DrawMap_hook,
