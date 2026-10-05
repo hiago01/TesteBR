@@ -80,26 +80,32 @@ PLAYERID FindActorIDFromGtaPtr(CPedGTA* pPed)
 /* =============================================================================== */
 /* RADAR POSITION */
 
-void (*CRadar__SetupRadarRect)(int, int);
+/* =============================================================================== */
+/* RADAR REAL POSITION TEST */
 
-void CRadar__SetupRadarRect_hook(int width, int height)
+using CSprite2d_DrawRect_t = void (*)(CSprite2d*, const CRect&, const CRGBA&);
+
+static CSprite2d_DrawRect_t CSprite2d__DrawRect =
+    reinterpret_cast<CSprite2d_DrawRect_t>(g_libGTASA + 0x06EE91C);
+
+static bool g_MoveRadar = true;
+
+void CSprite2d__DrawRect_hook(
+        CSprite2d* thiz,
+        const CRect& rect,
+        const CRGBA& color)
 {
-    CRadar__SetupRadarRect(width, height);
+    CRect newRect = rect;
 
-    CRect* radarRect =
-        reinterpret_cast<CRect*>(g_libGTASA + 0xC24614);
+    if (g_MoveRadar)
+    {
+        newRect.left   += 100.0f;
+        newRect.right  += 100.0f;
+        newRect.top    += 50.0f;
+        newRect.bottom += 50.0f;
+    }
 
-    if (!radarRect)
-        return;
-
-    // Teste: desloca o radar real
-    const float offsetX = 100.0f;
-    const float offsetY = 50.0f;
-
-    radarRect->left   += offsetX;
-    radarRect->right  += offsetX;
-    radarRect->top    += offsetY;
-    radarRect->bottom += offsetY;
+    CSprite2d__DrawRect(thiz, newRect, color);
 }
 /* =============================================================================== */
 
@@ -1840,10 +1846,10 @@ void InstallHooks()
     CHook::Redirect("_ZN6CRadar19GetRadarTraceColourEjhh", &CRadar__GetRadarTraceColor); // dangerous
 
 CHook::InlineHook(
-    "_ZN6CRadar14SetupRadarRectEii",
-    &CRadar__SetupRadarRect_hook,
-    &CRadar__SetupRadarRect
-);    
+    "_ZN9CSprite2d8DrawRectERK5CRectRK5CRGBA",
+    &CSprite2d__DrawRect_hook,
+    &CSprite2d__DrawRect
+);
 
 CHook::InlineHook("_ZN6CRadar12SetCoordBlipE9eBlipType7CVectorj12eBlipDisplayPc", &CRadar__SetCoordBlip_hook, &CRadar__SetCoordBlip);
     CHook::InlineHook("_ZN6CRadar20DrawRadarGangOverlayEb", &CRadar_DrawRadarGangOverlay_hook, &CRadar_DrawRadarGangOverlay);
