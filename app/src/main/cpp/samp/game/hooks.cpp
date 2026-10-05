@@ -83,7 +83,43 @@ PLAYERID FindActorIDFromGtaPtr(CPedGTA* pPed)
 static bool g_InRadarDraw = false;
 static int g_RadarDrawDebugCount = 0;
 static int g_RadarRectDebugCount = 0;
+/* RADAR SPRITE DRAW DEBUG - START */
 
+static int g_RadarSpriteDrawDebugCount = 0;
+
+void (*CSprite2d__Draw)(
+    void* thiz,
+    const CRect* rect,
+    const CRGBA* color
+);
+
+void CSprite2d__Draw_hook(
+    void* thiz,
+    const CRect* rect,
+    const CRGBA* color
+)
+{
+    if (g_InRadarDraw && rect)
+    {
+        if (pUI && pUI->chat() && g_RadarSpriteDrawDebugCount < 20)
+        {
+            pUI->chat()->addDebugMessage(
+                "[RADAR DRAW] #%d L=%.1f T=%.1f R=%.1f B=%.1f",
+                g_RadarSpriteDrawDebugCount + 1,
+                rect->left,
+                rect->top,
+                rect->right,
+                rect->bottom
+            );
+
+            g_RadarSpriteDrawDebugCount++;
+        }
+    }
+
+    CSprite2d__Draw(thiz, rect, color);
+}
+
+/* RADAR SPRITE DRAW DEBUG - END */
 void (*CHud__DrawRadar)(void);
 
 void CHud__DrawRadar_hook()
@@ -1936,6 +1972,11 @@ void SetUpGLHooks();
 void InstallHooks()
 {
     //SetUpGLHooks();
+CHook::InlineHook(
+    "_ZN9CSprite2d4DrawERK5CRectRK5CRGBA",
+    &CSprite2d__Draw_hook,
+    &CSprite2d__Draw
+);
 
 CHook::InlineHook(
         "_ZN4CHud9DrawRadarEv",
