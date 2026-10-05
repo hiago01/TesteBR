@@ -83,15 +83,49 @@ void (*CHud__DrawRadar)(void);
 
 void CHud__DrawRadar_hook()
 {
-    // Executa o radar original do GTA
+    // 1. Radar original
     CHud__DrawRadar();
 
     // =========================================================
-    // RADAR MODERNO - TESTE
-    // O desenho será colocado aqui.
+    // RADAR MODERNO - V1
+    // Apenas moldura, sem cobrir o mapa/blips.
     // =========================================================
-}
 
+    // Área inicial de teste.
+    // Depois vamos substituir estes valores pelo radarRect real.
+    const float left   = 20.0f;
+    const float top    = 500.0f;
+    const float right  = 220.0f;
+    const float bottom = 700.0f;
+
+    const float border = 4.0f;
+
+    CRGBA color(255, 255, 255, 220);
+
+    // Borda superior
+    CSprite2d::DrawRect(
+        CRect(left, top, right, top + border),
+        color
+    );
+
+    // Borda inferior
+    CSprite2d::DrawRect(
+        CRect(left, bottom - border, right, bottom),
+        color
+    );
+
+    // Borda esquerda
+    CSprite2d::DrawRect(
+        CRect(left, top, left + border, bottom),
+        color
+    );
+
+    // Borda direita
+    CSprite2d::DrawRect(
+        CRect(right - border, top, right, bottom),
+        color
+    );
+}
 
 void RenderEffects() {
 //	RenderEffects();
