@@ -176,6 +176,39 @@ void CRadar__DrawMap_hook()
 }
 
 /* RADAR MAP DEBUG - END */
+
+/* RADAR SCREEN TRANSFORM DEBUG - START */
+
+static int g_RadarScreenDebugCount = 0;
+
+void (*CRadar__TransformRadarPointToScreenSpace)(
+    CVector2D& out,
+    const CVector2D& in
+);
+
+void CRadar__TransformRadarPointToScreenSpace_hook(
+    CVector2D& out,
+    const CVector2D& in
+)
+{
+    CRadar__TransformRadarPointToScreenSpace(out, in);
+
+    if (pUI && pUI->chat() && g_RadarScreenDebugCount < 20)
+    {
+        pUI->chat()->addDebugMessage(
+            "[RADAR SCREEN] IN X=%.1f Y=%.1f -> OUT X=%.1f Y=%.1f",
+            in.x,
+            in.y,
+            out.x,
+            out.y
+        );
+
+        g_RadarScreenDebugCount++;
+    }
+}
+
+/* RADAR SCREEN TRANSFORM DEBUG - END */
+
 /* =============================================================================== */
 
 void RenderEffects() {
@@ -1916,7 +1949,13 @@ CHook::InlineHook(
     &CRadar__DrawMap
 );
 
-    CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
+        CHook::InlineHook(
+        "_ZN6CRadar32TransformRadarPointToScreenSpaceER9CVector2DRKS0_",
+        &CRadar__TransformRadarPointToScreenSpace_hook,
+        &CRadar__TransformRadarPointToScreenSpace
+    );
+
+CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
     CHook::Redirect("_Z13RenderEffectsv", &RenderEffects);
     CHook::InlineHook("_Z14AND_TouchEventiiii", &AND_TouchEvent_hook, &AND_TouchEvent);
 
