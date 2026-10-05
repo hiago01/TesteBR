@@ -77,22 +77,14 @@ PLAYERID FindActorIDFromGtaPtr(CPedGTA* pPed)
 	return INVALID_PLAYER_ID;
 }
 /* =============================================================================== */
+/* =============================================================================== */
+/* RADAR POSITION */
 
-static void DrawRadarRect(const CRect& rect, const CRGBA& color)
+void (*CRadar__SetupRadarRect)(int, int);
+
+void CRadar__SetupRadarRect_hook(int width, int height)
 {
-    using DrawRect_t = void (*)(const CRect&, const CRGBA&);
-
-    static DrawRect_t DrawRect =
-        reinterpret_cast<DrawRect_t>(g_libGTASA + 0x06EE91C);
-
-    DrawRect(rect, color);
-}
-
-void (*CHud__DrawRadar)(void);
-
-void CHud__DrawRadar_hook()
-{
-    CHud__DrawRadar();
+    CRadar__SetupRadarRect(width, height);
 
     CRect* radarRect =
         reinterpret_cast<CRect*>(g_libGTASA + 0xC24614);
@@ -100,44 +92,14 @@ void CHud__DrawRadar_hook()
     if (!radarRect)
         return;
 
-    const float border = 4.0f;
+    // Teste: desloca o radar real
+    const float offsetX = 100.0f;
+    const float offsetY = 50.0f;
 
-    const float left   = radarRect->left;
-    const float top    = radarRect->top;
-    const float right  = radarRect->right;
-    const float bottom = radarRect->bottom;
-
-    CRGBA color(255, 255, 255, 220);
-
-    CRect rect;
-
-    // Superior
-    rect.left   = left;
-    rect.top    = top;
-    rect.right  = right;
-    rect.bottom = top + border;
-    DrawRadarRect(rect, color);
-
-    // Inferior
-    rect.left   = left;
-    rect.top    = bottom - border;
-    rect.right  = right;
-    rect.bottom = bottom;
-    DrawRadarRect(rect, color);
-
-    // Esquerda
-    rect.left   = left;
-    rect.top    = top;
-    rect.right  = left + border;
-    rect.bottom = bottom;
-    DrawRadarRect(rect, color);
-
-    // Direita
-    rect.left   = right - border;
-    rect.top    = top;
-    rect.right  = right;
-    rect.bottom = bottom;
-    DrawRadarRect(rect, color);
+    radarRect->left   += offsetX;
+    radarRect->right  += offsetX;
+    radarRect->top    += offsetY;
+    radarRect->bottom += offsetY;
 }
 /* =============================================================================== */
 
@@ -1872,17 +1834,18 @@ void InstallHooks()
     CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
     CHook::Redirect("_Z13RenderEffectsv", &RenderEffects);
 
-CHook::InlineHook(
-    "_ZN4CHud9DrawRadarEv",
-    &CHud__DrawRadar_hook,
-    &CHud__DrawRadar
-);
-
     CHook::InlineHook("_Z14AND_TouchEventiiii", &AND_TouchEvent_hook, &AND_TouchEvent);
 
     CHook::Redirect("_ZN11CHudColours12GetIntColourEh", &CHudColours__GetIntColour); // dangerous
     CHook::Redirect("_ZN6CRadar19GetRadarTraceColourEjhh", &CRadar__GetRadarTraceColor); // dangerous
-    CHook::InlineHook("_ZN6CRadar12SetCoordBlipE9eBlipType7CVectorj12eBlipDisplayPc", &CRadar__SetCoordBlip_hook, &CRadar__SetCoordBlip);
+
+CHook::InlineHook(
+    "_ZN6CRadar14SetupRadarRectEii",
+    &CRadar__SetupRadarRect_hook,
+    &CRadar__SetupRadarRect
+);    
+
+CHook::InlineHook("_ZN6CRadar12SetCoordBlipE9eBlipType7CVectorj12eBlipDisplayPc", &CRadar__SetCoordBlip_hook, &CRadar__SetCoordBlip);
     CHook::InlineHook("_ZN6CRadar20DrawRadarGangOverlayEb", &CRadar_DrawRadarGangOverlay_hook, &CRadar_DrawRadarGangOverlay);
 
     CHook::Redirect("_Z10GetTexturePKc", &CUtil::GetTexture);
