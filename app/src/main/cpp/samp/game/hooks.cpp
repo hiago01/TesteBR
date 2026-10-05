@@ -339,19 +339,81 @@ void CSprite2d__SetMaskVertices_hook(
 {
     if (g_InRadarMask && count == 8 && vertices)
     {
-        static int debugCount = 0;
+        float centerX = 0.0f;
+        float centerY = 0.0f;
 
-        if (pUI && pUI->chat() && debugCount < 3)
+        // Centro dos 8 vértices
+        for (int i = 0; i < 8; i++)
         {
-            pUI->chat()->addDebugMessage(
-                "[RADAR MASK] SetMaskVertices(8) #%d",
-                debugCount + 1
-            );
-            debugCount++;
+            centerX += vertices[i * 2];
+            centerY += vertices[i * 2 + 1];
+        }
+
+        centerX /= 8.0f;
+        centerY /= 8.0f;
+
+        // Raio horizontal/vertical original
+        float radiusX = 0.0f;
+        float radiusY = 0.0f;
+
+        for (int i = 0; i < 8; i++)
+        {
+            float dx = fabsf(vertices[i * 2] - centerX);
+            float dy = fabsf(vertices[i * 2 + 1] - centerY);
+
+            if (dx > radiusX)
+                radiusX = dx;
+
+            if (dy > radiusY)
+                radiusY = dy;
+        }
+
+        if (radiusX > 1.0f && radiusY > 1.0f)
+        {
+            // 2.0 = círculo/ellipse original
+            // 3.0 = levemente quadrado
+            // 4.0 = quadrado arredondado
+            // 6.0 = mais quadrado
+            const float exponent = 4.0f;
+            const float invExponent = 1.0f / exponent;
+
+            for (int i = 0; i < 8; i++)
+            {
+                float dx = vertices[i * 2] - centerX;
+                float dy = vertices[i * 2 + 1] - centerY;
+
+                float x = dx / radiusX;
+                float y = dy / radiusY;
+
+                float ax = fabsf(x);
+                float ay = fabsf(y);
+
+                float denominator =
+                    powf(
+                        powf(ax, exponent) +
+                        powf(ay, exponent),
+                        invExponent
+                    );
+
+                if (denominator > 0.0001f)
+                {
+                    x /= denominator;
+                    y /= denominator;
+                }
+
+                vertices[i * 2] =
+                    centerX + (x * radiusX);
+
+                vertices[i * 2 + 1] =
+                    centerY + (y * radiusY);
+            }
         }
     }
 
-    CSprite2d__SetMaskVertices(count, vertices);
+    CSprite2d__SetMaskVertices(
+        count,
+        vertices
+    );
 }
 
 void (*CHud__DrawRadar)(void);
