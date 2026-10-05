@@ -1,8 +1,8 @@
+#include <sys/stat.h>
 #include "../main.h"
 #include <cstdarg>
 #include <cstdio>
 #include "game.h"
-
 #include "sprite2d.h"
 #include "../vendor/armhook/patch.h"
 #include "Scene.h"
@@ -196,13 +196,40 @@ static RwTexture* LoadCustomRadarDisc()
 
     RadarDiscDebugFmt("[RADAR DISC] Carregando: %s", path);
 
-    if (!RtPNGImageRead)
+/*    if (!RtPNGImageRead)
     {
         RadarDiscDebug("[RADAR DISC] RtPNGImageRead NULL");
         return nullptr;
     }
 
     RwImage* image = RtPNGImageRead(path);
+*/
+if (!RwImageRead)
+{
+    RadarDiscDebug("[RADAR DISC] RwImageRead NULL");
+    return nullptr;
+}
+
+RadarDiscDebug("[RADAR DISC] Usando RwImageRead()");
+
+struct stat st;
+
+if (stat(path, &st) != 0)
+{
+    RadarDiscDebugFmt(
+        "[RADAR DISC] stat() FALHOU: %s",
+        path
+    );
+
+    return nullptr;
+}
+
+RadarDiscDebugFmt(
+    "[RADAR DISC] ARQUIVO EXISTE: %lld bytes",
+    (long long)st.st_size
+);
+
+RwImage* image = RwImageRead(path);
 
     if (!image)
     {
