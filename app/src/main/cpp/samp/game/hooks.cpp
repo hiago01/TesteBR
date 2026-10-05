@@ -143,11 +143,24 @@ void (*CRadar__DrawMap)(void);
 
 void CRadar__DrawMap_hook()
 {
+    CVector2D* radarOrigin =
+        reinterpret_cast<CVector2D*>(g_libGTASA + 0xC24608);
+
+    float* radarRange =
+        reinterpret_cast<float*>(g_libGTASA + 0xC24610);
+
     CRect* radarRect =
         reinterpret_cast<CRect*>(g_libGTASA + 0xC24614);
 
     if (pUI && pUI->chat() && g_RadarMapDebugCount < 5)
     {
+        pUI->chat()->addDebugMessage(
+            "[RADAR] Origin X=%.1f Y=%.1f Range=%.1f",
+            radarOrigin->x,
+            radarOrigin->y,
+            *radarRange
+        );
+
         pUI->chat()->addDebugMessage(
             "[RADAR] Rect L=%.1f T=%.1f R=%.1f B=%.1f",
             radarRect->left,
