@@ -76,16 +76,16 @@ PLAYERID FindActorIDFromGtaPtr(CPedGTA* pPed)
 
 	return INVALID_PLAYER_ID;
 }
-
 /* =============================================================================== */
+
 static void DrawRadarRect(const CRect& rect, const CRGBA& color)
 {
     using DrawRect_t = void (*)(const CRect&, const CRGBA&);
 
     static DrawRect_t DrawRect =
-    reinterpret_cast<DrawRect_t>(g_libGTASA + 0x06EE91C);
+        reinterpret_cast<DrawRect_t>(g_libGTASA + 0x06EE91C);
 
-   DrawRect(rect, color);
+    DrawRect(rect, color);
 }
 
 void (*CHud__DrawRadar)(void);
@@ -116,29 +116,30 @@ void CHud__DrawRadar_hook()
     rect.top    = top;
     rect.right  = right;
     rect.bottom = top + border;
-    DrawRect(rect, color);
+    DrawRadarRect(rect, color);
 
     // Inferior
     rect.left   = left;
     rect.top    = bottom - border;
     rect.right  = right;
     rect.bottom = bottom;
-    DrawRect(rect, color);
+    DrawRadarRect(rect, color);
 
     // Esquerda
     rect.left   = left;
     rect.top    = top;
     rect.right  = left + border;
     rect.bottom = bottom;
-    DrawRect(rect, color);
+    DrawRadarRect(rect, color);
 
     // Direita
     rect.left   = right - border;
     rect.top    = top;
     rect.right  = right;
     rect.bottom = bottom;
-    DrawRect(rect, color);
+    DrawRadarRect(rect, color);
 }
+/* =============================================================================== */
 
 void RenderEffects() {
 //	RenderEffects();
