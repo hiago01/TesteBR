@@ -1860,7 +1860,7 @@ CHook::InlineHook(
 
 CHook::InlineHook("_ZN6CRadar12SetCoordBlipE9eBlipType7CVectorj12eBlipDisplayPc", &CRadar__SetCoordBlip_hook, &CRadar__SetCoordBlip);
     CHook::InlineHook("_ZN6CRadar20DrawRadarGangOverlayEb", &CRadar_DrawRadarGangOverlay_hook, &CRadar_DrawRadarGangOverlay);
-    CHook::InlineHook("_ZN4CHud9DrawRadarEv", &CHud__DrawRadar_hook, &CHud__DrawRadar); // Debug do radar
+   // CHook::InlineHook("_ZN4CHud9DrawRadarEv", &CHud__DrawRadar_hook, &CHud__DrawRadar); // Debug do radar
 
     CHook::Redirect("_Z10GetTexturePKc", &CUtil::GetTexture);
 
