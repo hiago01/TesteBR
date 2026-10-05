@@ -78,21 +78,21 @@ PLAYERID FindActorIDFromGtaPtr(CPedGTA* pPed)
 }
 
 /* =============================================================================== */
+static void DrawRadarRect(const CRect& rect, const CRGBA& color)
+{
+    using DrawRect_t = void (*)(const CRect&, const CRGBA&);
+
+    static DrawRect_t DrawRect =
+        reinterpret_cast<DrawRect_t>(g_libGTASA + 0x06EE91C);
+
+    DrawRect(rect, color);
+}
 
 void (*CHud__DrawRadar)(void);
-
 void CHud__DrawRadar_hook()
 {
-    // 1. Radar original
     CHud__DrawRadar();
 
-    // =========================================================
-    // RADAR MODERNO - V1
-    // Apenas moldura, sem cobrir o mapa/blips.
-    // =========================================================
-
-    // Área inicial de teste.
-    // Depois vamos substituir estes valores pelo radarRect real.
     const float left   = 20.0f;
     const float top    = 500.0f;
     const float right  = 220.0f;
@@ -102,30 +102,27 @@ void CHud__DrawRadar_hook()
 
     CRGBA color(255, 255, 255, 220);
 
-    // Borda superior
-    CSprite2d::DrawRect(
+    DrawRadarRect(
         CRect(left, top, right, top + border),
         color
     );
 
-    // Borda inferior
-    CSprite2d::DrawRect(
+    DrawRadarRect(
         CRect(left, bottom - border, right, bottom),
         color
     );
 
-    // Borda esquerda
-    CSprite2d::DrawRect(
+    DrawRadarRect(
         CRect(left, top, left + border, bottom),
         color
     );
 
-    // Borda direita
-    CSprite2d::DrawRect(
+    DrawRadarRect(
         CRect(right - border, top, right, bottom),
         color
     );
 }
+
 
 void RenderEffects() {
 //	RenderEffects();
