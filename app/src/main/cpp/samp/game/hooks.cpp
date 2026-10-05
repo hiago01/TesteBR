@@ -77,111 +77,39 @@ PLAYERID FindActorIDFromGtaPtr(CPedGTA* pPed)
 	return INVALID_PLAYER_ID;
 }
 /* =============================================================================== */
-/* =============================================================================== */
-/* RADAR DEBUG */
-
-/*
- * Debug do radar através do próprio chat do jogo.
- *
- * CHud::DrawRadar()
- * libGTASA + 0x51CFF0
- *
- * CSprite2d::DrawRect()
- * libGTASA + 0x06EE91C
- */
 
 using CSprite2d_DrawRect_t =
-    void (*)(CSprite2d*, const CRect&, const CRGBA&);
+    void (*)(const CRGBA*, const CRect*);
 
 static CSprite2d_DrawRect_t CSprite2d__DrawRect =
     reinterpret_cast<CSprite2d_DrawRect_t>(
         g_libGTASA + 0x06EE91C
     );
 
-/*
- * Indica que estamos dentro de CHud::DrawRadar().
- * Assim não mostramos DrawRect() de outras partes do jogo.
- */
-static bool g_InRadarDraw = false;
-
-/*
- * Controla a quantidade de mensagens enviadas ao chat.
- */
-static int g_RadarDebugCount = 0;
-
-/*
- * Ponteiro para CHud::DrawRadar().
- */
-void (*CHud__DrawRadar)(void);
-
-/*
- * Hook do CHud::DrawRadar().
- */
-void CHud__DrawRadar_hook()
-{
-    /*
-     * Mostra somente as primeiras 3 chamadas.
-     */
-    if (pUI && pUI->chat() && g_RadarDebugCount < 3)
-    {
-        pUI->chat()->addDebugMessage(
-            "[RADAR] CHud::DrawRadar chamado #%d",
-            g_RadarDebugCount + 1
-        );
-
-        g_RadarDebugCount++;
-    }
-
-    /*
-     * Ativa o filtro somente durante o DrawRadar original.
-     */
-    g_InRadarDraw = true;
-
-    CHud__DrawRadar();
-
-    g_InRadarDraw = false;
-}
-
-/*
- * Hook do DrawRect nativo.
- */
 void CSprite2d__DrawRect_hook(
-        CSprite2d* thiz,
-        const CRect& rect,
-        const CRGBA& color)
+        const CRGBA* color,
+        const CRect* rect)
 {
-    /*
-     * Só registra DrawRect() quando estamos dentro
-     * de CHud::DrawRadar().
-     */
-    if (g_InRadarDraw)
+    if (g_InRadarDraw && rect)
     {
         static int radarRectCount = 0;
 
-        /*
-         * Mostra somente os primeiros 20 retângulos.
-         */
         if (pUI && pUI->chat() && radarRectCount < 20)
         {
             pUI->chat()->addDebugMessage(
                 "[RADAR] Rect #%d L=%.1f T=%.1f R=%.1f B=%.1f",
                 radarRectCount + 1,
-                rect.left,
-                rect.top,
-                rect.right,
-                rect.bottom
+                rect->left,
+                rect->top,
+                rect->right,
+                rect->bottom
             );
 
             radarRectCount++;
         }
     }
 
-    /*
-     * IMPORTANTE:
-     * Não alteramos absolutamente nada no radar.
-     * Apenas chamamos a função original.
-     */
-    CSprite2d__DrawRect(thiz, rect, color);
+    CSprite2d__DrawRect(color, rect);
 }
 
 /* =============================================================================== */
@@ -1346,7 +1274,9 @@ void InstallSAMPHooks()
 	//CHook::InstallPLT(g_libGTASA + 0x6710C4, (uintptr_t)Idle_hook, (uintptr_t*)&Idle);
 	//CHook::InstallPLT(g_libGTASA + 0x675DE4, (uintptr_t)AND_TouchEvent_hook, (uintptr_t*)&AND_TouchEvent);
 	// splashscreen
-	//ARMHook::installHook(g_libGTASA + 0x43AF28, (uintptr_t)DisplayScreen_hook, (uintptr_t*)&DisplayScreen);
+	//ARMHook::
+
+(g_libGTASA + 0x43AF28, (uintptr_t)DisplayScreen_hook, (uintptr_t*)&DisplayScreen);
 	// gangzones
 	//CHook::InstallPLT(g_libGTASA + 0x67196C, (uintptr_t)CRadar_DrawRadarGangOverlay_hook, (uintptr_t*)&CRadar_DrawRadarGangOverlay);
 	// radar
