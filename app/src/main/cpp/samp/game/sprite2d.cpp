@@ -893,10 +893,13 @@ void CSprite2d__SetTexture2_hook(
     char* mask
 )
 {
+    uintptr_t lr = GetLR();
+
     if (pUI && pUI->chat())
     {
         pUI->chat()->addDebugMessage(
-            "[SETTEXTURE2] name=%s mask=%s",
+            "[SETTEXTURE2] LR=%p name=%s mask=%s",
+            (void*)lr,
             name ? name : "(null)",
             mask ? mask : "(null)"
         );
