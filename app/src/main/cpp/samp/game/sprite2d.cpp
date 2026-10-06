@@ -894,7 +894,12 @@ void CSprite2d__SetTexture2_hook(
 )
 {
     uintptr_t lr = GetLR();
-
+FLog(
+    "[SETTEXTURE2] this=0x%X name=%s mask=%s",
+    (unsigned int)((uintptr_t)thiz - g_libGTASA),
+    name ? name : "(null)",
+    mask ? mask : "(null)"
+);
     if (pUI && pUI->chat())
     {
         pUI->chat()->addDebugMessage(
