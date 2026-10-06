@@ -893,22 +893,12 @@ void CSprite2d__SetTexture2_hook(
     char* mask
 )
 {
-    uintptr_t lr = GetLR();
-FLog(
-    "[SETTEXTURE2] this=0x%X name=%s mask=%s",
-    (unsigned int)((uintptr_t)thiz - g_libGTASA),
-    name ? name : "(null)",
-    mask ? mask : "(null)"
-);
-    if (pUI && pUI->chat())
-    {
-        pUI->chat()->addDebugMessage(
-            "[SETTEXTURE2] LR=%p name=%s mask=%s",
-            (void*)lr,
-            name ? name : "(null)",
-            mask ? mask : "(null)"
-        );
-    }
+    FLog(
+        "[SETTEXTURE2] this=0x%X name=%s mask=%s",
+        (unsigned int)((uintptr_t)thiz - g_libGTASA),
+        name ? name : "(null)",
+        mask ? mask : "(null)"
+    );
 
     if (CSprite2d__SetTexture2)
     {
