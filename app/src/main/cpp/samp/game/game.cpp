@@ -718,7 +718,7 @@ bool CGame::InitialiseRenderWare() {
 //	CreateDebugFont();
     CFont::Initialise();
 FLog("[INIT ORDER] ANTES CHud::Initialise 0x55C1C8");    
-//CHook::CallFunction<void>(g_libGTASA + 0x55C1C8); // CHud::Initialise();
+CHook::CallFunction<void>(g_libGTASA + 0x55C1C8); // CHud::Initialise();
 FLog("[INIT ORDER] DEPOIS CHud::Initialise 0x55C1C8");   
  CHook::CallFunction<void>(g_libGTASA + 0x6D5970); // CPlayerSkin::Initialise();
     CHook::CallFunction<void>(g_libGTASA + 0x6D6E30); // CPostEffects::Initialise();
