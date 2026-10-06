@@ -501,6 +501,34 @@ void CSprite2d__SetTexture_hook(
         custom->refCount
     );
 }
+// Ponteiro para a sobrecarga original:
+// CSprite2d::SetTexture(char* name, char* mask)
+void (*CSprite2d__SetTexture2)(
+    CSprite2d* thiz,
+    char* name,
+    char* mask
+) = nullptr;
+
+// Hook da sobrecarga de 2 argumentos.
+// Por enquanto apenas diagnostica o uso de radardisc.
+void CSprite2d__SetTexture2_hook(
+    CSprite2d* thiz,
+    char* name,
+    char* mask
+)
+{
+    if (name && strcmp(name, "radardisc") == 0)
+    {
+        RadarDiscDebugFmt(
+            "[RADAR DISC] SetTexture2 name=%s mask=%s",
+            name,
+            mask ? mask : "(null)"
+        );
+    }
+
+    if (CSprite2d__SetTexture2)
+        CSprite2__SetTexture2(thiz, name, mask);
+}
 bool CSprite2d_TestCustomRadarDisc()
 {
     // Permite tentar novamente mesmo se uma tentativa anterior falhou

@@ -9,6 +9,9 @@ class CSprite2d;
 extern void (*CSprite2d__SetTexture)(CSprite2d* thiz, char* name);
 void CSprite2d__SetTexture_hook(CSprite2d* thiz, char* name);
 
+extern void (*CSprite2d__SetTexture2)(CSprite2d* thiz, char* name, char* mask);
+void CSprite2d__SetTexture2_hook(CSprite2d* thiz, char* name, char* mask);
+
 class CSprite2d
 {
 public:
