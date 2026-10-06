@@ -944,7 +944,74 @@ bool CSprite2d_TestCustomRadarDisc()
 
     return false;
 }
+bool CSprite2d_ReplaceRadarDisc(CSprite2d* sprite)
+{
+    if (!sprite)
+    {
+        RadarDiscDebug(
+            "[RADAR DISC] sprite NULL"
+        );
 
+        return false;
+    }
+
+    RwTexture* custom = LoadCustomRadarDisc();
+
+    if (!custom)
+    {
+        RadarDiscDebug(
+            "[RADAR DISC] Falha ao carregar textura custom"
+        );
+
+        return false;
+    }
+
+    if (sprite->m_pTexture == custom)
+    {
+        RadarDiscDebug(
+            "[RADAR DISC] Sprite ja usa textura custom"
+        );
+
+        return true;
+    }
+
+    RwTexture* oldTexture = sprite->m_pTexture;
+
+    RadarDiscDebugFmt(
+        "[RADAR DISC] SUBSTITUINDO sprite=%p old=%p custom=%p",
+        sprite,
+        oldTexture,
+        custom
+    );
+
+    /*
+     * A textura custom possui uma referencia propria
+     * mantida pelo cache g_CustomRadarDiscTexture.
+     *
+     * Adicionamos uma referencia para o CSprite2d.
+     */
+    ++custom->refCount;
+
+    sprite->m_pTexture = custom;
+
+    /*
+     * Libera a referencia que pertencia ao sprite
+     * para a textura original.
+     */
+    if (oldTexture && oldTexture != custom)
+    {
+        RwTextureDestroy(oldTexture);
+    }
+
+    RadarDiscDebugFmt(
+        "[RADAR DISC] TROCA OK sprite=%p textura=%p ref=%d",
+        sprite,
+        sprite->m_pTexture,
+        sprite->m_pTexture->refCount
+    );
+
+    return true;
+}
 
 // ============================================================
 // SET TEXTURE POR NOME

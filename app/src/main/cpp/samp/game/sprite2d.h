@@ -60,3 +60,4 @@ public:
 };
 
 bool CSprite2d_TestCustomRadarDisc();
+bool CSprite2d_ReplaceRadarDisc(CSprite2d* sprite);
