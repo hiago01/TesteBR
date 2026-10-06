@@ -395,9 +395,9 @@ void CSprite2d__SetMaskVertices_hook(
             // 3.0 = levemente quadrado
             // 4.0 = quadrado arredondado
             // 6.0 = mais quadrado
-            const float exponent = -4.0f;//antigo 4.0f
-            const float invExponent = -1.0f / exponent;//antigo 1.0f
-
+            const float exponent = 6.0f;//antigo 4.0f
+            const float invExponent = 1.0f / exponent;//antigo 1.0f
+           const float radarScale = 1.15f;//tamanho scale
             for (int i = 0; i < 8; i++)
             {
                 float dx = vertices[i * 2] - centerX;
@@ -421,12 +421,12 @@ void CSprite2d__SetMaskVertices_hook(
                     x /= denominator;
                     y /= denominator;
                 }
+vertices[i * 2] =
+    centerX + (x * radiusX * radarScale);
 
-                vertices[i * 2] =
-                    centerX + (x * radiusX);
+vertices[i * 2 + 1] =
+    centerY + (y * radiusY * radarScale);
 
-                vertices[i * 2 + 1] =
-                    centerY + (y * radiusY);
             }
         }
     }
