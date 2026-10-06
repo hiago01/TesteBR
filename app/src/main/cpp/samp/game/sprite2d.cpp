@@ -527,7 +527,7 @@ void CSprite2d__SetTexture2_hook(
     }
 
     if (CSprite2d__SetTexture2)
-        CSprite2__SetTexture2(thiz, name, mask);
+    CSprite2d__SetTexture2(thiz, name, mask);
 }
 bool CSprite2d_TestCustomRadarDisc()
 {
