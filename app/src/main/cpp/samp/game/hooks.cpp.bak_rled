@@ -2003,144 +2003,58 @@ bool RwResourcesFreeResEntry_hook(void* entry)
 static uint32_t dwRLEDecompressSourceSize = 0;
 
 size_t (*OS_FileRead)(OSFile a1, void *buffer, size_t numBytes);
-
 size_t OS_FileRead_hook(OSFile a1, void *buffer, size_t numBytes)
 {
     dwRLEDecompressSourceSize = numBytes;
 
-    FLog(
-        "[OS READ] buffer=%p numBytes=%zu",
-        buffer,
-        numBytes
-    );
-
     return OS_FileRead(a1, buffer, numBytes);
 }
 
-void (*RLEDecompress)(
-    uint8_t* pDest,
-    size_t uiDestSize,
-    uint8_t const* pSrc,
-    size_t uiSegSize,
-    uint32_t uiEscape
-);
+void (*RLEDecompress)(uint8_t* pDest, size_t uiDestSize, uint8_t const* pSrc, size_t uiSegSize, uint32_t uiEscape);
+void RLEDecompress_hook(uint8_t* pDest, size_t uiDestSize, const uint8_t* pSrc, size_t uiSegSize, uint32_t uiEscape) {
 
-void RLEDecompress_hook(
-    uint8_t* pDest,
-    size_t uiDestSize,
-    const uint8_t* pSrc,
-    size_t uiSegSize,
-    uint32_t uiEscape)
-{
-    if (!pDest || !pSrc || uiDestSize == 0 || uiSegSize == 0)
+    if (!pDest || !pSrc || uiDestSize == 0 || uiSegSize == 0) {
+        // Обработка некорректных входных данных или размеров
+        // Здесь можно сгенерировать исключение или вернуть код ошибки
         return;
+    }
 
     const uint8_t* pTempSrc = pSrc;
+    const uint8_t* const pEndOfDest = pDest + uiDestSize;
+    const uint8_t* const pEndOfSrc = pSrc + dwRLEDecompressSourceSize; // Предполагается, что dwRLEDecompressSourceSize определено правильно
 
-    const uint8_t* const pEndOfDest =
-        pDest + uiDestSize;
-
-    const uint8_t* const pEndOfSrc =
-        pSrc + dwRLEDecompressSourceSize;
-
-    FLog(
-        "[RLED] src=%p sourceSize=%u dest=%p destSize=%zu seg=%zu escape=%u",
-        pSrc,
-        dwRLEDecompressSourceSize,
-        pDest,
-        uiDestSize,
-        uiSegSize,
-        uiEscape
-    );
-
-    try
-    {
-        while (pDest < pEndOfDest &&
-               pTempSrc < pEndOfSrc)
-        {
-            if (*pTempSrc == uiEscape)
-            {
-                if (pTempSrc + 1 >= pEndOfSrc ||
-                    pTempSrc[1] == 0 ||
-                    pTempSrc + 2 + uiSegSize > pEndOfSrc)
-                {
-                    FLog(
-                        "[RLED ERROR 1] src=%p end=%p temp=%p seg=%zu",
-                        pSrc,
-                        pEndOfSrc,
-                        pTempSrc,
-                        uiSegSize
-                    );
-
+    try {
+        while (pDest < pEndOfDest && pTempSrc < pEndOfSrc) {
+            if (*pTempSrc == uiEscape) {
+                if (pTempSrc + 1 >= pEndOfSrc || pTempSrc[1] == 0 || pTempSrc + 2 + uiSegSize > pEndOfSrc) {
+                    // Обработка ошибки, неверное значение ucCurSeg или недостаточно данных в исходном буфере
                     throw std::runtime_error("rled error 1");
                 }
 
                 uint8_t ucCurSeg = pTempSrc[1];
-
-                while (ucCurSeg--)
-                {
-                    if (pDest + uiSegSize > pEndOfDest)
-                    {
-                        FLog(
-                            "[RLED ERROR 2] dest=%p end=%p seg=%zu",
-                            pDest,
-                            pEndOfDest,
-                            uiSegSize
-                        );
-
+                while (ucCurSeg--) {
+                    if (pDest + uiSegSize > pEndOfDest) {
+                        // Обработка ошибки, недостаточно места в целевом буфере
                         throw std::runtime_error("rled error 2");
                     }
-
-                    memcpy(
-                        pDest,
-                        pTempSrc + 2,
-                        uiSegSize
-                    );
-
+                    memcpy(pDest, pTempSrc + 2, uiSegSize);
                     pDest += uiSegSize;
                 }
-
                 pTempSrc += 2 + uiSegSize;
-            }
-            else
-            {
-                if (pDest + uiSegSize > pEndOfDest ||
-                    pTempSrc + uiSegSize > pEndOfSrc)
-                {
-                    FLog(
-                        "[RLED ERROR 3] "
-                        "src=%p temp=%p end=%p "
-                        "dest=%p destEnd=%p "
-                        "sourceSize=%u destSize=%zu seg=%zu",
-                        pSrc,
-                        pTempSrc,
-                        pEndOfSrc,
-                        pDest,
-                        pEndOfDest,
-                        dwRLEDecompressSourceSize,
-                        uiDestSize,
-                        uiSegSize
-                    );
-
+            } else {
+                if (pDest + uiSegSize > pEndOfDest || pTempSrc + uiSegSize > pEndOfSrc) {
+                    // Обработка ошибки, недостаточно данных в исходном буфере или недостаточно места в целевом буфере
                     throw std::runtime_error("rled error 3");
                 }
-
-                memcpy(
-                    pDest,
-                    pTempSrc,
-                    uiSegSize
-                );
-
+                memcpy(pDest, pTempSrc, uiSegSize);
                 pDest += uiSegSize;
                 pTempSrc += uiSegSize;
             }
         }
 
         dwRLEDecompressSourceSize = 0;
-    }
-    catch (const std::exception& e)
-    {
-        FLog("[RLED] %s", e.what());
+    } catch (const std::exception& e) {
+        FLog("%s", e.what());
     }
 }
 
