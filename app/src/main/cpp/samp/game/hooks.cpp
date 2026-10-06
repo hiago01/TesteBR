@@ -2216,7 +2216,7 @@ CHook::InlineHook(
 );
 
 CHook::InlineHook(
-    "_ZN9CSprite2d10SetTextureEPcS0_",
+    g_libGTASA + 0x6ECE54,
     &CSprite2d__SetTexture2_hook,
     &CSprite2d__SetTexture2
 );
