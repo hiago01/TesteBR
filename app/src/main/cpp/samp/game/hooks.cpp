@@ -113,7 +113,7 @@ PLAYERID FindActorIDFromGtaPtr(CPedGTA* pPed)
  */
 
 /* RADAR MOVE CONFIG */
-static float g_RadarOffsetX = 300.0f;
+static float g_RadarOffsetX = 100.0f;//antigo 300.0f
 static float g_RadarOffsetY = 0.0f;
 
 struct RadarScreenRect
@@ -396,7 +396,7 @@ void CSprite2d__SetMaskVertices_hook(
             // 4.0 = quadrado arredondado
             // 6.0 = mais quadrado
             const float exponent = 0.0f;//antigo 4.0f
-            const float invExponent = 1.0f / exponent;
+            const float invExponent = 0.0f / exponent;//antigo 1.0f
 
             for (int i = 0; i < 8; i++)
             {
