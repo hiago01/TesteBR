@@ -2003,28 +2003,14 @@ bool RwResourcesFreeResEntry_hook(void* entry)
 static uint32_t dwRLEDecompressSourceSize = 0;
 
 size_t (*OS_FileRead)(OSFile a1, void *buffer, size_t numBytes);
-
 size_t OS_FileRead_hook(OSFile a1, void *buffer, size_t numBytes)
 {
     dwRLEDecompressSourceSize = numBytes;
 
-    FLog(
-        "[OS READ] buffer=%p numBytes=%zu",
-        buffer,
-        numBytes
-    );
-
     return OS_FileRead(a1, buffer, numBytes);
 }
 
-void (*RLEDecompress)(
-    uint8_t* pDest,
-    size_t uiDestSize,
-    uint8_t const* pSrc,
-    size_t uiSegSize,
-    uint32_t uiEscape
-);
-
+void (*RLEDecompress)(uint8_t* pDest, size_t uiDestSize, uint8_t const* pSrc, size_t uiSegSize, uint32_t uiEscape);
 void RLEDecompress_hook(
     uint8_t* pDest,
     size_t uiDestSize,
@@ -2032,116 +2018,104 @@ void RLEDecompress_hook(
     size_t uiSegSize,
     uint32_t uiEscape)
 {
+    uintptr_t lr = 0;
+    asm volatile("mov %0, x30" : "=r"(lr));
+
+    static int count = 0;
+    int n = ++count;
+
+    if (n <= 30) {
+        FLog(
+            "[RLED CALL #%d] caller=0x%lx offset=0x%lx src=%p dest=%p destSize=%zu seg=%zu escape=0x%X sourceSize=%u",
+            n,
+            (unsigned long)lr,
+            (unsigned long)(lr - g_libGTASA),
+            pSrc,
+            pDest,
+            uiDestSize,
+            uiSegSize,
+            uiEscape,
+            dwRLEDecompressSourceSize
+        );
+    }
+
     if (!pDest || !pSrc || uiDestSize == 0 || uiSegSize == 0)
         return;
 
     const uint8_t* pTempSrc = pSrc;
+    const uint8_t* const pEndOfDest = pDest + uiDestSize;
 
-    const uint8_t* const pEndOfDest =
-        pDest + uiDestSize;
-
+    /*
+     * IMPORTANTE:
+     * Mantemos temporariamente o comportamento original do hook.
+     * Nesta etapa estamos apenas identificando os CALLERS.
+     */
     const uint8_t* const pEndOfSrc =
         pSrc + dwRLEDecompressSourceSize;
 
-    FLog(
-        "[RLED] src=%p sourceSize=%u dest=%p destSize=%zu seg=%zu escape=%u",
-        pSrc,
-        dwRLEDecompressSourceSize,
-        pDest,
-        uiDestSize,
-        uiSegSize,
-        uiEscape
-    );
-
-    try
+    while (pDest < pEndOfDest && pTempSrc < pEndOfSrc)
     {
-        while (pDest < pEndOfDest &&
-               pTempSrc < pEndOfSrc)
+        if (*pTempSrc == uiEscape)
         {
-            if (*pTempSrc == uiEscape)
+            if (pTempSrc + 1 >= pEndOfSrc ||
+                pTempSrc[1] == 0 ||
+                pTempSrc + 2 + uiSegSize > pEndOfSrc)
             {
-                if (pTempSrc + 1 >= pEndOfSrc ||
-                    pTempSrc[1] == 0 ||
-                    pTempSrc + 2 + uiSegSize > pEndOfSrc)
-                {
+                if (n <= 30)
                     FLog(
-                        "[RLED ERROR 1] src=%p end=%p temp=%p seg=%zu",
-                        pSrc,
-                        pEndOfSrc,
-                        pTempSrc,
-                        uiSegSize
+                        "[RLED ERROR 1] caller=0x%lx offset=0x%lx",
+                        (unsigned long)lr,
+                        (unsigned long)(lr - g_libGTASA)
                     );
-
-                    throw std::runtime_error("rled error 1");
-                }
-
-                uint8_t ucCurSeg = pTempSrc[1];
-
-                while (ucCurSeg--)
-                {
-                    if (pDest + uiSegSize > pEndOfDest)
-                    {
-                        FLog(
-                            "[RLED ERROR 2] dest=%p end=%p seg=%zu",
-                            pDest,
-                            pEndOfDest,
-                            uiSegSize
-                        );
-
-                        throw std::runtime_error("rled error 2");
-                    }
-
-                    memcpy(
-                        pDest,
-                        pTempSrc + 2,
-                        uiSegSize
-                    );
-
-                    pDest += uiSegSize;
-                }
-
-                pTempSrc += 2 + uiSegSize;
+                return;
             }
-            else
+
+            uint8_t ucCurSeg = pTempSrc[1];
+
+            while (ucCurSeg--)
             {
-                if (pDest + uiSegSize > pEndOfDest ||
-                    pTempSrc + uiSegSize > pEndOfSrc)
+                if (pDest + uiSegSize > pEndOfDest)
                 {
+                    if (n <= 30)
+                        FLog(
+                            "[RLED ERROR 2] caller=0x%lx offset=0x%lx",
+                            (unsigned long)lr,
+                            (unsigned long)(lr - g_libGTASA)
+                        );
+                    return;
+                }
+
+                memcpy(pDest, pTempSrc + 2, uiSegSize);
+                pDest += uiSegSize;
+            }
+
+            pTempSrc += 2 + uiSegSize;
+        }
+        else
+        {
+            if (pDest + uiSegSize > pEndOfDest ||
+                pTempSrc + uiSegSize > pEndOfSrc)
+            {
+                if (n <= 30)
                     FLog(
-                        "[RLED ERROR 3] "
-                        "src=%p temp=%p end=%p "
-                        "dest=%p destEnd=%p "
-                        "sourceSize=%u destSize=%zu seg=%zu",
+                        "[RLED ERROR 3] caller=0x%lx offset=0x%lx src=%p sourceSize=%u destSize=%zu seg=%zu",
+                        (unsigned long)lr,
+                        (unsigned long)(lr - g_libGTASA),
                         pSrc,
-                        pTempSrc,
-                        pEndOfSrc,
-                        pDest,
-                        pEndOfDest,
                         dwRLEDecompressSourceSize,
                         uiDestSize,
                         uiSegSize
                     );
-
-                    throw std::runtime_error("rled error 3");
-                }
-
-                memcpy(
-                    pDest,
-                    pTempSrc,
-                    uiSegSize
-                );
-
-                pDest += uiSegSize;
-                pTempSrc += uiSegSize;
+                return;
             }
-        }
 
-        dwRLEDecompressSourceSize = 0;
+            memcpy(pDest, pTempSrc, uiSegSize);
+            pDest += uiSegSize;
+            pTempSrc += uiSegSize;
+        }
     }
-    catch (const std::exception& e)
-    {
-        FLog("[RLED] %s", e.what());
-    }
+
+    dwRLEDecompressSourceSize = 0;
 }
 
 void (*CGame_Process)();
