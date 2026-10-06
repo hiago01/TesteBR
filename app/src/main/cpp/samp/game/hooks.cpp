@@ -297,6 +297,24 @@ static void EndRadarMove(
     }
 }
 
+void (*CHud__Initialise)() = nullptr;
+
+void CHud__Initialise_hook()
+{
+    if (pUI && pUI->chat())
+        pUI->chat()->addDebugMessage(
+            "[RADAR INIT] CHud::Initialise ENTROU"
+        );
+
+    if (CHud__Initialise)
+        CHud__Initialise();
+
+    if (pUI && pUI->chat())
+        pUI->chat()->addDebugMessage(
+            "[RADAR INIT] CHud::Initialise TERMINOU"
+        );
+}
+
 // ============================================================
 // RADAR MASK - alteração segura dos 8 vértices
 // ============================================================
@@ -2196,6 +2214,12 @@ void InstallSpecialHooks()
 void SetUpGLHooks();
 void InstallHooks()
 {
+
+CHook::InlineHook(
+    g_libGTASA + 0x55C1C8,
+    &CHud__Initialise_hook,
+    &CHud__Initialise
+);
 
 CHook::InlineHook(
     "_ZN6CRadar13DrawRadarMaskEv",

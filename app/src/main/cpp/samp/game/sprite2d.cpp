@@ -893,16 +893,11 @@ void CSprite2d__SetTexture2_hook(
     char* mask
 )
 {
-    if (name &&
-        strcmp(name, "radardisc") == 0)
+    if (pUI && pUI->chat())
     {
-        // Esse flag permite verificar depois,
-        // mesmo que pUI ainda nao existisse.
-        g_SetTexture2RadarDiscCalled = true;
-
-        RadarDiscDebugFmt(
-            "[RADAR DISC] SetTexture2 name=%s mask=%s",
-            name,
+        pUI->chat()->addDebugMessage(
+            "[SETTEXTURE2] name=%s mask=%s",
+            name ? name : "(null)",
             mask ? mask : "(null)"
         );
     }
@@ -916,7 +911,6 @@ void CSprite2d__SetTexture2_hook(
         );
     }
 }
-
 
 // ============================================================
 // TESTE DO PNG + TESTE DO HOOK
