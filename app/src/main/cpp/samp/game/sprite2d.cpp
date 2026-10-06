@@ -763,6 +763,8 @@ static RwTexture* LoadCustomRadarDisc()
 
         return nullptr;
     }
+
+////////////
 g_CustomRadarDiscTexture = RwTextureCreate(raster);
 
 if (!g_CustomRadarDiscTexture)
@@ -777,15 +779,6 @@ if (!g_CustomRadarDiscTexture)
     return nullptr;
 }
 
-/*
- * IMPORTANTE:
- * O RenderWare usa WRAP por padrao.
- * Isso faz o radardisc repetir quando o UV passa de 0..1.
- *
- * O radar precisa CLAMP nos dois eixos para impedir
- * que o N, borda e demais elementos da textura sejam
- * repetidos.
- */
 RwTextureSetAddressingU(
     g_CustomRadarDiscTexture,
     rwTEXTUREADDRESSCLAMP
@@ -796,10 +789,8 @@ RwTextureSetAddressingV(
     rwTEXTUREADDRESSCLAMP
 );
 
-RadarDiscDebugFmt(
-    "[RADAR DISC] TEXTURE ADDRESS: U=%d V=%d",
-    RwTextureGetAddressingU(g_CustomRadarDiscTexture),
-    RwTextureGetAddressingV(g_CustomRadarDiscTexture)
+RadarDiscDebug(
+    "[RADAR DISC] Addressing U/V = CLAMP"
 );
 
 RadarDiscDebugFmt(
@@ -809,6 +800,7 @@ RadarDiscDebugFmt(
 );
 
 return g_CustomRadarDiscTexture;
+//////////////////
 
 }
 
