@@ -737,10 +737,6 @@ if (CSprite2d_ReplaceRadarDisc(radarDisc))
 {
     FLog("[RADAR DISC] SUBSTITUICAO DIRETA OK");
 
-    if (pUI && pUI->chat())
-        pUI->chat()->addDebugMessage(
-            "[RADAR DISC] FRAME CUSTOM OK"
-        );
 }
 else
 {
