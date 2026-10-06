@@ -208,12 +208,24 @@ static void BeginRadarMove(
         oldRight  = rect->right;
         oldBottom = rect->bottom;
 
-        rect->left   += g_RadarOffsetX;
-        rect->right  += g_RadarOffsetX;
-        rect->top    += g_RadarOffsetY;
-        rect->bottom += g_RadarOffsetY;
+	const float radarScale = 1.15f;//tamanho scale 2
 
-        rectChanged = true;
+	float centerX = (oldLeft + oldRight) * 0.5f;
+	float centerY = (oldTop + oldBottom) * 0.5f;
+
+	float halfWidth  = (oldRight - oldLeft) * 0.5f;
+	float halfHeight = (oldBottom - oldTop) * 0.5f;
+
+	halfWidth  *= radarScale;
+	halfHeight *= radarScale;
+
+	rect->left   = centerX - halfWidth + g_RadarOffsetX;
+	rect->right  = centerX + halfWidth + g_RadarOffsetX;
+	rect->top    = centerY - halfHeight + g_RadarOffsetY;
+	rect->bottom = centerY + halfHeight + g_RadarOffsetY;
+
+	rectChanged = true;
+
     }
 
     /*
