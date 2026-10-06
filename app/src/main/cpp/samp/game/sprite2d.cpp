@@ -187,6 +187,7 @@ static RwTexture* LoadCustomRadarDisc()
     g_CustomRadarDiscTried = true;
 
     char path[512];
+
     snprintf(
         path,
         sizeof(path),
@@ -194,101 +195,174 @@ static RwTexture* LoadCustomRadarDisc()
         g_pszStorage
     );
 
-    RadarDiscDebugFmt("[RADAR DISC] Carregando: %s", path);
-
-/*    if (!RtPNGImageRead)
-    {
-        RadarDiscDebug("[RADAR DISC] RtPNGImageRead NULL");
-        return nullptr;
-    }
-
-    RwImage* image = RtPNGImageRead(path);
-*/
-if (!RwImageRead)
-{
-    RadarDiscDebug("[RADAR DISC] RwImageRead NULL");
-    return nullptr;
-}
-
-RadarDiscDebug("[RADAR DISC] Usando RwImageRead()");
-
-struct stat st;
-
-if (stat(path, &st) != 0)
-{
     RadarDiscDebugFmt(
-        "[RADAR DISC] stat() FALHOU: %s",
+        "[RADAR DISC] stb_image carregando: %s",
         path
     );
 
-    return nullptr;
-}
+    int width = 0;
+    int height = 0;
+    int channels = 0;
 
-RadarDiscDebugFmt(
-    "[RADAR DISC] ARQUIVO EXISTE: %lld bytes",
-    (long long)st.st_size
-);
+    unsigned char* pixels = stbi_load(
+        path,
+        &width,
+        &height,
+        &channels,
+        4
+    );
 
-RwImage* image = RwImageRead(path);
-
-    if (!image)
+    if (!pixels)
     {
-        RadarDiscDebug("[RADAR DISC] ERRO: PNG nao carregou");
+        RadarDiscDebugFmt(
+            "[RADAR DISC] stbi_load FALHOU: %s",
+            stbi_failure_reason()
+        );
+
         return nullptr;
     }
 
     RadarDiscDebugFmt(
-        "[RADAR DISC] PNG OK: %dx%d depth=%d",
-        image->width,
-        image->height,
-        image->depth
+        "[RADAR DISC] PNG OK: %dx%d canais=%d",
+        width,
+        height,
+        channels
     );
 
-    int width = image->width;
-    int height = image->height;
-    int depth = image->depth;
-    int flags = 0;
+    if (!RwImageCreate)
+    {
+        RadarDiscDebug(
+            "[RADAR DISC] RwImageCreate NULL"
+        );
+
+        stbi_image_free(pixels);
+        return nullptr;
+    }
+
+    if (!RwImageAllocatePixels)
+    {
+        RadarDiscDebug(
+            "[RADAR DISC] RwImageAllocatePixels NULL"
+        );
+
+        stbi_image_free(pixels);
+        return nullptr;
+    }
+
+    RwImage* image = RwImageCreate(
+        width,
+        height,
+        32
+    );
+
+    if (!image)
+    {
+        RadarDiscDebug(
+            "[RADAR DISC] ERRO: RwImageCreate"
+        );
+
+        stbi_image_free(pixels);
+        return nullptr;
+    }
+
+    if (!RwImageAllocatePixels(image))
+    {
+        RadarDiscDebug(
+            "[RADAR DISC] ERRO: RwImageAllocatePixels"
+        );
+
+        RwImageDestroy(image);
+        stbi_image_free(pixels);
+
+        return nullptr;
+    }
+
+    RadarDiscDebugFmt(
+        "[RADAR DISC] RwImage criado: stride=%d",
+        image->stride
+    );
+
+    const int srcStride = width * 4;
+
+    for (int y = 0; y < height; y++)
+    {
+        memcpy(
+            image->cpPixels + (y * image->stride),
+            pixels + (y * srcStride),
+            srcStride
+        );
+    }
+
+    stbi_image_free(pixels);
+
+    RadarDiscDebug(
+        "[RADAR DISC] Pixels copiados para RwImage"
+    );
 
     if (!RwImageFindRasterFormat)
     {
-        RadarDiscDebug("[RADAR DISC] RwImageFindRasterFormat NULL");
+        RadarDiscDebug(
+            "[RADAR DISC] RwImageFindRasterFormat NULL"
+        );
+
         RwImageDestroy(image);
         return nullptr;
     }
 
+    int rasterWidth = width;
+    int rasterHeight = height;
+    int rasterDepth = 32;
+    int rasterFormat = 0;
+
     RwImageFindRasterFormat(
         image,
         rwRASTERTYPETEXTURE,
-        &width,
-        &height,
-        &depth,
-        &flags
+        &rasterWidth,
+        &rasterHeight,
+        &rasterDepth,
+        &rasterFormat
+    );
+
+    RadarDiscDebugFmt(
+        "[RADAR DISC] Raster format: %d %dx%d depth=%d",
+        rasterFormat,
+        rasterWidth,
+        rasterHeight,
+        rasterDepth
     );
 
     if (!RwRasterCreate)
     {
-        RadarDiscDebug("[RADAR DISC] RwRasterCreate NULL");
+        RadarDiscDebug(
+            "[RADAR DISC] RwRasterCreate NULL"
+        );
+
         RwImageDestroy(image);
         return nullptr;
     }
 
     RwRaster* raster = RwRasterCreate(
-        width,
-        height,
-        depth,
-        flags
+        rasterWidth,
+        rasterHeight,
+        rasterDepth,
+        rasterFormat
     );
 
     if (!raster)
     {
-        RadarDiscDebug("[RADAR DISC] ERRO: RwRasterCreate");
+        RadarDiscDebug(
+            "[RADAR DISC] ERRO: RwRasterCreate"
+        );
+
         RwImageDestroy(image);
         return nullptr;
     }
 
     if (!RwRasterSetFromImage)
     {
-        RadarDiscDebug("[RADAR DISC] RwRasterSetFromImage NULL");
+        RadarDiscDebug(
+            "[RADAR DISC] RwRasterSetFromImage NULL"
+        );
 
         if (RwRasterDestroy)
             RwRasterDestroy(raster);
@@ -299,7 +373,9 @@ RwImage* image = RwImageRead(path);
 
     if (!RwRasterSetFromImage(raster, image))
     {
-        RadarDiscDebug("[RADAR DISC] ERRO: RwRasterSetFromImage");
+        RadarDiscDebug(
+            "[RADAR DISC] ERRO: RwRasterSetFromImage"
+        );
 
         if (RwRasterDestroy)
             RwRasterDestroy(raster);
@@ -308,24 +384,31 @@ RwImage* image = RwImageRead(path);
         return nullptr;
     }
 
+    RwImageDestroy(image);
+
+    RadarDiscDebug(
+        "[RADAR DISC] RwRaster criado com sucesso"
+    );
+
     if (!RwTextureCreate)
     {
-        RadarDiscDebug("[RADAR DISC] RwTextureCreate NULL");
+        RadarDiscDebug(
+            "[RADAR DISC] RwTextureCreate NULL"
+        );
 
         if (RwRasterDestroy)
             RwRasterDestroy(raster);
 
-        RwImageDestroy(image);
         return nullptr;
     }
 
     g_CustomRadarDiscTexture = RwTextureCreate(raster);
 
-    RwImageDestroy(image);
-
     if (!g_CustomRadarDiscTexture)
     {
-        RadarDiscDebug("[RADAR DISC] ERRO: RwTextureCreate retornou NULL");
+        RadarDiscDebug(
+            "[RADAR DISC] ERRO: RwTextureCreate retornou NULL"
+        );
 
         if (RwRasterDestroy)
             RwRasterDestroy(raster);
@@ -334,14 +417,13 @@ RwImage* image = RwImageRead(path);
     }
 
     RadarDiscDebugFmt(
-        "[RADAR DISC] TEXTURA CRIADA: %p ref=%d",
+        "[RADAR DISC] TEXTURA CUSTOM CRIADA: %p ref=%d",
         g_CustomRadarDiscTexture,
         g_CustomRadarDiscTexture->refCount
     );
 
     return g_CustomRadarDiscTexture;
 }
-
 
 // Ponteiro para a funcao original.
 void (*CSprite2d__SetTexture)(
