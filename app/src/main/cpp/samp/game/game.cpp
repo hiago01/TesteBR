@@ -720,6 +720,32 @@ bool CGame::InitialiseRenderWare() {
 FLog("[INIT ORDER] ANTES CHud::Initialise 0x55C1C8");    
 CHook::CallFunction<void>(g_libGTASA + 0x55C1C8); // CHud::Initialise();
 FLog("[INIT ORDER] DEPOIS CHud::Initialise 0x55C1C8");   
+FLog("[RADAR DISC] Tentando substituir depois do CHud::Initialise");
+
+CSprite2d* radarDisc =
+    reinterpret_cast<CSprite2d*>(
+        g_libGTASA + 0xC1FA30
+    );
+
+FLog(
+    "[RADAR DISC] Sprites=%p radarDisc=%p",
+    (void*)(g_libGTASA + 0xC1FA18),
+    (void*)radarDisc
+);
+
+if (CSprite2d_ReplaceRadarDisc(radarDisc))
+{
+    FLog("[RADAR DISC] SUBSTITUICAO DIRETA OK");
+
+    if (pUI && pUI->chat())
+        pUI->chat()->addDebugMessage(
+            "[RADAR DISC] FRAME CUSTOM OK"
+        );
+}
+else
+{
+    FLog("[RADAR DISC] SUBSTITUICAO DIRETA FALHOU");
+}
  CHook::CallFunction<void>(g_libGTASA + 0x6D5970); // CPlayerSkin::Initialise();
     CHook::CallFunction<void>(g_libGTASA + 0x6D6E30); // CPostEffects::Initialise();
     CGame::m_pWorkingMatrix1 = RwMatrixCreate();
