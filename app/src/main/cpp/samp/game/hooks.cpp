@@ -2215,12 +2215,11 @@ CHook::InlineHook(
     &CSprite2d__SetTexture
 );
 
-CHook::InlineHook(
-    g_libGTASA + 0x6ECE54,
+CHook::InstallPLT(
+    g_libGTASA + 0x848268,
     &CSprite2d__SetTexture2_hook,
     &CSprite2d__SetTexture2
 );
-
     //SetUpGLHooks();
 CHook::InlineHook(
         "_ZN4CHud9DrawRadarEv",
