@@ -306,6 +306,8 @@ void CHud__Initialise_hook()
             "[RADAR INIT] CHud::Initialise ENTROU"
         );
 
+       FLog("[CHUD INITIALISE] >>> ENTROU");
+
     if (CHud__Initialise)
         CHud__Initialise();
 
@@ -313,6 +315,7 @@ void CHud__Initialise_hook()
         pUI->chat()->addDebugMessage(
             "[RADAR INIT] CHud::Initialise TERMINOU"
         );
+       FLog("[CHUD INITIALISE] <<< SAIU");
 }
 
 // ============================================================
