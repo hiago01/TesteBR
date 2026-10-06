@@ -1,3 +1,7 @@
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_ONLY_PNG
+#include "../vendor/stb/stb_image.h"
+
 #include <sys/stat.h>
 #include "../main.h"
 #include <cstdarg>
