@@ -2307,12 +2307,6 @@ CHook::InlineHook(
     &CSprite2d__SetTexture
 );
 
-CHook::InlineHook(
-    "_ZN9CSprite2d10SetTextureEPcS0_",
-    &CSprite2d__SetTexture2_hook,
-    &CSprite2d__SetTexture2
-);
-
 
     //SetUpGLHooks();
 CHook::InlineHook(

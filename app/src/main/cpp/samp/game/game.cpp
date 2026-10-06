@@ -13,6 +13,7 @@
 #include "Pickups.h"
 #include "game/Models/ModelInfo.h"
 #include "game/Collision/Collision.h"
+#include "sprite2d.h"
 
 void ApplySAMPPatchesInGame();
 void InitScripting();
@@ -717,6 +718,13 @@ bool CGame::InitialiseRenderWare() {
     LightsCreate(Scene.m_pRpWorld);
 //	CreateDebugFont();
     CFont::Initialise();
+FLog("[RADAR DISC] Instalando hook SetTexture2 antes do HUD");
+
+CHook::InlineHook(
+    "_ZN9CSprite2d10SetTextureEPcS0_",
+    &CSprite2d__SetTexture2_hook,
+    &CSprite2d__SetTexture2
+);
 FLog("[INIT ORDER] ANTES CHud::Initialise 0x55C1C8");    
 CHook::CallFunction<void>(g_libGTASA + 0x55C1C8); // CHud::Initialise();
 FLog("[INIT ORDER] DEPOIS CHud::Initialise 0x55C1C8");   
