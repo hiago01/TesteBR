@@ -861,9 +861,16 @@ void CSprite2d__DrawRadarDisc_hook(
 
         y1 = centerY - halfHeight;
         y2 = centerY + halfHeight;
-
-        RadarDiscDebugFmt(
-            "[RADAR DISC] Draw8 custom scale=%.2f rect=(%.2f %.2f %.2f %.2f)",
+FLog(
+            "[RADAR DRAW HOOK] Draw8 custom scale=%.2f rect=(%.2f %.2f %.2f %.2f)",
+            discScale,
+            x1,
+            y1,
+            x2,
+            y2
+        );
+RadarDiscDebugFmt(
+"[RADAR DISC] Draw8 custom scale=%.2f rect=(%.2f %.2f %.2f %.2f)",
             discScale,
             x1,
             y1,
