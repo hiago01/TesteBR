@@ -1125,6 +1125,7 @@ void (*CSprite2d__DrawRect)(
     const CRect& posn,
     const CRGBA& color
 ) = nullptr;
+
 void CSprite2d__DrawRect_hook(
     CSprite2d* thiz,
     const CRect& posn,
@@ -1140,17 +1141,33 @@ void CSprite2d__DrawRect_hook(
         texture = thiz->m_pTexture;
     }
 
-    if (radarDrawCount < 30)
-    {
+ //   if (radarDrawCount < 30)
+   // {
+        const char* textureName = "(null)";
+        const char* textureMask = "(null)";
+
+        if (texture)
+        {
+            if (texture->name)
+                textureName = texture->name;
+
+            if (texture->mask)
+                textureMask = texture->mask->name;
+        }
+
         FLog(
             "[RADAR DRAW RECT #%d] "
             "this=%p "
             "texture=%p "
+            "name=%s "
+            "mask=%s "
             "L=%.2f T=%.2f R=%.2f B=%.2f "
             "W=%.2f H=%.2f",
             radarDrawCount + 1,
             (void*)thiz,
             (void*)texture,
+            textureName,
+            textureMask,
             posn.left,
             posn.top,
             posn.right,
@@ -1160,7 +1177,7 @@ void CSprite2d__DrawRect_hook(
         );
 
         radarDrawCount++;
-    }
+   // }
 
     if (CSprite2d__DrawRect)
     {
@@ -1171,6 +1188,7 @@ void CSprite2d__DrawRect_hook(
         );
     }
 }
+
 /*void CSprite2d__DrawRect_hook(
     CSprite2d* thiz,
     const CRect& posn,
