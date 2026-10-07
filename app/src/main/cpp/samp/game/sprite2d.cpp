@@ -842,7 +842,7 @@ void CSprite2d__DrawRadarDisc_hook(
      * estiver usando nossa radardisc.png.
      */
     RwTexture* custom = CSprite2d_GetCustomRadarDiscTexture();
-
+FLog("Radar draw disc foi chamado");
     if (thiz && custom && thiz->m_pTexture == custom)
     {
         const float discScale = 0.90f;
