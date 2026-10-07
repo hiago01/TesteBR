@@ -916,6 +916,30 @@ void CSprite2d__DrawRadarDisc_hook(
             thiz ? (void*)thiz->m_pTexture : nullptr
         );
 
+        const float discScale = 0.90f;
+
+const float centerX = (a + c + e + g) * 0.25f;
+const float centerY = (b + d + f + h) * 0.25f;
+
+a = centerX + (a - centerX) * discScale;
+b = centerY + (b - centerY) * discScale;
+
+c = centerX + (c - centerX) * discScale;
+d = centerY + (d - centerY) * discScale;
+
+e = centerX + (e - centerX) * discScale;
+f = centerY + (f - centerY) * discScale;
+
+g = centerX + (g - centerX) * discScale;
+h = centerY + (h - centerY) * discScale;
+CSprite2d__DrawRadarDisc(
+    thiz,
+    a, b,
+    c, d,
+    e, f,
+    g, h,
+    color
+);
         radarLogCount++;
     }
 
