@@ -1201,7 +1201,7 @@ static int radarDrawCount = 0;
 if (radarDrawCount < 20)
 {
     FLog(
-        "[RADAR DRAW RECT #%d] "
+        " [RADAR DRAW RECT #%d] "
         "this=%p "
         "L=%.2f T=%.2f R=%.2f B=%.2f "
         "W=%.2f H=%.2f",
