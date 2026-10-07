@@ -718,7 +718,7 @@ bool CGame::InitialiseRenderWare() {
     LightsCreate(Scene.m_pRpWorld);
 //	CreateDebugFont();
     CFont::Initialise();
-FLog("[RADAR DISC] Instalando hook SetTexture2 antes do HUD");
+FLog("[INIT ORDER(CSPRITE:SETTEXTURE2] Instalando hook SetTexture2 [INLINE]");
 
 CHook::InlineHook(
     "_ZN9CSprite2d10SetTextureEPcS0_",
@@ -730,7 +730,7 @@ CHook::InlineHook(
     &CSprite2d__DrawRadarDisc_hook,
     &CSprite2d__DrawRadarDisc
 );
-FLog("[INIT ORDER] ANTES CHud::Initialise 0x55C1C8");    
+FLog("[INIT ORDER(CHud::Initialise)] ANTES CHud::Initialise 0x55C1C8");    
 CHook::CallFunction<void>(g_libGTASA + 0x55C1C8); // CHud::Initialise();
 FLog("[INIT ORDER] DEPOIS CHud::Initialise 0x55C1C8");   
 FLog("[RADAR DISC] Tentando substituir depois do CHud::Initialise");
