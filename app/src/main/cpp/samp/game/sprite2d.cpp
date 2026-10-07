@@ -845,9 +845,7 @@ void (*CSprite2d__DrawRadarDisc)(
     float,
     float,
     const CRGBA&
-) = nullptr;
-
-void CSprite2d__DrawRadarDisc_hook(
+) = nullptrvoid CSprite2d__DrawRadarDisc_hook(
     CSprite2d* thiz,
     float a,
     float b,
@@ -862,19 +860,8 @@ void CSprite2d__DrawRadarDisc_hook(
 {
     static int radarLogCount = 0;
 
-    /*
-     * O DrawRadar observado está produzindo um quadrado
-     * aproximadamente 15.91 x 15.91.
-     *
-     * Não usamos o ponteiro do sprite porque o objeto usado
-     * pelo Draw não corresponde ao C1FA30 que recebeu a textura.
-     */
-
-    const float width =
-        fabsf(a - c);
-
-    const float height =
-        fabsf(b - f);
+    const float width = fabsf(a - c);
+    const float height = fabsf(b - f);
 
     const bool possibleRadar =
         width > 15.0f &&
@@ -882,74 +869,69 @@ void CSprite2d__DrawRadarDisc_hook(
         height > 15.0f &&
         height < 17.0f;
 
-    if (possibleRadar && radarLogCount < 10)
+    if (possibleRadar)
     {
-        FLog(
-            "[RADAR DRAW] POSSIVEL RADAR #%d",
-            radarLogCount
-        );
+        const float discScale = 0.90f;
 
-        FLog(
-            "[RADAR DRAW] V1=(%f,%f)",
-            a, b
-        );
+        const float centerX =
+            (a + c + e + g) * 0.25f;
 
-        FLog(
-            "[RADAR DRAW] V2=(%f,%f)",
-            c, d
-        );
+        const float centerY =
+            (b + d + f + h) * 0.25f;
 
-        FLog(
-            "[RADAR DRAW] V3=(%f,%f)",
-            e, f
-        );
+        a = centerX + (a - centerX) * discScale;
+        b = centerY + (b - centerY) * discScale;
 
-        FLog(
-            "[RADAR DRAW] V4=(%f,%f)",
-            g, h
-        );
+        c = centerX + (c - centerX) * discScale;
+        d = centerY + (d - centerY) * discScale;
 
-        FLog(
-            "[RADAR DRAW] tamanho=%.6f x %.6f tex=%p",
-            width,
-            height,
-            thiz ? (void*)thiz->m_pTexture : nullptr
-        );
+        e = centerX + (e - centerX) * discScale;
+        f = centerY + (f - centerY) * discScale;
 
-        const float discScale = 2.90f;
+        g = centerX + (g - centerX) * discScale;
+        h = centerY + (h - centerY) * discScale;
 
-const float centerX = (a + c + e + g) * 0.25f;
-const float centerY = (b + d + f + h) * 0.25f;
+        if (radarLogCount < 10)
+        {
+            const float newWidth = fabsf(a - c);
+            const float newHeight = fabsf(b - f);
 
-a = centerX + (a - centerX) * discScale;
-b = centerY + (b - centerY) * discScale;
+            FLog(
+                "[RADAR DRAW] ESCALA %.2f",
+                discScale
+            );
 
-c = centerX + (c - centerX) * discScale;
-d = centerY + (d - centerY) * discScale;
+            FLog(
+                "[RADAR DRAW] NOVO V1=(%f,%f)",
+                a, b
+            );
 
-e = centerX + (e - centerX) * discScale;
-f = centerY + (f - centerY) * discScale;
+            FLog(
+                "[RADAR DRAW] NOVO V2=(%f,%f)",
+                c, d
+            );
 
-g = centerX + (g - centerX) * discScale;
-h = centerY + (h - centerY) * discScale;
-CSprite2d__DrawRadarDisc(
-    thiz,
-    a, b,
-    c, d,
-    e, f,
-    g, h,
-    color
-);
-        radarLogCount++;
+            FLog(
+                "[RADAR DRAW] NOVO V3=(%f,%f)",
+                e, f
+            );
+
+            FLog(
+                "[RADAR DRAW] NOVO V4=(%f,%f)",
+                g, h
+            );
+
+            FLog(
+                "[RADAR DRAW] NOVO TAMANHO=%.6f x %.6f",
+                newWidth,
+                newHeight
+            );
+
+            radarLogCount++;
+        }
     }
 
-    /*
-     * PRIMEIRO TESTE:
-     * ainda NÃO altera a geometria.
-     *
-     * Apenas confirma que estamos isolando o Draw correto.
-     */
-
+    // UMA ÚNICA chamada ao Draw original
     if (CSprite2d__DrawRadarDisc)
     {
         CSprite2d__DrawRadarDisc(
@@ -966,6 +948,7 @@ CSprite2d__DrawRadarDisc(
         );
     }
 }
+
 
 // ============================================================
 
