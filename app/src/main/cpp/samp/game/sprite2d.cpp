@@ -1138,6 +1138,14 @@ void CSprite2d__DrawRect_hook(
     {
         texture = thiz->m_pTexture;
     }
+if (texture)
+{
+    FLog(
+        "[DRAWRECT] texture=%p name=%s",
+        (void*)texture,
+        texture->name ? texture->name : "(null)"
+    );
+}
 
 	if (texture &&
     texture->name &&
