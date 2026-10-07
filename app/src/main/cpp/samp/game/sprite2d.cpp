@@ -1142,7 +1142,30 @@ void CSprite2d__DrawRect_hook(
 
     if (thisAddr >= baseAddr)
         offset = thisAddr - baseAddr;
-FLog(
+
+static int radarDrawCount = 0;
+
+if (radarDrawCount < 20)
+{
+    FLog(
+        "[RADAR DRAW RECT #%d] "
+        "this=%p "
+        "L=%.2f T=%.2f R=%.2f B=%.2f "
+        "W=%.2f H=%.2f",
+        radarDrawCount + 1,
+        (void*)thiz,
+        posn.left,
+        posn.top,
+        posn.right,
+        posn.bottom,
+        posn.right - posn.left,
+        posn.bottom - posn.top
+    );
+
+    radarDrawCount++;
+}
+
+/*           FLog(
             "[RADAR DRAW RECT] "
             "this=0x%lX "
             "L=%.2f T=%.2f R=%.2f B=%.2f",
@@ -1165,7 +1188,7 @@ FLog(
             posn.right,
             posn.bottom
         );
-    }
+    }*/
 
     if (CSprite2d__DrawRect)
     {
