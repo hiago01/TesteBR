@@ -1125,8 +1125,53 @@ void (*CSprite2d__DrawRect)(
     const CRect& posn,
     const CRGBA& color
 ) = nullptr;
-
 void CSprite2d__DrawRect_hook(
+    CSprite2d* thiz,
+    const CRect& posn,
+    const CRGBA& color
+)
+{
+    static int radarDrawCount = 0;
+
+    RwTexture* texture = nullptr;
+
+    if (thiz)
+    {
+        texture = thiz->m_pTexture;
+    }
+
+    if (radarDrawCount < 30)
+    {
+        FLog(
+            "[RADAR DRAW RECT #%d] "
+            "this=%p "
+            "texture=%p "
+            "L=%.2f T=%.2f R=%.2f B=%.2f "
+            "W=%.2f H=%.2f",
+            radarDrawCount + 1,
+            (void*)thiz,
+            (void*)texture,
+            posn.left,
+            posn.top,
+            posn.right,
+            posn.bottom,
+            posn.right - posn.left,
+            posn.bottom - posn.top
+        );
+
+        radarDrawCount++;
+    }
+
+    if (CSprite2d__DrawRect)
+    {
+        CSprite2d__DrawRect(
+            thiz,
+            posn,
+            color
+        );
+    }
+}
+/*void CSprite2d__DrawRect_hook(
     CSprite2d* thiz,
     const CRect& posn,
     const CRGBA& color
@@ -1165,7 +1210,7 @@ if (radarDrawCount < 20)
     radarDrawCount++;
 }
 
-/*           FLog(
+           FLog(
             "[RADAR DRAW RECT] "
             "this=0x%lX "
             "L=%.2f T=%.2f R=%.2f B=%.2f",
@@ -1188,7 +1233,7 @@ if (radarDrawCount < 20)
             posn.right,
             posn.bottom
         );
-    }*/
+    }
 
     if (CSprite2d__DrawRect)
     {
@@ -1199,7 +1244,7 @@ if (radarDrawCount < 20)
         );
     }
 }
-
+*/
 
 
 // ============================================================
