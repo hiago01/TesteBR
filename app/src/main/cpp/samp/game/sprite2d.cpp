@@ -807,6 +807,87 @@ return g_CustomRadarDiscTexture;
 
 // ============================================================
 // SETTEXTURE 1 ARGUMENTO
+RwTexture* CSprite2d_GetCustomRadarDiscTexture()
+{
+    return LoadCustomRadarDisc();
+}
+void (*CSprite2d__DrawRadarDisc)(
+    CSprite2d*,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    const CRGBA&
+) = nullptr;
+
+void CSprite2d__DrawRadarDisc_hook(
+    CSprite2d* thiz,
+    float x1,
+    float y1,
+    float x2,
+    float y2,
+    float u1,
+    float v1,
+    float u2,
+    float v2,
+    const CRGBA& color
+)
+{
+    /*
+     * Só intercepta o Draw quando este sprite
+     * estiver usando nossa radardisc.png.
+     */
+    RwTexture* custom = CSprite2d_GetCustomRadarDiscTexture();
+
+    if (thiz && custom && thiz->m_pTexture == custom)
+    {
+        const float discScale = 0.90f;
+
+        const float centerX = (x1 + x2) * 0.5f;
+        const float centerY = (y1 + y2) * 0.5f;
+
+        float halfWidth  = (x2 - x1) * 0.5f;
+        float halfHeight = (y2 - y1) * 0.5f;
+
+        halfWidth  *= discScale;
+        halfHeight *= discScale;
+
+        x1 = centerX - halfWidth;
+        x2 = centerX + halfWidth;
+
+        y1 = centerY - halfHeight;
+        y2 = centerY + halfHeight;
+
+        RadarDiscDebugFmt(
+            "[RADAR DISC] Draw8 custom scale=%.2f rect=(%.2f %.2f %.2f %.2f)",
+            discScale,
+            x1,
+            y1,
+            x2,
+            y2
+        );
+    }
+
+    if (CSprite2d__DrawRadarDisc)
+    {
+        CSprite2d__DrawRadarDisc(
+            thiz,
+            x1,
+            y1,
+            x2,
+            y2,
+            u1,
+            v1,
+            u2,
+            v2,
+            color
+        );
+    }
+}
 // ============================================================
 
 void (*CSprite2d__SetTexture)(

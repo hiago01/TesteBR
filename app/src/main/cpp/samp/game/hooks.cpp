@@ -409,7 +409,7 @@ void CSprite2d__SetMaskVertices_hook(
             // 6.0 = mais quadrado
             const float exponent = 6.0f;//antigo 4.0f
             const float invExponent = 1.0f / exponent;//antigo 1.0f
-           const float radarScale = 0.0f;//off tamanho scale off nao pega
+           const float radarScale = 1.10f;//off tamanho scale off nao pega
             for (int i = 0; i < 8; i++)
             {
                 float dx = vertices[i * 2] - centerX;

@@ -61,3 +61,30 @@ public:
 
 bool CSprite2d_TestCustomRadarDisc();
 bool CSprite2d_ReplaceRadarDisc(CSprite2d* sprite);
+RwTexture* CSprite2d_GetCustomRadarDiscTexture();
+
+void CSprite2d__DrawRadarDisc_hook(
+    CSprite2d* thiz,
+    float a,
+    float b,
+    float c,
+    float d,
+    float e,
+    float f,
+    float g,
+    float h,
+    const CRGBA& color
+);
+
+extern void (*CSprite2d__DrawRadarDisc)(
+    CSprite2d*,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    const CRGBA&
+);
