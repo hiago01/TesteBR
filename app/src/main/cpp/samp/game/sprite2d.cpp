@@ -1062,6 +1062,63 @@ void CSprite2d::SetTexture(const char* name)
     );
 }
 
+// =======================================================>
+// Sprite Draw4
+// =======================================================>
+
+void (*CSprite2d__Draw4)(
+    CSprite2d* thiz,
+    float x,
+    float y,
+    float width,
+    float height,
+    const CRGBA& color
+) = nullptr;
+
+void CSprite2d__Draw4_hook(
+    CSprite2d* thiz,
+    float x,
+    float y,
+    float width,
+    float height,
+    const CRGBA& color
+)
+{
+    uintptr_t thisAddr = reinterpret_cast<uintptr_t>(thiz);
+    uintptr_t baseAddr = reinterpret_cast<uintptr_t>(g_libGTASA);
+
+    uintptr_t radarDiscAddr = baseAddr + 0xC1FA30;
+    uintptr_t radarPlaneAddr = baseAddr + 0xC1FA38;
+
+    if (thisAddr == radarDiscAddr ||
+        thisAddr == radarPlaneAddr)
+    {
+        FLog(
+            "achouu[RADAR DRAW4] this=0x%lX "
+            "x=%.2f y=%.2f w=%.2f h=%.2f",
+            (unsigned long)(thisAddr - baseAddr),
+            x, y, width, height
+        );
+    }
+	FLog(
+            "[RADAR DRAW4] this=0x%lX "
+            "x=%.2f y=%.2f w=%.2f h=%.2f",
+            (unsigned long)(thisAddr - baseAddr),
+            x, y, width, height
+        );
+
+    if (CSprite2d__Draw4)
+    {
+        CSprite2d__Draw4(
+            thiz,
+            x,
+            y,
+            width,
+            height,
+            color
+        );
+    }
+}
 // ============================================================
 // DRAW 8 FLOATS - RADAR DISC DEBUG
 // ============================================================
