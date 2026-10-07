@@ -1062,6 +1062,68 @@ void CSprite2d::SetTexture(const char* name)
     );
 }
 
+// ============================================================
+// DRAW 8 FLOATS - RADAR DISC DEBUG
+// ============================================================
+
+void (*CSprite2d__Draw8)(
+    CSprite2d* thiz,
+    float x1,
+    float y1,
+    float x2,
+    float y2,
+    float x3,
+    float y3,
+    float x4,
+    float y4,
+    const CRGBA& color
+) = nullptr;
+
+void CSprite2d__Draw8_hook(
+    CSprite2d* thiz,
+    float x1,
+    float y1,
+    float x2,
+    float y2,
+    float x3,
+    float y3,
+    float x4,
+    float y4,
+    const CRGBA& color
+)
+{
+    CSprite2d* radarDisc =
+        reinterpret_cast<CSprite2d*>(
+            g_libGTASA + 0xC1FA30
+        );
+
+    if (thiz == radarDisc)
+    {
+        FLog(
+            "[RADAR DISC DRAW] "
+            "x1=%.2f y1=%.2f "
+            "x2=%.2f y2=%.2f "
+            "x3=%.2f y3=%.2f "
+            "x4=%.2f y4=%.2f",
+            x1, y1,
+            x2, y2,
+            x3, y3,
+            x4, y4
+        );
+    }
+
+    if (CSprite2d__Draw8)
+    {
+        CSprite2d__Draw8(
+            thiz,
+            x1, y1,
+            x2, y2,
+            x3, y3,
+            x4, y4,
+            color
+        );
+    }
+}
 
 // ============================================================
 // INJECT HOOKS

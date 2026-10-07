@@ -725,6 +725,14 @@ CHook::InlineHook(
     &CSprite2d__SetTexture2_hook,
     &CSprite2d__SetTexture2
 );
+FLog("[INIT ORDER(CSPRITE:DRAW8)] Instalando hook Draw8 [INLINE]");
+
+CHook::InlineHook(
+    "_ZN9CSprite2d4DrawEffffffffRK5CRGBA",
+    &CSprite2d__Draw8_hook,
+    &CSprite2d__Draw8
+);
+
 FLog("[INIT ORDER(CHud::Initialise)] ANTES CHud::Initialise 0x55C1C8");    
 CHook::CallFunction<void>(g_libGTASA + 0x55C1C8); // CHud::Initialise();
 FLog("[INIT ORDER] DEPOIS CHud::Initialise 0x55C1C8");   

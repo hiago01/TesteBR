@@ -12,6 +12,32 @@ void CSprite2d__SetTexture_hook(CSprite2d* thiz, char* name);
 extern void (*CSprite2d__SetTexture2)(CSprite2d* thiz, char* name, char* mask);
 void CSprite2d__SetTexture2_hook(CSprite2d* thiz, char* name, char* mask);
 
+extern void (*CSprite2d__Draw8)(
+    CSprite2d* thiz,
+    float x1,
+    float y1,
+    float x2,
+    float y2,
+    float x3,
+    float y3,
+    float x4,
+    float y4,
+    const CRGBA& color
+);
+
+void CSprite2d__Draw8_hook(
+    CSprite2d* thiz,
+    float x1,
+    float y1,
+    float x2,
+    float y2,
+    float x3,
+    float y3,
+    float x4,
+    float y4,
+    const CRGBA& color
+);
+
 class CSprite2d
 {
 public:
