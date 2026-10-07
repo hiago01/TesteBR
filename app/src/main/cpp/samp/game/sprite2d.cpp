@@ -916,7 +916,7 @@ void CSprite2d__DrawRadarDisc_hook(
             thiz ? (void*)thiz->m_pTexture : nullptr
         );
 
-        const float discScale = 0.90f;
+        const float discScale = 2.90f;
 
 const float centerX = (a + c + e + g) * 0.25f;
 const float centerY = (b + d + f + h) * 0.25f;
