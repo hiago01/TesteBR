@@ -842,11 +842,21 @@ void CSprite2d__SetTexture_hook(
 
     if (strcmp(name, "radardisc") != 0)
     {
-        CSprite2d__SetTexture(thiz, name);
+     
+       CSprite2d__SetTexture(thiz, name);
         return;
     }
+uintptr_t lr = 0;
+asm volatile("mov %0, x30" : "=r"(lr));
 
-    RadarDiscDebug(
+    FLog(
+    "[RADAR TRACK] SetTexture radardisc thiz=%p oldTex=%p caller=%p offset=0x%lx",
+    thiz,
+    thiz ? thiz->m_pTexture : nullptr,
+    (void*)lr,
+    (unsigned long)(lr - g_libGTASA)
+);
+    FLog(
         "[RADAR DISC] SetTexture(\"radardisc\")"
     );
 
