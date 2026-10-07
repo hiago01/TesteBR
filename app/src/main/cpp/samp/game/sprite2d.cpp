@@ -1152,7 +1152,8 @@ void CSprite2d__DrawRect_hook(
                 textureName = texture->name;
 
             if (texture->mask)
-                textureMask = texture->mask->name;
+		    textureMask = texture->mask;
+
         }
 
         FLog(
