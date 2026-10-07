@@ -820,6 +820,19 @@ RwTexture* CSprite2d_GetCustomRadarDiscTexture()
 // ============================================================
 // RADAR DISC - DRAW8 ORIGINAL
 // ============================================================
+static CSprite2d* GetRadarSpriteFromHud()
+{
+    if (!g_libGTASA)
+        return nullptr;
+
+    uintptr_t holder =
+        *reinterpret_cast<uintptr_t*>(g_libGTASA + 0x850018);
+
+    if (!holder)
+        return nullptr;
+
+    return reinterpret_cast<CSprite2d*>(holder + 0x20);
+}
 
 void (*CSprite2d__DrawRadarDisc)(
     CSprite2d*,
@@ -835,10 +848,6 @@ void (*CSprite2d__DrawRadarDisc)(
 ) = nullptr;
 
 
-// ============================================================
-// RADAR DISC - DRAW8 HOOK
-// ============================================================
-
 void CSprite2d__DrawRadarDisc_hook(
     CSprite2d* thiz,
     float a,
@@ -852,67 +861,43 @@ void CSprite2d__DrawRadarDisc_hook(
     const CRGBA& color
 )
 {
-    /*
-     * IMPORTANTE:
-     *
-     * Este Draw() é usado por vários sprites do jogo.
-     * Portanto NÃO podemos alterar todos os Draw8.
-     *
-     * Primeiro verificamos se existe textura custom carregada.
-     */
-    RwTexture* custom = g_CustomRadarDiscTexture;
+    static int logCount = 0;
 
-    /*
-     * Diagnóstico temporário.
-     *
-     * Mostra os primeiros Draw8 para confirmarmos
-     * que o hook está realmente sendo executado.
-     */
-    static int draw8LogCount = 0;
+    CSprite2d* expectedRadarSprite = GetRadarSpriteFromHud();
 
-    if (draw8LogCount < 20)
+    if (logCount < 20)
     {
         FLog(
-            "[RADAR DRAW] #%d this=%p tex=%p custom=%p",
-            draw8LogCount,
-            thiz,
-            thiz ? thiz->m_pTexture : nullptr,
-            custom
+            "[RADAR DRAW] #%d this=%p tex=%p expected=%p custom=%p",
+            logCount,
+            (void*)thiz,
+            thiz ? (void*)thiz->m_pTexture : nullptr,
+            (void*)expectedRadarSprite,
+            (void*)g_CustomRadarDiscTexture
         );
 
-        draw8LogCount++;
+        FLog(
+            "[RADAR DRAW] args=%f,%f,%f,%f,%f,%f,%f,%f",
+            a, b, c, d, e, f, g, h
+        );
+
+        logCount++;
     }
 
-    /*
-     * Só considera o Draw como radar disc quando
-     * o sprite possui exatamente nossa textura.
-     */
-    const bool isRadarDisc =
-        thiz &&
-        custom &&
-        thiz->m_pTexture == custom;
-
-    if (isRadarDisc)
+    if (thiz && expectedRadarSprite && thiz == expectedRadarSprite)
     {
         FLog(
-            "[RADAR DRAW] >>> RADARDISC DETECTADO this=%p tex=%p",
-            thiz,
-            thiz->m_pTexture
+            "[RADAR DRAW] >>> SPRITE ESPERADO DETECTADO this=%p tex=%p",
+            (void*)thiz,
+            (void*)thiz->m_pTexture
         );
 
-        /*
-         * ATENÇÃO:
-         *
-         * Ainda não modificamos os parâmetros aqui.
-         *
-         * Primeiro queremos confirmar no log que
-         * somente o radarDisc chega neste ponto.
-         */
+        FLog(
+            "[RADAR DRAW] >>> CUSTOM=%p",
+            (void*)g_CustomRadarDiscTexture
+        );
     }
 
-    /*
-     * Sempre chama a implementação original.
-     */
     if (CSprite2d__DrawRadarDisc)
     {
         CSprite2d__DrawRadarDisc(
@@ -930,11 +915,10 @@ void CSprite2d__DrawRadarDisc_hook(
     }
     else
     {
-        FLog(
-            "[RADAR DRAW] ERRO: DrawRadarDisc original NULL"
-        );
+        FLog("[RADAR DRAW] ERRO: original NULL");
     }
 }
+
 // ============================================================
 
 void (*CSprite2d__SetTexture)(
