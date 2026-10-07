@@ -1139,32 +1139,79 @@ void CSprite2d__DrawRect_hook(
         texture = thiz->m_pTexture;
     }
 
-    // TESTE: bloquear SOMENTE o radardisc
-    if (texture &&
-        texture->name &&
-        strcmp(texture->name, "radardisc") == 0)
-    {
-        static int blockedCount = 0;
+	if (texture &&
+    texture->name &&
+    strcmp(texture->name, "radardisc") == 0)
+{
+    RwRaster* raster = texture->raster;
 
-        if (blockedCount < 10)
+    static int debugRadarInfo = 0;
+
+    if (debugRadarInfo < 10)
+    {
+        FLog(
+            "[RADARDISC INFO #%d] "
+            "texture=%p "
+            "name=%s "
+            "mask=%s "
+            "raster=%p "
+            "ref=%d "
+            "filterAddressing=0x%X",
+            debugRadarInfo + 1,
+            (void*)texture,
+            texture->name ? texture->name : "(null)",
+            texture->mask ? texture->mask : "(null)",
+            (void*)raster,
+            texture->refCount,
+            texture->filterAddressing
+        );
+
+        if (raster)
         {
             FLog(
-                "[RADARDISC BLOQUEADO #%d] "
-                "L=%.2f T=%.2f R=%.2f B=%.2f",
-                blockedCount + 1,
-                posn.left,
-                posn.top,
-                posn.right,
-                posn.bottom
+                "[RADARDISC RASTER #%d] "
+                "width=%d "
+                "height=%d "
+                "depth=%d "
+                "stride=%d "
+                "format=0x%X "
+                "flags=0x%X "
+                "cType=%d "
+                "cFlags=%d "
+                "cPrivateFlags=%d",
+                debugRadarInfo + 1,
+                raster->width,
+                raster->height,
+                raster->depth,
+                raster->stride,
+                raster->cFormat,
+                raster->cFlags,
+                raster->cType,
+                raster->cFlags,
+                raster->cPrivateFlags
             );
-
-            blockedCount++;
         }
 
-        // NÃO chama o DrawRect original
-        return;
-    }
+        FLog(
+            "[RADARDISC RECT #%d] "
+            "L=%.2f "
+            "T=%.2f "
+            "R=%.2f "
+            "B=%.2f "
+            "W=%.2f "
+            "H=%.2f",
+            debugRadarInfo + 1,
+            posn.left,
+            posn.top,
+            posn.right,
+            posn.bottom,
+            posn.right - posn.left,
+            posn.bottom - posn.top
+        );
 
+        debugRadarInfo++;
+    }
+}
     // Tudo que não for radardisc continua normal
     if (CSprite2d__DrawRect)
     {
