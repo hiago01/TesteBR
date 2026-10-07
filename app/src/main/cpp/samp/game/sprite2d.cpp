@@ -847,7 +847,6 @@ void (*CSprite2d__DrawRadarDisc)(
     const CRGBA&
 ) = nullptr;
 
-
 void CSprite2d__DrawRadarDisc_hook(
     CSprite2d* thiz,
     float a,
@@ -861,42 +860,71 @@ void CSprite2d__DrawRadarDisc_hook(
     const CRGBA& color
 )
 {
-    static int logCount = 0;
+    static int radarLogCount = 0;
 
-    CSprite2d* expectedRadarSprite = GetRadarSpriteFromHud();
+    /*
+     * O DrawRadar observado está produzindo um quadrado
+     * aproximadamente 15.91 x 15.91.
+     *
+     * Não usamos o ponteiro do sprite porque o objeto usado
+     * pelo Draw não corresponde ao C1FA30 que recebeu a textura.
+     */
 
-    if (logCount < 20)
+    const float width =
+        fabsf(a - c);
+
+    const float height =
+        fabsf(b - f);
+
+    const bool possibleRadar =
+        width > 15.0f &&
+        width < 17.0f &&
+        height > 15.0f &&
+        height < 17.0f;
+
+    if (possibleRadar && radarLogCount < 10)
     {
         FLog(
-            "[RADAR DRAW] #%d this=%p tex=%p expected=%p custom=%p",
-            logCount,
-            (void*)thiz,
-            thiz ? (void*)thiz->m_pTexture : nullptr,
-            (void*)expectedRadarSprite,
-            (void*)g_CustomRadarDiscTexture
+            "[RADAR DRAW] POSSIVEL RADAR #%d",
+            radarLogCount
         );
 
         FLog(
-            "[RADAR DRAW] args=%f,%f,%f,%f,%f,%f,%f,%f",
-            a, b, c, d, e, f, g, h
+            "[RADAR DRAW] V1=(%f,%f)",
+            a, b
         );
 
-        logCount++;
+        FLog(
+            "[RADAR DRAW] V2=(%f,%f)",
+            c, d
+        );
+
+        FLog(
+            "[RADAR DRAW] V3=(%f,%f)",
+            e, f
+        );
+
+        FLog(
+            "[RADAR DRAW] V4=(%f,%f)",
+            g, h
+        );
+
+        FLog(
+            "[RADAR DRAW] tamanho=%.6f x %.6f tex=%p",
+            width,
+            height,
+            thiz ? (void*)thiz->m_pTexture : nullptr
+        );
+
+        radarLogCount++;
     }
 
-    if (thiz && expectedRadarSprite && thiz == expectedRadarSprite)
-    {
-        FLog(
-            "[RADAR DRAW] >>> SPRITE ESPERADO DETECTADO this=%p tex=%p",
-            (void*)thiz,
-            (void*)thiz->m_pTexture
-        );
-
-        FLog(
-            "[RADAR DRAW] >>> CUSTOM=%p",
-            (void*)g_CustomRadarDiscTexture
-        );
-    }
+    /*
+     * PRIMEIRO TESTE:
+     * ainda NÃO altera a geometria.
+     *
+     * Apenas confirma que estamos isolando o Draw correto.
+     */
 
     if (CSprite2d__DrawRadarDisc)
     {
@@ -912,10 +940,6 @@ void CSprite2d__DrawRadarDisc_hook(
             h,
             color
         );
-    }
-    else
-    {
-        FLog("[RADAR DRAW] ERRO: original NULL");
     }
 }
 
