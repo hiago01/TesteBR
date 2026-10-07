@@ -1836,7 +1836,7 @@ stFile* NvFOpen(const char* r0, const char* r1, int r2, int r3)
     }
     else
     {
-        FLog("NVFOpen hook | Error: file not found (%s)", path);
+//        FLog("NVFOpen hook | Error: file not found (%s)", path);
         free(st);
         return nullptr;
     }
@@ -2037,7 +2037,7 @@ void RLEDecompress_hook(
     int n = ++count;
 
     if (n <= 30) {
-        FLog(
+  /*      FLog(
             "[RLED CALL #%d] caller=0x%lx offset=0x%lx src=%p dest=%p destSize=%zu seg=%zu escape=0x%X sourceSize=%u",
             n,
             (unsigned long)lr,
@@ -2048,7 +2048,7 @@ void RLEDecompress_hook(
             uiSegSize,
             uiEscape,
             dwRLEDecompressSourceSize
-        );
+        );*/
     }
 
     if (!pDest || !pSrc || uiDestSize == 0 || uiSegSize == 0)
@@ -2074,11 +2074,11 @@ void RLEDecompress_hook(
                 pTempSrc + 2 + uiSegSize > pEndOfSrc)
             {
                 if (n <= 30)
-                    FLog(
+            /*        FLog(
                         "[RLED ERROR 1] caller=0x%lx offset=0x%lx",
                         (unsigned long)lr,
                         (unsigned long)(lr - g_libGTASA)
-                    );
+                    );*/
                 return;
             }
 
@@ -2089,11 +2089,11 @@ void RLEDecompress_hook(
                 if (pDest + uiSegSize > pEndOfDest)
                 {
                     if (n <= 30)
-                        FLog(
+                       /* FLog(
                             "[RLED ERROR 2] caller=0x%lx offset=0x%lx",
                             (unsigned long)lr,
                             (unsigned long)(lr - g_libGTASA)
-                        );
+                        );*/
                     return;
                 }
 
@@ -2109,7 +2109,7 @@ void RLEDecompress_hook(
                 pTempSrc + uiSegSize > pEndOfSrc)
             {
                 if (n <= 30)
-                    FLog(
+                   /* FLog(
                         "[RLED ERROR 3] caller=0x%lx offset=0x%lx src=%p sourceSize=%u destSize=%zu seg=%zu",
                         (unsigned long)lr,
                         (unsigned long)(lr - g_libGTASA),
@@ -2117,7 +2117,7 @@ void RLEDecompress_hook(
                         dwRLEDecompressSourceSize,
                         uiDestSize,
                         uiSegSize
-                    );
+                    );*/
                 return;
             }
 
