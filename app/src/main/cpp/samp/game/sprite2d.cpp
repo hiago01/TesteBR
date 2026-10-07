@@ -845,7 +845,9 @@ void (*CSprite2d__DrawRadarDisc)(
     float,
     float,
     const CRGBA&
-) = nullptrvoid CSprite2d__DrawRadarDisc_hook(
+) = nullptr;
+
+void CSprite2d__DrawRadarDisc_hook(
     CSprite2d* thiz,
     float a,
     float b,
