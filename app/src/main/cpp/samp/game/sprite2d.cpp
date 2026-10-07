@@ -806,11 +806,21 @@ return g_CustomRadarDiscTexture;
 
 
 // ============================================================
-// SETTEXTURE 1 ARGUMENTO
+
+// ============================================================
+// RADAR DISC - TEXTURE GETTER
+// ============================================================
+
 RwTexture* CSprite2d_GetCustomRadarDiscTexture()
 {
-    return LoadCustomRadarDisc();
+    return g_CustomRadarDiscTexture;
 }
+
+
+// ============================================================
+// RADAR DISC - DRAW8 ORIGINAL
+// ============================================================
+
 void (*CSprite2d__DrawRadarDisc)(
     CSprite2d*,
     float,
@@ -824,74 +834,104 @@ void (*CSprite2d__DrawRadarDisc)(
     const CRGBA&
 ) = nullptr;
 
+
+// ============================================================
+// RADAR DISC - DRAW8 HOOK
+// ============================================================
+
 void CSprite2d__DrawRadarDisc_hook(
     CSprite2d* thiz,
-    float x1,
-    float y1,
-    float x2,
-    float y2,
-    float u1,
-    float v1,
-    float u2,
-    float v2,
+    float a,
+    float b,
+    float c,
+    float d,
+    float e,
+    float f,
+    float g,
+    float h,
     const CRGBA& color
 )
 {
     /*
-     * Só intercepta o Draw quando este sprite
-     * estiver usando nossa radardisc.png.
+     * IMPORTANTE:
+     *
+     * Este Draw() é usado por vários sprites do jogo.
+     * Portanto NÃO podemos alterar todos os Draw8.
+     *
+     * Primeiro verificamos se existe textura custom carregada.
      */
-    RwTexture* custom = CSprite2d_GetCustomRadarDiscTexture();
-FLog("Radar draw disc foi chamado");
-    if (thiz && custom && thiz->m_pTexture == custom)
+    RwTexture* custom = g_CustomRadarDiscTexture;
+
+    /*
+     * Diagnóstico temporário.
+     *
+     * Mostra os primeiros Draw8 para confirmarmos
+     * que o hook está realmente sendo executado.
+     */
+    static int draw8LogCount = 0;
+
+    if (draw8LogCount < 20)
     {
-        const float discScale = 0.90f;
-
-        const float centerX = (x1 + x2) * 0.5f;
-        const float centerY = (y1 + y2) * 0.5f;
-
-        float halfWidth  = (x2 - x1) * 0.5f;
-        float halfHeight = (y2 - y1) * 0.5f;
-
-        halfWidth  *= discScale;
-        halfHeight *= discScale;
-
-        x1 = centerX - halfWidth;
-        x2 = centerX + halfWidth;
-
-        y1 = centerY - halfHeight;
-        y2 = centerY + halfHeight;
-FLog(
-            "[RADAR DRAW HOOK] Draw8 custom scale=%.2f rect=(%.2f %.2f %.2f %.2f)",
-            discScale,
-            x1,
-            y1,
-            x2,
-            y2
+        FLog(
+            "[RADAR DRAW] #%d this=%p tex=%p custom=%p",
+            draw8LogCount,
+            thiz,
+            thiz ? thiz->m_pTexture : nullptr,
+            custom
         );
-RadarDiscDebugFmt(
-"[RADAR DISC] Draw8 custom scale=%.2f rect=(%.2f %.2f %.2f %.2f)",
-            discScale,
-            x1,
-            y1,
-            x2,
-            y2
-        );
+
+        draw8LogCount++;
     }
 
+    /*
+     * Só considera o Draw como radar disc quando
+     * o sprite possui exatamente nossa textura.
+     */
+    const bool isRadarDisc =
+        thiz &&
+        custom &&
+        thiz->m_pTexture == custom;
+
+    if (isRadarDisc)
+    {
+        FLog(
+            "[RADAR DRAW] >>> RADARDISC DETECTADO this=%p tex=%p",
+            thiz,
+            thiz->m_pTexture
+        );
+
+        /*
+         * ATENÇÃO:
+         *
+         * Ainda não modificamos os parâmetros aqui.
+         *
+         * Primeiro queremos confirmar no log que
+         * somente o radarDisc chega neste ponto.
+         */
+    }
+
+    /*
+     * Sempre chama a implementação original.
+     */
     if (CSprite2d__DrawRadarDisc)
     {
         CSprite2d__DrawRadarDisc(
             thiz,
-            x1,
-            y1,
-            x2,
-            y2,
-            u1,
-            v1,
-            u2,
-            v2,
+            a,
+            b,
+            c,
+            d,
+            e,
+            f,
+            g,
+            h,
             color
+        );
+    }
+    else
+    {
+        FLog(
+            "[RADAR DRAW] ERRO: DrawRadarDisc original NULL"
         );
     }
 }
