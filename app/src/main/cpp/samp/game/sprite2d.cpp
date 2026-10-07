@@ -1139,36 +1139,33 @@ void CSprite2d__DrawRect_hook(
         texture = thiz->m_pTexture;
     }
 
- // TESTE 1: detectar SOMENTE o radardisc
-if (texture &&
-    texture->name &&
-    strcmp(texture->name, "radardisc") == 0)
-{
-    CRect radarRect = posn;
-
-    static int part = 0;
-    part++;
-
-    // Só a primeira ocorrência
-    if (part == 1)
+    // TESTE: bloquear SOMENTE o radardisc
+    if (texture &&
+        texture->name &&
+        strcmp(texture->name, "radardisc") == 0)
     {
-        radarRect.right += 20.0f;
+        static int blockedCount = 0;
+
+        if (blockedCount < 10)
+        {
+            FLog(
+                "[RADARDISC BLOQUEADO #%d] "
+                "L=%.2f T=%.2f R=%.2f B=%.2f",
+                blockedCount + 1,
+                posn.left,
+                posn.top,
+                posn.right,
+                posn.bottom
+            );
+
+            blockedCount++;
+        }
+
+        // NÃO chama o DrawRect original
+        return;
     }
 
-    if (CSprite2d__DrawRect)
-    {
-        CSprite2d__DrawRect(
-            thiz,
-            radarRect,
-            color
-        );
-    }
-
-    return;
-}
-
-
-// ORIGINAL — nenhuma alteração
+    // Tudo que não for radardisc continua normal
     if (CSprite2d__DrawRect)
     {
         CSprite2d__DrawRect(
