@@ -1188,7 +1188,7 @@ void CSprite2d__DrawRect_hook(
                 raster->cFlags,
                 raster->cType,
                 raster->cFlags,
-                raster->cPrivateFlags
+                raster->privateFlags
             );
         }
 
