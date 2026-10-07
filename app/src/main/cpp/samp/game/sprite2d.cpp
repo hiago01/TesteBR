@@ -1132,8 +1132,6 @@ void CSprite2d__DrawRect_hook(
     const CRGBA& color
 )
 {
-    static int radarDrawCount = 0;
-
     RwTexture* texture = nullptr;
 
     if (thiz)
@@ -1141,45 +1139,36 @@ void CSprite2d__DrawRect_hook(
         texture = thiz->m_pTexture;
     }
 
- //   if (radarDrawCount < 30)
-   // {
-        const char* textureName = "(null)";
-        const char* textureMask = "(null)";
+    // TESTE 1: detectar SOMENTE o radardisc
+    if (texture &&
+        texture->name &&
+        strcmp(texture->name, "radardisc") == 0)
+    {
+        static int radarDiscCount = 0;
 
-        if (texture)
+        if (radarDiscCount < 50)
         {
-            if (texture->name)
-                textureName = texture->name;
+            FLog(
+                "[RADARDISC DETECTADO #%d] "
+                "this=%p texture=%p "
+                "L=%.2f T=%.2f R=%.2f B=%.2f "
+                "W=%.2f H=%.2f",
+                radarDiscCount + 1,
+                (void*)thiz,
+                (void*)texture,
+                posn.left,
+                posn.top,
+                posn.right,
+                posn.bottom,
+                posn.right - posn.left,
+                posn.bottom - posn.top
+            );
 
-            if (texture->mask)
-		    textureMask = texture->mask;
-
+            radarDiscCount++;
         }
+    }
 
-        FLog(
-            "[RADAR DRAW RECT #%d] "
-            "this=%p "
-            "texture=%p "
-            "name=%s "
-            "mask=%s "
-            "L=%.2f T=%.2f R=%.2f B=%.2f "
-            "W=%.2f H=%.2f",
-            radarDrawCount + 1,
-            (void*)thiz,
-            (void*)texture,
-            textureName,
-            textureMask,
-            posn.left,
-            posn.top,
-            posn.right,
-            posn.bottom,
-            posn.right - posn.left,
-            posn.bottom - posn.top
-        );
-
-        radarDrawCount++;
-   // }
-
+    // ORIGINAL — nenhuma alteração
     if (CSprite2d__DrawRect)
     {
         CSprite2d__DrawRect(
