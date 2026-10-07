@@ -1092,7 +1092,37 @@ void CSprite2d__Draw8_hook(
     const CRGBA& color
 )
 {
-    CSprite2d* radarDisc =
+   static int debugCount = 0;
+
+    if (debugCount < 100)
+    {
+        uintptr_t thisAddr = reinterpret_cast<uintptr_t>(thiz);
+        uintptr_t baseAddr = reinterpret_cast<uintptr_t>(g_libGTASA);
+
+        uintptr_t offset = 0;
+
+        if (thisAddr >= baseAddr)
+            offset = thisAddr - baseAddr;
+
+        FLog(
+            "[DRAW8 DEBUG #%d] "
+            "this=%p offset=0x%lX "
+            "x1=%.2f y1=%.2f "
+            "x2=%.2f y2=%.2f "
+            "x3=%.2f y3=%.2f "
+            "x4=%.2f y4=%.2f",
+            debugCount + 1,
+            (void*)thiz,
+            (unsigned long)offset,
+            x1, y1,
+            x2, y2,
+            x3, y3,
+            x4, y4
+        );
+
+        debugCount++;
+    }
+       CSprite2d* radarDisc =
         reinterpret_cast<CSprite2d*>(
             g_libGTASA + 0xC1FA30
         );
