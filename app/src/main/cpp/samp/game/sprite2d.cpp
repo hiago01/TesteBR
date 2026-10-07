@@ -1139,59 +1139,20 @@ void CSprite2d__DrawRect_hook(
         texture = thiz->m_pTexture;
     }
 
-    // TESTE 1: detectar SOMENTE o radardisc
+ // TESTE 1: detectar SOMENTE o radardisc
 if (texture &&
     texture->name &&
     strcmp(texture->name, "radardisc") == 0)
 {
     CRect radarRect = posn;
 
-    const float centerX = 125.0f;
-    const float centerY = 112.5f;
+    static int part = 0;
+    part++;
 
-    const float scale = 1.10f;//1.02f normal tamanho
-
-    float halfWidth =
-        (posn.right - posn.left) * 0.5f;
-
-    float halfHeight =
-        (posn.bottom - posn.top) * 0.5f;
-
-    halfWidth *= scale;
-    halfHeight *= scale;
-
-    radarRect.left =
-        centerX + (posn.left - centerX) * scale;
-
-    radarRect.right =
-        centerX + (posn.right - centerX) * scale;
-
-    radarRect.top =
-        centerY + (posn.top - centerY) * scale;
-
-    radarRect.bottom =
-        centerY + (posn.bottom - centerY) * scale;
-
-    static int radarDiscCount = 0;
-
-    if (radarDiscCount < 20)
+    // Só a primeira ocorrência
+    if (part == 1)
     {
-        FLog(
-            "[RADARDISC TEST 1] #%d "
-            "OLD L=%.2f T=%.2f R=%.2f B=%.2f "
-            "NEW L=%.2f T=%.2f R=%.2f B=%.2f",
-            radarDiscCount + 1,
-            posn.left,
-            posn.top,
-            posn.right,
-            posn.bottom,
-            radarRect.left,
-            radarRect.top,
-            radarRect.right,
-            radarRect.bottom
-        );
-
-        radarDiscCount++;
+        radarRect.right += 20.0f;
     }
 
     if (CSprite2d__DrawRect)
@@ -1205,7 +1166,9 @@ if (texture &&
 
     return;
 }
-    // ORIGINAL — nenhuma alteração
+
+
+// ORIGINAL — nenhuma alteração
     if (CSprite2d__DrawRect)
     {
         CSprite2d__DrawRect(
