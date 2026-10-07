@@ -1119,6 +1119,66 @@ void CSprite2d__Draw4_hook(
         );
     }
 }
+//_------------------ DRAW5 ----------()()()((+)((+---_&-&-5;
+void (*CSprite2d__DrawRect)(
+    CSprite2d* thiz,
+    const CRect& posn,
+    const CRGBA& color
+) = nullptr;
+
+void CSprite2d__DrawRect_hook(
+    CSprite2d* thiz,
+    const CRect& posn,
+    const CRGBA& color
+)
+{
+    uintptr_t thisAddr =
+        reinterpret_cast<uintptr_t>(thiz);
+
+    uintptr_t baseAddr =
+        reinterpret_cast<uintptr_t>(g_libGTASA);
+
+    uintptr_t offset = 0;
+
+    if (thisAddr >= baseAddr)
+        offset = thisAddr - baseAddr;
+FLog(
+            "[RADAR DRAW RECT] "
+            "this=0x%lX "
+            "L=%.2f T=%.2f R=%.2f B=%.2f",
+            (unsigned long)offset,
+            posn.left,
+            posn.top,
+            posn.right,
+            posn.bottom
+        );
+    if (offset == 0xC1FA30 ||
+        offset == 0xC1FA38)
+    {
+        FLog(
+            "[ACHOOU RADAR DRAW RECT] "
+            "this=0x%lX "
+            "L=%.2f T=%.2f R=%.2f B=%.2f",
+            (unsigned long)offset,
+            posn.left,
+            posn.top,
+            posn.right,
+            posn.bottom
+        );
+    }
+
+    if (CSprite2d__DrawRect)
+    {
+        CSprite2d__DrawRect(
+            thiz,
+            posn,
+            color
+        );
+    }
+}
+
+
+
 // ============================================================
 // DRAW 8 FLOATS - RADAR DISC DEBUG
 // ============================================================

@@ -21,6 +21,18 @@ extern void (*CSprite2d__Draw4)(
     const CRGBA& color
 );
 
+extern void (*CSprite2d__DrawRect)(
+    CSprite2d* thiz,
+    const CRect& posn,
+    const CRGBA& color
+);
+
+void CSprite2d__DrawRect_hook(
+    CSprite2d* thiz,
+    const CRect& posn,
+    const CRGBA& color
+);
+
 void CSprite2d__Draw4_hook(
     CSprite2d* thiz,
     float x,

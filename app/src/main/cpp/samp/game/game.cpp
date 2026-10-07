@@ -725,6 +725,14 @@ CHook::InlineHook(
     &CSprite2d__SetTexture2_hook,
     &CSprite2d__SetTexture2
 );
+FLog("[INIT ORDER(CSPRITE:DRAW RECT)] Instalando hook Draw Rect [INLINE]");
+
+CHook::InlineHook(
+    "_ZN9CSprite2d4DrawERK5CRectRK5CRGBA",
+    &CSprite2d__DrawRect_hook,
+    &CSprite2d__DrawRect
+);
+
 FLog("[INIT ORDER(CSPRITE:DRAW4)] Instalando hook Draw4 [INLINE]");
 
 CHook::InlineHook(
