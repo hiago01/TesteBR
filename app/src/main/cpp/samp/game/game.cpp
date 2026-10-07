@@ -28,7 +28,7 @@ inline int FindFirstFreePlayerPedSlot()
 {
     for (uint8_t x = 2; x < PLAYER_PED_SLOTS; ++x) {
         if (!bUsedPlayerSlots[x]) {
-            FLog("Found free slot: %d", x);
+            FLog("> .. Found free slot: %d", x);
             return x;
         }
     }
