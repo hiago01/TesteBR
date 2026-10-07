@@ -874,7 +874,10 @@ void CSprite2d__DrawRadarDisc_hook(
     if (possibleRadar)
     {
         const float discScale = 2.90f;
-
+       a += 80.0f;
+c += 80.0f;
+e += 80.0f;
+g += 80.0f;
         const float centerX =
             (a + c + e + g) * 0.25f;
 
