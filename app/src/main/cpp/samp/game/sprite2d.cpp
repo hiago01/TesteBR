@@ -1140,34 +1140,71 @@ void CSprite2d__DrawRect_hook(
     }
 
     // TESTE 1: detectar SOMENTE o radardisc
-    if (texture &&
-        texture->name &&
-        strcmp(texture->name, "radardisc") == 0)
+if (texture &&
+    texture->name &&
+    strcmp(texture->name, "radardisc") == 0)
+{
+    CRect radarRect = posn;
+
+    const float centerX = 125.0f;
+    const float centerY = 112.5f;
+
+    const float scale = 1.02f;
+
+    float halfWidth =
+        (posn.right - posn.left) * 0.5f;
+
+    float halfHeight =
+        (posn.bottom - posn.top) * 0.5f;
+
+    halfWidth *= scale;
+    halfHeight *= scale;
+
+    radarRect.left =
+        centerX + (posn.left - centerX) * scale;
+
+    radarRect.right =
+        centerX + (posn.right - centerX) * scale;
+
+    radarRect.top =
+        centerY + (posn.top - centerY) * scale;
+
+    radarRect.bottom =
+        centerY + (posn.bottom - centerY) * scale;
+
+    static int radarDiscCount = 0;
+
+    if (radarDiscCount < 20)
     {
-        static int radarDiscCount = 0;
+        FLog(
+            "[RADARDISC TEST 1] #%d "
+            "OLD L=%.2f T=%.2f R=%.2f B=%.2f "
+            "NEW L=%.2f T=%.2f R=%.2f B=%.2f",
+            radarDiscCount + 1,
+            posn.left,
+            posn.top,
+            posn.right,
+            posn.bottom,
+            radarRect.left,
+            radarRect.top,
+            radarRect.right,
+            radarRect.bottom
+        );
 
-        if (radarDiscCount < 50)
-        {
-            FLog(
-                "[RADARDISC DETECTADO #%d] "
-                "this=%p texture=%p "
-                "L=%.2f T=%.2f R=%.2f B=%.2f "
-                "W=%.2f H=%.2f",
-                radarDiscCount + 1,
-                (void*)thiz,
-                (void*)texture,
-                posn.left,
-                posn.top,
-                posn.right,
-                posn.bottom,
-                posn.right - posn.left,
-                posn.bottom - posn.top
-            );
-
-            radarDiscCount++;
-        }
+        radarDiscCount++;
     }
 
+    if (CSprite2d__DrawRect)
+    {
+        CSprite2d__DrawRect(
+            thiz,
+            radarRect,
+            color
+        );
+    }
+
+    return;
+}
     // ORIGINAL — nenhuma alteração
     if (CSprite2d__DrawRect)
     {
