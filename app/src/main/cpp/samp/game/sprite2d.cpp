@@ -818,67 +818,6 @@ RwTexture* CSprite2d_GetCustomRadarDiscTexture()
 
 
 // ============================================================
-// RADAR DISC - DRAW8 ORIGINAL
-// ============================================================
-static CSprite2d* GetRadarSpriteFromHud()
-{
-    if (!g_libGTASA)
-        return nullptr;
-
-    uintptr_t holder =
-        *reinterpret_cast<uintptr_t*>(g_libGTASA + 0x850018);
-
-    if (!holder)
-        return nullptr;
-
-    return reinterpret_cast<CSprite2d*>(holder + 0x20);
-}
-
-void (*CSprite2d__DrawRadarDisc)(
-    CSprite2d*,
-    float,
-    float,
-    float,
-    float,
-    float,
-    float,
-    float,
-    float,
-    const CRGBA&
-) = nullptr;
-
-void CSprite2d__DrawRadarDisc_hook(
-    CSprite2d* thiz,
-    float a,
-    float b,
-    float c,
-    float d,
-    float e,
-    float f,
-    float g,
-    float h,
-    const CRGBA& color
-)
-{
-    // UMA ÚNICA chamada ao Draw original
-    if (CSprite2d__DrawRadarDisc)
-    {
-        CSprite2d__DrawRadarDisc(
-            thiz,
-            a,
-            b,
-            c,
-            d,
-            e,
-            f,
-            g,
-            h,
-            color
-        );
-    }
-}
-
-
 // ============================================================
 
 void (*CSprite2d__SetTexture)(
@@ -888,9 +827,6 @@ void (*CSprite2d__SetTexture)(
 
 
 // ============================================================
-// HOOK SETTEXTURE 1 ARGUMENTO
-// ============================================================
-
 void CSprite2d__SetTexture_hook(
     CSprite2d* thiz,
     char* name

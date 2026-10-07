@@ -725,11 +725,6 @@ CHook::InlineHook(
     &CSprite2d__SetTexture2_hook,
     &CSprite2d__SetTexture2
 );
-CHook::InlineHook(
-    "_ZN9CSprite2d4DrawEffffffffRK5CRGBA",
-    &CSprite2d__DrawRadarDisc_hook,
-    &CSprite2d__DrawRadarDisc
-);
 FLog("[INIT ORDER(CHud::Initialise)] ANTES CHud::Initialise 0x55C1C8");    
 CHook::CallFunction<void>(g_libGTASA + 0x55C1C8); // CHud::Initialise();
 FLog("[INIT ORDER] DEPOIS CHud::Initialise 0x55C1C8");   
