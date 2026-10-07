@@ -1149,7 +1149,7 @@ if (texture &&
     const float centerX = 125.0f;
     const float centerY = 112.5f;
 
-    const float scale = 1.02f;
+    const float scale = 1.10f;//1.02f normal tamanho
 
     float halfWidth =
         (posn.right - posn.left) * 0.5f;
