@@ -2275,8 +2275,7 @@ void TestPlayerClothesDescHG()
 {
     FLog("[CLOTHES TEST] ===== INICIO =====");
 
-    CPlayerPed* player = FindPlayerPed(-1);
-
+CPlayerPedGta* player = FindPlayerPed(-1);
     if (!player)
     {
         FLog("[CLOTHES TEST] player=NULL");
