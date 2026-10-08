@@ -2314,10 +2314,10 @@ void DebugRebuildStep4(CPlayerPedGta* player)
         g_libGTASA + 0xC3EBA0;
 
     using FnConstructPedModel =
-        uintptr_t (*)(unsigned int,
-                      void*,
-                      void*,
-                      bool);
+        bool (*)(unsigned int,
+                 void*,
+                 void*,
+                 bool);
 
     auto fn =
         reinterpret_cast<FnConstructPedModel>(
@@ -2329,7 +2329,26 @@ void DebugRebuildStep4(CPlayerPedGta* player)
         (void*)fn
     );
 
-    uintptr_t result =
+    FLog(
+        "[REBUILD DEBUG] modelId=%d",
+        static_cast<int>(modelId)
+    );
+
+    FLog(
+        "[REBUILD DEBUG] clothesDesc=%p",
+        (void*)clothesDesc
+    );
+
+    FLog(
+        "[REBUILD DEBUG] defaultClothes=%p",
+        (void*)defaultClothes
+    );
+
+    FLog(
+        "[REBUILD DEBUG] chamando ConstructPedModel..."
+    );
+
+    bool result =
         fn(
             static_cast<unsigned int>(
                 static_cast<uint16_t>(modelId)
@@ -2340,44 +2359,9 @@ void DebugRebuildStep4(CPlayerPedGta* player)
         );
 
     FLog(
-        "[REBUILD DEBUG] retorno bruto=0x%lX",
-        static_cast<unsigned long>(result)
+        "[REBUILD DEBUG] ConstructPedModel retornou=%d",
+        result ? 1 : 0
     );
-
-    FLog(
-        "[REBUILD DEBUG] retorno=%p",
-        reinterpret_cast<void*>(result)
-    );
-
-    if (result == 0)
-    {
-        FLog(
-            "[REBUILD DEBUG] ERRO: ConstructPedModel retornou NULL"
-        );
-    }
-    else
-    {
-        FLog(
-            "[REBUILD DEBUG] retorno nao-NULL"
-        );
-
-        uintptr_t gtaBase =
-            reinterpret_cast<uintptr_t>(g_libGTASA);
-
-        if (result >= gtaBase &&
-            result < gtaBase + 0x9000000)
-        {
-            FLog(
-                "[REBUILD DEBUG] retorno esta dentro da libGTASA - SUSPEITO"
-            );
-        }
-        else
-        {
-            FLog(
-                "[REBUILD DEBUG] retorno fora da libGTASA"
-            );
-        }
-    }
 
     FLog("[REBUILD DEBUG] ===== STEP 4 OK =====");
 }
