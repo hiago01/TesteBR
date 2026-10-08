@@ -1141,14 +1141,33 @@ if (thiz)
 
     if (offset == 0xC1FA30)
     {
+
+     CRect radarRect = posn;
+
+    const float borderScale = 1.30f;
+
+    float centerX = (posn.left + posn.right) * 0.5f;
+    float centerY = (posn.top + posn.bottom) * 0.5f;
+
+    float halfWidth = (posn.right - posn.left) * 0.5f;
+    float halfHeight = (posn.bottom - posn.top) * 0.5f;
+
+    halfWidth *= borderScale;
+    halfHeight *= borderScale;
+
+    radarRect.left   = centerX - halfWidth;
+    radarRect.right  = centerX + halfWidth;
+    radarRect.top    = centerY - halfHeight;
+    radarRect.bottom = centerY + halfHeight;
+  
     CRGBA radarColor = color;
 
     radarColor.r = 255;
-    radarColor.g = 0;
-    radarColor.b = 0;
+    radarColor.g = 255;
+    radarColor.b = 255;
     radarColor.a = 255;
 
-    FLog("[RADARDISC TEST] COR VERMELHA");
+    FLog("[RADARDISC TEST] COR BRANCA");
 
     if (CSprite2d__DrawRect)
     {
