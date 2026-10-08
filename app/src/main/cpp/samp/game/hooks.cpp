@@ -208,7 +208,7 @@ static void BeginRadarMove(
         oldRight  = rect->right;
         oldBottom = rect->bottom;
 
-	const float radarScale = 1.0f;//tamanho scale 2
+	const float radarScale = 0.70f;//tamanho scale 2
 
 	float centerX = (oldLeft + oldRight) * 0.5f;
 	float centerY = (oldTop + oldBottom) * 0.5f;
