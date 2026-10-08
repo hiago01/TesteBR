@@ -2315,9 +2315,16 @@ CPlayerPedGta* player = FindPlayerPed(-1);
         "[CLOTHES TEST] CPlayerPedData=%p",
         playerData
     );
-
-    CPedClothesDesc* clothes =
+ CPedClothesDesc* clothes =
         playerData->m_pPedClothesDesc;
+
+clothes->SetTextureAndModel(
+    "shortskhaki",
+    "shorts",
+    2
+);
+
+FLog("[CLOTHES TEST] component=2 alterado para shortskhaki/shorts");
 
     if (!clothes)
     {
