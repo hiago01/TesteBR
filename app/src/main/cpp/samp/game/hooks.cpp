@@ -2021,8 +2021,15 @@ size_t OS_FileRead_hook(OSFile a1, void *buffer, size_t numBytes)
 
     return OS_FileRead(a1, buffer, numBytes);
 }
+void (*RLEDecompress)(
+    uint8_t* pDest,
+    size_t uiDestSize,
+    const uint8_t* pSrc,
+    size_t uiSegSize,
+    uint32_t uiEscape
+) = nullptr;
 
-void (*RLEDecompress)(uint8_t* pDest, size_t uiDestSize, uint8_t const* pSrc, size_t uiSegSize, uint32_t uiEscape);
+
 void RLEDecompress_hook(
     uint8_t* pDest,
     size_t uiDestSize,
@@ -2031,105 +2038,82 @@ void RLEDecompress_hook(
     uint32_t uiEscape)
 {
     uintptr_t lr = 0;
-    asm volatile("mov %0, x30" : "=r"(lr));
+
+    asm volatile(
+        "mov %0, x30"
+        : "=r"(lr)
+    );
 
     static int count = 0;
-    int n = ++count;
-
-    if (n <= 30) {
-  /*      FLog(
-            "[RLED CALL #%d] caller=0x%lx offset=0x%lx src=%p dest=%p destSize=%zu seg=%zu escape=0x%X sourceSize=%u",
-            n,
-            (unsigned long)lr,
-            (unsigned long)(lr - g_libGTASA),
-            pSrc,
-            pDest,
-            uiDestSize,
-            uiSegSize,
-            uiEscape,
-            dwRLEDecompressSourceSize
-        );*/
-    }
-
-    if (!pDest || !pSrc || uiDestSize == 0 || uiSegSize == 0)
-        return;
-
-    const uint8_t* pTempSrc = pSrc;
-    const uint8_t* const pEndOfDest = pDest + uiDestSize;
+    const int n = ++count;
 
     /*
-     * IMPORTANTE:
-     * Mantemos temporariamente o comportamento original do hook.
-     * Nesta etapa estamos apenas identificando os CALLERS.
+     * Validação básica.
      */
-    const uint8_t* const pEndOfSrc =
-        pSrc + dwRLEDecompressSourceSize;
-
-    while (pDest < pEndOfDest && pTempSrc < pEndOfSrc)
+    if (!pDest ||
+        !pSrc ||
+        uiDestSize == 0 ||
+        uiSegSize == 0)
     {
-        if (*pTempSrc == uiEscape)
+        if (n <= 30)
         {
-            if (pTempSrc + 1 >= pEndOfSrc ||
-                pTempSrc[1] == 0 ||
-                pTempSrc + 2 + uiSegSize > pEndOfSrc)
-            {
-                if (n <= 30)
-            /*        FLog(
-                        "[RLED ERROR 1] caller=0x%lx offset=0x%lx",
-                        (unsigned long)lr,
-                        (unsigned long)(lr - g_libGTASA)
-                    );*/
-                return;
-            }
-
-            uint8_t ucCurSeg = pTempSrc[1];
-
-            while (ucCurSeg--)
-            {
-                if (pDest + uiSegSize > pEndOfDest)
-                {
-                    if (n <= 30)
-                       /* FLog(
-                            "[RLED ERROR 2] caller=0x%lx offset=0x%lx",
-                            (unsigned long)lr,
-                            (unsigned long)(lr - g_libGTASA)
-                        );*/
-                    return;
-                }
-
-                memcpy(pDest, pTempSrc + 2, uiSegSize);
-                pDest += uiSegSize;
-            }
-
-            pTempSrc += 2 + uiSegSize;
+            FLog(
+                "[RLED INVALID] #%d "
+                "dest=%p src=%p destSize=%zu segSize=%zu escape=0x%X",
+                n,
+                pDest,
+                pSrc,
+                uiDestSize,
+                uiSegSize,
+                uiEscape
+            );
         }
-        else
-        {
-            if (pDest + uiSegSize > pEndOfDest ||
-                pTempSrc + uiSegSize > pEndOfSrc)
-            {
-                if (n <= 30)
-                   /* FLog(
-                        "[RLED ERROR 3] caller=0x%lx offset=0x%lx src=%p sourceSize=%u destSize=%zu seg=%zu",
-                        (unsigned long)lr,
-                        (unsigned long)(lr - g_libGTASA),
-                        pSrc,
-                        dwRLEDecompressSourceSize,
-                        uiDestSize,
-                        uiSegSize
-                    );*/
-                return;
-            }
 
-            memcpy(pDest, pTempSrc, uiSegSize);
-            pDest += uiSegSize;
-            pTempSrc += uiSegSize;
-        }
+        return;
     }
 
-    dwRLEDecompressSourceSize = 0;
-}
 
+    /*
+     * Se a função original existe, usamos a implementação original.
+     *
+     * Isso evita alterar o comportamento normal do GTA.
+     */
+    if (RLEDecompress)
+    {
+        RLEDecompress(
+            pDest,
+            uiDestSize,
+            pSrc,
+            uiSegSize,
+            uiEscape
+        );
+
+        return;
+    }
+
+
+    /*
+     * Fallback somente se a função original não estiver disponível.
+     *
+     * IMPORTANTE:
+     * Não usamos mais dwRLEDecompressSourceSize
+     * como limite de leitura.
+     *
+     * Sem conhecer o tamanho real do buffer de origem,
+     * não é seguro inventar um pEndOfSrc.
+     */
+    if (n <= 30)
+    {
+        FLog(
+            "[RLED WARNING] Original RLEDecompress=NULL "
+            "caller=0x%lx offset=0x%lx",
+            (unsigned long)lr,
+            (unsigned long)(lr - g_libGTASA)
+        );
+    }
+
+    return;
+}
 void (*CGame_Process)();
 void CGame_Process_hook()
 {
