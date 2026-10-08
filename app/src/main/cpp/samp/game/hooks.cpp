@@ -2288,7 +2288,7 @@ CPlayerPedGta* player = FindPlayerPed(-1);
         player
     );
 
-    CPedGTA* ped = player->m_pPed;
+    CPlayerPedGta* ped = player->m_pPed;
 
     if (!ped)
     {
@@ -2380,7 +2380,7 @@ void TestPlayerClothesDesc()
         return;
     }
 
-    CPedGTA* ped = player->m_pPed;
+    CPlayerPedGta* ped = player->m_pPed;
 
     if (!ped)
     {
