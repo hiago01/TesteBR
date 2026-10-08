@@ -1133,118 +1133,16 @@ void CSprite2d__DrawRect_hook(
 )
 {
     RwTexture* texture = nullptr;
-
- //   if (thiz)
-   // {
-     //   texture = thiz->m_pTexture;
-   // }
-if (thiz)
-{
-    uintptr_t thisAddr = reinterpret_cast<uintptr_t>(thiz);
-    uintptr_t baseAddr = reinterpret_cast<uintptr_t>(g_libGTASA);
-
-    if (thisAddr >= baseAddr)
-    {
-        uintptr_t offset = thisAddr - baseAddr;
-
-        if (offset == 0xC1FA30)
-        {
-            FLog(
-                "[RADARDISC TEST] this=%p offset=0x%lX",
-                (void*)thiz,
-                (unsigned long)offset
-            );
-
-            FLog(
-                "[RADARDISC TEST] m_pTexture=%p",
-                (void*)thiz->m_pTexture
-            );
-        }
-    }
-}
-/*if (texture)
+if (texture == reinterpret_cast<RwTexture*>(0xb400007d555b2ab0))
 {
     FLog(
-        "[DRAWRECT] texture=%p name=%s",
-        (void*)texture,
-        texture->name ? texture->name : "(null)"
+        "[RADARDISC TEST] BLOQUEANDO DrawRect texture=%p",
+        (void*)texture
     );
-}
 
-	if (texture &&
-    texture->name &&
-    strcmp(texture->name, "radardisc") == 0)
-{
-    RwRaster* raster = texture->raster;
-
-    static int debugRadarInfo = 0;
-
-    if (debugRadarInfo < 10)
-    {
-        FLog(
-            "[RADARDISC INFO #%d] "
-            "texture=%p "
-            "name=%s "
-            "mask=%s "
-            "raster=%p "
-            "ref=%d "
-            "filterAddressing=0x%X",
-            debugRadarInfo + 1,
-            (void*)texture,
-            texture->name ? texture->name : "(null)",
-            texture->mask ? texture->mask : "(null)",
-            (void*)raster,
-            texture->refCount,
-            texture->filterAddressing
-        );
-
-        if (raster)
-        {
-            FLog(
-                "[RADARDISC RASTER #%d] "
-                "width=%d "
-                "height=%d "
-                "depth=%d "
-                "stride=%d "
-                "format=0x%X "
-                "flags=0x%X "
-                "cType=%d "
-                "cFlags=%d "
-                "cPrivateFlags=%d",
-                debugRadarInfo + 1,
-                raster->width,
-                raster->height,
-                raster->depth,
-                raster->stride,
-                raster->cFormat,
-                raster->cFlags,
-                raster->cType,
-                raster->cFlags,
-                raster->privateFlags
-            );
-        }
-
-        FLog(
-            "[RADARDISC RECT #%d] "
-            "L=%.2f "
-            "T=%.2f "
-            "R=%.2f "
-            "B=%.2f "
-            "W=%.2f "
-            "H=%.2f",
-            debugRadarInfo + 1,
-            posn.left,
-            posn.top,
-            posn.right,
-            posn.bottom,
-            posn.right - posn.left,
-            posn.bottom - posn.top
-        );
-
-        debugRadarInfo++;
-    }
-}*/
-    // Tudo que não for radardisc continua normal
+    return;
+} 
+   // Tudo que não for radardisc continua normal
     if (CSprite2d__DrawRect)
     {
         CSprite2d__DrawRect(
@@ -1254,82 +1152,6 @@ if (thiz)
         );
     }
 }
-
-/*void CSprite2d__DrawRect_hook(
-    CSprite2d* thiz,
-    const CRect& posn,
-    const CRGBA& color
-)
-{
-    uintptr_t thisAddr =
-        reinterpret_cast<uintptr_t>(thiz);
-
-    uintptr_t baseAddr =
-        reinterpret_cast<uintptr_t>(g_libGTASA);
-
-    uintptr_t offset = 0;
-
-    if (thisAddr >= baseAddr)
-        offset = thisAddr - baseAddr;
-
-static int radarDrawCount = 0;
-
-if (radarDrawCount < 20)
-{
-    FLog(
-        " [RADAR DRAW RECT #%d] "
-        "this=%p "
-        "L=%.2f T=%.2f R=%.2f B=%.2f "
-        "W=%.2f H=%.2f",
-        radarDrawCount + 1,
-        (void*)thiz,
-        posn.left,
-        posn.top,
-        posn.right,
-        posn.bottom,
-        posn.right - posn.left,
-        posn.bottom - posn.top
-    );
-
-    radarDrawCount++;
-}
-
-           FLog(
-            "[RADAR DRAW RECT] "
-            "this=0x%lX "
-            "L=%.2f T=%.2f R=%.2f B=%.2f",
-            (unsigned long)offset,
-            posn.left,
-            posn.top,
-            posn.right,
-            posn.bottom
-        );
-    if (offset == 0xC1FA30 ||
-        offset == 0xC1FA38)
-    {
-        FLog(
-            "[ACHOOU RADAR DRAW RECT] "
-            "this=0x%lX "
-            "L=%.2f T=%.2f R=%.2f B=%.2f",
-            (unsigned long)offset,
-            posn.left,
-            posn.top,
-            posn.right,
-            posn.bottom
-        );
-    }
-
-    if (CSprite2d__DrawRect)
-    {
-        CSprite2d__DrawRect(
-            thiz,
-            posn,
-            color
-        );
-    }
-}
-*/
-
 
 // ============================================================
 // DRAW 8 FLOATS - RADAR DISC DEBUG
