@@ -3249,7 +3249,7 @@ CHook::InlineHook(
 // Stage E: resolver RebuildPlayerIfNeeded por símbolo, sem usar o offset
 // desktop 0x5A8390 nem adivinhar um offset Android 2.10.
 CHook::InlineHook(
-    "_ZN8CClothes21RebuildPlayerIfNeededEP12CPlayerPedGta",
+"_ZN8CClothes21RebuildPlayerIfNeededEP10CPlayerPed",
     &CClothes__RebuildPlayerIfNeeded_hook,
     &CClothes__RebuildPlayerIfNeeded
 );
