@@ -2962,7 +2962,10 @@ static void CPedClothesDesc__SetTextureAndModel_hook(
 void TestPlayerClothesDesc()
 {
 FLog("[CLOTHES TEST] ===== PRE-CONSTRUCT =====");
-
+CPlayerPedGta* player = FindPlayerPed(-1);
+CPlayerPedData* playerData = player->m_pPlayerData;
+uintptr_t defaultClothes =
+        g_libGTASA + 0xC3EBA0;
 FLog(
     "[CLOTHES TEST] player clump=%p",
     reinterpret_cast<void*>(
@@ -2992,9 +2995,6 @@ FLog(
 FLog(
     "[CLOTHES TEST] ===== PRE-CONSTRUCT END ====="
 );
-
-	CPlayerPedGta* player = FindPlayerPed(-1);    
-CPlayerPedData* playerData = player->m_pPlayerData;
 
 uintptr_t base = reinterpret_cast<uintptr_t>(player);
 
