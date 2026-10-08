@@ -28,7 +28,12 @@
 #include "Renderer.h"
 #include "CrossHair.h"
 #include "World.h"
-
+#include "playerped.h"
+#include "Entity/CPedGTA.h"
+#include "PlayerPedData.h"
+#include "PedClothesDesc.h"
+#include "ClothesTest.h"
+//#include "CPedGTA.h"
 extern UI* pUI;
 extern CGame* pGame;
 extern CNetGame *pNetGame;
@@ -2266,6 +2271,69 @@ void InstallSpecialHooks()
 	CHook::InlineHook("_Z32_rxOpenGLDefaultAllInOneRenderCBP10RwResEntryPvhj", &rxOpenGLDefaultAllInOneRenderCB_hook, &rxOpenGLDefaultAllInOneRenderCB);
 	CHook::InlineHook("_ZN25CCustomBuildingDNPipeline18CustomPipeRenderCBEP10RwResEntryPvhj", &CCustomBuildingDNPipeline__CustomPipeRenderCB_hook, &CCustomBuildingDNPipeline__CustomPipeRenderCB);
 }
+void TestPlayerClothesDescHG()
+{
+    FLog("[CLOTHES TEST] ===== INICIO =====");
+
+    CPlayerPed* player = FindPlayerPed(-1);
+
+    if (!player)
+    {
+        FLog("[CLOTHES TEST] player=NULL");
+        FLog("[CLOTHES TEST] ===== FIM =====");
+        return;
+    }
+
+    FLog(
+        "[CLOTHES TEST] CPlayerPed=%p",
+        player
+    );
+
+    CPedGTA* ped = player->m_pPed;
+
+    if (!ped)
+    {
+        FLog("[CLOTHES TEST] m_pPed=NULL");
+        FLog("[CLOTHES TEST] ===== FIM =====");
+        return;
+    }
+
+    FLog(
+        "[CLOTHES TEST] CPedGTA=%p",
+        ped
+    );
+
+    CPlayerPedData* playerData = ped->m_pPlayerData;
+
+    if (!playerData)
+    {
+        FLog("[CLOTHES TEST] m_pPlayerData=NULL");
+        FLog("[CLOTHES TEST] ===== FIM =====");
+        return;
+    }
+
+    FLog(
+        "[CLOTHES TEST] CPlayerPedData=%p",
+        playerData
+    );
+
+    CPedClothesDesc* clothes =
+        playerData->m_pPedClothesDesc;
+
+    if (!clothes)
+    {
+        FLog("[CLOTHES TEST] m_pPedClothesDesc=NULL");
+        FLog("[CLOTHES TEST] ===== FIM =====");
+        return;
+    }
+
+    FLog(
+        "[CLOTHES TEST] CPedClothesDesc=%p",
+        clothes
+    );
+
+    FLog("[CLOTHES TEST] ===== FIM =====");
+}
 static void (*CPedClothesDesc__SetTextureAndModel)(
         void* pThis,
         const char* texture,
@@ -2279,35 +2347,20 @@ static void CPedClothesDesc__SetTextureAndModel_hook(
         const char* model,
         int component)
 {
-    if (texture)
-    {
-        FLog(
-            "[CLOTHES] SetTextureAndModel this=%p texture=%s model=%s component=%d",
-            pThis,
-            texture,
-            model ? model : "(null)",
-            component
-        );
-	if (component == 2)
-    {
-        texture = "shortskhaki";
-        model = "shorts";
+    FLog(
+        "[CLOTHES] this=%p texture=%s model=%s component=%d",
+        pThis,
+        texture ? texture : "(null)",
+        model ? model : "(null)",
+        component
+    );
 
-        FLog(
-            "[CLOTHES TEST] component=2 -> texture=%s model=%s",
-            texture,
-            model
-        );
-    }
-    }
-    else
+    static bool tested = false;
+
+    if (!tested)
     {
-        FLog(
-            "[CLOTHES] SetTextureAndModel this=%p texture=(null) model=%s component=%d",
-            pThis,
-            model ? model : "(null)",
-            component
-        );
+        tested = true;
+        TestPlayerClothesDesc();
     }
 
     CPedClothesDesc__SetTextureAndModel(
@@ -2315,6 +2368,44 @@ static void CPedClothesDesc__SetTextureAndModel_hook(
         texture,
         model,
         component
+    );
+}
+
+void TestPlayerClothesDesc()
+{
+    CPlayerPed* player = FindPlayerPed(-1);
+
+    if (!player)
+    {
+        FLog("[CLOTHES TEST] player=NULL");
+        return;
+    }
+
+    CPedGTA* ped = player->m_pPed;
+
+    if (!ped)
+    {
+        FLog("[CLOTHES TEST] m_pPed=NULL");
+        return;
+    }
+
+    CPlayerPedData* playerData = ped->m_pPlayerData;
+
+    if (!playerData)
+    {
+        FLog("[CLOTHES TEST] m_pPlayerData=NULL");
+        return;
+    }
+
+    CPedClothesDesc* clothes =
+        playerData->m_pPedClothesDesc;
+
+    FLog(
+        "[CLOTHES TEST] player=%p ped=%p playerData=%p clothes=%p",
+        player,
+        ped,
+        playerData,
+        clothes
     );
 }
 #include <EGL/egl.h>

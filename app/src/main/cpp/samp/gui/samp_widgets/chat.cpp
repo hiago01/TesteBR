@@ -6,6 +6,7 @@
 #include "../settings.h"
 #include "java/jniutil.h"
 #include "../../game/sprite2d.h"
+#include "../../game/ClothesTest.h"
 extern UI* pUI;
 extern CGame* pGame;
 extern CNetGame* pNetGame;
@@ -124,7 +125,26 @@ if (input.length() > 0 && pNetGame)
 
                 return;
         }
+if (input == "/testeclothes")
+        {
+            TestPlayerClothesDesc();
 
+            addDebugMessage(
+                "[CLOTHES TEST] Verifique o samp.log"
+            );
+
+            return;
+        }
+if (input == "/testeclothes2")
+        {
+            TestPlayerClothesDescHG();
+
+            addDebugMessage(
+                "[CLOTHES TEST] Verifique o samp.log"
+            );
+
+            return;
+        }
              if (input[0] == '/')
                 pNetGame->SendChatCommand(input.c_str());
                 else
