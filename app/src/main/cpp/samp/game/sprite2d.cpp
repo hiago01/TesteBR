@@ -1140,23 +1140,26 @@ void CSprite2d__DrawRect_hook(
    // }
 if (thiz)
 {
-    uintptr_t offset =
-        reinterpret_cast<uintptr_t>(thiz) -
-        reinterpret_cast<uintptr_t>(g_libGTASA);
+    uintptr_t thisAddr = reinterpret_cast<uintptr_t>(thiz);
+    uintptr_t baseAddr = reinterpret_cast<uintptr_t>(g_libGTASA);
 
-    if (offset == 0xC1FA30)
+    if (thisAddr >= baseAddr)
     {
-        FLog(
-            "[RADARDISC TEST] ENCONTROU thiz=%p offset=0x%lX texture=%p name=%s",
-            (void*)thiz,
-            (unsigned long)offset,
-            (void*)texture,
-            (texture && texture->name)
-                ? texture->name
-                : "(sem nome)"
-        );
+        uintptr_t offset = thisAddr - baseAddr;
 
-        return;
+        if (offset == 0xC1FA30)
+        {
+            FLog(
+                "[RADARDISC TEST] this=%p offset=0x%lX",
+                (void*)thiz,
+                (unsigned long)offset
+            );
+
+            FLog(
+                "[RADARDISC TEST] m_pTexture=%p",
+                (void*)thiz->m_pTexture
+            );
+        }
     }
 }
 /*if (texture)
