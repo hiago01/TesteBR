@@ -2272,6 +2272,109 @@ void InstallSpecialHooks()
 	CHook::InlineHook("_Z32_rxOpenGLDefaultAllInOneRenderCBP10RwResEntryPvhj", &rxOpenGLDefaultAllInOneRenderCB_hook, &rxOpenGLDefaultAllInOneRenderCB);
 	CHook::InlineHook("_ZN25CCustomBuildingDNPipeline18CustomPipeRenderCBEP10RwResEntryPvhj", &CCustomBuildingDNPipeline__CustomPipeRenderCB_hook, &CCustomBuildingDNPipeline__CustomPipeRenderCB);
 }
+
+//////============================×==================//
+static constexpr uintptr_t ADDR_ANIM_EXTRACT = 0x46AEF4;
+static constexpr uintptr_t ADDR_GET_TASK_SECONDARY = 0x21D590;
+
+void DebugRebuildStep1(CPlayerPedGta* player)
+{
+    FLog("[REBUILD DEBUG] ===== STEP 1 =====");
+
+    if (!player)
+    {
+        FLog("[REBUILD DEBUG] player=NULL");
+        return;
+    }
+
+    uintptr_t ped =
+        reinterpret_cast<uintptr_t>(player);
+
+    uintptr_t clump =
+        *reinterpret_cast<uintptr_t*>(ped + 0x20);
+
+    uintptr_t taskManager =
+        *reinterpret_cast<uintptr_t*>(ped + 0x538);
+
+    uintptr_t playerData =
+        *reinterpret_cast<uintptr_t*>(ped + 0x540);
+
+    FLog(
+        "[REBUILD DEBUG] ped=%p",
+        (void*)ped
+    );
+
+    FLog(
+        "[REBUILD DEBUG] clump=%p",
+        (void*)clump
+    );
+
+    FLog(
+        "[REBUILD DEBUG] taskManager=%p",
+        (void*)taskManager
+    );
+
+    FLog(
+        "[REBUILD DEBUG] playerData=%p",
+        (void*)playerData
+    );
+
+    if (!clump)
+    {
+        FLog("[REBUILD DEBUG] ERRO clump=NULL");
+        return;
+    }
+
+    if (!taskManager)
+    {
+        FLog("[REBUILD DEBUG] ERRO taskManager=NULL");
+        return;
+    }
+
+    // ---------------------------------------------------------
+    // NÃO chamar ExtractAssociations ainda.
+    // Ele é destrutivo.
+    // ---------------------------------------------------------
+
+    FLog(
+        "[REBUILD DEBUG] ExtractAssociations seria chamado aqui: %p",
+        (void*)(g_libGTASA + ADDR_ANIM_EXTRACT)
+    );
+
+    // ---------------------------------------------------------
+    // GetTaskSecondary(5)
+    //
+    // Native:
+    //
+    // ldr x8,[player+0x538]
+    // add x0,x8,#8
+    // mov w1,#5
+    // bl GetTaskSecondary
+    // ---------------------------------------------------------
+
+    using FnGetTaskSecondary =
+        void* (*)(void*, int);
+
+    auto getTaskSecondary =
+        reinterpret_cast<FnGetTaskSecondary>(
+            g_libGTASA + ADDR_GET_TASK_SECONDARY
+        );
+
+    void* task =
+        getTaskSecondary(
+            reinterpret_cast<void*>(taskManager + 0x8),
+            5
+        );
+
+    FLog(
+        "[REBUILD DEBUG] GetTaskSecondary(5)=%p",
+        task
+    );
+
+    FLog("[REBUILD DEBUG] ===== STEP 1 OK =====");
+}
+///////////////////////////////////////////////////
+
 static constexpr uintptr_t ADDR_ANIM_GET_NUM_ASSOC = 0x46AE54;
 
 void DebugPlayerAnimState(CPlayerPedGta* player)
@@ -2481,11 +2584,12 @@ CPlayerPedGta* player = FindPlayerPed(-1);
         FLog("[CLOTHES TEST] ===== FIM =====");
         return;
     }
-DebugPlayerAnimState(player);
-    FLog(
-        "[CLOTHES TEST] CPlayerPed=%p",
-        player
-    );
+DebugRebuildStep1(player);
+    //DebugPlayerAnimState(player);
+   // FLog(
+       // "[CLOTHES TEST] CPlayerPed=%p",
+     //   player
+    //);
 
   /*  CPlayerPedGta* ped = player->m_pPed;
 
