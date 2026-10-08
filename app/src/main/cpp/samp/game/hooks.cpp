@@ -2826,6 +2826,8 @@ static constexpr uintptr_t ADDR_CLOTHES_REBUILD_PLAYER = 0x540CDC;
 
 void RebuildPlayerClothes(CPlayerPedGta* player)
 {
+    // Mantido para os outros testes existentes. O teste Stage E abaixo
+    // NÃO chama este wrapper nem o offset 0x540CDC.
     if (!player)
     {
         FLog("[CLOTHES REBUILD] ERRO: player nulo");
@@ -2833,19 +2835,31 @@ void RebuildPlayerClothes(CPlayerPedGta* player)
     }
 
     using Fn = void (*)(CPlayerPedGta*, bool);
-
-    auto fn = reinterpret_cast<Fn>(
-        g_libGTASA + ADDR_CLOTHES_REBUILD_PLAYER
-    );
-
-    FLog(
-        "[CLOTHES REBUILD] chamando RebuildPlayer this=%p",
-        player
-    );
-
+    auto fn = reinterpret_cast<Fn>(g_libGTASA + ADDR_CLOTHES_REBUILD_PLAYER);
+    FLog("[CLOTHES REBUILD] chamando RebuildPlayer this=%p", player);
     fn(player, false);
-
     FLog("[CLOTHES REBUILD] RebuildPlayer concluido");
+}
+
+// Stage E: RebuildPlayerIfNeeded. Não inventamos offset Android para esta
+// função: resolvemos pelo símbolo nativo e só chamamos se o hook fornecer
+// um trampoline válido. A disponibilidade do símbolo precisa ser confirmada
+// no log do aparelho.
+static void (*CClothes__RebuildPlayerIfNeeded)(CPlayerPedGta* player) = nullptr;
+
+static void CClothes__RebuildPlayerIfNeeded_hook(CPlayerPedGta* player)
+{
+    FLog("[CLOTHES IFNEEDED] ENTER player=%p original=%p",
+         player, (void*)CClothes__RebuildPlayerIfNeeded);
+
+    if (!CClothes__RebuildPlayerIfNeeded)
+    {
+        FLog("[CLOTHES IFNEEDED] original NULL; ignorando chamada do hook");
+        return;
+    }
+
+    CClothes__RebuildPlayerIfNeeded(player);
+    FLog("[CLOTHES IFNEEDED] RETURN");
 }
 void TestPlayerClothesDescHG()
 {
@@ -3151,145 +3165,74 @@ static void CPedClothesDesc__SetTextureAndModel_hook(
 
 void TestPlayerClothesDesc()
 {
-    FLog("[CLOTHES TEST] ===== INICIO =====");
+    FLog("[CLOTHES TEST E] ===== INICIO IFNEEDED =====");
 
     CPlayerPedGta* player = FindPlayerPed(-1);
     if (!player)
     {
-        FLog("[CLOTHES TEST] player=NULL");
-        FLog("[CLOTHES TEST] ===== FIM =====");
+        FLog("[CLOTHES TEST E] player=NULL");
+        FLog("[CLOTHES TEST E] ===== FIM =====");
         return;
     }
 
     CPlayerPedData* playerData = player->m_pPlayerData;
     if (!playerData)
     {
-        FLog("[CLOTHES TEST] playerData=NULL");
-        FLog("[CLOTHES TEST] ===== FIM =====");
+        FLog("[CLOTHES TEST E] playerData=NULL");
+        FLog("[CLOTHES TEST E] ===== FIM =====");
         return;
     }
 
     CPedClothesDesc* clothes = playerData->m_pPedClothesDesc;
     if (!clothes)
     {
-        FLog("[CLOTHES TEST] clothesDesc=NULL");
-        FLog("[CLOTHES TEST] ===== FIM =====");
+        FLog("[CLOTHES TEST E] clothesDesc=NULL");
+        FLog("[CLOTHES TEST E] ===== FIM =====");
         return;
     }
 
-    uintptr_t ped = reinterpret_cast<uintptr_t>(player);
+    FLog("[CLOTHES TEST E] player=%p playerData=%p clothes=%p",
+         player, playerData, clothes);
+    DumpClothesBrief("E_BEFORE", clothes);
 
-    uintptr_t clump =
-        *reinterpret_cast<uintptr_t*>(ped + 0x20);
-
-    uintptr_t field538 =
-        *reinterpret_cast<uintptr_t*>(ped + 0x538);
-
-    uintptr_t field540 =
-        *reinterpret_cast<uintptr_t*>(ped + 0x540);
-
-    int16_t modelId =
-        *reinterpret_cast<int16_t*>(ped + 0x32);
-
-    uintptr_t defaultClothes =
-        g_libGTASA + 0xC3EBA0;
-
-    FLog(
-        "[CLOTHES TEST] player=%p",
-        (void*)player
-    );
-
-    FLog(
-        "[CLOTHES TEST] clump=%p",
-        (void*)clump
-    );
-
-    FLog(
-        "[CLOTHES TEST] taskManager=%p",
-        (void*)field538
-    );
-
-    FLog(
-        "[CLOTHES TEST] playerData=%p",
-        (void*)field540
-    );
-
-    FLog(
-        "[CLOTHES TEST] clothes=%p",
-        (void*)clothes
-    );
-
-    FLog(
-        "[CLOTHES TEST] modelId=%d (0x%X)",
-        static_cast<int>(modelId),
-        static_cast<unsigned int>(
-            static_cast<uint16_t>(modelId)
-        )
-    );
-
-    FLog(
-        "[CLOTHES TEST] defaultClothes=%p",
-        (void*)defaultClothes
-    );
-
-    if (field540)
+    // Não continuamos se o símbolo original do setter não foi resolvido.
+    if (!CPedClothesDesc__SetTextureAndModel)
     {
-        uintptr_t clothesFrom540 =
-            *reinterpret_cast<uintptr_t*>(field540 + 0x08);
-
-        FLog(
-            "[CLOTHES DEBUG] *(player+0x540)=%p *(+0x08)=%p expected=%p",
-            (void*)field540,
-            (void*)clothesFrom540,
-            (void*)clothes
-        );
+        FLog("[CLOTHES TEST E] setter original NULL; roupa NÃO alterada");
+        FLog("[CLOTHES TEST E] ===== FIM =====");
+        return;
     }
 
-    FLog(
-        "[CLOTHES DEBUG] player=%p +20=%p +32=%d +538=%p +540=%p",
-        (void*)ped,
-        (void*)clump,
-        static_cast<int>(modelId),
-        (void*)field538,
-        (void*)field540
+    if (!CClothes__RebuildPlayerIfNeeded)
+    {
+        FLog("[CLOTHES TEST E] RebuildPlayerIfNeeded original NULL");
+        FLog("[CLOTHES TEST E] Não vou alterar o descritor sem a função pronta");
+        FLog("[CLOTHES TEST E] ===== FIM =====");
+        return;
+    }
+
+    // Teste apenas do componente 2 (shorts). O descritor permanece alterado
+    // para que possamos observar se o jogo atualiza o visual naturalmente.
+    FLog("[CLOTHES TEST E] aplicando shortskhaki/shorts component=2");
+    CPedClothesDesc__SetTextureAndModel(
+        clothes,
+        "shortskhaki",
+        "shorts",
+        2
     );
 
-    // ------------------------------------------------------------
-    // ETAPA D - TESTE CONTROLADO DE REBUILDPLAYER SEM MUDAR A ROUPA.
-    // Usa o descritor original exatamente como está. Não chama
-    // SetTextureAndModel nem altera qualquer slot de roupa.
-    // O RebuildPlayer opera no personagem real, portanto ainda existe
-    // risco de crash; este teste serve para separar a reconstrução normal
-    // do caso em que o descritor foi alterado.
-    // ------------------------------------------------------------
-    uint8_t activeBefore[0x78];
-    uint8_t defaultBefore[0x78];
-    std::memcpy(activeBefore, clothes, sizeof(activeBefore));
-    std::memcpy(defaultBefore, reinterpret_cast<void*>(defaultClothes), sizeof(defaultBefore));
+    DumpClothesBrief("E_AFTER_SET", clothes);
 
-    FLog("[CLOTHES TEST D] ===== REBUILDPLAYER ORIGINAL =====");
-    FLog("[CLOTHES TEST D] NÃO altera SetTextureAndModel; roupa original preservada");
-    FLog("[CLOTHES TEST D] player=%p clump=%p clothes=%p default=%p modelId=%d",
-         player, (void*)clump, clothes, (void*)defaultClothes, static_cast<int>(modelId));
-    DumpClothesBrief("D_ACTIVE_BEFORE", clothes);
-    DumpClothesBrief("D_DEFAULT_BEFORE", reinterpret_cast<void*>(defaultClothes));
-clothes->SetTextureAndModel(
-    "shortskhaki",
-    "shorts",
-    2
-);
-    // Ativa logs dos hooks de construção apenas durante esta chamada.
+    // Esta função pode reconstruir apenas quando detecta diferença de fat/muscle.
+    // Portanto, não ver a roupa mudar NÃO prova que o símbolo/offset esteja errado.
     g_ClothesBuildDebugActive = true;
-    FLog("[CLOTHES TEST D] chamando RebuildPlayer(player, false) UMA vez");
-    RebuildPlayerClothes(player);
+    FLog("[CLOTHES TEST E] chamando RebuildPlayerIfNeeded(player)");
+    CClothes__RebuildPlayerIfNeeded(player);
     g_ClothesBuildDebugActive = false;
 
-    bool activeUnchanged = (std::memcmp(activeBefore, clothes, sizeof(activeBefore)) == 0);
-    bool defaultUnchanged = (std::memcmp(defaultBefore, reinterpret_cast<void*>(defaultClothes), sizeof(defaultBefore)) == 0);
-    FLog("[CLOTHES TEST D] active descriptor unchanged=%d", activeUnchanged ? 1 : 0);
-    FLog("[CLOTHES TEST D] native default descriptor unchanged=%d", defaultUnchanged ? 1 : 0);
-    FLog("[CLOTHES TEST D] ===== FIM REBUILDPLAYER ORIGINAL =====");
-
+    DumpClothesBrief("E_AFTER_IFNEEDED", clothes);
+    FLog("[CLOTHES TEST E] retorno da chamada; ver samplog para CONSTRUCT/BUILD");
+    FLog("[CLOTHES TEST E] ===== FIM =====");
 }
 
 #include <EGL/egl.h>
@@ -3303,6 +3246,15 @@ CHook::InlineHook(
     &CPedClothesDesc__SetTextureAndModel_hook,
     &CPedClothesDesc__SetTextureAndModel
 );
+// Stage E: resolver RebuildPlayerIfNeeded por símbolo, sem usar o offset
+// desktop 0x5A8390 nem adivinhar um offset Android 2.10.
+CHook::InlineHook(
+    "_ZN8CClothes21RebuildPlayerIfNeededEP12CPlayerPedGta",
+    &CClothes__RebuildPlayerIfNeeded_hook,
+    &CClothes__RebuildPlayerIfNeeded
+);
+FLog("[CLOTHES IFNEEDED] trampoline=%p",
+     (void*)CClothes__RebuildPlayerIfNeeded);
 // Clothing diagnostics: ConstructPedModel is hooked by exact native offset
 // to avoid dependency on a possible symbol/mangling variation.
 CHook::InlineHook(
