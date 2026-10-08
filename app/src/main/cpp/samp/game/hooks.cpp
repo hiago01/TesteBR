@@ -2306,7 +2306,39 @@ void DebugRebuildStep4(CPlayerPedGta* player)
         FLog("[REBUILD DEBUG] clothesDesc=NULL");
         return;
     }
+FLog("[CLOTHES DESC] ===== DUMP =====");
 
+for (int i = 0; i < 10; i++)
+{
+    uint32_t model =
+        *reinterpret_cast<uint32_t*>(
+            clothesDesc + (i * 4)
+        );
+
+    FLog(
+        "[CLOTHES DESC] model[%d] = 0x%08X (%u)",
+        i,
+        model,
+        model
+    );
+}
+
+for (int i = 0; i < 18; i++)
+{
+    uint32_t texture =
+        *reinterpret_cast<uint32_t*>(
+            clothesDesc + 0x28 + (i * 4)
+        );
+
+    FLog(
+        "[CLOTHES DESC] texture[%d] = 0x%08X (%u)",
+        i,
+        texture,
+        texture
+    );
+}
+
+FLog("[CLOTHES DESC] ===== FIM DUMP =====");
     int16_t modelId =
         *reinterpret_cast<int16_t*>(ped + 0x32);
 
