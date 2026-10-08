@@ -141,9 +141,6 @@ void ApplyPatches_level0()
 
     //CHook::RET("_ZN6CTrain10InitTrainsEv"); // CTrain::InitTrains (เริ่มต้นรถไฟ)
 
-    CHook::RET("_ZN8CClothes4InitEv"); // CClothes::Init() (เริ่มต้นเสื้อผ้า)
-    CHook::RET("_ZN8CClothes13RebuildPlayerEP10CPlayerPedb"); // CClothes::RebuildPlayer (สร้างผู้เล่นใหม่)
-
     CHook::RET("_ZNK35CPedGroupDefaultTaskAllocatorRandom20AllocateDefaultTasksEP9CPedGroupP4CPed"); // AllocateDefaultTasks (จัดสรรงานเริ่มต้น)
     CHook::RET("_ZN6CGlass4InitEv"); // CGlass::Init (เริ่มต้นกระจก)
     CHook::RET("_ZN8CGarages17Init_AfterRestartEv"); // CGarages::Init_AfterRestart (เริ่มต้นโรงรถหลังรีสตาร์ท)

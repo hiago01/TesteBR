@@ -2178,7 +2178,6 @@ void InjectHooks()
     FLog("InjectHooks");
     CHook::Write(g_libGTASA + 0x84F2D0, &Scene);
 
-    CHook::RET("_ZN11CPlayerInfo14LoadPlayerSkinEv");
     CHook::RET("_ZN11CPopulation10InitialiseEv");
 
     CCustomCarEnvMapPipeline::InjectHooks();
