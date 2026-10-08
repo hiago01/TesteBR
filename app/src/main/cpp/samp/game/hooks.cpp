@@ -2272,7 +2272,84 @@ void InstallSpecialHooks()
 	CHook::InlineHook("_Z32_rxOpenGLDefaultAllInOneRenderCBP10RwResEntryPvhj", &rxOpenGLDefaultAllInOneRenderCB_hook, &rxOpenGLDefaultAllInOneRenderCB);
 	CHook::InlineHook("_ZN25CCustomBuildingDNPipeline18CustomPipeRenderCBEP10RwResEntryPvhj", &CCustomBuildingDNPipeline__CustomPipeRenderCB_hook, &CCustomBuildingDNPipeline__CustomPipeRenderCB);
 }
+////////////////////////-------------------------------------
+void DebugRebuildStep2(CPlayerPedGta* player)
+{
+    FLog("[REBUILD DEBUG] ===== STEP 2 =====");
 
+    if (!player)
+    {
+        FLog("[REBUILD DEBUG] player=NULL");
+        return;
+    }
+
+    uintptr_t ped =
+        reinterpret_cast<uintptr_t>(player);
+
+    uintptr_t vtable =
+        *reinterpret_cast<uintptr_t*>(ped);
+
+    FLog(
+        "[REBUILD DEBUG] ped=%p",
+        (void*)ped
+    );
+
+    FLog(
+        "[REBUILD DEBUG] vtable=%p",
+        (void*)vtable
+    );
+
+    if (!vtable)
+    {
+        FLog("[REBUILD DEBUG] ERRO: vtable=NULL");
+        return;
+    }
+
+    uintptr_t method48 =
+        *reinterpret_cast<uintptr_t*>(
+            vtable + 0x48
+        );
+
+    FLog(
+        "[REBUILD DEBUG] vtable+0x48=%p",
+        (void*)method48
+    );
+
+    if (!method48)
+    {
+        FLog(
+            "[REBUILD DEBUG] ERRO: método vtable+0x48=NULL"
+        );
+        return;
+    }
+
+    // Verificar se o endereço pertence à libGTASA.
+    uintptr_t gtaBase =
+        reinterpret_cast<uintptr_t>(g_libGTASA);
+
+    uintptr_t gtaEnd =
+        gtaBase + 0x9000000;
+
+    if (method48 >= gtaBase && method48 < gtaEnd)
+    {
+        FLog(
+            "[REBUILD DEBUG] método parece estar dentro de libGTASA"
+        );
+
+        FLog(
+            "[REBUILD DEBUG] offset GTA=0x%lX",
+            (unsigned long)(method48 - gtaBase)
+        );
+    }
+    else
+    {
+        FLog(
+            "[REBUILD DEBUG] método FORA da faixa estimada da libGTASA"
+        );
+    }
+
+    FLog("[REBUILD DEBUG] ===== STEP 2 OK =====");
+}
 //////============================×==================//
 static constexpr uintptr_t ADDR_ANIM_EXTRACT = 0x46AEF4;
 static constexpr uintptr_t ADDR_GET_TASK_SECONDARY = 0x21D590;
@@ -2585,6 +2662,7 @@ CPlayerPedGta* player = FindPlayerPed(-1);
         return;
     }
 DebugRebuildStep1(player);
+DebugRebuildStep2(player);
     //DebugPlayerAnimState(player);
    // FLog(
        // "[CLOTHES TEST] CPlayerPed=%p",
