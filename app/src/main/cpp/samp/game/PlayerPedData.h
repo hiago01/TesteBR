@@ -7,10 +7,11 @@
 
 #include "common.h"
 struct CEntityGTA;
+class CPedClothesDesc;
 class CPlayerPedData {
 public:
     uintptr*         m_pWanted;
-    uintptr*         m_pPedClothesDesc;
+    CPedClothesDesc* m_pPedClothesDesc;
     uintptr*         m_pArrestingCop;
     CVector2D        m_vecFightMovement;
     float            m_fMoveBlendRatio;

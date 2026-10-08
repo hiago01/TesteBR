@@ -2266,13 +2266,56 @@ void InstallSpecialHooks()
 	CHook::InlineHook("_Z32_rxOpenGLDefaultAllInOneRenderCBP10RwResEntryPvhj", &rxOpenGLDefaultAllInOneRenderCB_hook, &rxOpenGLDefaultAllInOneRenderCB);
 	CHook::InlineHook("_ZN25CCustomBuildingDNPipeline18CustomPipeRenderCBEP10RwResEntryPvhj", &CCustomBuildingDNPipeline__CustomPipeRenderCB_hook, &CCustomBuildingDNPipeline__CustomPipeRenderCB);
 }
+static void (*CPedClothesDesc__SetTextureAndModel)(
+        void* pThis,
+        const char* texture,
+        const char* model,
+        int component
+);
 
+static void CPedClothesDesc__SetTextureAndModel_hook(
+        void* pThis,
+        const char* texture,
+        const char* model,
+        int component)
+{
+    if (texture)
+    {
+        FLog(
+            "[CLOTHES] SetTextureAndModel this=%p texture=%s model=%s component=%d",
+            pThis,
+            texture,
+            model ? model : "(null)",
+            component
+        );
+    }
+    else
+    {
+        FLog(
+            "[CLOTHES] SetTextureAndModel this=%p texture=(null) model=%s component=%d",
+            pThis,
+            model ? model : "(null)",
+            component
+        );
+    }
+
+    CPedClothesDesc__SetTextureAndModel(
+        pThis,
+        texture,
+        model,
+        component
+    );
+}
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>   // If using OpenGL ES 2.0 or 3.0
 void SetUpGLHooks();
 void InstallHooks()
 {
-
+CHook::InlineHook(
+    "_ZN15CPedClothesDesc18SetTextureAndModelEPKcS1_i",
+    &CPedClothesDesc__SetTextureAndModel_hook,
+    &CPedClothesDesc__SetTextureAndModel
+);
 /*FLog("[RADAR DEBUG] ANTES CHud::Initialise hook");
 CHook::InlineHook(
     g_libGTASA + 0x55C1C8,
