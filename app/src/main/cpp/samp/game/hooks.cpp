@@ -1,5 +1,7 @@
 #include <GLES2/gl2.h>
 #include <cstring>
+#include <atomic>
+#include <mutex>
 #include "../main.h"
 #include "../vendor/armhook/patch.h"
 #include "game.h"
@@ -40,6 +42,23 @@ extern UI* pUI;
 extern CGame* pGame;
 extern CNetGame *pNetGame;
 extern MaterialTextGenerator* pMaterialTextGenerator;
+
+// Clothing changes are queued by /testeclothes and applied only after the
+// original CGame::Process call returns. The descriptor mutation and native
+// RebuildPlayer call therefore run together on the game-processing thread.
+struct PendingPlayerClothesRequest
+{
+    CPlayerPedGta* player = nullptr;
+    bool applyClothesChange = false;
+    const char* texture = nullptr; // test uses string literals with static lifetime
+    const char* model = nullptr;
+    int component = -1;
+};
+
+static std::mutex g_PendingClothesMutex;
+static PendingPlayerClothesRequest g_PendingClothesRequest{};
+static std::atomic<bool> g_ClothesBuildDebugActive{false};
+static void ProcessPendingPlayerClothesRebuild();
 
 uint8_t byteInternalPlayer = 0;
 CPedGTA* dwCurPlayerActor = 0;
@@ -2153,6 +2172,27 @@ void CGame_Process_hook()
     }
 }
 
+// Dedicated CGame::Process hook for clothes only. Do not enable the older
+// CGame_Process_hook above: it also processes unrelated objects/textdraws.
+// Always call the original first; only then drain a queued clothes request.
+static void (*CGame_Process_ClothesDeferredOriginal)() = nullptr;
+static void CGame_Process_ClothesDeferred_hook()
+{
+    if (!CGame_Process_ClothesDeferredOriginal)
+    {
+        // No safe fallback exists if InstallPLT failed to capture the original.
+        // The installer logs this; this path should never be reached normally.
+        return;
+    }
+
+    CGame_Process_ClothesDeferredOriginal();
+
+    if (pGame && pGame->bIsGameExiting)
+        return;
+
+    ProcessPendingPlayerClothesRebuild();
+}
+
 float (*CDraw__SetFOV)(float thiz, float a2);
 float CDraw__SetFOV_hook(float thiz, float a2)
 {
@@ -2823,43 +2863,65 @@ void DebugPlayerAnimState(CPlayerPedGta* player)
     FLog("[ANIM DEBUG] ===== FIM =====");
 }
 static constexpr uintptr_t ADDR_CLOTHES_REBUILD_PLAYER = 0x540CDC;
+static constexpr uintptr_t ADDR_CLOTHES_CONSTRUCT_PED_MODEL = 0x541764;
+static constexpr uintptr_t ADDR_CLOTHES_BUILDER_CREATE_SKINNED_CLUMP = 0x5424F0;
+static constexpr uintptr_t ADDR_CLOTHES_BUILDER_GET_CLOTHES_TEXTURE = 0x5437B8;
 
-void RebuildPlayerClothes(CPlayerPedGta* player)
+static void (*CPedClothesDesc__SetTextureAndModel)(
+        void* pThis,
+        const char* texture,
+        const char* model,
+        int component
+);
+
+static void QueuePendingPlayerClothesRebuild(CPlayerPedGta* player)
 {
-    // Mantido para os outros testes existentes. O teste Stage E abaixo
-    // NÃO chama este wrapper nem o offset 0x540CDC.
     if (!player)
     {
-        FLog("[CLOTHES REBUILD] ERRO: player nulo");
+        FLog("[CLOTHES QUEUE] player=NULL; pedido ignorado");
         return;
     }
 
-    using Fn = void (*)(CPlayerPedGta*, bool);
-    auto fn = reinterpret_cast<Fn>(g_libGTASA + ADDR_CLOTHES_REBUILD_PLAYER);
-    FLog("[CLOTHES REBUILD] chamando RebuildPlayer this=%p", player);
-    fn(player, false);
-    FLog("[CLOTHES REBUILD] RebuildPlayer concluido");
+    {
+        std::lock_guard<std::mutex> lock(g_PendingClothesMutex);
+        g_PendingClothesRequest.player = player;
+        g_PendingClothesRequest.applyClothesChange = false;
+        g_PendingClothesRequest.texture = nullptr;
+        g_PendingClothesRequest.model = nullptr;
+        g_PendingClothesRequest.component = -1;
+    }
+    FLog("[CLOTHES QUEUE] rebuild armazenado player=%p; aguardando CGame::Process", player);
 }
 
-// Stage E: RebuildPlayerIfNeeded. Não inventamos offset Android para esta
-// função: resolvemos pelo símbolo nativo e só chamamos se o hook fornecer
-// um trampoline válido. A disponibilidade do símbolo precisa ser confirmada
-// no log do aparelho.
-static void (*CClothes__RebuildPlayerIfNeeded)(CPlayerPedGta* player) = nullptr;
-
-static void CClothes__RebuildPlayerIfNeeded_hook(CPlayerPedGta* player)
+static void QueuePendingPlayerClothesChange(
+    CPlayerPedGta* player,
+    const char* texture,
+    const char* model,
+    int component)
 {
-    FLog("[CLOTHES IFNEEDED] ENTER player=%p original=%p",
-         player, (void*)CClothes__RebuildPlayerIfNeeded);
-
-    if (!CClothes__RebuildPlayerIfNeeded)
+    if (!player || !texture || !model || component < 0 || component >= 10)
     {
-        FLog("[CLOTHES IFNEEDED] original NULL; ignorando chamada do hook");
+        FLog("[CLOTHES QUEUE] pedido inválido (para este teste component deve ser 0..9) player=%p texture=%s model=%s component=%d",
+             player, texture ? texture : "(null)", model ? model : "(null)", component);
         return;
     }
 
-    CClothes__RebuildPlayerIfNeeded(player);
-    FLog("[CLOTHES IFNEEDED] RETURN");
+    {
+        std::lock_guard<std::mutex> lock(g_PendingClothesMutex);
+        g_PendingClothesRequest.player = player;
+        g_PendingClothesRequest.applyClothesChange = true;
+        g_PendingClothesRequest.texture = texture;
+        g_PendingClothesRequest.model = model;
+        g_PendingClothesRequest.component = component;
+    }
+    FLog("[CLOTHES QUEUE] troca armazenada player=%p texture=%s model=%s component=%d; aguardando CGame::Process",
+         player, texture, model, component);
+}
+
+// Keep the existing helper safe as well: it queues, never rebuilds immediately.
+void RebuildPlayerClothes(CPlayerPedGta* player)
+{
+    QueuePendingPlayerClothesRebuild(player);
 }
 void TestPlayerClothesDescHG()
 {
@@ -2891,8 +2953,6 @@ void TestPlayerClothesDescHG()
 // Não altera nenhum retorno/argumento.
 // ============================================================
 
-static volatile bool g_ClothesBuildDebugActive = false;
-
 static void* (*CClothesBuilder__GetClothesTexture)(
     unsigned int modelHash,
     const char* textureName
@@ -2903,7 +2963,7 @@ static void* CClothesBuilder__GetClothesTexture_hook(
     const char* textureName
 )
 {
-    if (g_ClothesBuildDebugActive)
+    if (g_ClothesBuildDebugActive.load(std::memory_order_acquire))
     {
         FLog(
             "[CLOTHES TEX] ENTER hash=0x%08X name=%s",
@@ -2912,12 +2972,19 @@ static void* CClothesBuilder__GetClothesTexture_hook(
         );
     }
 
+    if (!CClothesBuilder__GetClothesTexture)
+    {
+        if (g_ClothesBuildDebugActive.load(std::memory_order_acquire))
+            FLog("[CLOTHES TEX] original NULL; textura retornada como NULL");
+        return nullptr;
+    }
+
     void* result = CClothesBuilder__GetClothesTexture(
         modelHash,
         textureName
     );
 
-    if (g_ClothesBuildDebugActive)
+    if (g_ClothesBuildDebugActive.load(std::memory_order_acquire))
     {
         FLog(
             "[CLOTHES TEX] RETURN hash=0x%08X name=%s texture=%p",
@@ -3002,57 +3069,131 @@ static void DumpClothesBrief(
     );
 }
 
+// Runs after the original CGame::Process call returns. We remove the request
+// from the shared slot first, validate the current player, then optionally
+// update its CPedClothesDesc and call the native RebuildPlayer exactly once.
+static void ProcessPendingPlayerClothesRebuild()
+{
+    PendingPlayerClothesRequest request{};
+    {
+        std::lock_guard<std::mutex> lock(g_PendingClothesMutex);
+        request = g_PendingClothesRequest;
+        g_PendingClothesRequest = PendingPlayerClothesRequest{};
+    }
+
+    if (!request.player)
+        return;
+
+    if (!g_libGTASA)
+    {
+        FLog("[CLOTHES DEFERRED] g_libGTASA=NULL; pedido descartado");
+        return;
+    }
+
+    CPlayerPedGta* currentPlayer = FindPlayerPed(-1);
+    if (!currentPlayer || currentPlayer != request.player)
+    {
+        FLog("[CLOTHES DEFERRED] player mudou (pedido=%p atual=%p); pedido descartado",
+             request.player, currentPlayer);
+        return;
+    }
+
+    CPlayerPedData* playerData = currentPlayer->m_pPlayerData;
+    if (!playerData || !playerData->m_pPedClothesDesc)
+    {
+        FLog("[CLOTHES DEFERRED] playerData/clothesDesc=NULL; pedido descartado player=%p",
+             currentPlayer);
+        return;
+    }
+
+    CPedClothesDesc* clothes = playerData->m_pPedClothesDesc;
+    bool descriptorChanged = false;
+
+    if (request.applyClothesChange)
+    {
+        if (!CPedClothesDesc__SetTextureAndModel)
+        {
+            FLog("[CLOTHES DEFERRED] setter trampoline NULL; pedido descartado antes de alterar o descritor");
+            return;
+        }
+
+        // Current test uses component 2. The offsets reflect this build's
+        // CPedClothesDesc layout: models at 0x00, textures at 0x28.
+        const uintptr_t descAddress = reinterpret_cast<uintptr_t>(clothes);
+        const uint32_t oldModel = *reinterpret_cast<uint32_t*>(descAddress + request.component * sizeof(uint32_t));
+        const uint32_t oldTexture = *reinterpret_cast<uint32_t*>(descAddress + 0x28 + request.component * sizeof(uint32_t));
+
+        FLog("[CLOTHES DEFERRED] SET BEFORE player=%p desc=%p component=%d model=0x%08X texture=0x%08X textureName=%s modelName=%s",
+             currentPlayer, clothes, request.component, oldModel, oldTexture,
+             request.texture ? request.texture : "(null)", request.model ? request.model : "(null)");
+        DumpClothesBrief("DEFERRED_BEFORE_SET", clothes);
+
+        CPedClothesDesc__SetTextureAndModel(
+            clothes, request.texture, request.model, request.component);
+
+        const uint32_t newModel = *reinterpret_cast<uint32_t*>(descAddress + request.component * sizeof(uint32_t));
+        const uint32_t newTexture = *reinterpret_cast<uint32_t*>(descAddress + 0x28 + request.component * sizeof(uint32_t));
+        descriptorChanged = (oldModel != newModel) || (oldTexture != newTexture);
+
+        FLog("[CLOTHES DEFERRED] SET AFTER component=%d model=0x%08X texture=0x%08X changed=%d",
+             request.component, newModel, newTexture, descriptorChanged ? 1 : 0);
+        DumpClothesBrief("DEFERRED_AFTER_SET", clothes);
+
+        if (!descriptorChanged)
+        {
+            FLog("[CLOTHES DEFERRED] descriptor não mudou; RebuildPlayer não será chamado");
+            return;
+        }
+    }
+
+    using RebuildFn = void (*)(void*, bool);
+    RebuildFn rebuild = reinterpret_cast<RebuildFn>(
+        g_libGTASA + ADDR_CLOTHES_REBUILD_PLAYER);
+
+    FLog("[CLOTHES DEFERRED] ENTER player=%p data=%p desc=%p fn=%p ignoreFatMuscle=0 change=%d",
+         currentPlayer, playerData, clothes, reinterpret_cast<void*>(rebuild),
+         request.applyClothesChange ? 1 : 0);
+    DumpClothesBrief("DEFERRED_BEFORE_REBUILD", clothes);
+
+    // Keep the detailed internal hooks quiet during ordinary gameplay.
+    g_ClothesBuildDebugActive.store(true, std::memory_order_release);
+    rebuild(static_cast<void*>(currentPlayer), false);
+    g_ClothesBuildDebugActive.store(false, std::memory_order_release);
+
+    // Re-fetch player data after rebuilding instead of assuming its storage
+    // stayed at the same address during native model reconstruction.
+    CPlayerPedData* playerDataAfter = currentPlayer->m_pPlayerData;
+    CPedClothesDesc* clothesAfter = playerDataAfter ? playerDataAfter->m_pPedClothesDesc : nullptr;
+    DumpClothesBrief("DEFERRED_AFTER_REBUILD", clothesAfter);
+    FLog("[CLOTHES DEFERRED] RETURN RebuildPlayer terminou");
+}
+
 static bool CClothes__ConstructPedModel_hook(
     unsigned int modelId,
     void* clothes,
     void* defaultClothes,
     bool force)
 {
-    FLog(
-        "[CLOTHES CONSTRUCT] ===== ENTER ====="
-    );
+    const bool debug = g_ClothesBuildDebugActive.load(std::memory_order_acquire);
+    if (debug)
+    {
+        FLog("[CLOTHES CONSTRUCT] ENTER modelId=%u (0x%X) clothes=%p default=%p force=%d original=%p",
+             modelId, modelId, clothes, defaultClothes, force ? 1 : 0,
+             reinterpret_cast<void*>(CClothes__ConstructPedModel));
+        DumpClothesBrief("construct_clothes", clothes);
+        DumpClothesBrief("construct_default", defaultClothes);
+    }
 
-    FLog(
-        "[CLOTHES CONSTRUCT] modelId=%u (0x%X) clothes=%p default=%p force=%d",
-        modelId,
-        modelId,
-        clothes,
-        defaultClothes,
-        force ? 1 : 0
-    );
+    if (!CClothes__ConstructPedModel)
+    {
+        if (debug)
+            FLog("[CLOTHES CONSTRUCT] original NULL; retorno false para evitar chamada nula");
+        return false;
+    }
 
-    DumpClothesBrief(
-        "clothes",
-        clothes
-    );
-
-    DumpClothesBrief(
-        "default",
-        defaultClothes
-    );
-
-    FLog(
-        "[CLOTHES CONSTRUCT] original=%p",
-        (void*)CClothes__ConstructPedModel
-    );
-
-    bool result =
-        CClothes__ConstructPedModel(
-            modelId,
-            clothes,
-            defaultClothes,
-            force
-        );
-
-    FLog(
-        "[CLOTHES CONSTRUCT] RETURN rawValue=%d",
-        result ? 1 : 0
-    );
-
-    FLog(
-        "[CLOTHES CONSTRUCT] ===== EXIT ====="
-    );
-
+    bool result = CClothes__ConstructPedModel(modelId, clothes, defaultClothes, force);
+    if (debug)
+        FLog("[CLOTHES CONSTRUCT] RETURN rawValue=%d", result ? 1 : 0);
     return result;
 }
 
@@ -3077,66 +3218,29 @@ static void* CClothesBuilder__CreateSkinnedClump_hook(
     void* defaultClothes,
     bool flag)
 {
-    FLog(
-        "[CLOTHES BUILD] ===== ENTER ====="
-    );
-
-    FLog(
-        "[CLOTHES BUILD] clump=%p texDict=%p clothes=%p default=%p flag=%d",
-        clump,
-        texDictionary,
-        clothes,
-        defaultClothes,
-        flag ? 1 : 0
-    );
-
-    DumpClothesBrief(
-        "build_clothes",
-        clothes
-    );
-
-    DumpClothesBrief(
-        "build_default",
-        defaultClothes
-    );
-
-    void* result = CClothesBuilder__CreateSkinnedClump(
-        clump,
-        texDictionary,
-        clothes,
-        defaultClothes,
-        flag
-    );
-
-    FLog(
-        "[CLOTHES BUILD] RETURN result=%p",
-        result
-    );
-
-    if (!result)
+    const bool debug = g_ClothesBuildDebugActive.load(std::memory_order_acquire);
+    if (debug)
     {
-        FLog(
-            "[CLOTHES BUILD] RESULT=NULL"
-        );
-
-        FLog(
-            "[CLOTHES BUILD] Motivo ainda nao identificado; nao alterando fluxo nativo."
-        );
+        FLog("[CLOTHES BUILD] ENTER clump=%p texDict=%p clothes=%p default=%p flag=%d original=%p",
+             clump, texDictionary, clothes, defaultClothes, flag ? 1 : 0,
+             reinterpret_cast<void*>(CClothesBuilder__CreateSkinnedClump));
+        DumpClothesBrief("build_clothes", clothes);
+        DumpClothesBrief("build_default", defaultClothes);
     }
 
-    FLog(
-        "[CLOTHES BUILD] ===== EXIT ====="
-    );
+    if (!CClothesBuilder__CreateSkinnedClump)
+    {
+        if (debug)
+            FLog("[CLOTHES BUILD] original NULL; retorno NULL para evitar chamada nula");
+        return nullptr;
+    }
 
+    void* result = CClothesBuilder__CreateSkinnedClump(
+        clump, texDictionary, clothes, defaultClothes, flag);
+    if (debug)
+        FLog("[CLOTHES BUILD] RETURN result=%p", result);
     return result;
 }
-
-static void (*CPedClothesDesc__SetTextureAndModel)(
-        void* pThis,
-        const char* texture,
-        const char* model,
-        int component
-);
 
 static void CPedClothesDesc__SetTextureAndModel_hook(
         void* pThis,
@@ -3152,9 +3256,14 @@ static void CPedClothesDesc__SetTextureAndModel_hook(
         component
     );
 
-    // O teste completo de roupas deve ser executado somente pelo comando
-    // /testeclothes. Não executar ConstructPedModel automaticamente dentro
-    // de SetTextureAndModel, para não alterar o fluxo normal de inicialização.
+    if (!CPedClothesDesc__SetTextureAndModel)
+    {
+        FLog("[CLOTHES] original/trampoline NULL; setter ignorado para evitar chamada nula");
+        return;
+    }
+
+    // Keep the native setter as a transparent passthrough. Rebuild is queued
+    // separately and never invoked from this hook.
     CPedClothesDesc__SetTextureAndModel(
         pThis,
         texture,
@@ -3165,74 +3274,57 @@ static void CPedClothesDesc__SetTextureAndModel_hook(
 
 void TestPlayerClothesDesc()
 {
-    FLog("[CLOTHES TEST E] ===== INICIO IFNEEDED =====");
+    FLog("[CLOTHES TEST F] ===== INICIO =====");
 
     CPlayerPedGta* player = FindPlayerPed(-1);
     if (!player)
     {
-        FLog("[CLOTHES TEST E] player=NULL");
-        FLog("[CLOTHES TEST E] ===== FIM =====");
+        FLog("[CLOTHES TEST F] player=NULL");
+        FLog("[CLOTHES TEST F] ===== FIM =====");
+        return;
+    }
+
+    if (!CGame_Process_ClothesDeferredOriginal)
+    {
+        FLog("[CLOTHES TEST F] callback CGame::Process sem original/trampoline; NÃO enfileirando e NÃO alterando roupas");
+        FLog("[CLOTHES TEST F] ===== FIM =====");
+        return;
+    }
+
+    if (!CPedClothesDesc__SetTextureAndModel)
+    {
+        FLog("[CLOTHES TEST F] setter trampoline NULL; NÃO enfileirando");
+        FLog("[CLOTHES TEST F] ===== FIM =====");
+        return;
+    }
+
+    if (!CClothes__ConstructPedModel ||
+        !CClothesBuilder__CreateSkinnedClump ||
+        !CClothesBuilder__GetClothesTexture)
+    {
+        FLog("[CLOTHES TEST F] hook original/trampoline de rebuild incompleto; não alterando roupas");
+        FLog("[CLOTHES TEST F] Construct=%p Build=%p Texture=%p",
+             reinterpret_cast<void*>(CClothes__ConstructPedModel),
+             reinterpret_cast<void*>(CClothesBuilder__CreateSkinnedClump),
+             reinterpret_cast<void*>(CClothesBuilder__GetClothesTexture));
+        FLog("[CLOTHES TEST F] ===== FIM =====");
         return;
     }
 
     CPlayerPedData* playerData = player->m_pPlayerData;
-    if (!playerData)
+    if (!playerData || !playerData->m_pPedClothesDesc)
     {
-        FLog("[CLOTHES TEST E] playerData=NULL");
-        FLog("[CLOTHES TEST E] ===== FIM =====");
+        FLog("[CLOTHES TEST F] playerData/clothesDesc=NULL");
+        FLog("[CLOTHES TEST F] ===== FIM =====");
         return;
     }
 
-    CPedClothesDesc* clothes = playerData->m_pPedClothesDesc;
-    if (!clothes)
-    {
-        FLog("[CLOTHES TEST E] clothesDesc=NULL");
-        FLog("[CLOTHES TEST E] ===== FIM =====");
-        return;
-    }
-
-    FLog("[CLOTHES TEST E] player=%p playerData=%p clothes=%p",
-         player, playerData, clothes);
-    DumpClothesBrief("E_BEFORE", clothes);
-
-    // Não continuamos se o símbolo original do setter não foi resolvido.
-    if (!CPedClothesDesc__SetTextureAndModel)
-    {
-        FLog("[CLOTHES TEST E] setter original NULL; roupa NÃO alterada");
-        FLog("[CLOTHES TEST E] ===== FIM =====");
-        return;
-    }
-
-    if (!CClothes__RebuildPlayerIfNeeded)
-    {
-        FLog("[CLOTHES TEST E] RebuildPlayerIfNeeded original NULL");
-        FLog("[CLOTHES TEST E] Não vou alterar o descritor sem a função pronta");
-        FLog("[CLOTHES TEST E] ===== FIM =====");
-        return;
-    }
-
-    // Teste apenas do componente 2 (shorts). O descritor permanece alterado
-    // para que possamos observar se o jogo atualiza o visual naturalmente.
-    FLog("[CLOTHES TEST E] aplicando shortskhaki/shorts component=2");
-    CPedClothesDesc__SetTextureAndModel(
-        clothes,
-        "shortskhaki",
-        "shorts",
-        2
-    );
-
-    DumpClothesBrief("E_AFTER_SET", clothes);
-
-    // Esta função pode reconstruir apenas quando detecta diferença de fat/muscle.
-    // Portanto, não ver a roupa mudar NÃO prova que o símbolo/offset esteja errado.
-    g_ClothesBuildDebugActive = true;
-    FLog("[CLOTHES TEST E] chamando RebuildPlayerIfNeeded(player)");
-    CClothes__RebuildPlayerIfNeeded(player);
-    g_ClothesBuildDebugActive = false;
-
-    DumpClothesBrief("E_AFTER_IFNEEDED", clothes);
-    FLog("[CLOTHES TEST E] retorno da chamada; ver samplog para CONSTRUCT/BUILD");
-    FLog("[CLOTHES TEST E] ===== FIM =====");
+    FLog("[CLOTHES TEST F] player=%p data=%p desc=%p", player, playerData,
+         playerData->m_pPedClothesDesc);
+    FLog("[CLOTHES TEST F] pedido: SetTextureAndModel(\"shortskhaki\", \"shorts\", 2) + RebuildPlayer(false)");
+    QueuePendingPlayerClothesChange(player, "shortskhaki", "shorts", 2);
+    FLog("[CLOTHES TEST F] somente enfileirado; descritor/modelo serão alterados após CGame::Process");
+    FLog("[CLOTHES TEST F] ===== FIM =====");
 }
 
 #include <EGL/egl.h>
@@ -3246,36 +3338,63 @@ CHook::InlineHook(
     &CPedClothesDesc__SetTextureAndModel_hook,
     &CPedClothesDesc__SetTextureAndModel
 );
-// Stage E: resolver RebuildPlayerIfNeeded por símbolo, sem usar o offset
-// desktop 0x5A8390 nem adivinhar um offset Android 2.10.
+FLog("[CLOTHES HOOK] SetTextureAndModel original/trampoline=%p",
+     reinterpret_cast<void*>(CPedClothesDesc__SetTextureAndModel));
+
+// Main-thread/frame callback. 0x66FE58 is the CGame_Process PLT point already
+// present (commented out) in this project's InstallSAMPHooks. Check that the
+// slot currently contains a target before installing anything; don't patch a
+// zero/unresolved slot. Keep the pre-hook target as a fallback original pointer.
+const uintptr_t cgameProcessSlotAddress = g_libGTASA + 0x66FE58;
+const uintptr_t cgameProcessTargetBefore = g_libGTASA
+    ? *reinterpret_cast<uintptr_t*>(cgameProcessSlotAddress)
+    : 0;
+FLog("[CLOTHES FRAME] PLT slot=%p target-before=%p",
+     reinterpret_cast<void*>(cgameProcessSlotAddress),
+     reinterpret_cast<void*>(cgameProcessTargetBefore));
+if (g_libGTASA && cgameProcessTargetBefore)
+{
+    CGame_Process_ClothesDeferredOriginal =
+        reinterpret_cast<void (*)()>(cgameProcessTargetBefore);
+    CHook::InstallPLT(
+        cgameProcessSlotAddress,
+        (uintptr_t)CGame_Process_ClothesDeferred_hook,
+        (uintptr_t*)&CGame_Process_ClothesDeferredOriginal
+    );
+    if (!CGame_Process_ClothesDeferredOriginal)
+        CGame_Process_ClothesDeferredOriginal = reinterpret_cast<void (*)()>(cgameProcessTargetBefore);
+    FLog("[CLOTHES FRAME] callback instalado original=%p",
+         reinterpret_cast<void*>(CGame_Process_ClothesDeferredOriginal));
+}
+else
+{
+    FLog("[CLOTHES FRAME] NÃO instalado: libGTASA ou destino PLT indisponível; /testeclothes permanecerá bloqueado");
+}
+
+// RebuildPlayer, ConstructPedModel and GetClothesTexture offsets were confirmed
+// in this build's symbol table. CreateSkinnedClump keeps the address already used
+// by the earlier isolated-clothes experiment in this same project.
 CHook::InlineHook(
-"_ZN8CClothes21RebuildPlayerIfNeededEP10CPlayerPed",
-    &CClothes__RebuildPlayerIfNeeded_hook,
-    &CClothes__RebuildPlayerIfNeeded
-);
-FLog("[CLOTHES IFNEEDED] trampoline=%p",
-     (void*)CClothes__RebuildPlayerIfNeeded);
-// Clothing diagnostics: ConstructPedModel is hooked by exact native offset
-// to avoid dependency on a possible symbol/mangling variation.
-CHook::InlineHook(
-    g_libGTASA + 0x541764,
+    g_libGTASA + ADDR_CLOTHES_CONSTRUCT_PED_MODEL,
     &CClothes__ConstructPedModel_hook,
     &CClothes__ConstructPedModel
 );
-
+FLog("[CLOTHES HOOK] ConstructPedModel original/trampoline=%p",
+     reinterpret_cast<void*>(CClothes__ConstructPedModel));
 CHook::InlineHook(
-    "_ZN15CClothesBuilder18CreateSkinnedClumpEP7RpClumpP15RwTexDictionaryR15CPedClothesDescPKS4_b",
+    g_libGTASA + ADDR_CLOTHES_BUILDER_CREATE_SKINNED_CLUMP,
     &CClothesBuilder__CreateSkinnedClump_hook,
     &CClothesBuilder__CreateSkinnedClump
 );
-
-// Instrumentação da busca de texturas usada pelo CreateSkinnedClump.
-// Silenciosa fora do /testeclothes.
+FLog("[CLOTHES HOOK] CreateSkinnedClump original/trampoline=%p",
+     reinterpret_cast<void*>(CClothesBuilder__CreateSkinnedClump));
 CHook::InlineHook(
-    g_libGTASA + 0x5437B8,
+    g_libGTASA + ADDR_CLOTHES_BUILDER_GET_CLOTHES_TEXTURE,
     &CClothesBuilder__GetClothesTexture_hook,
     &CClothesBuilder__GetClothesTexture
 );
+FLog("[CLOTHES HOOK] GetClothesTexture original/trampoline=%p",
+     reinterpret_cast<void*>(CClothesBuilder__GetClothesTexture));
 /*FLog("[RADAR DEBUG] ANTES CHud::Initialise hook");
 CHook::InlineHook(
     g_libGTASA + 0x55C1C8,
