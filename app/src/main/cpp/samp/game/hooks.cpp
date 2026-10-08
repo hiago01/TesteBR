@@ -2268,10 +2268,72 @@ void InstallSpecialHooks()
     CHook::InstallPLT(g_libGTASA + 0x840708, &RLEDecompress_hook, &RLEDecompress);
 
     CHook::InlineHook("_Z11OS_FileReadPvS_i", &OS_FileRead_hook, &OS_FileRead);
-
+.
 	CHook::InlineHook("_Z32_rxOpenGLDefaultAllInOneRenderCBP10RwResEntryPvhj", &rxOpenGLDefaultAllInOneRenderCB_hook, &rxOpenGLDefaultAllInOneRenderCB);
 	CHook::InlineHook("_ZN25CCustomBuildingDNPipeline18CustomPipeRenderCBEP10RwResEntryPvhj", &CCustomBuildingDNPipeline__CustomPipeRenderCB_hook, &CCustomBuildingDNPipeline__CustomPipeRenderCB);
 }
+static constexpr uintptr_t ADDR_ANIM_GET_NUM_ASSOC = 0x46AE54;
+
+void DebugPlayerAnimState(CPlayerPedGta* player)
+{
+    if (!player)
+    {
+        FLog("[ANIM DEBUG] player=NULL");
+        return;
+    }
+
+    uintptr_t clump = *(uintptr_t*)((uintptr_t)player + 0x20);
+
+    FLog("[ANIM DEBUG] player=%p clump=%p",
+         player,
+         (void*)clump);
+
+    if (!clump)
+    {
+        FLog("[ANIM DEBUG] ERRO: clump=NULL");
+        return;
+    }
+
+    using FnGetNum = int (*)(void*);
+    auto getNum = reinterpret_cast<FnGetNum>(
+        g_libGTASA + ADDR_ANIM_GET_NUM_ASSOC
+    );
+
+    int count = getNum((void*)clump);
+
+    FLog("[ANIM DEBUG] NumAssociations=%d", count);
+
+    uintptr_t offsetSlot =
+        g_libGTASA + 0x84B000 + 0x148;
+
+    int32_t clumpOffset =
+        *(int32_t*)offsetSlot;
+
+    FLog("[ANIM DEBUG] ClumpOffset runtime=0x%X",
+         (unsigned int)clumpOffset);
+
+    uintptr_t animData =
+        *(uintptr_t*)(clump + clumpOffset);
+
+    FLog("[ANIM DEBUG] animData=%p",
+         (void*)animData);
+
+    if (animData)
+    {
+        uintptr_t associationHead =
+            *(uintptr_t*)animData;
+
+        FLog("[ANIM DEBUG] associationHead=%p",
+             (void*)associationHead);
+
+        uint32_t initialized =
+            *(uint32_t*)(animData + 0x10);
+
+        FLog("[ANIM DEBUG] animData+0x10=%u",
+             initialized);
+    }
+}
+
 static constexpr uintptr_t ADDR_CLOTHES_REBUILD_PLAYER = 0x540CDC;
 
 void RebuildPlayerClothes(CPlayerPedGta* player)
@@ -2308,7 +2370,7 @@ CPlayerPedGta* player = FindPlayerPed(-1);
         FLog("[CLOTHES TEST] ===== FIM =====");
         return;
     }
-
+DebugPlayerAnimState(player);
     FLog(
         "[CLOTHES TEST] CPlayerPed=%p",
         player
