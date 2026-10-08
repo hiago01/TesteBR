@@ -2943,14 +2943,9 @@ static void CPedClothesDesc__SetTextureAndModel_hook(
         component
     );
 
-    static bool tested = false;
-
-    if (!tested)
-    {
-        tested = true;
-        TestPlayerClothesDesc();
-    }
-
+    // O teste completo de roupas deve ser executado somente pelo comando
+    // /testeclothes. Não executar ConstructPedModel automaticamente dentro
+    // de SetTextureAndModel, para não alterar o fluxo normal de inicialização.
     CPedClothesDesc__SetTextureAndModel(
         pThis,
         texture,
@@ -2961,68 +2956,153 @@ static void CPedClothesDesc__SetTextureAndModel_hook(
 
 void TestPlayerClothesDesc()
 {
-FLog("[CLOTHES TEST] ===== PRE-CONSTRUCT =====");
-CPlayerPedGta* player = FindPlayerPed(-1);
-CPlayerPedData* playerData = player->m_pPlayerData;
-uintptr_t defaultClothes =
+    FLog("[CLOTHES TEST] ===== INICIO =====");
+
+    CPlayerPedGta* player = FindPlayerPed(-1);
+    if (!player)
+    {
+        FLog("[CLOTHES TEST] player=NULL");
+        FLog("[CLOTHES TEST] ===== FIM =====");
+        return;
+    }
+
+    CPlayerPedData* playerData = player->m_pPlayerData;
+    if (!playerData)
+    {
+        FLog("[CLOTHES TEST] playerData=NULL");
+        FLog("[CLOTHES TEST] ===== FIM =====");
+        return;
+    }
+
+    CPedClothesDesc* clothes = playerData->m_pPedClothesDesc;
+    if (!clothes)
+    {
+        FLog("[CLOTHES TEST] clothesDesc=NULL");
+        FLog("[CLOTHES TEST] ===== FIM =====");
+        return;
+    }
+
+    uintptr_t ped = reinterpret_cast<uintptr_t>(player);
+
+    uintptr_t clump =
+        *reinterpret_cast<uintptr_t*>(ped + 0x20);
+
+    uintptr_t field538 =
+        *reinterpret_cast<uintptr_t*>(ped + 0x538);
+
+    uintptr_t field540 =
+        *reinterpret_cast<uintptr_t*>(ped + 0x540);
+
+    int16_t modelId =
+        *reinterpret_cast<int16_t*>(ped + 0x32);
+
+    uintptr_t defaultClothes =
         g_libGTASA + 0xC3EBA0;
-FLog(
-    "[CLOTHES TEST] player clump=%p",
-    reinterpret_cast<void*>(
-        *reinterpret_cast<uintptr_t*>(
-            reinterpret_cast<uintptr_t>(player) + 0x20
-        )
-    )
-);
-
-FLog(
-    "[CLOTHES TEST] modelId=%d",
-    *reinterpret_cast<int16_t*>(
-        reinterpret_cast<uintptr_t>(player) + 0x32
-    )
-);
-
-FLog(
-    "[CLOTHES TEST] clothes=%p",
-    clothes
-);
-
-FLog(
-    "[CLOTHES TEST] default=%p",
-    reinterpret_cast<void*>(defaultClothes)
-);
-
-FLog(
-    "[CLOTHES TEST] ===== PRE-CONSTRUCT END ====="
-);
-
-uintptr_t base = reinterpret_cast<uintptr_t>(player);
-
-uintptr_t field20 = *reinterpret_cast<uintptr_t*>(base + 0x20);
-uint16_t field32 = *reinterpret_cast<uint16_t*>(base + 0x32);
-uintptr_t field538 = *reinterpret_cast<uintptr_t*>(base + 0x538);
-uintptr_t field540 = *reinterpret_cast<uintptr_t*>(base + 0x540);
-if (field540)
-{
-    uintptr_t clothesFrom540 =
-        *reinterpret_cast<uintptr_t*>(field540 + 0x08);
 
     FLog(
-        "[CLOTHES DEBUG] *(player+0x540)=%p *(+0x08)=%p expected=%p",
-        (void*)field540,
-        (void*)clothesFrom540,
-        (void*)playerData->m_pPedClothesDesc
+        "[CLOTHES TEST] player=%p",
+        (void*)player
     );
-}
-FLog(
-    "[CLOTHES DEBUG] player=%p +20=%p +32=%u +538=%p +540=%p",
-    player,
-    (void*)field20,
-    field32,
-    (void*)field538,
-    (void*)field540
-);
 
+    FLog(
+        "[CLOTHES TEST] clump=%p",
+        (void*)clump
+    );
+
+    FLog(
+        "[CLOTHES TEST] taskManager=%p",
+        (void*)field538
+    );
+
+    FLog(
+        "[CLOTHES TEST] playerData=%p",
+        (void*)field540
+    );
+
+    FLog(
+        "[CLOTHES TEST] clothes=%p",
+        (void*)clothes
+    );
+
+    FLog(
+        "[CLOTHES TEST] modelId=%d (0x%X)",
+        static_cast<int>(modelId),
+        static_cast<unsigned int>(
+            static_cast<uint16_t>(modelId)
+        )
+    );
+
+    FLog(
+        "[CLOTHES TEST] defaultClothes=%p",
+        (void*)defaultClothes
+    );
+
+    if (field540)
+    {
+        uintptr_t clothesFrom540 =
+            *reinterpret_cast<uintptr_t*>(field540 + 0x08);
+
+        FLog(
+            "[CLOTHES DEBUG] *(player+0x540)=%p *(+0x08)=%p expected=%p",
+            (void*)field540,
+            (void*)clothesFrom540,
+            (void*)clothes
+        );
+    }
+
+    FLog(
+        "[CLOTHES DEBUG] player=%p +20=%p +32=%d +538=%p +540=%p",
+        (void*)ped,
+        (void*)clump,
+        static_cast<int>(modelId),
+        (void*)field538,
+        (void*)field540
+    );
+
+    // Dump completo do descritor.
+    FLog("[CLOTHES DESC] ===== DUMP =====");
+
+    for (int i = 0; i < 10; i++)
+    {
+        uint32_t model =
+            *reinterpret_cast<uint32_t*>(
+                reinterpret_cast<uintptr_t>(clothes) + (i * 4)
+            );
+
+        FLog(
+            "[CLOTHES DESC] model[%d] = 0x%08X (%u)",
+            i,
+            model,
+            model
+        );
+    }
+
+    for (int i = 0; i < 18; i++)
+    {
+        uint32_t texture =
+            *reinterpret_cast<uint32_t*>(
+                reinterpret_cast<uintptr_t>(clothes) + 0x28 + (i * 4)
+            );
+
+        FLog(
+            "[CLOTHES DESC] texture[%d] = 0x%08X (%u)",
+            i,
+            texture,
+            texture
+        );
+    }
+
+    FLog("[CLOTHES DESC] ===== FIM DUMP =====");
+
+    // Executa as quatro etapas de diagnóstico.
+    // STEP 4 apenas chama ConstructPedModel e registra o retorno.
+    // Nenhuma alteração direta do radar ou dos hooks de render é feita aqui.
+    DebugRebuildStep1(player);
+    DebugRebuildStep2(player);
+    DebugRebuildStep3(player);
+    DebugRebuildStep4(player);
+
+    FLog("[CLOTHES TEST] ===== FIM =====");
 }
 
 #include <EGL/egl.h>
