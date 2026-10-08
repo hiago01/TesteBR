@@ -1,4 +1,5 @@
 #include <GLES2/gl2.h>
+#include <cstring>
 #include "../main.h"
 #include "../vendor/armhook/patch.h"
 #include "game.h"
@@ -3254,149 +3255,83 @@ void TestPlayerClothesDesc()
     );
 
     // ------------------------------------------------------------
-    // TESTE DA PROXIMA ETAPA
+    // TESTE A/B SEGURO: comparar o descritor original com uma copia
+    // modificada, sem alterar o descritor ativo do jogador.
     //
-    // Altera SOMENTE o componente 2:
-    //   texture = shortskhaki
-    //   model   = shorts
+    // A: ConstructPedModel com copia identica ao descritor atual.
+    // B: ConstructPedModel com outra copia, componente 2 alterado.
     //
-    // Nao chama CPed::Dress e nao chama RebuildPlayer.
-    // O objetivo aqui e verificar se ConstructPedModel /
-    // CreateSkinnedClump conseguem construir a nova roupa quando
-    // o descriptor realmente difere do default.
+    // Nao chama RebuildPlayer nem CPed::Dress. O radar permanece
+    // intocado. O resultado de cada chamada e registrado separadamente.
     // ------------------------------------------------------------
 
-    uint32_t oldModel2 =
-        *reinterpret_cast<uint32_t*>(
-            reinterpret_cast<uintptr_t>(clothes) + (2 * 4)
-        );
+    alignas(8) uint8_t originalDesc[0x78];
+    alignas(8) uint8_t modifiedDesc[0x78];
 
-    uint32_t oldTexture2 =
-        *reinterpret_cast<uint32_t*>(
-            reinterpret_cast<uintptr_t>(clothes) + 0x28 + (2 * 4)
-        );
+    std::memcpy(originalDesc, clothes, sizeof(originalDesc));
+    std::memcpy(modifiedDesc, clothes, sizeof(modifiedDesc));
 
-    FLog(
-        "[CLOTHES TEST] component=2 ANTES model=0x%08X texture=0x%08X",
-        oldModel2,
-        oldTexture2
-    );
+    FLog("[CLOTHES TEST AB] descritor original copiado: src=%p A=%p B=%p size=0x%X",
+         (void*)clothes, (void*)originalDesc, (void*)modifiedDesc,
+         static_cast<unsigned int>(sizeof(originalDesc)));
 
-    FLog(
-        "[CLOTHES TEST] aplicando component=2 texture=shortskhaki model=shorts"
-    );
+    DumpClothesBrief("AB_A_ORIGINAL", originalDesc);
 
-    clothes->SetTextureAndModel(
-        "shortskhaki",
-        "shorts",
-        2
-    );
-
-    uint32_t newModel2 =
-        *reinterpret_cast<uint32_t*>(
-            reinterpret_cast<uintptr_t>(clothes) + (2 * 4)
-        );
-
-    uint32_t newTexture2 =
-        *reinterpret_cast<uint32_t*>(
-            reinterpret_cast<uintptr_t>(clothes) + 0x28 + (2 * 4)
-        );
-
-    FLog(
-        "[CLOTHES TEST] component=2 DEPOIS model=0x%08X texture=0x%08X",
-        newModel2,
-        newTexture2
-    );
-
-    if (oldModel2 == newModel2 && oldTexture2 == newTexture2)
-    {
-        FLog(
-            "[CLOTHES TEST] AVISO: component=2 nao mudou"
-        );
-    }
-    else
-    {
-        FLog(
-            "[CLOTHES TEST] OK: component=2 foi alterado"
-        );
-    }
-
-    // Dump apos a alteracao para confirmar todo o descriptor.
-    FLog("[CLOTHES DESC] ===== DUMP APOS TROCA =====");
-
-    for (int i = 0; i < 10; i++)
-    {
-        uint32_t model =
-            *reinterpret_cast<uint32_t*>(
-                reinterpret_cast<uintptr_t>(clothes) + (i * 4)
-            );
-
-        FLog(
-            "[CLOTHES DESC] model[%d] = 0x%08X (%u)",
-            i,
-            model,
-            model
-        );
-    }
-
-    for (int i = 0; i < 18; i++)
-    {
-        uint32_t texture =
-            *reinterpret_cast<uint32_t*>(
-                reinterpret_cast<uintptr_t>(clothes) + 0x28 + (i * 4)
-            );
-
-        FLog(
-            "[CLOTHES DESC] texture[%d] = 0x%08X (%u)",
-            i,
-            texture,
-            texture
-        );
-    }
-
-    FLog("[CLOTHES DESC] ===== FIM DUMP APOS TROCA =====");
-
-    // ============================================================
-    // PRÓXIMA ETAPA:
-    // Executa somente ConstructPedModel, sem RebuildPlayer e sem
-    // CPed::Dress. O hook de GetClothesTexture fica ativo apenas
-    // durante esta chamada para descobrir a última textura que o
-    // CreateSkinnedClump conseguiu processar.
-    //
-    // IMPORTANTE:
-    // Se o log parar depois de "[CLOTHES BUILD] ENTER", o retorno
-    // do CreateSkinnedClump não foi alcançado. Os últimos
-    // "[CLOTHES TEX]" ajudam a localizar a etapa do travamento.
-    // ============================================================
-
-    FLog("[CLOTHES TEST] >>> ATIVANDO INSTRUMENTACAO DE TEXTURAS");
+    FLog("[CLOTHES TEST AB] ===== TESTE A: DESCRITOR ORIGINAL =====");
+    FLog("[CLOTHES TEST AB] ativando instrumentacao de texturas para A");
     g_ClothesBuildDebugActive = true;
 
-    FLog("[CLOTHES TEST] >>> CHAMANDO ConstructPedModel");
-    FLog(
-        "[CLOTHES TEST] ConstructPedModel addr=%p",
-        (void*)(g_libGTASA + 0x541764)
+    bool resultA = CClothes__ConstructPedModel(
+        static_cast<unsigned int>(static_cast<uint16_t>(modelId)),
+        originalDesc,
+        reinterpret_cast<void*>(defaultClothes),
+        false
     );
-
-    bool constructResult =
-        CClothes__ConstructPedModel(
-            static_cast<unsigned int>(
-                static_cast<uint16_t>(modelId)
-            ),
-            clothes,
-            reinterpret_cast<void*>(defaultClothes),
-            false
-        );
 
     g_ClothesBuildDebugActive = false;
+    FLog("[CLOTHES TEST AB] RESULTADO A original success=%d",
+         resultA ? 1 : 0);
 
-    FLog(
-        "[CLOTHES TEST] <<< ConstructPedModel retornou success=%d",
-        constructResult ? 1 : 0
+    // Modifica apenas a COPIA B. O descritor real do jogador nao muda.
+    CPedClothesDesc* modifiedCopy =
+        reinterpret_cast<CPedClothesDesc*>(modifiedDesc);
+
+    uint32_t beforeModel2 = *reinterpret_cast<uint32_t*>(modifiedDesc + (2 * 4));
+    uint32_t beforeTexture2 = *reinterpret_cast<uint32_t*>(modifiedDesc + 0x28 + (2 * 4));
+
+    FLog("[CLOTHES TEST AB] B antes component=2 model=0x%08X texture=0x%08X",
+         beforeModel2, beforeTexture2);
+    FLog("[CLOTHES TEST AB] aplicando na COPIA B: shortskhaki / shorts / component=2");
+
+    modifiedCopy->SetTextureAndModel("shortskhaki", "shorts", 2);
+
+    uint32_t afterModel2 = *reinterpret_cast<uint32_t*>(modifiedDesc + (2 * 4));
+    uint32_t afterTexture2 = *reinterpret_cast<uint32_t*>(modifiedDesc + 0x28 + (2 * 4));
+    FLog("[CLOTHES TEST AB] B depois component=2 model=0x%08X texture=0x%08X",
+         afterModel2, afterTexture2);
+    DumpClothesBrief("AB_B_MODIFIED", modifiedDesc);
+
+    FLog("[CLOTHES TEST AB] ===== TESTE B: DESCRITOR MODIFICADO =====");
+    FLog("[CLOTHES TEST AB] ativando instrumentacao de texturas para B");
+    g_ClothesBuildDebugActive = true;
+
+    bool resultB = CClothes__ConstructPedModel(
+        static_cast<unsigned int>(static_cast<uint16_t>(modelId)),
+        modifiedDesc,
+        reinterpret_cast<void*>(defaultClothes),
+        false
     );
 
-    FLog("[CLOTHES TEST] <<< INSTRUMENTACAO DE TEXTURAS DESATIVADA");
-    FLog("[CLOTHES TEST] ===== FIM =====");
+    g_ClothesBuildDebugActive = false;
+    FLog("[CLOTHES TEST AB] RESULTADO B modificado success=%d",
+         resultB ? 1 : 0);
+
+    FLog("[CLOTHES TEST AB] COMPARACAO: A=%d B=%d",
+         resultA ? 1 : 0, resultB ? 1 : 0);
+    FLog("[CLOTHES TEST AB] descritor ativo preservado em %p; nao foi alterado diretamente",
+         (void*)clothes);
+    FLog("[CLOTHES TEST AB] nenhuma chamada a RebuildPlayer ou CPed::Dress foi feita");
+    FLog("[CLOTHES TEST AB] ===== FIM =====");
 }
 
 #include <EGL/egl.h>
