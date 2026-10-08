@@ -3149,89 +3149,143 @@ static void CPedClothesDesc__SetTextureAndModel_hook(
     );
 }
 
-// /testeclothes alterna entre aplicar e restaurar o componente 2.
-// Guarda apenas os dois slots alterados pelo SetTextureAndModel para não
-// sobrescrever outros componentes do descritor ao restaurar.
-static bool g_TestShortsApplied = false;
-static CPlayerPedGta* g_TestShortsPlayer = nullptr;
-static uint32_t g_TestShortsOldModel3 = 0;
-static uint32_t g_TestShortsOldTexture2 = 0;
-
 void TestPlayerClothesDesc()
 {
-    FLog("[CLOTHES LIVE] ===== /testeclothes =====");
+    FLog("[CLOTHES TEST] ===== INICIO =====");
 
     CPlayerPedGta* player = FindPlayerPed(-1);
     if (!player)
     {
-        FLog("[CLOTHES LIVE] CANCELADO: FindPlayerPed retornou NULL");
+        FLog("[CLOTHES TEST] player=NULL");
+        FLog("[CLOTHES TEST] ===== FIM =====");
         return;
     }
 
     CPlayerPedData* playerData = player->m_pPlayerData;
-    if (!playerData || !playerData->m_pPedClothesDesc)
+    if (!playerData)
     {
-        FLog("[CLOTHES LIVE] CANCELADO: playerData ou clothesDesc NULL");
+        FLog("[CLOTHES TEST] playerData=NULL");
+        FLog("[CLOTHES TEST] ===== FIM =====");
         return;
     }
 
     CPedClothesDesc* clothes = playerData->m_pPedClothesDesc;
-    auto* bytes = reinterpret_cast<uint8_t*>(clothes);
-    uint32_t* model3 = reinterpret_cast<uint32_t*>(bytes + 3 * sizeof(uint32_t));
-    uint32_t* texture2 = reinterpret_cast<uint32_t*>(bytes + 0x28 + 2 * sizeof(uint32_t));
-
-    FLog("[CLOTHES LIVE] player=%p playerData=%p clothes=%p clump=%p",
-         player, playerData, clothes,
-         reinterpret_cast<void*>(*reinterpret_cast<uintptr_t*>(reinterpret_cast<uintptr_t>(player) + 0x20)));
-    FLog("[CLOTHES LIVE] antes: model[3]=%08X texture[2]=%08X",
-         *model3, *texture2);
-
-    // Segunda execução: restaura o estado anterior e reconstrói novamente.
-    if (g_TestShortsApplied && g_TestShortsPlayer == player)
+    if (!clothes)
     {
-        *model3 = g_TestShortsOldModel3;
-        *texture2 = g_TestShortsOldTexture2;
-        FLog("[CLOTHES LIVE] RESTAURANDO: model[3]=%08X texture[2]=%08X",
-             *model3, *texture2);
-        g_TestShortsApplied = false;
-        g_TestShortsPlayer = nullptr;
-        RebuildPlayerClothes(player);
-        FLog("[CLOTHES LIVE] restauração solicitada; confira visualmente e no samp.log");
-        FLog("[CLOTHES LIVE] ===== FIM =====");
+        FLog("[CLOTHES TEST] clothesDesc=NULL");
+        FLog("[CLOTHES TEST] ===== FIM =====");
         return;
     }
 
-    if (g_TestShortsApplied && g_TestShortsPlayer != player)
+    uintptr_t ped = reinterpret_cast<uintptr_t>(player);
+
+    uintptr_t clump =
+        *reinterpret_cast<uintptr_t*>(ped + 0x20);
+
+    uintptr_t field538 =
+        *reinterpret_cast<uintptr_t*>(ped + 0x538);
+
+    uintptr_t field540 =
+        *reinterpret_cast<uintptr_t*>(ped + 0x540);
+
+    int16_t modelId =
+        *reinterpret_cast<int16_t*>(ped + 0x32);
+
+    uintptr_t defaultClothes =
+        g_libGTASA + 0xC3EBA0;
+
+    FLog(
+        "[CLOTHES TEST] player=%p",
+        (void*)player
+    );
+
+    FLog(
+        "[CLOTHES TEST] clump=%p",
+        (void*)clump
+    );
+
+    FLog(
+        "[CLOTHES TEST] taskManager=%p",
+        (void*)field538
+    );
+
+    FLog(
+        "[CLOTHES TEST] playerData=%p",
+        (void*)field540
+    );
+
+    FLog(
+        "[CLOTHES TEST] clothes=%p",
+        (void*)clothes
+    );
+
+    FLog(
+        "[CLOTHES TEST] modelId=%d (0x%X)",
+        static_cast<int>(modelId),
+        static_cast<unsigned int>(
+            static_cast<uint16_t>(modelId)
+        )
+    );
+
+    FLog(
+        "[CLOTHES TEST] defaultClothes=%p",
+        (void*)defaultClothes
+    );
+
+    if (field540)
     {
-        FLog("[CLOTHES LIVE] AVISO: jogador mudou; estado salvo anterior descartado");
-        g_TestShortsApplied = false;
-        g_TestShortsPlayer = nullptr;
+        uintptr_t clothesFrom540 =
+            *reinterpret_cast<uintptr_t*>(field540 + 0x08);
+
+        FLog(
+            "[CLOTHES DEBUG] *(player+0x540)=%p *(+0x08)=%p expected=%p",
+            (void*)field540,
+            (void*)clothesFrom540,
+            (void*)clothes
+        );
     }
 
-    // Salva os slots originais antes de tocar no descritor real.
-    g_TestShortsOldModel3 = *model3;
-    g_TestShortsOldTexture2 = *texture2;
-    g_TestShortsPlayer = player;
+    FLog(
+        "[CLOTHES DEBUG] player=%p +20=%p +32=%d +538=%p +540=%p",
+        (void*)ped,
+        (void*)clump,
+        static_cast<int>(modelId),
+        (void*)field538,
+        (void*)field540
+    );
 
-    FLog("[CLOTHES LIVE] aplicando SetTextureAndModel(shortskhaki, shorts, 2) no descritor REAL");
-    clothes->SetTextureAndModel("shortskhaki", "shorts", 2);
+    // ------------------------------------------------------------
+    // ETAPA D - TESTE CONTROLADO DE REBUILDPLAYER SEM MUDAR A ROUPA.
+    // Usa o descritor original exatamente como está. Não chama
+    // SetTextureAndModel nem altera qualquer slot de roupa.
+    // O RebuildPlayer opera no personagem real, portanto ainda existe
+    // risco de crash; este teste serve para separar a reconstrução normal
+    // do caso em que o descritor foi alterado.
+    // ------------------------------------------------------------
+    uint8_t activeBefore[0x78];
+    uint8_t defaultBefore[0x78];
+    std::memcpy(activeBefore, clothes, sizeof(activeBefore));
+    std::memcpy(defaultBefore, reinterpret_cast<void*>(defaultClothes), sizeof(defaultBefore));
 
-    FLog("[CLOTHES LIVE] depois da alteração: model[3]=%08X texture[2]=%08X",
-         *model3, *texture2);
-    DumpClothesBrief("LIVE_CLOTHES_BEFORE_REBUILD", clothes);
+    FLog("[CLOTHES TEST D] ===== REBUILDPLAYER ORIGINAL =====");
+    FLog("[CLOTHES TEST D] NÃO altera SetTextureAndModel; roupa original preservada");
+    FLog("[CLOTHES TEST D] player=%p clump=%p clothes=%p default=%p modelId=%d",
+         player, (void*)clump, clothes, (void*)defaultClothes, static_cast<int>(modelId));
+    DumpClothesBrief("D_ACTIVE_BEFORE", clothes);
+    DumpClothesBrief("D_DEFAULT_BEFORE", reinterpret_cast<void*>(defaultClothes));
 
-    // O rebuild nativo é chamado somente quando o usuário executa /testeclothes.
-    // RebuildPlayer faz o caminho nativo de ConstructPedModel/Dress.
-    g_TestShortsApplied = true;
-    FLog("[CLOTHES LIVE] chamando UMA vez CClothes::RebuildPlayer(player, false)");
+    // Ativa logs dos hooks de construção apenas durante esta chamada.
+    g_ClothesBuildDebugActive = true;
+    FLog("[CLOTHES TEST D] chamando RebuildPlayer(player, false) UMA vez");
     RebuildPlayerClothes(player);
+    g_ClothesBuildDebugActive = false;
 
-    // Releitura após o native: confirma se os slots permaneceram alterados.
-    FLog("[CLOTHES LIVE] após RebuildPlayer: model[3]=%08X texture[2]=%08X",
-         *model3, *texture2);
-    DumpClothesBrief("LIVE_CLOTHES_AFTER_REBUILD", clothes);
-    FLog("[CLOTHES LIVE] roupa aplicada solicitada. Execute /testeclothes novamente para restaurar.");
-    FLog("[CLOTHES LIVE] ===== FIM =====");
+    bool activeUnchanged = (std::memcmp(activeBefore, clothes, sizeof(activeBefore)) == 0);
+    bool defaultUnchanged = (std::memcmp(defaultBefore, reinterpret_cast<void*>(defaultClothes), sizeof(defaultBefore)) == 0);
+    FLog("[CLOTHES TEST D] active descriptor unchanged=%d", activeUnchanged ? 1 : 0);
+    FLog("[CLOTHES TEST D] native default descriptor unchanged=%d", defaultUnchanged ? 1 : 0);
+    FLog("[CLOTHES TEST D] ===== FIM REBUILDPLAYER ORIGINAL =====");
+
 }
 
 #include <EGL/egl.h>
