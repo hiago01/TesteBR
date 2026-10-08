@@ -2326,6 +2326,7 @@ clothes->SetTextureAndModel(
 
 FLog("[CLOTHES TEST] component=2 alterado para shortskhaki/shorts");
 
+RebuildPlayerClothes(player);
     if (!clothes)
     {
         FLog("[CLOTHES TEST] m_pPedClothesDesc=NULL");
@@ -2412,6 +2413,32 @@ void TestPlayerClothesDesc()
         playerData,
         clothes
     );
+}
+
+static constexpr uintptr_t ADDR_CLOTHES_REBUILD_PLAYER = 0x540CDC;
+
+void RebuildPlayerClothes(CPlayerPedGta* player)
+{
+    if (!player)
+    {
+        FLog("[CLOTHES REBUILD] ERRO: player nulo");
+        return;
+    }
+
+    using Fn = void (*)(CPlayerPedGta*, bool);
+
+    auto fn = reinterpret_cast<Fn>(
+        g_libGTASA + ADDR_CLOTHES_REBUILD_PLAYER
+    );
+
+    FLog(
+        "[CLOTHES REBUILD] chamando RebuildPlayer this=%p",
+        player
+    );
+
+    fn(player, false);
+
+    FLog("[CLOTHES REBUILD] RebuildPlayer concluido");
 }
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>   // If using OpenGL ES 2.0 or 3.0
