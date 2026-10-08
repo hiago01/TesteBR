@@ -2377,13 +2377,25 @@ if (!clump)
     FLog("[CLOTHES CLUMP] ERRO: clump nulo");
     return;
 }
-
+/*bool RpAnimBlendClumpIsInitialized(RpClump* clump)
+{
+    return CHook::CallFunction<bool>(
+        g_libGTASA + 0x46A974,
+        clump
+    );
+}*/
 uintptr_t animDataPtr =
     *reinterpret_cast<uintptr_t*>(clump + ClumpOffset);
 
 FLog(
     "[CLOTHES CLUMP] clump+offset=%p",
     reinterpret_cast<void*>(animDataPtr)
+);
+bool initialized = RpAnimBlendClumpIsInitialized(clump);
+
+FLog(
+    "[CLOTHES CLUMP] RpAnimBlendClumpIsInitialized=%d",
+    initialized ? 1 : 0
 );
 
 if (!animDataPtr)
