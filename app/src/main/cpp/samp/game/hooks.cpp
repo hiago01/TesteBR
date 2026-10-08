@@ -2272,6 +2272,74 @@ void InstallSpecialHooks()
 	CHook::InlineHook("_Z32_rxOpenGLDefaultAllInOneRenderCBP10RwResEntryPvhj", &rxOpenGLDefaultAllInOneRenderCB_hook, &rxOpenGLDefaultAllInOneRenderCB);
 	CHook::InlineHook("_ZN25CCustomBuildingDNPipeline18CustomPipeRenderCBEP10RwResEntryPvhj", &CCustomBuildingDNPipeline__CustomPipeRenderCB_hook, &CCustomBuildingDNPipeline__CustomPipeRenderCB);
 }
+////////----------//////------/////-----/////----------/////
+void DebugRebuildStep3(CPlayerPedGta* player)
+{
+    FLog("[REBUILD DEBUG] ===== STEP 3 =====");
+
+    if (!player)
+    {
+        FLog("[REBUILD DEBUG] player=NULL");
+        return;
+    }
+
+    uintptr_t ped = reinterpret_cast<uintptr_t>(player);
+
+    uintptr_t playerData =
+        *reinterpret_cast<uintptr_t*>(ped + 0x540);
+
+    FLog(
+        "[REBUILD DEBUG] ped=%p playerData=%p",
+        (void*)ped,
+        (void*)playerData
+    );
+
+    if (!playerData)
+    {
+        FLog("[REBUILD DEBUG] ERRO: playerData=NULL");
+        return;
+    }
+
+    uintptr_t clothesDesc =
+        *reinterpret_cast<uintptr_t*>(playerData + 0x08);
+
+    FLog(
+        "[REBUILD DEBUG] playerData+0x08 clothesDesc=%p",
+        (void*)clothesDesc
+    );
+
+    if (!clothesDesc)
+    {
+        FLog("[REBUILD DEBUG] ERRO: clothesDesc=NULL");
+        return;
+    }
+
+    int16_t modelId =
+        *reinterpret_cast<int16_t*>(ped + 0x32);
+
+    FLog(
+        "[REBUILD DEBUG] modelId=%d (0x%X)",
+        static_cast<int>(modelId),
+        static_cast<unsigned int>(
+            static_cast<uint16_t>(modelId)
+        )
+    );
+
+    uintptr_t defaultClothes =
+        g_libGTASA + 0xC3EBA0;
+
+    FLog(
+        "[REBUILD DEBUG] defaultClothes=%p",
+        (void*)defaultClothes
+    );
+
+    FLog(
+        "[REBUILD DEBUG] ConstructPedModel=%p",
+        (void*)(g_libGTASA + 0x541764)
+    );
+
+    FLog("[REBUILD DEBUG] ===== STEP 3 OK =====");
+}
 ////////////////////////-------------------------------------
 void DebugRebuildStep2(CPlayerPedGta* player)
 {
@@ -2663,6 +2731,8 @@ CPlayerPedGta* player = FindPlayerPed(-1);
     }
 DebugRebuildStep1(player);
 DebugRebuildStep2(player);
+DebugRebuildStep3(player);
+
     //DebugPlayerAnimState(player);
    // FLog(
        // "[CLOTHES TEST] CPlayerPed=%p",
@@ -2692,10 +2762,10 @@ DebugRebuildStep2(player);
         return;
     }
 
-    FLog(
-        "[CLOTHES TEST] CPlayerPedData=%p",
-        playerData
-    );
+//    FLog(
+  //      "[CLOTHES TEST] CPlayerPedData=%p",
+    //    playerData
+   // );
  CPedClothesDesc* clothes =
         playerData->m_pPedClothesDesc;
 RpClump* clump = reinterpret_cast<RpClump*>(
@@ -2718,10 +2788,10 @@ if (!clump)
 
 bool initialized = RpAnimBlendClumpIsInitialized(clump);
 
-FLog(
-    "[CLOTHES CLUMP] RpAnimBlendClumpIsInitialized=%d",
-    initialized ? 1 : 0
-);
+//FLog(
+  //  "[CLOTHES CLUMP] RpAnimBlendClumpIsInitialized=%d",
+   // initialized ? 1 : 0
+//);
 /*clothes->SetTextureAndModel(
     "shortskhaki",
     "shorts",
@@ -2742,14 +2812,14 @@ RebuildPlayerClothes(player);*/
 
 //uintptr_t clump =
   //  *reinterpret_cast<uintptr_t*>(playerAddr + 0x20);
-
+/*
 FLog(
     "[CLOTHES CLUMP] player=%p clump=%p ClumpOffset=0x%X",
     player,
     reinterpret_cast<void*>(clump),
     ClumpOffset
 );
-
+*/
 if (!clump)
 {
     FLog("[CLOTHES CLUMP] ERRO: clump nulo");
@@ -2785,13 +2855,13 @@ if (!animDataPtr)
     return;
 }
 
-FLog("[CLOTHES CLUMP] estrutura parece valida");
+/*FLog("[CLOTHES CLUMP] estrutura parece valida");
 
     FLog(
         "[CLOTHES TEST] CPedClothesDesc=%p",
         clothes
     );
-
+*/
     FLog("[CLOTHES TEST] ===== FIM =====");
 }
 static void (*CPedClothesDesc__SetTextureAndModel)(
