@@ -2272,6 +2272,94 @@ void InstallSpecialHooks()
 	CHook::InlineHook("_Z32_rxOpenGLDefaultAllInOneRenderCBP10RwResEntryPvhj", &rxOpenGLDefaultAllInOneRenderCB_hook, &rxOpenGLDefaultAllInOneRenderCB);
 	CHook::InlineHook("_ZN25CCustomBuildingDNPipeline18CustomPipeRenderCBEP10RwResEntryPvhj", &CCustomBuildingDNPipeline__CustomPipeRenderCB_hook, &CCustomBuildingDNPipeline__CustomPipeRenderCB);
 }
+//////-------------------///---------------------//--------
+static constexpr uintptr_t ADDR_CONSTRUCT_PED_MODEL = 0x541764;
+
+void DebugRebuildStep4(CPlayerPedGta* player)
+{
+    FLog("[REBUILD DEBUG] ===== STEP 4 =====");
+
+    if (!player)
+    {
+        FLog("[REBUILD DEBUG] player=NULL");
+        return;
+    }
+
+    uintptr_t ped =
+        reinterpret_cast<uintptr_t>(player);
+
+    uintptr_t playerData =
+        *reinterpret_cast<uintptr_t*>(ped + 0x540);
+
+    if (!playerData)
+    {
+        FLog("[REBUILD DEBUG] playerData=NULL");
+        return;
+    }
+
+    uintptr_t clothesDesc =
+        *reinterpret_cast<uintptr_t*>(playerData + 0x08);
+
+    if (!clothesDesc)
+    {
+        FLog("[REBUILD DEBUG] clothesDesc=NULL");
+        return;
+    }
+
+    int16_t modelId =
+        *reinterpret_cast<int16_t*>(ped + 0x32);
+
+    uintptr_t defaultClothes =
+        g_libGTASA + 0xC3EBA0;
+
+    FLog(
+        "[REBUILD DEBUG] modelId=%d",
+        static_cast<int>(modelId)
+    );
+
+    FLog(
+        "[REBUILD DEBUG] clothesDesc=%p",
+        (void*)clothesDesc
+    );
+
+    FLog(
+        "[REBUILD DEBUG] defaultClothes=%p",
+        (void*)defaultClothes
+    );
+
+    using FnConstructPedModel =
+        void* (*)(unsigned int,
+                  void*,
+                  void*,
+                  bool);
+
+    auto fn =
+        reinterpret_cast<FnConstructPedModel>(
+            g_libGTASA + ADDR_CONSTRUCT_PED_MODEL
+        );
+
+    FLog(
+        "[REBUILD DEBUG] chamando ConstructPedModel=%p",
+        (void*)fn
+    );
+
+    void* result =
+        fn(
+            static_cast<unsigned int>(
+                static_cast<uint16_t>(modelId)
+            ),
+            reinterpret_cast<void*>(clothesDesc),
+            reinterpret_cast<void*>(defaultClothes),
+            false
+        );
+
+    FLog(
+        "[REBUILD DEBUG] ConstructPedModel retornou=%p",
+        result
+    );
+
+    FLog("[REBUILD DEBUG] ===== STEP 4 OK =====");
+}
 ////////----------//////------/////-----/////----------/////
 void DebugRebuildStep3(CPlayerPedGta* player)
 {
@@ -2722,146 +2810,17 @@ void TestPlayerClothesDescHG()
 {
     FLog("[CLOTHES TEST] ===== INICIO =====");
 
-CPlayerPedGta* player = FindPlayerPed(-1);
+	CPlayerPedGta* player = FindPlayerPed(-1);
     if (!player)
     {
         FLog("[CLOTHES TEST] player=NULL");
         FLog("[CLOTHES TEST] ===== FIM =====");
         return;
     }
-DebugRebuildStep1(player);
-DebugRebuildStep2(player);
-DebugRebuildStep3(player);
-
-    //DebugPlayerAnimState(player);
-   // FLog(
-       // "[CLOTHES TEST] CPlayerPed=%p",
-     //   player
-    //);
-
-  /*  CPlayerPedGta* ped = player->m_pPed;
-
-    if (!ped)
-    {
-        FLog("[CLOTHES TEST] m_pPed=NULL");
-        FLog("[CLOTHES TEST] ===== FIM =====");
-        return;
-    }
-
-    FLog(
-        "[CLOTHES TEST] CPedGTA=%p",
-        ped
-    );*/
-
-    CPlayerPedData* playerData = player->m_pPlayerData;
-
-    if (!playerData)
-    {
-        FLog("[CLOTHES TEST] m_pPlayerData=NULL");
-        FLog("[CLOTHES TEST] ===== FIM =====");
-        return;
-    }
-
-//    FLog(
-  //      "[CLOTHES TEST] CPlayerPedData=%p",
-    //    playerData
-   // );
- CPedClothesDesc* clothes =
-        playerData->m_pPedClothesDesc;
-RpClump* clump = reinterpret_cast<RpClump*>(
-    *reinterpret_cast<uintptr_t*>(
-        reinterpret_cast<uintptr_t>(player) + 0x20
-    )
-);
-
-FLog(
-    "[CLOTHES CLUMP] player=%p clump=%p",
-    player,
-    clump
-);
-
-if (!clump)
-{
-    FLog("[CLOTHES CLUMP] ERRO: clump nulo");
-    return;
-}
-
-bool initialized = RpAnimBlendClumpIsInitialized(clump);
-
-//FLog(
-  //  "[CLOTHES CLUMP] RpAnimBlendClumpIsInitialized=%d",
-   // initialized ? 1 : 0
-//);
-/*clothes->SetTextureAndModel(
-    "shortskhaki",
-    "shorts",
-    2
-);
-
-FLog("[CLOTHES TEST] component=2 alterado para shortskhaki/shorts");
-
-RebuildPlayerClothes(player);*/
-    if (!clothes)
-    {
-        FLog("[CLOTHES TEST] m_pPedClothesDesc=NULL");
-        FLog("[CLOTHES TEST] ===== FIM =====");
-        return;
-    }
-    uintptr_t playerAddr =
-    reinterpret_cast<uintptr_t>(player);
-
-//uintptr_t clump =
-  //  *reinterpret_cast<uintptr_t*>(playerAddr + 0x20);
-/*
-FLog(
-    "[CLOTHES CLUMP] player=%p clump=%p ClumpOffset=0x%X",
-    player,
-    reinterpret_cast<void*>(clump),
-    ClumpOffset
-);
-*/
-if (!clump)
-{
-    FLog("[CLOTHES CLUMP] ERRO: clump nulo");
-    return;
-}
-/*bool RpAnimBlendClumpIsInitialized(RpClump* clump)
-{
-    return CHook::CallFunction<bool>(
-        g_libGTASA + 0x46A974,
-        clump
-    );
-}*/
-uintptr_t animDataPtr =
-    *reinterpret_cast<uintptr_t*>(clump + ClumpOffset);
-
-/*FLog(
-    "[CLOTHES CLUMP] clump+offset=%p",
-    reinterpret_cast<void*>(animDataPtr)
-);
-bool initialized = RpAnimBlendClumpIsInitialized(clump);
-
-FLog(
-    "[CLOTHES CLUMP] RpAnimBlendClumpIsInitialized=%d",
-    initialized ? 1 : 0
-);*/
-
-if (!animDataPtr)
-{
-    FLog(
-        "[CLOTHES CLUMP] ERRO: animDataPtr nulo! "
-        "ExtractAssociations causaria crash."
-    );
-    return;
-}
-
-/*FLog("[CLOTHES CLUMP] estrutura parece valida");
-
-    FLog(
-        "[CLOTHES TEST] CPedClothesDesc=%p",
-        clothes
-    );
-*/
+	DebugRebuildStep1(player);
+	DebugRebuildStep2(player);
+	DebugRebuildStep3(player);
+	DebugRebuildStep4(player);
     FLog("[CLOTHES TEST] ===== FIM =====");
 }
 static void (*CPedClothesDesc__SetTextureAndModel)(
