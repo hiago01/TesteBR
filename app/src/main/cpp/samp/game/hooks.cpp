@@ -2883,15 +2883,29 @@ static void* CClothesBuilder__CreateSkinnedClump_hook(
     void* defaultClothes,
     bool flag)
 {
+FLog(
+    "[CLOTHES BUILD] ENTER clump=%p texDict=%p clothes=%p default=%p flag=%d",
+    clump,
+    texDictionary,
+    clothes,
+    defaultClothes,
+    flag
+);
+
+if (clothes)
+{
+    uint32_t* d = reinterpret_cast<uint32_t*>(clothes);
+
     FLog(
-        "[CLOTHES BUILD] ENTER clump=%p texDict=%p clothes=%p default=%p flag=%d",
-        clump,
-        texDictionary,
-        clothes,
-        defaultClothes,
-        flag
+        "[CLOTHES BUILD] models=%08X %08X %08X %08X %08X",
+        d[0], d[1], d[2], d[3], d[4]
     );
 
+    FLog(
+        "[CLOTHES BUILD] textures=%08X %08X %08X %08X",
+        d[10], d[11], d[12], d[13]
+    );
+}
     void* result = CClothesBuilder__CreateSkinnedClump(
         clump,
         texDictionary,
@@ -2947,6 +2961,38 @@ static void CPedClothesDesc__SetTextureAndModel_hook(
 
 void TestPlayerClothesDesc()
 {
+FLog("[CLOTHES TEST] ===== PRE-CONSTRUCT =====");
+
+FLog(
+    "[CLOTHES TEST] player clump=%p",
+    reinterpret_cast<void*>(
+        *reinterpret_cast<uintptr_t*>(
+            reinterpret_cast<uintptr_t>(player) + 0x20
+        )
+    )
+);
+
+FLog(
+    "[CLOTHES TEST] modelId=%d",
+    *reinterpret_cast<int16_t*>(
+        reinterpret_cast<uintptr_t>(player) + 0x32
+    )
+);
+
+FLog(
+    "[CLOTHES TEST] clothes=%p",
+    clothes
+);
+
+FLog(
+    "[CLOTHES TEST] default=%p",
+    reinterpret_cast<void*>(defaultClothes)
+);
+
+FLog(
+    "[CLOTHES TEST] ===== PRE-CONSTRUCT END ====="
+);
+
 	CPlayerPedGta* player = FindPlayerPed(-1);    
 CPlayerPedData* playerData = player->m_pPlayerData;
 
@@ -2977,31 +3023,6 @@ FLog(
     (void*)field540
 );
 
-/*    CPlayerPedGta* ped = player->m_pPed;
-
-    if (!ped)
-    {
-        FLog("[CLOTHES TEST] m_pPed=NULL");
-        return;
-    }
-
-    CPlayerPedData* playerData = player->m_pPlayerData;
-
-    if (!playerData)
-    {
-        FLog("[CLOTHES TEST] m_pPlayerData=NULL");
-        return;
-    }
-
-    CPedClothesDesc* clothes =
-        playerData->m_pPedClothesDesc;
-
-    FLog(
-        "[CLOTHES TEST] player=%p ped=off playerData=%p clothes=%p",
-        player,
-        playerData,
-        clothes
-    );*/
 }
 
 #include <EGL/egl.h>
