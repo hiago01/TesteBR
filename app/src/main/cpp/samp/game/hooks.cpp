@@ -2861,6 +2861,53 @@ void TestPlayerClothesDescHG()
 	DebugRebuildStep4(player);
     FLog("[CLOTHES TEST] ===== FIM =====");
 }
+
+// ============================================================
+// DEBUG: CClothesBuilder::CreateSkinnedClump
+// GTA SA Mobile 2.10
+// Offset: 0x5424F0
+// ============================================================
+
+static void* (*CClothesBuilder__CreateSkinnedClump)(
+    void* clump,
+    void* texDictionary,
+    void* clothes,
+    void* defaultClothes,
+    bool flag
+);
+
+static void* CClothesBuilder__CreateSkinnedClump_hook(
+    void* clump,
+    void* texDictionary,
+    void* clothes,
+    void* defaultClothes,
+    bool flag)
+{
+    FLog(
+        "[CLOTHES BUILD] ENTER clump=%p texDict=%p clothes=%p default=%p flag=%d",
+        clump,
+        texDictionary,
+        clothes,
+        defaultClothes,
+        flag
+    );
+
+    void* result = CClothesBuilder__CreateSkinnedClump(
+        clump,
+        texDictionary,
+        clothes,
+        defaultClothes,
+        flag
+    );
+
+    FLog(
+        "[CLOTHES BUILD] RETURN result=%p",
+        result
+    );
+
+    return result;
+}
+
 static void (*CPedClothesDesc__SetTextureAndModel)(
         void* pThis,
         const char* texture,
@@ -2962,10 +3009,16 @@ FLog(
 void SetUpGLHooks();
 void InstallHooks()
 {
+
 CHook::InlineHook(
     "_ZN15CPedClothesDesc18SetTextureAndModelEPKcS1_i",
     &CPedClothesDesc__SetTextureAndModel_hook,
     &CPedClothesDesc__SetTextureAndModel
+);
+CHook::InlineHook(
+    "_ZN15CClothesBuilder18CreateSkinnedClumpEP7RpClumpP15RwTexDictionaryR15CPedClothesDescPKS4_b",
+    &CClothesBuilder__CreateSkinnedClump_hook,
+    &CClothesBuilder__CreateSkinnedClump
 );
 /*FLog("[RADAR DEBUG] ANTES CHud::Initialise hook");
 CHook::InlineHook(
