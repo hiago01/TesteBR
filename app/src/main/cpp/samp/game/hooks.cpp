@@ -3202,8 +3202,76 @@ void TestPlayerClothesDesc()
         (void*)field540
     );
 
-    // Dump completo do descritor.
-    FLog("[CLOTHES DESC] ===== DUMP =====");
+    // ------------------------------------------------------------
+    // TESTE DA PROXIMA ETAPA
+    //
+    // Altera SOMENTE o componente 2:
+    //   texture = shortskhaki
+    //   model   = shorts
+    //
+    // Nao chama CPed::Dress e nao chama RebuildPlayer.
+    // O objetivo aqui e verificar se ConstructPedModel /
+    // CreateSkinnedClump conseguem construir a nova roupa quando
+    // o descriptor realmente difere do default.
+    // ------------------------------------------------------------
+
+    uint32_t oldModel2 =
+        *reinterpret_cast<uint32_t*>(
+            reinterpret_cast<uintptr_t>(clothes) + (2 * 4)
+        );
+
+    uint32_t oldTexture2 =
+        *reinterpret_cast<uint32_t*>(
+            reinterpret_cast<uintptr_t>(clothes) + 0x28 + (2 * 4)
+        );
+
+    FLog(
+        "[CLOTHES TEST] component=2 ANTES model=0x%08X texture=0x%08X",
+        oldModel2,
+        oldTexture2
+    );
+
+    FLog(
+        "[CLOTHES TEST] aplicando component=2 texture=shortskhaki model=shorts"
+    );
+
+    clothes->SetTextureAndModel(
+        "shortskhaki",
+        "shorts",
+        2
+    );
+
+    uint32_t newModel2 =
+        *reinterpret_cast<uint32_t*>(
+            reinterpret_cast<uintptr_t>(clothes) + (2 * 4)
+        );
+
+    uint32_t newTexture2 =
+        *reinterpret_cast<uint32_t*>(
+            reinterpret_cast<uintptr_t>(clothes) + 0x28 + (2 * 4)
+        );
+
+    FLog(
+        "[CLOTHES TEST] component=2 DEPOIS model=0x%08X texture=0x%08X",
+        newModel2,
+        newTexture2
+    );
+
+    if (oldModel2 == newModel2 && oldTexture2 == newTexture2)
+    {
+        FLog(
+            "[CLOTHES TEST] AVISO: component=2 nao mudou"
+        );
+    }
+    else
+    {
+        FLog(
+            "[CLOTHES TEST] OK: component=2 foi alterado"
+        );
+    }
+
+    // Dump apos a alteracao para confirmar todo o descriptor.
+    FLog("[CLOTHES DESC] ===== DUMP APOS TROCA =====");
 
     for (int i = 0; i < 10; i++)
     {
@@ -3235,11 +3303,11 @@ void TestPlayerClothesDesc()
         );
     }
 
-    FLog("[CLOTHES DESC] ===== FIM DUMP =====");
+    FLog("[CLOTHES DESC] ===== FIM DUMP APOS TROCA =====");
 
-    // Executa as quatro etapas de diagnóstico.
-    // STEP 4 apenas chama ConstructPedModel e registra o retorno.
-    // Nenhuma alteração direta do radar ou dos hooks de render é feita aqui.
+    // Executa as quatro etapas de diagnostico.
+    // STEP 4 chama ConstructPedModel com o descriptor alterado.
+    // Nenhum CPed::Dress e executado nesta etapa.
     DebugRebuildStep1(player);
     DebugRebuildStep2(player);
     DebugRebuildStep3(player);
