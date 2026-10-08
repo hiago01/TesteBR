@@ -135,7 +135,7 @@ if (input == "/testeclothes")
 
             return;
         }
-if (input == "/testeclothes2")
+if (input == "/hiago22")
         {
             TestPlayerClothesDescHG();
 

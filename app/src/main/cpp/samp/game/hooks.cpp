@@ -3305,13 +3305,14 @@ void TestPlayerClothesDesc()
 
     FLog("[CLOTHES DESC] ===== FIM DUMP APOS TROCA =====");
 
-    // Executa as quatro etapas de diagnostico.
-    // STEP 4 chama ConstructPedModel com o descriptor alterado.
-    // Nenhum CPed::Dress e executado nesta etapa.
-    DebugRebuildStep1(player);
-    DebugRebuildStep2(player);
-    DebugRebuildStep3(player);
-    DebugRebuildStep4(player);
+    // ETAPA SEGURA:
+    // Nao chama ConstructPedModel, CreateSkinnedClump,
+    // RebuildPlayer, CPed::Dress ou qualquer rebuild.
+    // Neste ponto somente confirmamos que o descriptor
+    // foi alterado corretamente em memoria.
+    FLog("[CLOTHES TEST] NAO executando ConstructPedModel nesta etapa");
+    FLog("[CLOTHES TEST] NAO executando CreateSkinnedClump nesta etapa");
+    FLog("[CLOTHES TEST] NAO executando RebuildPlayer/CPed::Dress nesta etapa");
 
     FLog("[CLOTHES TEST] ===== FIM =====");
 }
