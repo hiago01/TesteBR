@@ -2373,7 +2373,7 @@ static void CPedClothesDesc__SetTextureAndModel_hook(
 
 void TestPlayerClothesDesc()
 {
-    CPlayerPed* player = FindPlayerPed(-1);
+	CPlayerPedGta* player = FindPlayerPed(-1);    
 
     if (!player)
     {
