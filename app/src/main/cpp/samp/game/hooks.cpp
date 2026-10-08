@@ -2288,6 +2288,17 @@ static void CPedClothesDesc__SetTextureAndModel_hook(
             model ? model : "(null)",
             component
         );
+	if (component == 2)
+    {
+        texture = "shortskhaki";
+        model = "shorts";
+
+        FLog(
+            "[CLOTHES TEST] component=2 -> texture=%s model=%s",
+            texture,
+            model
+        );
+    }
     }
     else
     {

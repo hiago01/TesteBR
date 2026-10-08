@@ -1159,7 +1159,7 @@ if (thiz)
     radarRect.right  = centerX + halfWidth;
     radarRect.top    = centerY - halfHeight;
     radarRect.bottom = centerY + halfHeight;
-  
+  // COR RADAR ATT
     CRGBA radarColor = color;
 
     radarColor.r = 255;
@@ -1167,7 +1167,7 @@ if (thiz)
     radarColor.b = 255;
     radarColor.a = 255;
 
-    FLog("[RADARDISC TEST] COR BRANCA");
+// FLog("[RADARDISC TEST] COR BRANCA"); // MOLDURA RADA
 
     if (CSprite2d__DrawRect)
     {
