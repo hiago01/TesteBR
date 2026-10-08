@@ -749,9 +749,9 @@ CHook::InlineHook(
     &CSprite2d__Draw8
 );
 
-//FLog("[INIT ORDER(CHud::Initialise)] ANTES CHud::Initialise 0x55C1C8");    
-//CHook::CallFunction<void>(g_libGTASA + 0x55C1C8); // CHud:>
-//FLog("[INIT ORDER] DEPOIS CHud::Initialise 0x55C1C8");   
+FLog("[INIT ORDER(CHud::Initialise)] ANTES CHud::Initialise 0x55C1C8");    
+CHook::CallFunction<void>(g_libGTASA + 0x55C1C8); // CHud:>
+FLog("[INIT ORDER] DEPOIS CHud::Initialise 0x55C1C8");   
 FLog("[RADAR DISC] Tentando substituir depois do CHud::Initialise");
 
 CSprite2d* radarDisc =
@@ -774,7 +774,6 @@ else
 {
     FLog("[RADAR DISC] SUBSTITUICAO DIRETA FALHOU");
 }
-CHook::CallFunction<void>(g_libGTASA + 0x55C1C8); // CHud:>
  CHook::CallFunction<void>(g_libGTASA + 0x6D5970); // CPlayerSkin::Initialise();
     CHook::CallFunction<void>(g_libGTASA + 0x6D6E30); // CPostEffects::Initialise();
     CGame::m_pWorkingMatrix1 = RwMatrixCreate();

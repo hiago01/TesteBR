@@ -1134,11 +1134,32 @@ void CSprite2d__DrawRect_hook(
 {
     RwTexture* texture = nullptr;
 
-    if (thiz)
+ //   if (thiz)
+   // {
+     //   texture = thiz->m_pTexture;
+   // }
+if (thiz)
+{
+    uintptr_t offset =
+        reinterpret_cast<uintptr_t>(thiz) -
+        reinterpret_cast<uintptr_t>(g_libGTASA);
+
+    if (offset == 0xC1FA30)
     {
-        texture = thiz->m_pTexture;
+        FLog(
+            "[RADARDISC TEST] ENCONTROU thiz=%p offset=0x%lX texture=%p name=%s",
+            (void*)thiz,
+            (unsigned long)offset,
+            (void*)texture,
+            (texture && texture->name)
+                ? texture->name
+                : "(sem nome)"
+        );
+
+        return;
     }
-if (texture)
+}
+/*if (texture)
 {
     FLog(
         "[DRAWRECT] texture=%p name=%s",
@@ -1219,7 +1240,7 @@ if (texture)
 
         debugRadarInfo++;
     }
-}
+}*/
     // Tudo que não for radardisc continua normal
     if (CSprite2d__DrawRect)
     {
