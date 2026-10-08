@@ -2288,7 +2288,7 @@ CPlayerPedGta* player = FindPlayerPed(-1);
         player
     );
 
-    CPlayerPedGta* ped = player->m_pPed;
+  /*  CPlayerPedGta* ped = player->m_pPed;
 
     if (!ped)
     {
@@ -2300,9 +2300,9 @@ CPlayerPedGta* player = FindPlayerPed(-1);
     FLog(
         "[CLOTHES TEST] CPedGTA=%p",
         ped
-    );
+    );*/
 
-    CPlayerPedData* playerData = ped->m_pPlayerData;
+    CPlayerPedData* playerData = player->m_pPlayerData;
 
     if (!playerData)
     {
@@ -2380,15 +2380,15 @@ void TestPlayerClothesDesc()
         return;
     }
 
-    CPlayerPedGta* ped = player->m_pPed;
+/*    CPlayerPedGta* ped = player->m_pPed;
 
     if (!ped)
     {
         FLog("[CLOTHES TEST] m_pPed=NULL");
         return;
-    }
+    }*/
 
-    CPlayerPedData* playerData = ped->m_pPlayerData;
+    CPlayerPedData* playerData = player->m_pPlayerData;
 
     if (!playerData)
     {
@@ -2400,9 +2400,8 @@ void TestPlayerClothesDesc()
         playerData->m_pPedClothesDesc;
 
     FLog(
-        "[CLOTHES TEST] player=%p ped=%p playerData=%p clothes=%p",
+        "[CLOTHES TEST] player=%p ped=off playerData=%p clothes=%p",
         player,
-        ped,
         playerData,
         clothes
     );
