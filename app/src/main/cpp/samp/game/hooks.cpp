@@ -2380,6 +2380,8 @@ FLog("[CLOTHES DESC] ===== FIM DUMP =====");
         "[REBUILD DEBUG] chamando ConstructPedModel..."
     );
 
+    // O endereco esta hookado em InstallHooks(), portanto esta chamada
+    // passa pelo hook de ConstructPedModel e depois segue para o original.
     bool result =
         fn(
             static_cast<unsigned int>(
@@ -2863,6 +2865,132 @@ void TestPlayerClothesDescHG()
 }
 
 // ============================================================
+// DEBUG: CClothes::ConstructPedModel
+// GTA SA Mobile 2.10
+// Offset: 0x541764
+//
+// Assinatura nativa observada:
+// bool CClothes::ConstructPedModel(
+//     unsigned int modelId,
+//     CPedClothesDesc const& clothes,
+//     CPedClothesDesc const* defaultClothes,
+//     bool force
+// );
+//
+// IMPORTANTE:
+// - O retorno e bool/sucesso, NAO um RpClump*.
+// - O clump interno e criado/atualizado por CreateSkinnedClump.
+// - Este hook somente registra os argumentos e o retorno.
+// ============================================================
+
+static bool (*CClothes__ConstructPedModel)(
+    unsigned int modelId,
+    void* clothes,
+    void* defaultClothes,
+    bool force
+);
+
+static void DumpClothesBrief(
+    const char* tag,
+    void* clothes
+)
+{
+    if (!clothes)
+    {
+        FLog(
+            "[CLOTHES DESC] %s=NULL",
+            tag ? tag : "(null)"
+        );
+        return;
+    }
+
+    uint32_t* d = reinterpret_cast<uint32_t*>(clothes);
+
+    FLog(
+        "[CLOTHES DESC] %s ptr=%p",
+        tag ? tag : "(null)",
+        clothes
+    );
+
+    FLog(
+        "[CLOTHES DESC] %s models=%08X %08X %08X %08X %08X",
+        tag ? tag : "(null)",
+        d[0], d[1], d[2], d[3], d[4]
+    );
+
+    FLog(
+        "[CLOTHES DESC] %s textures=%08X %08X %08X %08X",
+        tag ? tag : "(null)",
+        d[10], d[11], d[12], d[13]
+    );
+
+    FLog(
+        "[CLOTHES DESC] %s stats70=%f stats74=%f",
+        tag ? tag : "(null)",
+        *reinterpret_cast<float*>(
+            reinterpret_cast<uintptr_t>(clothes) + 0x70
+        ),
+        *reinterpret_cast<float*>(
+            reinterpret_cast<uintptr_t>(clothes) + 0x74
+        )
+    );
+}
+
+static bool CClothes__ConstructPedModel_hook(
+    unsigned int modelId,
+    void* clothes,
+    void* defaultClothes,
+    bool force)
+{
+    FLog(
+        "[CLOTHES CONSTRUCT] ===== ENTER ====="
+    );
+
+    FLog(
+        "[CLOTHES CONSTRUCT] modelId=%u (0x%X) clothes=%p default=%p force=%d",
+        modelId,
+        modelId,
+        clothes,
+        defaultClothes,
+        force ? 1 : 0
+    );
+
+    DumpClothesBrief(
+        "clothes",
+        clothes
+    );
+
+    DumpClothesBrief(
+        "default",
+        defaultClothes
+    );
+
+    FLog(
+        "[CLOTHES CONSTRUCT] original=%p",
+        (void*)CClothes__ConstructPedModel
+    );
+
+    bool result =
+        CClothes__ConstructPedModel(
+            modelId,
+            clothes,
+            defaultClothes,
+            force
+        );
+
+    FLog(
+        "[CLOTHES CONSTRUCT] RETURN success=%d",
+        result ? 1 : 0
+    );
+
+    FLog(
+        "[CLOTHES CONSTRUCT] ===== EXIT ====="
+    );
+
+    return result;
+}
+
+// ============================================================
 // DEBUG: CClothesBuilder::CreateSkinnedClump
 // GTA SA Mobile 2.10
 // Offset: 0x5424F0
@@ -2883,29 +3011,29 @@ static void* CClothesBuilder__CreateSkinnedClump_hook(
     void* defaultClothes,
     bool flag)
 {
-FLog(
-    "[CLOTHES BUILD] ENTER clump=%p texDict=%p clothes=%p default=%p flag=%d",
-    clump,
-    texDictionary,
-    clothes,
-    defaultClothes,
-    flag
-);
-
-if (clothes)
-{
-    uint32_t* d = reinterpret_cast<uint32_t*>(clothes);
-
     FLog(
-        "[CLOTHES BUILD] models=%08X %08X %08X %08X %08X",
-        d[0], d[1], d[2], d[3], d[4]
+        "[CLOTHES BUILD] ===== ENTER ====="
     );
 
     FLog(
-        "[CLOTHES BUILD] textures=%08X %08X %08X %08X",
-        d[10], d[11], d[12], d[13]
+        "[CLOTHES BUILD] clump=%p texDict=%p clothes=%p default=%p flag=%d",
+        clump,
+        texDictionary,
+        clothes,
+        defaultClothes,
+        flag ? 1 : 0
     );
-}
+
+    DumpClothesBrief(
+        "build_clothes",
+        clothes
+    );
+
+    DumpClothesBrief(
+        "build_default",
+        defaultClothes
+    );
+
     void* result = CClothesBuilder__CreateSkinnedClump(
         clump,
         texDictionary,
@@ -2917,6 +3045,21 @@ if (clothes)
     FLog(
         "[CLOTHES BUILD] RETURN result=%p",
         result
+    );
+
+    if (!result)
+    {
+        FLog(
+            "[CLOTHES BUILD] RESULT=NULL"
+        );
+
+        FLog(
+            "[CLOTHES BUILD] Motivo ainda nao identificado; nao alterando fluxo nativo."
+        );
+    }
+
+    FLog(
+        "[CLOTHES BUILD] ===== EXIT ====="
     );
 
     return result;
@@ -3116,6 +3259,14 @@ CHook::InlineHook(
     &CPedClothesDesc__SetTextureAndModel_hook,
     &CPedClothesDesc__SetTextureAndModel
 );
+// Clothing diagnostics: ConstructPedModel is hooked by exact native offset
+// to avoid dependency on a possible symbol/mangling variation.
+CHook::InlineHook(
+    g_libGTASA + 0x541764,
+    &CClothes__ConstructPedModel_hook,
+    &CClothes__ConstructPedModel
+);
+
 CHook::InlineHook(
     "_ZN15CClothesBuilder18CreateSkinnedClumpEP7RpClumpP15RwTexDictionaryR15CPedClothesDescPKS4_b",
     &CClothesBuilder__CreateSkinnedClump_hook,
