@@ -33,6 +33,7 @@
 #include "PlayerPedData.h"
 #include "PedClothesDesc.h"
 #include "ClothesTest.h"
+#include "Plugins/RpAnimBlendPlugin/RpAnimBlend.h"
 //#include "CPedGTA.h"
 extern UI* pUI;
 extern CGame* pGame;
@@ -2343,7 +2344,7 @@ CPlayerPedGta* player = FindPlayerPed(-1);
  CPedClothesDesc* clothes =
         playerData->m_pPedClothesDesc;
 
-clothes->SetTextureAndModel(
+/*clothes->SetTextureAndModel(
     "shortskhaki",
     "shorts",
     2
@@ -2351,13 +2352,50 @@ clothes->SetTextureAndModel(
 
 FLog("[CLOTHES TEST] component=2 alterado para shortskhaki/shorts");
 
-RebuildPlayerClothes(player);
+RebuildPlayerClothes(player);*/
     if (!clothes)
     {
         FLog("[CLOTHES TEST] m_pPedClothesDesc=NULL");
         FLog("[CLOTHES TEST] ===== FIM =====");
         return;
     }
+    uintptr_t playerAddr =
+    reinterpret_cast<uintptr_t>(player);
+
+uintptr_t clump =
+    *reinterpret_cast<uintptr_t*>(playerAddr + 0x20);
+
+FLog(
+    "[CLOTHES CLUMP] player=%p clump=%p ClumpOffset=0x%X",
+    player,
+    reinterpret_cast<void*>(clump),
+    ClumpOffset
+);
+
+if (!clump)
+{
+    FLog("[CLOTHES CLUMP] ERRO: clump nulo");
+    return;
+}
+
+uintptr_t animDataPtr =
+    *reinterpret_cast<uintptr_t*>(clump + ClumpOffset);
+
+FLog(
+    "[CLOTHES CLUMP] clump+offset=%p",
+    reinterpret_cast<void*>(animDataPtr)
+);
+
+if (!animDataPtr)
+{
+    FLog(
+        "[CLOTHES CLUMP] ERRO: animDataPtr nulo! "
+        "ExtractAssociations causaria crash."
+    );
+    return;
+}
+
+FLog("[CLOTHES CLUMP] estrutura parece valida");
 
     FLog(
         "[CLOTHES TEST] CPedClothesDesc=%p",
