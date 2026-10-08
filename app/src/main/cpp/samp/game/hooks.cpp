@@ -2276,17 +2276,24 @@ static constexpr uintptr_t ADDR_ANIM_GET_NUM_ASSOC = 0x46AE54;
 
 void DebugPlayerAnimState(CPlayerPedGta* player)
 {
+    FLog("[ANIM DEBUG] ===== INICIO =====");
+
     if (!player)
     {
         FLog("[ANIM DEBUG] player=NULL");
         return;
     }
 
-    uintptr_t clump = *(uintptr_t*)((uintptr_t)player + 0x20);
+    uintptr_t playerAddr = reinterpret_cast<uintptr_t>(player);
 
-    FLog("[ANIM DEBUG] player=%p clump=%p",
-         player,
-         (void*)clump);
+    uintptr_t clump =
+        *reinterpret_cast<uintptr_t*>(playerAddr + 0x20);
+
+    FLog(
+        "[ANIM DEBUG] player=%p clump=%p",
+        (void*)playerAddr,
+        (void*)clump
+    );
 
     if (!clump)
     {
@@ -2294,46 +2301,150 @@ void DebugPlayerAnimState(CPlayerPedGta* player)
         return;
     }
 
+    // ---------------------------------------------------------
+    // RpAnimBlendClumpGetNumAssociations
+    // ---------------------------------------------------------
+
     using FnGetNum = int (*)(void*);
+
     auto getNum = reinterpret_cast<FnGetNum>(
         g_libGTASA + ADDR_ANIM_GET_NUM_ASSOC
     );
 
-    int count = getNum((void*)clump);
+    int count = getNum(reinterpret_cast<void*>(clump));
 
-    FLog("[ANIM DEBUG] NumAssociations=%d", count);
+    FLog(
+        "[ANIM DEBUG] NumAssociations=%d",
+        count
+    );
 
-    uintptr_t offsetSlot =
+    // ---------------------------------------------------------
+    // Descobrir ClumpOffset exatamente como o código nativo
+    //
+    // Native:
+    //
+    // adrp x8, 0x84b000
+    // ldr  x8, [x8,#0x148]
+    // ldrsw x8,[x8]
+    //
+    // ---------------------------------------------------------
+
+    uintptr_t offsetPointerAddress =
         g_libGTASA + 0x84B000 + 0x148;
 
-    int32_t clumpOffset =
-        *(int32_t*)offsetSlot;
+    uintptr_t offsetPointer =
+        *reinterpret_cast<uintptr_t*>(
+            offsetPointerAddress
+        );
 
-    FLog("[ANIM DEBUG] ClumpOffset runtime=0x%X",
-         (unsigned int)clumpOffset);
+    FLog(
+        "[ANIM DEBUG] offsetPointerAddress=%p",
+        (void*)offsetPointerAddress
+    );
+
+    FLog(
+        "[ANIM DEBUG] offsetPointer=%p",
+        (void*)offsetPointer
+    );
+
+    if (!offsetPointer)
+    {
+        FLog(
+            "[ANIM DEBUG] ERRO: offsetPointer=NULL"
+        );
+
+        FLog("[ANIM DEBUG] ===== FIM =====");
+        return;
+    }
+
+    int32_t clumpOffset =
+        *reinterpret_cast<int32_t*>(
+            offsetPointer
+        );
+
+    FLog(
+        "[ANIM DEBUG] ClumpOffset runtime=0x%X (%d)",
+        static_cast<unsigned int>(clumpOffset),
+        static_cast<int>(clumpOffset)
+    );
+
+    // ---------------------------------------------------------
+    // Validar offset antes de acessar clump + offset
+    // ---------------------------------------------------------
+
+    if (clumpOffset < -0x100000 ||
+        clumpOffset > 0x100000)
+    {
+        FLog(
+            "[ANIM DEBUG] ERRO: ClumpOffset suspeito: 0x%X",
+            static_cast<unsigned int>(clumpOffset)
+        );
+
+        FLog("[ANIM DEBUG] ===== FIM =====");
+        return;
+    }
+
+    uintptr_t animDataAddress =
+        clump + static_cast<intptr_t>(clumpOffset);
+
+    FLog(
+        "[ANIM DEBUG] animDataAddress=%p",
+        (void*)animDataAddress
+    );
 
     uintptr_t animData =
-        *(uintptr_t*)(clump + clumpOffset);
+        *reinterpret_cast<uintptr_t*>(
+            animDataAddress
+        );
 
-    FLog("[ANIM DEBUG] animData=%p",
-         (void*)animData);
+    FLog(
+        "[ANIM DEBUG] animData=%p",
+        (void*)animData
+    );
 
-    if (animData)
+    if (!animData)
     {
-        uintptr_t associationHead =
-            *(uintptr_t*)animData;
+        FLog(
+            "[ANIM DEBUG] ERRO: animData=NULL"
+        );
 
-        FLog("[ANIM DEBUG] associationHead=%p",
-             (void*)associationHead);
-
-        uint32_t initialized =
-            *(uint32_t*)(animData + 0x10);
-
-        FLog("[ANIM DEBUG] animData+0x10=%u",
-             initialized);
+        FLog("[ANIM DEBUG] ===== FIM =====");
+        return;
     }
-}
 
+    // ---------------------------------------------------------
+    // Mesmo teste utilizado pelo native IsInitialized:
+    //
+    // ldr w8,[x8,#0x10]
+    // cmp w8,#0
+    // ---------------------------------------------------------
+
+    uint32_t initialized =
+        *reinterpret_cast<uint32_t*>(
+            animData + 0x10
+        );
+
+    FLog(
+        "[ANIM DEBUG] animData+0x10=%u",
+        initialized
+    );
+
+    // ---------------------------------------------------------
+    // Primeiro elemento da lista de associações
+    // ---------------------------------------------------------
+
+    uintptr_t associationHead =
+        *reinterpret_cast<uintptr_t*>(
+            animData
+        );
+
+    FLog(
+        "[ANIM DEBUG] associationHead=%p",
+        (void*)associationHead
+    );
+
+    FLog("[ANIM DEBUG] ===== FIM =====");
+}
 static constexpr uintptr_t ADDR_CLOTHES_REBUILD_PLAYER = 0x540CDC;
 
 void RebuildPlayerClothes(CPlayerPedGta* player)
