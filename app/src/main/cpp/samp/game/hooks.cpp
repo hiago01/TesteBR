@@ -2343,7 +2343,30 @@ CPlayerPedGta* player = FindPlayerPed(-1);
     );
  CPedClothesDesc* clothes =
         playerData->m_pPedClothesDesc;
+RpClump* clump = reinterpret_cast<RpClump*>(
+    *reinterpret_cast<uintptr_t*>(
+        reinterpret_cast<uintptr_t>(player) + 0x20
+    )
+);
 
+FLog(
+    "[CLOTHES CLUMP] player=%p clump=%p",
+    player,
+    clump
+);
+
+if (!clump)
+{
+    FLog("[CLOTHES CLUMP] ERRO: clump nulo");
+    return;
+}
+
+bool initialized = RpAnimBlendClumpIsInitialized(clump);
+
+FLog(
+    "[CLOTHES CLUMP] RpAnimBlendClumpIsInitialized=%d",
+    initialized ? 1 : 0
+);
 /*clothes->SetTextureAndModel(
     "shortskhaki",
     "shorts",
@@ -2362,8 +2385,8 @@ RebuildPlayerClothes(player);*/
     uintptr_t playerAddr =
     reinterpret_cast<uintptr_t>(player);
 
-uintptr_t clump =
-    *reinterpret_cast<uintptr_t*>(playerAddr + 0x20);
+//uintptr_t clump =
+  //  *reinterpret_cast<uintptr_t*>(playerAddr + 0x20);
 
 FLog(
     "[CLOTHES CLUMP] player=%p clump=%p ClumpOffset=0x%X",
@@ -2387,7 +2410,7 @@ if (!clump)
 uintptr_t animDataPtr =
     *reinterpret_cast<uintptr_t*>(clump + ClumpOffset);
 
-FLog(
+/*FLog(
     "[CLOTHES CLUMP] clump+offset=%p",
     reinterpret_cast<void*>(animDataPtr)
 );
@@ -2396,7 +2419,7 @@ bool initialized = RpAnimBlendClumpIsInitialized(clump);
 FLog(
     "[CLOTHES CLUMP] RpAnimBlendClumpIsInitialized=%d",
     initialized ? 1 : 0
-);
+);*/
 
 if (!animDataPtr)
 {
