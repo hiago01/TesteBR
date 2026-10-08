@@ -1132,11 +1132,16 @@ void CSprite2d__DrawRect_hook(
     const CRGBA& color
 )
 {
-    RwTexture* texture = nullptr;
-if (texture == reinterpret_cast<RwTexture*>(0xb400007d555b2ab0))
-{
 
-CRGBA radarColor = color;
+if (thiz)
+{
+    uintptr_t offset =
+        reinterpret_cast<uintptr_t>(thiz) -
+        reinterpret_cast<uintptr_t>(g_libGTASA);
+
+    if (offset == 0xC1FA30)
+    {
+    CRGBA radarColor = color;
 
     radarColor.r = 255;
     radarColor.g = 0;
@@ -1155,8 +1160,10 @@ CRGBA radarColor = color;
     }
 
     return;
-} 
-   // Tudo que não for radardisc continua normal
+}
+}
+
+ // Tudo que não for radardisc continua normal
     if (CSprite2d__DrawRect)
     {
         CSprite2d__DrawRect(
