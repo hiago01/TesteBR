@@ -1135,10 +1135,24 @@ void CSprite2d__DrawRect_hook(
     RwTexture* texture = nullptr;
 if (texture == reinterpret_cast<RwTexture*>(0xb400007d555b2ab0))
 {
-    FLog(
-        "[RADARDISC TEST] BLOQUEANDO DrawRect texture=%p",
-        (void*)texture
-    );
+
+CRGBA radarColor = color;
+
+    radarColor.r = 255;
+    radarColor.g = 0;
+    radarColor.b = 0;
+    radarColor.a = 255;
+
+    FLog("[RADARDISC TEST] COR VERMELHA");
+
+    if (CSprite2d__DrawRect)
+    {
+        CSprite2d__DrawRect(
+            thiz,
+            posn,
+            radarColor
+        );
+    }
 
     return;
 } 
