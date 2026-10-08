@@ -2864,6 +2864,57 @@ void TestPlayerClothesDescHG()
     FLog("[CLOTHES TEST] ===== FIM =====");
 }
 
+
+// ============================================================
+// DEBUG DA PRÓXIMA ETAPA - CClothesBuilder::GetClothesTexture
+//
+// Objetivo:
+// descobrir qual busca de textura/modelo é a última concluída antes
+// de um possível travamento dentro de CreateSkinnedClump.
+//
+// O hook fica SILENCIOSO fora do /testeclothes.
+// Não altera nenhum retorno/argumento.
+// ============================================================
+
+static volatile bool g_ClothesBuildDebugActive = false;
+
+static void* (*CClothesBuilder__GetClothesTexture)(
+    unsigned int modelHash,
+    const char* textureName
+);
+
+static void* CClothesBuilder__GetClothesTexture_hook(
+    unsigned int modelHash,
+    const char* textureName
+)
+{
+    if (g_ClothesBuildDebugActive)
+    {
+        FLog(
+            "[CLOTHES TEX] ENTER hash=0x%08X name=%s",
+            modelHash,
+            textureName ? textureName : "(null)"
+        );
+    }
+
+    void* result = CClothesBuilder__GetClothesTexture(
+        modelHash,
+        textureName
+    );
+
+    if (g_ClothesBuildDebugActive)
+    {
+        FLog(
+            "[CLOTHES TEX] RETURN hash=0x%08X name=%s texture=%p",
+            modelHash,
+            textureName ? textureName : "(null)",
+            result
+        );
+    }
+
+    return result;
+}
+
 // ============================================================
 // DEBUG: CClothes::ConstructPedModel
 // GTA SA Mobile 2.10
@@ -3305,15 +3356,46 @@ void TestPlayerClothesDesc()
 
     FLog("[CLOTHES DESC] ===== FIM DUMP APOS TROCA =====");
 
-    // ETAPA SEGURA:
-    // Nao chama ConstructPedModel, CreateSkinnedClump,
-    // RebuildPlayer, CPed::Dress ou qualquer rebuild.
-    // Neste ponto somente confirmamos que o descriptor
-    // foi alterado corretamente em memoria.
-    FLog("[CLOTHES TEST] NAO executando ConstructPedModel nesta etapa");
-    FLog("[CLOTHES TEST] NAO executando CreateSkinnedClump nesta etapa");
-    FLog("[CLOTHES TEST] NAO executando RebuildPlayer/CPed::Dress nesta etapa");
+    // ============================================================
+    // PRÓXIMA ETAPA:
+    // Executa somente ConstructPedModel, sem RebuildPlayer e sem
+    // CPed::Dress. O hook de GetClothesTexture fica ativo apenas
+    // durante esta chamada para descobrir a última textura que o
+    // CreateSkinnedClump conseguiu processar.
+    //
+    // IMPORTANTE:
+    // Se o log parar depois de "[CLOTHES BUILD] ENTER", o retorno
+    // do CreateSkinnedClump não foi alcançado. Os últimos
+    // "[CLOTHES TEX]" ajudam a localizar a etapa do travamento.
+    // ============================================================
 
+    FLog("[CLOTHES TEST] >>> ATIVANDO INSTRUMENTACAO DE TEXTURAS");
+    g_ClothesBuildDebugActive = true;
+
+    FLog("[CLOTHES TEST] >>> CHAMANDO ConstructPedModel");
+    FLog(
+        "[CLOTHES TEST] ConstructPedModel addr=%p",
+        (void*)(g_libGTASA + 0x541764)
+    );
+
+    bool constructResult =
+        CClothes__ConstructPedModel(
+            static_cast<unsigned int>(
+                static_cast<uint16_t>(modelId)
+            ),
+            clothes,
+            reinterpret_cast<void*>(defaultClothes),
+            false
+        );
+
+    g_ClothesBuildDebugActive = false;
+
+    FLog(
+        "[CLOTHES TEST] <<< ConstructPedModel retornou success=%d",
+        constructResult ? 1 : 0
+    );
+
+    FLog("[CLOTHES TEST] <<< INSTRUMENTACAO DE TEXTURAS DESATIVADA");
     FLog("[CLOTHES TEST] ===== FIM =====");
 }
 
@@ -3340,6 +3422,14 @@ CHook::InlineHook(
     "_ZN15CClothesBuilder18CreateSkinnedClumpEP7RpClumpP15RwTexDictionaryR15CPedClothesDescPKS4_b",
     &CClothesBuilder__CreateSkinnedClump_hook,
     &CClothesBuilder__CreateSkinnedClump
+);
+
+// Instrumentação da busca de texturas usada pelo CreateSkinnedClump.
+// Silenciosa fora do /testeclothes.
+CHook::InlineHook(
+    g_libGTASA + 0x5437B8,
+    &CClothesBuilder__GetClothesTexture_hook,
+    &CClothesBuilder__GetClothesTexture
 );
 /*FLog("[RADAR DEBUG] ANTES CHud::Initialise hook");
 CHook::InlineHook(
