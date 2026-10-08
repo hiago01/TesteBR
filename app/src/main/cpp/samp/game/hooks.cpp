@@ -2406,12 +2406,34 @@ static void CPedClothesDesc__SetTextureAndModel_hook(
 void TestPlayerClothesDesc()
 {
 	CPlayerPedGta* player = FindPlayerPed(-1);    
+CPlayerPedData* playerData = player->m_pPlayerData;
 
-    if (!player)
-    {
-        FLog("[CLOTHES TEST] player=NULL");
-        return;
-    }
+uintptr_t base = reinterpret_cast<uintptr_t>(player);
+
+uintptr_t field20 = *reinterpret_cast<uintptr_t*>(base + 0x20);
+uint16_t field32 = *reinterpret_cast<uint16_t*>(base + 0x32);
+uintptr_t field538 = *reinterpret_cast<uintptr_t*>(base + 0x538);
+uintptr_t field540 = *reinterpret_cast<uintptr_t*>(base + 0x540);
+if (field540)
+{
+    uintptr_t clothesFrom540 =
+        *reinterpret_cast<uintptr_t*>(field540 + 0x08);
+
+    FLog(
+        "[CLOTHES DEBUG] *(player+0x540)=%p *(+0x08)=%p expected=%p",
+        (void*)field540,
+        (void*)clothesFrom540,
+        (void*)playerData->m_pPedClothesDesc
+    );
+}
+FLog(
+    "[CLOTHES DEBUG] player=%p +20=%p +32=%u +538=%p +540=%p",
+    player,
+    (void*)field20,
+    field32,
+    (void*)field538,
+    (void*)field540
+);
 
 /*    CPlayerPedGta* ped = player->m_pPed;
 
@@ -2419,7 +2441,7 @@ void TestPlayerClothesDesc()
     {
         FLog("[CLOTHES TEST] m_pPed=NULL");
         return;
-    }*/
+    }
 
     CPlayerPedData* playerData = player->m_pPlayerData;
 
@@ -2437,7 +2459,7 @@ void TestPlayerClothesDesc()
         player,
         playerData,
         clothes
-    );
+    );*/
 }
 
 #include <EGL/egl.h>
