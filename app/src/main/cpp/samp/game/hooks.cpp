@@ -3273,7 +3273,11 @@ void TestPlayerClothesDesc()
          player, (void*)clump, clothes, (void*)defaultClothes, static_cast<int>(modelId));
     DumpClothesBrief("D_ACTIVE_BEFORE", clothes);
     DumpClothesBrief("D_DEFAULT_BEFORE", reinterpret_cast<void*>(defaultClothes));
-
+clothes->SetTextureAndModel(
+    "shortskhaki",
+    "shorts",
+    2
+);
     // Ativa logs dos hooks de construção apenas durante esta chamada.
     g_ClothesBuildDebugActive = true;
     FLog("[CLOTHES TEST D] chamando RebuildPlayer(player, false) UMA vez");
