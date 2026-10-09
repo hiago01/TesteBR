@@ -3260,11 +3260,8 @@ static void CPedClothesDesc__SetTextureAndModel_hook(
     );
 
     // Intercepta a roupa vest no component 0.
-    if (component == 0 &&
-        texture != nullptr &&
-        model != nullptr &&
-        strcmp(texture, "vest") == 0 &&
-        strcmp(model, "vest") == 0)
+    if (strcmp(texture, "VEST") == 0 &&
+        strcmp(model, "VEST") == 0)
     {
         newTexture = "trackytop1pro";
         newModel = "trackytop1";
@@ -3275,12 +3272,6 @@ static void CPedClothesDesc__SetTextureAndModel_hook(
             newModel,
             component
         );
-    }
-
-    if (!CPedClothesDesc__SetTextureAndModel)
-    {
-        FLog("[CLOTHES] original/trampoline NULL; setter skipped");
-        return;
     }
 
     CPedClothesDesc__SetTextureAndModel(
