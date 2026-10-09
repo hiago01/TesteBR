@@ -3353,6 +3353,36 @@ FLog("[CLOTHES HOOK] SetTextureAndModel original/trampoline=%p",
 // slot currently contains a target before installing anything; don't patch a
 // zero/unresolved slot. Keep the pre-hook target as a fallback original pointer.
 
+//(_AntigoRuimOff) > const uintptr_t cgameProcessSlotAddress = g_libGTASA + 0x66FE58;
+
+const uintptr_t cgameProcessTargetBefore = g_libGTASA
+    ? *reinterpret_cast<uintptr_t*>(cgameProcessSlotAddress)
+    : 0;
+FLog("[CLOTHES FRAME] PLT slot=%p target-before=%p",
+     reinterpret_cast<void*>(cgameProcessSlotAddress),
+     reinterpret_cast<void*>(cgameProcessTargetBefore));
+if (g_libGTASA && cgameProcessTargetBefore)
+{
+    CGame_Process_ClothesDeferredOriginal =
+        reinterpret_cast<void (*)()>(cgameProcessTargetBefore);
+    CHook::InstallPLT(
+        cgameProcessSlotAddress,
+        (uintptr_t)CGame_Process_ClothesDeferred_hook,
+        (uintptr_t*)&CGame_Process_ClothesDeferredOriginal
+    );
+    if (!CGame_Process_ClothesDeferredOriginal)
+        CGame_Process_ClothesDeferredOriginal = reinterpret_cast<void (*)()>(cgameProcessTargetBefore);
+    FLog("[CLOTHES FRAME] callback instalado original=%p",
+         reinterpret_cast<void*>(CGame_Process_ClothesDeferredOriginal));
+}
+else
+{
+    FLog("[CLOTHES FRAME] NÃO instalado: libGTASA ou destino PLT indisponível; /testeclothes permanecerá bloqueado");
+}
+
+// RebuildPlayer, ConstructPedModel and GetClothesTexture offsets were confirmed
+// in this build's symbol table. CreateSkinnedClump keeps the address already used
+// by the earlier isolated-clothes experiment in this same project.
 CHook::InlineHook(
     g_libGTASA + ADDR_CLOTHES_CONSTRUCT_PED_MODEL,
     &CClothes__ConstructPedModel_hook,
