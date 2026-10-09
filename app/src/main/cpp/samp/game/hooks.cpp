@@ -3272,29 +3272,28 @@ static void CPedClothesDesc__SetTextureAndModel_hook(
     );
 }
 
+
 void TestPlayerClothesDesc()
 {
-    FLog("[CLOTHES TEST F] ===== INICIO =====");
+    FLog("[CLOTHES TEST] ===== INICIO =====");
 
     CPlayerPedGta* player = FindPlayerPed(-1);
+
     if (!player)
     {
-        FLog("[CLOTHES TEST F] player=NULL");
-        FLog("[CLOTHES TEST F] ===== FIM =====");
+        FLog("[CLOTHES TEST] player=NULL");
         return;
     }
 
-    if (!CGame_Process_ClothesDeferredOriginal)
+    if (!pGame)
     {
-        FLog("[CLOTHES TEST F] callback CGame::Process sem original/trampoline; NÃO enfileirando e NÃO alterando roupas");
-        FLog("[CLOTHES TEST F] ===== FIM =====");
+        FLog("[CLOTHES TEST] pGame=NULL");
         return;
     }
 
     if (!CPedClothesDesc__SetTextureAndModel)
     {
-        FLog("[CLOTHES TEST F] setter trampoline NULL; NÃO enfileirando");
-        FLog("[CLOTHES TEST F] ===== FIM =====");
+        FLog("[CLOTHES TEST] setter trampoline NULL");
         return;
     }
 
@@ -3302,30 +3301,38 @@ void TestPlayerClothesDesc()
         !CClothesBuilder__CreateSkinnedClump ||
         !CClothesBuilder__GetClothesTexture)
     {
-        FLog("[CLOTHES TEST F] hook original/trampoline de rebuild incompleto; não alterando roupas");
-        FLog("[CLOTHES TEST F] Construct=%p Build=%p Texture=%p",
+        FLog("[CLOTHES TEST] hooks nativos incompletos");
+        FLog("[CLOTHES TEST] Construct=%p Build=%p Texture=%p",
              reinterpret_cast<void*>(CClothes__ConstructPedModel),
              reinterpret_cast<void*>(CClothesBuilder__CreateSkinnedClump),
              reinterpret_cast<void*>(CClothesBuilder__GetClothesTexture));
-        FLog("[CLOTHES TEST F] ===== FIM =====");
         return;
     }
 
     CPlayerPedData* playerData = player->m_pPlayerData;
+
     if (!playerData || !playerData->m_pPedClothesDesc)
     {
-        FLog("[CLOTHES TEST F] playerData/clothesDesc=NULL");
-        FLog("[CLOTHES TEST F] ===== FIM =====");
+        FLog("[CLOTHES TEST] playerData/clothesDesc=NULL");
         return;
     }
 
-    FLog("[CLOTHES TEST F] player=%p data=%p desc=%p", player, playerData,
-         playerData->m_pPedClothesDesc);
-    FLog("[CLOTHES TEST F] pedido: SetTextureAndModel(\"shortskhaki\", \"shorts\", 2) + RebuildPlayer(false)");
-    QueuePendingPlayerClothesChange(player, "shortskhaki", "shorts", 2);
-    FLog("[CLOTHES TEST F] somente enfileirado; descritor/modelo serão alterados após CGame::Process");
-    FLog("[CLOTHES TEST F] ===== FIM =====");
+    FLog("[CLOTHES TEST] player=%p desc=%p",
+         player, playerData->m_pPedClothesDesc);
+
+    QueuePendingPlayerClothesChange(
+        player, "shortskhaki", "shorts", 2
+    );
+
+    CGame::PostToMainThread([]()
+    {
+        ProcessPendingPlayerClothesRebuild();
+    });
+
+    FLog("[CLOTHES TEST] pedido enfileirado");
+    FLog("[CLOTHES TEST] ===== FIM =====");
 }
+
 
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>   // If using OpenGL ES 2.0 or 3.0
@@ -3345,7 +3352,9 @@ FLog("[CLOTHES HOOK] SetTextureAndModel original/trampoline=%p",
 // present (commented out) in this project's InstallSAMPHooks. Check that the
 // slot currently contains a target before installing anything; don't patch a
 // zero/unresolved slot. Keep the pre-hook target as a fallback original pointer.
-const uintptr_t cgameProcessSlotAddress = g_libGTASA + 0x66FE58;
+
+//(_AntigoRuimOff) > const uintptr_t cgameProcessSlotAddress = g_libGTASA + 0x66FE58;
+
 const uintptr_t cgameProcessTargetBefore = g_libGTASA
     ? *reinterpret_cast<uintptr_t*>(cgameProcessSlotAddress)
     : 0;

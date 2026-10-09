@@ -790,7 +790,7 @@ void CGame::PostToMainThread(std::function<void()> task)
     tasks.push(std::move(task));
 }
 
-void CGame::ProcessMainThreadTasks()
+/* void CGame::ProcessMainThreadTasks() //Antiga agora off nova abaixo chatgpt
 {
     if (tasks.empty())
         return;
@@ -803,7 +803,32 @@ void CGame::ProcessMainThreadTasks()
         tasks.pop();
     }
     task();
+} */
+
+
+void CGame::ProcessMainThreadTasks()
+{
+    for (;;)
+    {
+        std::function<void()> task;
+
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+
+            if (tasks.empty())
+                return;
+
+            task = std::move(tasks.front());
+            tasks.pop();
+        }
+
+        if (task)
+            task();
+    }
 }
+
+
+
 extern CGame* pGame;
 extern CNetGame* pNetGame;
 extern UI *pUI;
