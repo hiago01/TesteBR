@@ -3321,7 +3321,15 @@ void TestPlayerClothesDesc()
          player, playerData->m_pPedClothesDesc);
 
     QueuePendingPlayerClothesChange(
-        player, "shortskhaki", "shorts", 2
+        player, "trackytop1pro", "trackytop1", 0
+    );
+
+    QueuePendingPlayerClothesChange(
+        player, "tracktrpro", "tracktr", 2
+    );
+
+   QueuePendingPlayerClothesChange(
+        player, "sandalsock", "flipflop", 3
     );
 
     CGame::PostToMainThread([]()
