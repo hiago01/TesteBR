@@ -3248,6 +3248,9 @@ static void CPedClothesDesc__SetTextureAndModel_hook(
         const char* model,
         int component)
 {
+    const char* newTexture = texture;
+    const char* newModel = model;
+
     FLog(
         "[CLOTHES] this=%p texture=%s model=%s component=%d",
         pThis,
@@ -3256,22 +3259,37 @@ static void CPedClothesDesc__SetTextureAndModel_hook(
         component
     );
 
+    // Intercepta a roupa vest no component 0.
+    if (component == 0 &&
+        texture != nullptr &&
+        model != nullptr &&
+        strcmp(texture, "vest") == 0 &&
+        strcmp(model, "vest") == 0)
+    {
+        newTexture = "trackytop1pro";
+        newModel = "trackytop1";
+
+        FLog(
+            "[CLOTHES] REPLACE: texture=%s model=%s component=%d",
+            newTexture,
+            newModel,
+            component
+        );
+    }
+
     if (!CPedClothesDesc__SetTextureAndModel)
     {
-        FLog("[CLOTHES] original/trampoline NULL; setter ignorado para evitar chamada nula");
+        FLog("[CLOTHES] original/trampoline NULL; setter skipped");
         return;
     }
 
-    // Keep the native setter as a transparent passthrough. Rebuild is queued
-    // separately and never invoked from this hook.
     CPedClothesDesc__SetTextureAndModel(
         pThis,
-        texture,
-        model,
+        newTexture,
+        newModel,
         component
     );
 }
-
 
 void TestPlayerClothesDesc()
 {
