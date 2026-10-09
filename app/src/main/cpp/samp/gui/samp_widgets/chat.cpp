@@ -135,6 +135,26 @@ if (input == "/testeclothes")
 
             return;
         }
+if (input == "/testeclothes2")
+        {
+            TestPlayerClothesDesc2();
+
+            addDebugMessage(
+                "[CLOTHES TEST] Verifique o samp.log"
+            );
+
+            return;
+        }
+if (input == "/testeclothes3")
+        {
+            TestPlayerClothesDesc3();
+
+            addDebugMessage(
+                "[CLOTHES TEST] Verifique o samp.log"
+            );
+
+            return;
+        }
 if (input == "/hiago22")
         {
             TestPlayerClothesDescHG();

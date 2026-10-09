@@ -3323,11 +3323,125 @@ void TestPlayerClothesDesc()
     QueuePendingPlayerClothesChange(
         player, "trackytop1pro", "trackytop1", 0
     );
+        
+
+    CGame::PostToMainThread([]()
+    {
+        ProcessPendingPlayerClothesRebuild();
+    });
+
+    FLog("[CLOTHES TEST] pedido enfileirado");
+    FLog("[CLOTHES TEST] ===== FIM =====");
+}
+
+
+void TestPlayerClothesDesc2()
+{
+    FLog("[CLOTHES TEST] ===== INICIO =====");
+
+    CPlayerPedGta* player = FindPlayerPed(-1);
+
+    if (!player)
+    {
+        FLog("[CLOTHES TEST] player=NULL");
+        return;
+    }
+
+    if (!pGame)
+    {
+        FLog("[CLOTHES TEST] pGame=NULL");
+        return;
+    }
+
+    if (!CPedClothesDesc__SetTextureAndModel)
+    {
+        FLog("[CLOTHES TEST] setter trampoline NULL");
+        return;
+    }
+
+    if (!CClothes__ConstructPedModel ||
+        !CClothesBuilder__CreateSkinnedClump ||
+        !CClothesBuilder__GetClothesTexture)
+    {
+        FLog("[CLOTHES TEST] hooks nativos incompletos");
+        FLog("[CLOTHES TEST] Construct=%p Build=%p Texture=%p",
+             reinterpret_cast<void*>(CClothes__ConstructPedModel),
+             reinterpret_cast<void*>(CClothesBuilder__CreateSkinnedClump),
+             reinterpret_cast<void*>(CClothesBuilder__GetClothesTexture));
+        return;
+    }
+
+    CPlayerPedData* playerData = player->m_pPlayerData;
+
+    if (!playerData || !playerData->m_pPedClothesDesc)
+    {
+        FLog("[CLOTHES TEST] playerData/clothesDesc=NULL");
+        return;
+    }
+
+    FLog("[CLOTHES TEST] player=%p desc=%p",
+         player, playerData->m_pPedClothesDesc);
 
     QueuePendingPlayerClothesChange(
         player, "tracktrpro", "tracktr", 2
     );
 
+    CGame::PostToMainThread([]()
+    {
+        ProcessPendingPlayerClothesRebuild();
+    });
+
+    FLog("[CLOTHES TEST] pedido enfileirado");
+    FLog("[CLOTHES TEST] ===== FIM =====");
+}
+
+
+void TestPlayerClothesDesc3()
+{
+    FLog("[CLOTHES TEST] ===== INICIO =====");
+
+    CPlayerPedGta* player = FindPlayerPed(-1);
+
+    if (!player)
+    {
+        FLog("[CLOTHES TEST] player=NULL");
+        return;
+    }
+
+    if (!pGame)
+    {
+        FLog("[CLOTHES TEST] pGame=NULL");
+        return;
+    }
+
+    if (!CPedClothesDesc__SetTextureAndModel)
+    {
+        FLog("[CLOTHES TEST] setter trampoline NULL");
+        return;
+    }
+
+    if (!CClothes__ConstructPedModel ||
+        !CClothesBuilder__CreateSkinnedClump ||
+        !CClothesBuilder__GetClothesTexture)
+    {
+        FLog("[CLOTHES TEST] hooks nativos incompletos");
+        FLog("[CLOTHES TEST] Construct=%p Build=%p Texture=%p",
+             reinterpret_cast<void*>(CClothes__ConstructPedModel),
+             reinterpret_cast<void*>(CClothesBuilder__CreateSkinnedClump),
+             reinterpret_cast<void*>(CClothesBuilder__GetClothesTexture));
+        return;
+    }
+
+    CPlayerPedData* playerData = player->m_pPlayerData;
+
+    if (!playerData || !playerData->m_pPedClothesDesc)
+    {
+        FLog("[CLOTHES TEST] playerData/clothesDesc=NULL");
+        return;
+    }
+
+    FLog("[CLOTHES TEST] player=%p desc=%p",
+         player, playerData->m_pPedClothesDesc);
    QueuePendingPlayerClothesChange(
         player, "sandalsock", "flipflop", 3
     );
