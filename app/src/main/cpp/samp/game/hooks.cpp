@@ -3330,7 +3330,7 @@ void TestPlayerClothesDesc()
          player, playerData->m_pPedClothesDesc);
 
     QueuePendingPlayerClothesChange(
-        player, "trackytop1pro", "trackytop1", 0
+        player, "player_torso", "torso", 0
     );
         
 
@@ -3452,7 +3452,7 @@ void TestPlayerClothesDesc3()
     FLog("[CLOTHES TEST] player=%p desc=%p",
          player, playerData->m_pPedClothesDesc);
    QueuePendingPlayerClothesChange(
-        player, "sandalsock", "flipflop", 3
+        player, "neckdollar", "neck", 13
     );
 
     CGame::PostToMainThread([]()
