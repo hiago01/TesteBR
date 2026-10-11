@@ -2,6 +2,7 @@
 #include "../game/game.h"
 #include "netgame.h"
 #include "playerpool.h"
+#include "../game/ClothesSync.h"
 
 CPlayerPool::CPlayerPool()
 {
@@ -92,6 +93,7 @@ bool CPlayerPool::Delete(PLAYERID playerId, uint8_t byteReason)
 		m_pLocalPlayer->ToggleSpectating(false);
 	}
 	m_bPlayerSlotState[playerId] = false;
+	CClothesSync::ClearPlayer(playerId); // CJ real: descarta roupas do slot
 
 	if (m_pPlayers[playerId]) {
 		delete m_pPlayers[playerId];

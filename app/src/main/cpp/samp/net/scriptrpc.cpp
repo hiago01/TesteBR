@@ -2,6 +2,7 @@
 #include "../game/game.h"
 #include "netgame.h"
 #include "../audiostream.h"
+#include "../game/ClothesSync.h"
 
 extern CGame *pGame;
 extern CNetGame *pNetGame;
@@ -1953,6 +1954,40 @@ void AttachCameraToObject(RPCParameters *rpcParams)
 	}
 }
 
+// CJ real: servidor -> client (RPC_ScrSetPlayerClothes = 200)
+//   uint16 playerId | uint8 flags (bit0 = substituir tudo) | uint8 count |
+//   count x { uint8 component | uint8 texLen | texLen bytes | uint8 modelLen | modelLen bytes }
+void ScrSetPlayerClothes(RPCParameters* rpcParams)
+{
+	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
+	int iBitLength = rpcParams->numberOfBitsOfData;
+
+	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+
+	uint16_t playerId = 0;
+	uint8_t flags = 0, count = 0;
+	if (!bsData.Read(playerId) || !bsData.Read(flags) || !bsData.Read(count)) return;
+	if (count > CClothesSync::kMaxItems) return;
+
+	ClothesItem items[CClothesSync::kMaxItems];
+	int n = 0;
+	for (uint8_t i = 0; i < count; i++)
+	{
+		ClothesItem it{};
+		uint8_t texLen = 0, modelLen = 0;
+
+		if (!bsData.Read(it.component)) return;
+		if (!bsData.Read(texLen) || texLen >= sizeof(it.texture)) return;
+		if (texLen && !bsData.Read(it.texture, texLen)) return;
+		if (!bsData.Read(modelLen) || modelLen >= sizeof(it.model)) return;
+		if (modelLen && !bsData.Read(it.model, modelLen)) return;
+
+		items[n++] = it;
+	}
+
+	CClothesSync::Receive(playerId, (flags & 1) != 0, items, n);
+}
+
 void RegisterScriptRPCs(RakClientInterface *pRakClient)
 {
 	FLog("Registering script RPC's..");
@@ -2007,6 +2042,8 @@ void RegisterScriptRPCs(RakClientInterface *pRakClient)
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetSpawnInfo, ScrSetSpawnInfo);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetPlayerTeam, ScrSetPlayerTeam);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetPlayerSkin, ScrSetPlayerSkin);
+	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetPlayerClothes, ScrSetPlayerClothes);
+	CClothesSync::Reset(); // nova conexão: descarta roupas da sessão anterior
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetPlayerName, ScrSetPlayerName);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetPlayerPos, ScrSetPlayerPos);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetPlayerPosFindZ, ScrSetPlayerPosFindZ);
@@ -2058,6 +2095,7 @@ void UnregisterScriptRPCs(RakClientInterface *pRakClient)
 {
 	LOGI("Unregistering script RPC's..");
 
+	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetPlayerClothes);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetMapIcon);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrDisableMapIcon);
 

@@ -12,6 +12,7 @@
 #include "CrossHair.h"
 #include "Pickups.h"
 #include "game/Models/ModelInfo.h"
+#include "ClothesSync.h"
 #include "game/Collision/Collision.h"
 #include "sprite2d.h"
 
@@ -790,7 +791,7 @@ void CGame::PostToMainThread(std::function<void()> task)
     tasks.push(std::move(task));
 }
 
-/* void CGame::ProcessMainThreadTasks() //Antiga agora off nova abaixo chatgpt
+void CGame::ProcessMainThreadTasks()
 {
     if (tasks.empty())
         return;
@@ -803,32 +804,7 @@ void CGame::PostToMainThread(std::function<void()> task)
         tasks.pop();
     }
     task();
-} */
-
-
-void CGame::ProcessMainThreadTasks()
-{
-    for (;;)
-    {
-        std::function<void()> task;
-
-        {
-            std::lock_guard<std::mutex> lock(mtx);
-
-            if (tasks.empty())
-                return;
-
-            task = std::move(tasks.front());
-            tasks.pop();
-        }
-
-        if (task)
-            task();
-    }
 }
-
-
-
 extern CGame* pGame;
 extern CNetGame* pNetGame;
 extern UI *pUI;
@@ -863,6 +839,7 @@ void CGame::Process() {
     }
 
     ProcessMainThreadTasks();
+    ClothesFrameTick();   // CJ real + skin DFF (thread do jogo, 1x por frame)
 
     uint32_t CurrentTimeInCycles;
     uint32_t v1; // r4

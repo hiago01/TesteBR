@@ -150,3 +150,5 @@ int RPC_ScrPlayAudioStream = 41;
 int RPC_ScrStopAudioStream = 42;
 int RPC_ScrAttachCameraToObject = 81;
 int RPC_SetPlayerSkillLevel = 34;
+// CJ real (roupas/tatuagens/cabelo) - ID customizado, livre no 0.3.7
+int RPC_ScrSetPlayerClothes = 200;

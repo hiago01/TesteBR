@@ -154,3 +154,5 @@ extern int RPC_SetPlayerSkillLevel;
 extern int RPC_EditObject;
 extern int RPC_EditAttachedObject;
 extern int RPC_EnterEditObject;
+// CJ real (RPC customizado servidor -> client; ID livre no 0.3.7)
+extern int RPC_ScrSetPlayerClothes;

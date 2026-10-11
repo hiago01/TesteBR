@@ -7,6 +7,8 @@
 #include "java/jniutil.h"
 #include "../../game/sprite2d.h"
 #include "../../game/ClothesTest.h"
+#include "../../game/ClothesSync.h"
+#include "../../game/CustomSkin.h"
 extern UI* pUI;
 extern CGame* pGame;
 extern CNetGame* pNetGame;
@@ -135,23 +137,21 @@ if (input == "/testeclothes")
 
             return;
         }
-if (input == "/testeclothes2")
+if (input == "/cj" || input.rfind("/cj ", 0) == 0)
         {
-            TestPlayerClothesDesc2();
-
-            addDebugMessage(
-                "[CLOTHES TEST] Verifique o samp.log"
-            );
+            // CJ real: /cj <componente> <textura|-> [modelo] | /cj reset | /cj remote <0|1>
+            std::string args = input.size() > 3 ? input.substr(4) : std::string();
+            std::string reply = CClothesSync::DebugCommand(args);
+            addDebugMessage("%s", reply.c_str());
 
             return;
         }
-if (input == "/testeclothes3")
+if (input == "/skin7" || input.rfind("/skin7 ", 0) == 0)
         {
-            TestPlayerClothesDesc3();
-
-            addDebugMessage(
-                "[CLOTHES TEST] Verifique o samp.log"
-            );
+            // skin DFF customizada: /skin7 load | info | unload
+            std::string args = input.size() > 6 ? input.substr(7) : std::string();
+            std::string reply = CCustomSkin::DebugCommand(args);
+            addDebugMessage("%s", reply.c_str());
 
             return;
         }
