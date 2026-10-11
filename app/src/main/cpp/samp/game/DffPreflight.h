@@ -36,6 +36,7 @@ namespace DffPreflight
         int      hanimFrames    = 0;
         bool     nativeGeometry = false;  // geometria "native" = dados específicos de plataforma
         std::set<int> hanimIds;
+        std::set<std::string> frameNames;   // nomes dos frames (plugin 0x253F2FE)
     };
 
     // IDs de ossos do esqueleto de ped do SA
@@ -112,6 +113,12 @@ namespace DffPreflight
                             out.hanimIds.insert((int)U32(d, x.body + 4));
                             ++out.hanimFrames;
                         }
+                        else if (x.type == 0x253F2FE && x.size > 0 && x.size < 64)   // nome do frame
+                        {
+                            std::string nm((const char*)d + x.body, x.size);
+                            nm.resize(std::strlen(nm.c_str()));
+                            out.frameNames.insert(nm);
+                        }
                     }
                 }
             }
@@ -183,6 +190,13 @@ namespace DffPreflight
             w.push_back("mais de 40 ossos no skin (limite de matrizes do shader GLES)");
         if (i.maxWeights > 4)
             w.push_back("mais de 4 pesos por vertice (o pipeline do SA usa 4)");
+        // frames-marcador que CPedModelInfo::SetFrameIds procura por nome (tabela m_pPedIds da libGTASA)
+        static const char* const markers[] = {"Smid","Shead","Supperarml","Supperarmr","SLhand","SRhand",
+                                              "Supperlegl","Supperlegr","Sfootl","Sfootr","Slowerlegl","Slowerlegr"};
+        int missing = 0;
+        for (const char* m : markers) if (i.frameNames.find(m) == i.frameNames.end()) ++missing;
+        if (missing > 0)
+            w.push_back(std::to_string(missing) + " de 12 frames-marcador ausentes (Smid, Shead, Supperarml...): o jogo ignora, mas dano/impacto por parte do corpo pode falhar");
         int foreign = 0;
         for (int id : i.hanimIds) if (!IsPedBoneId(id)) ++foreign;
         if (foreign > 0)

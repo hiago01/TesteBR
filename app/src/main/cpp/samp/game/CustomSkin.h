@@ -1,34 +1,43 @@
 #pragma once
 
 // ---------------------------------------------------------------------------
-// Skin customizada (DFF) - FASE 1: leitura e validação
+// Skin customizada (DFF) para o modelo 7
 //
 //   arquivo:  <raiz de armazenamento>/SAMP/skins/skin.dff
 //             (normalmente Android/data/com.samp.mobile/files/SAMP/skins/skin.dff)
-//   alvo:     skin id 7 (kTargetModelId)
 //
-// Fase 1 (esta): lê o arquivo, valida a estrutura SEM tocar no engine
-// (DffPreflight.h) e então usa o próprio leitor do jogo (RwStreamOpen em memória +
-// RwStreamFindChunk + RpClumpStreamRead, o mesmo que CFileLoader::LoadClumpFile usa)
-// para criar o RpClump. O clump NÃO é instalado no modelo 7.
+// Comandos de chat (/skin7 ...), todos executados na thread do jogo pelo tick:
+//   load    lê o arquivo, valida (DffPreflight, sem engine) e testa o leitor do jogo
+//   apply   instala o DFF no modelo 7 (carrega antes, se preciso)
+//   wear    põe o ped LOCAL no modelo 7 (para ver o resultado sem mexer no servidor)
+//   unwear  devolve o ped local ao modelo 0
+//   info / status / unload
 //
-// Thread: tudo que toca o RenderWare roda na thread do jogo, dentro de
-// CGame::Process() (ClothesFrameTick -> CCustomSkin::Process). O chat só liga flags.
+// COMO A TROCA FUNCIONA (conferido na libGTASA 2.10 arm64 do projeto)
+//   * Modelo 7 = MODEL_MALE01, o ped "placeholder": o jogo o carrega na partida e o
+//     CStreaming::RemoveModel do projeto nunca o descarrega. Por isso a troca é feita
+//     NO LUGAR, no CPedModelInfo já carregado, e não por hook de carregamento.
+//   * Sequência (a mesma do engine em RemoveModel + LoadClumpFile):
+//       RpClumpStreamRead(bytes do arquivo)        -> clump novo (leitor do próprio jogo)
+//       CPedModelInfo::DeleteRwObject()  @0x45D744 -> destrói o clump-molde antigo e o
+//                                                    hit-col (e solta a ref do TXD)
+//       CPedModelInfo::SetClump(novo)    @0x45D514 -> base CClumpModelInfo::SetClump
+//                                                    (liga HAnim aos atomics skinned,
+//                                                    normaliza pesos, ref do TXD), SetFrameIds
+//                                                    (m_pPedIds) e CreateHitColModelSkinned
+//   * Peds já existentes são clones e não mudam; só quem for criado depois usa o novo molde.
+//   * RpAnimBlendClumpInit roda por instância (a confirmar no 2.10): não é chamado no molde.
+//   * A troca não persiste: reiniciar o jogo volta ao modelo original.
 //
-// FASE 2 (futura) - substituição do modelo 7. Endereços conferidos na tabela de símbolos
-// da libGTASA 2.10 arm64; o comportamento marcado "a confirmar" ainda não foi verificado:
-//   * CModelInfo::ms_modelInfoPtrs[7]        @ g_libGTASA + 0xB666E0 (tipo ped = 7)
-//   * CPedModelInfo::SetClump(RpClump*)      @ 0x45D514 (vtable +0x88): faz SetFrameIds
-//     (IDs HAnim -> ossos) e CreateHitColModelSkinned; é o que LoadClumpFile chama.
-//   * RpAnimBlendClumpInit (0x46A7D4): no SA original roda nas INSTÂNCIAS (CreateInstance),
-//     não no clump-molde (a confirmar no 2.10).
-//   * Para a troca "pegar": hookar CFileLoader::LoadClumpFile(RwStream*, uint) @ 0x4D054C
-//     e, quando modelId == 7, instalar um RpClumpClone do nosso clump em vez de ler
-//     o do gta3.img (CStreaming::ConvertBufferToObject continua com a contabilidade normal).
-//   * Trocar só sem peds usando o modelo 7 (ou depois de CStreaming::RemoveModel(7)
-//     @ 0x391FF0), nunca no meio do frame de render.
-//   * As 42 texturas do DFF não existem nos bancos TEXDB do jogo: sem um TXD/DB
-//     próprio elas aparecem sem textura.
+// LIMITES CONHECIDOS
+//   * As 42 texturas do DFF não existem nos bancos TEXDB: aparecem sem textura (parte 3:
+//     carregar PNGs/TXD próprios).
+//   * O DFF não tem os 12 frames-marcador (Smid, Shead, ...) que SetFrameIds procura por
+//     nome; o jogo ignora os ausentes.
+//   * Por ser o placeholder, qualquer ped sem modelo carregado aparece com o modelo 7.
+//
+// Thread: tudo que toca o RenderWare roda na thread do jogo (CGame::Process ->
+// ClothesFrameTick -> CCustomSkin::Process). O chat só liga flags.
 // ---------------------------------------------------------------------------
 
 #include <string>
@@ -36,12 +45,16 @@
 class CCustomSkin
 {
 public:
-    static constexpr int kTargetModelId = 7;
+    static constexpr int  kTargetModelId = 7;      // MODEL_MALE01
+    static constexpr bool kAutoApply     = false;  // true: aplica sozinho quando o modelo 7 estiver pronto
 
     static void RequestLoad();     // qualquer thread
-    static void RequestUnload();   // qualquer thread
+    static void RequestUnload();
+    static void RequestApply();
+    static void RequestWear(bool on);
+
     static void Process();         // thread do jogo, 1x por frame
 
-    static std::string Info();     // resumo do último carregamento
+    static std::string Info();     // última mensagem
     static std::string DebugCommand(const std::string& args);   // "/skin7 ..."
 };
