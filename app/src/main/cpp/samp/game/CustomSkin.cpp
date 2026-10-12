@@ -4,10 +4,13 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <mutex>
 #include <new>
 #include <string>
 #include <vector>
+
+#include <unistd.h>
 
 #include "../main.h"
 #include "../vendor/armhook/patch.h"
@@ -20,6 +23,11 @@
 #include "playerped.h"
 #include "Streaming.h"
 extern CNetGame* pNetGame;
+#endif
+
+#ifdef CUSTOMSKIN_HOST_STUBS
+extern void* g_hostModelInfo;     // definidos pelo teste de host
+extern bool  g_hostModelLoaded;
 #endif
 
 namespace
@@ -44,6 +52,10 @@ namespace
     std::atomic<bool>   s_applied{false};
     std::atomic<size_t> s_bytesSize{0};
     bool                s_autoTried = false;
+    bool                s_autoApplied = false;
+    bool                s_autoWarned = false;
+    uint64_t            s_autoWaitStartMs = 0;
+    uint64_t            s_markerClearAtMs = 0;   // quando apagar SAMP/skins/.applying (0 = sem marcador pendente)
 
     std::mutex          s_infoMutex;
     std::string         s_info = "nada carregado (use /skin7 load)";
@@ -59,14 +71,22 @@ namespace
         FLog("[SKIN7] %s", text.c_str());
     }
 
-    std::string SkinPath()
+    std::string SkinDir()
     {
         if (!g_pszStorage || !g_pszStorage[0]) return {};
         std::string p(g_pszStorage);
         if (p.back() != '/') p.push_back('/');
-        p += "SAMP/skins/skin.dff";
+        p += "SAMP/skins/";
         return p;
     }
+
+    std::string SkinPath()
+    {
+        const std::string d = SkinDir();
+        return d.empty() ? d : d + "skin.dff";
+    }
+
+    bool FileExists(const std::string& path) { return !path.empty() && ::access(path.c_str(), F_OK) == 0; }
 
 #ifndef CUSTOMSKIN_HOST_STUBS
     // O projeto aponta o GOT do jogo para o array dele; lemos pelo mesmo caminho que o engine usa.
@@ -87,8 +107,8 @@ namespace
         return true;
     }
 #else
-    void* ModelInfoOf(int) { return nullptr; }
-    bool  StreamedModelLoaded(int) { return false; }
+    void* ModelInfoOf(int) { return g_hostModelInfo; }
+    bool  StreamedModelLoaded(int) { return g_hostModelLoaded; }
     bool  WearLocal(int, std::string& err) { err = "host"; return false; }
 #endif
 
@@ -158,7 +178,7 @@ namespace
     }
 
     // ---- /skin7 load -------------------------------------------------------
-    bool DoLoad()
+    bool DoLoad(bool engineTest = true)
     {
         s_loadedOk = false;
         s_bytesSize = 0;
@@ -203,15 +223,19 @@ namespace
             FLog("[SKIN7] AVISO: %s", w.c_str());
 
         // 2) teste do leitor do jogo (clump descartado em seguida; /skin7 apply lê de novo)
-        RpClump* test = ReadClumpWithEngine(buf, err);
-        if (!test)
+        int atomics = info.atomics;
+        if (engineTest)
         {
-            SetInfo("ERRO no leitor do jogo: " + err);
-            return false;
+            RpClump* test = ReadClumpWithEngine(buf, err);
+            if (!test)
+            {
+                SetInfo("ERRO no leitor do jogo: " + err);
+                return false;
+            }
+            atomics = 0;
+            RpClumpForAllAtomics(test, CountAtomicCB, &atomics);
+            RpClumpDestroy(test);
         }
-        int atomics = 0;
-        RpClumpForAllAtomics(test, CountAtomicCB, &atomics);
-        RpClumpDestroy(test);
 
         s_bytes = std::move(buf);
         s_bytesSize = s_bytes.size();
@@ -238,7 +262,7 @@ namespace
     // ---- /skin7 apply ------------------------------------------------------
     void DoApply()
     {
-        if (!s_loadedOk && !DoLoad())
+        if (!s_loadedOk && !DoLoad(false))
             return;   // DoLoad já informou o erro
 
         void* mi = ModelInfoOf(CCustomSkin::kTargetModelId);
@@ -293,8 +317,70 @@ namespace
 
     bool AutoReady()
     {
-        return g_libGTASA && g_pszStorage && g_pszStorage[0]
-            && ModelInfoOf(CCustomSkin::kTargetModelId) && StreamedModelLoaded(CCustomSkin::kTargetModelId);
+        if (!g_libGTASA || !g_pszStorage || !g_pszStorage[0]) return false;
+        void* mi = ModelInfoOf(CCustomSkin::kTargetModelId);
+        return mi && *reinterpret_cast<uintptr_t*>(mi) == g_libGTASA + OFF_PED_MODELINFO_VTABLE
+                  && StreamedModelLoaded(CCustomSkin::kTargetModelId);
+    }
+
+    // Motivo pelo qual a aplicação automática ainda não pôde rodar (para o log).
+    std::string AutoWhy()
+    {
+        if (!g_libGTASA)                          return "libGTASA nulo";
+        if (!g_pszStorage || !g_pszStorage[0])    return "raiz de armazenamento indisponível";
+        void* mi = ModelInfoOf(CCustomSkin::kTargetModelId);
+        if (!mi)                                  return "model info do modelo 7 nulo";
+        const uintptr_t vt = *reinterpret_cast<uintptr_t*>(mi);
+        if (vt != g_libGTASA + OFF_PED_MODELINFO_VTABLE)
+        {
+            char b[96];
+            std::snprintf(b, sizeof(b), "vtable do model info diferente da de CPedModelInfo (0x%llx)", (unsigned long long)vt);
+            return b;
+        }
+        if (!StreamedModelLoaded(CCustomSkin::kTargetModelId)) return "modelo 7 não está carregado no streaming";
+        return "pronto";
+    }
+
+    uint64_t NowMs()
+    {
+        timespec ts{};
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        return (uint64_t)ts.tv_sec * 1000u + (uint64_t)ts.tv_nsec / 1000000u;
+    }
+
+    // Aplicação automática (1x por sessão): só se o arquivo existir, sem "disable" e sem marcador pendente.
+    void DoAutoApply()
+    {
+        const std::string dir = SkinDir();
+        if (!FileExists(SkinPath()))
+        {
+            FLog("[SKIN7] auto: %s ausente; nada a aplicar", SkinPath().c_str());
+            return;
+        }
+        if (FileExists(dir + "disable"))
+        {
+            SetInfo("auto-apply desativado (existe SAMP/skins/disable)");
+            return;
+        }
+        const std::string marker = dir + ".applying";
+        if (FileExists(marker))
+        {
+            SetInfo("auto-apply PULADO: a tentativa anterior não terminou (crash?). Apague SAMP/skins/.applying para tentar de novo");
+            return;
+        }
+
+        if (FILE* f = std::fopen(marker.c_str(), "wb")) { std::fputs("applying\n", f); std::fclose(f); }
+        FLog("[SKIN7] auto: aplicando %s ao modelo %d", SkinPath().c_str(), CCustomSkin::kTargetModelId);
+        DoApply();
+        if (s_applied)
+        {
+            s_autoApplied = true;
+            s_markerClearAtMs = NowMs() + 15000;   // sobreviveu 15 s => apaga o marcador
+        }
+        else
+        {
+            std::remove(marker.c_str());           // falhou sem crashar (erro tratado): não trava a próxima partida
+        }
     }
 }
 
@@ -313,10 +399,31 @@ void CCustomSkin::Process()
     if (w == 1) DoWear(true);
     else if (w == 2) DoWear(false);
 
-    if (kAutoApply && !s_autoTried && AutoReady())
+    if (kAutoApply && !s_autoTried)
     {
-        s_autoTried = true;
-        DoApply();
+        if (AutoReady())
+        {
+            s_autoTried = true;
+            DoAutoApply();
+        }
+        else
+        {
+            const uint64_t now = NowMs();
+            if (!s_autoWaitStartMs) s_autoWaitStartMs = now;
+            else if (!s_autoWarned && now - s_autoWaitStartMs > 30000)
+            {
+                s_autoWarned = true;
+                FLog("[SKIN7] auto: ainda aguardando há 30 s: %s", AutoWhy().c_str());
+            }
+        }
+    }
+
+    if (s_markerClearAtMs && NowMs() >= s_markerClearAtMs)
+    {
+        s_markerClearAtMs = 0;
+        const std::string dir = SkinDir();
+        if (!dir.empty()) std::remove((dir + ".applying").c_str());
+        FLog("[SKIN7] auto: marcador .applying removido (sessão estável)");
     }
 }
 
@@ -337,9 +444,9 @@ std::string CCustomSkin::DebugCommand(const std::string& args)
     if (args == "info" || args == "status")
     {
         char buf[420];
-        std::snprintf(buf, sizeof(buf), "[SKIN7] arquivo_valido=%s bytes=%zu aplicado=%s | %s",
+        std::snprintf(buf, sizeof(buf), "[SKIN7] arquivo_valido=%s bytes=%zu aplicado=%s auto=%s | %s",
                       s_loadedOk.load() ? "sim" : "nao", s_bytesSize.load(),
-                      s_applied.load() ? "sim" : "nao", Info().c_str());
+                      s_applied.load() ? "sim" : "nao", kAutoApply ? "ligado" : "desligado", Info().c_str());
         return buf;
     }
 

@@ -26,8 +26,17 @@
 //                                                    normaliza pesos, ref do TXD), SetFrameIds
 //                                                    (m_pPedIds) e CreateHitColModelSkinned
 //   * Peds já existentes são clones e não mudam; só quem for criado depois usa o novo molde.
-//   * RpAnimBlendClumpInit roda por instância (a confirmar no 2.10): não é chamado no molde.
-//   * A troca não persiste: reiniciar o jogo volta ao modelo original.
+//   * CPed::SetModelIndex chama RpAnimBlendClumpInit na INSTÂNCIA (conferido no binário);
+//     o molde não precisa disso.
+//   * A troca não persiste: reiniciar o jogo volta ao modelo original (e kAutoApply refaz
+//     a troca na partida seguinte, se o arquivo existir).
+//
+// APLICAÇÃO AUTOMÁTICA (kAutoApply) E TRAVAS DE SEGURANÇA
+//   * Quando o modelo 7 estiver carregado, lê SAMP/skins/skin.dff e instala (1x por sessão).
+//   * SAMP/skins/disable  (arquivo vazio) desliga a aplicação automática.
+//   * SAMP/skins/.applying é criado antes de instalar e apagado ~15 s depois; se ele existir
+//     na partida seguinte, a aplicação automática é PULADA (a anterior pode ter crashado).
+//   * Ped que já usa o modelo 7 não muda sozinho: use /skin7 wear ou troque a skin de novo.
 //
 // LIMITES CONHECIDOS
 //   * As 42 texturas do DFF não existem nos bancos TEXDB: aparecem sem textura (parte 3:
@@ -46,7 +55,7 @@ class CCustomSkin
 {
 public:
     static constexpr int  kTargetModelId = 7;      // MODEL_MALE01
-    static constexpr bool kAutoApply     = false;  // true: aplica sozinho quando o modelo 7 estiver pronto
+    static constexpr bool kAutoApply     = true;   // aplica sozinho (1x por sessão) quando o modelo 7 estiver pronto
 
     static void RequestLoad();     // qualquer thread
     static void RequestUnload();
