@@ -177,6 +177,144 @@ namespace
         return atomic;
     }
 
+    struct SkinMaterialReportContext
+    {
+        int atomicIndex;
+        int materialIndex;
+        int* totalMaterials;
+    };
+
+    RpMaterial* SkinMaterialReportCB(RpMaterial* material, void* data)
+    {
+        auto* ctx = static_cast<SkinMaterialReportContext*>(data);
+
+        const int localIndex = ctx->materialIndex++;
+        const int globalIndex = ++(*ctx->totalMaterials);
+
+        RwTexture* texture = RpMaterialGetTexture(material);
+
+        const char* textureName = "(sem textura)";
+        const char* maskName = "(sem mascara)";
+
+        if (texture)
+        {
+            const char* name = RwTextureGetName(texture);
+            const char* mask = RwTextureGetMaskName(texture);
+
+            if (name && name[0])
+                textureName = name;
+
+            if (mask && mask[0])
+                maskName = mask;
+        }
+
+        RwRGBA* color = RpMaterialGetColor(material);
+
+        if (color)
+        {
+            FLog(
+                "[SKIN7][MAT] global=%d atomic=%d local=%d "
+                "texture=%s mask=%s rgba=%u,%u,%u,%u",
+                globalIndex,
+                ctx->atomicIndex,
+                localIndex,
+                textureName,
+                maskName,
+                (unsigned)color->red,
+                (unsigned)color->green,
+                (unsigned)color->blue,
+                (unsigned)color->alpha
+            );
+        }
+        else
+        {
+            FLog(
+                "[SKIN7][MAT] global=%d atomic=%d local=%d "
+                "texture=%s mask=%s",
+                globalIndex,
+                ctx->atomicIndex,
+                localIndex,
+                textureName,
+                maskName
+            );
+        }
+
+        return material;
+    }
+
+    RpAtomic* SkinMaterialAtomicCB(RpAtomic* atomic, void* data)
+    {
+        auto* ctx = static_cast<SkinMaterialReportContext*>(data);
+
+        RpGeometry* geometry = RpAtomicGetGeometry(atomic);
+
+        if (!geometry)
+        {
+            FLog(
+                "[SKIN7][MAT] atomic=%d sem geometria",
+                ctx->atomicIndex++
+            );
+            return atomic;
+        }
+
+        FLog(
+            "[SKIN7][MAT] INICIO atomic=%d geometry=%p",
+            ctx->atomicIndex,
+            (void*)geometry
+        );
+
+        ctx->materialIndex = 0;
+
+        RpGeometryForAllMaterials(
+            geometry,
+            SkinMaterialReportCB,
+            ctx
+        );
+
+        FLog(
+            "[SKIN7][MAT] FIM atomic=%d materiais=%d",
+            ctx->atomicIndex,
+            ctx->materialIndex
+        );
+
+        ++ctx->atomicIndex;
+
+        return atomic;
+    }
+
+    void DumpSkinMaterialReport(RpClump* clump)
+    {
+        if (!clump)
+        {
+            FLog("[SKIN7][MAT] ERRO: clump nulo");
+            return;
+        }
+
+        int totalMaterials = 0;
+
+        SkinMaterialReportContext ctx{};
+        ctx.atomicIndex = 0;
+        ctx.materialIndex = 0;
+        ctx.totalMaterials = &totalMaterials;
+
+        FLog("[SKIN7][MAT] ===== INICIO DO RELATORIO =====");
+
+        RpClumpForAllAtomics(
+            clump,
+            SkinMaterialAtomicCB,
+            &ctx
+        );
+
+        FLog(
+            "[SKIN7][MAT] TOTAL atomics=%d materiais=%d",
+            ctx.atomicIndex,
+            totalMaterials
+        );
+
+        FLog("[SKIN7][MAT] ===== FIM DO RELATORIO =====");
+    }
+
+
     // ---- /skin7 load -------------------------------------------------------
     bool DoLoad(bool engineTest = true)
     {
@@ -234,6 +372,7 @@ namespace
             }
             atomics = 0;
             RpClumpForAllAtomics(test, CountAtomicCB, &atomics);
+     DumpSkinMaterialReport(test)
             RpClumpDestroy(test);
         }
 
