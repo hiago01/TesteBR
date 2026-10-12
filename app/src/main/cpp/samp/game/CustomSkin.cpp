@@ -372,7 +372,7 @@ namespace
             }
             atomics = 0;
             RpClumpForAllAtomics(test, CountAtomicCB, &atomics);
-     DumpSkinMaterialReport(test)
+     DumpSkinMaterialReport(test);
             RpClumpDestroy(test);
         }
 
