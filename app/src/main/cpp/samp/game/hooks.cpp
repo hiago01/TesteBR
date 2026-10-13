@@ -1595,6 +1595,21 @@ void rqVertexBufferSelect_hook(unsigned int **result)
 	}
 }
 
+// HandleTextureEnhancements(RwRaster*)
+void (*HandleTextureEnhancements_original)(RwRaster*) = nullptr;
+
+void HandleTextureEnhancements_hook(RwRaster* raster)
+{
+    // Ignora somente raster nulo.
+    if (raster == nullptr)
+    {
+        FLog("[RASTER GUARD] Raster nulo ignorado");
+        return;
+    }
+
+    HandleTextureEnhancements_original(raster);
+}
+
 uintptr_t* (*rpMaterialListDeinitialize)(RpMaterialList* matList);
 uintptr_t* rpMaterialListDeinitialize_hook(RpMaterialList* matList)
 {
@@ -3400,6 +3415,12 @@ void TestPlayerClothesDesc()
 void SetUpGLHooks();
 void InstallHooks()
 {
+
+CHook::InlineHook(
+    "_Z25HandleTextureEnhancementsP8RwRaster",
+    &HandleTextureEnhancements_hook,
+    &HandleTextureEnhancements_original
+);
 
 CHook::InlineHook(
     "_ZN15CPedClothesDesc18SetTextureAndModelEPKcS1_i",
