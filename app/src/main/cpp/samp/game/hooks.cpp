@@ -18,7 +18,7 @@
 #include "game/Models/ModelInfo.h"
 #include "MatrixLink.h"
 #include "MatrixLinkList.h"
-#include "game/Collision/Collision.h"
+#in{clude "game/Collision/Collision.h"
 #include "TxdStore.h"
 #include "util/CUtil.h"
 #include "Coronas.h"
@@ -1407,63 +1407,128 @@ int CTextureDatabaseRuntime__GetEntry_hook(uintptr_t thiz, const char* a2, bool*
 	return CTextureDatabaseRuntime__GetEntry(thiz, a2, a3);
 }
 
-uintptr_t (*CTxdStore__TxdStoreFindCB)(const char *a1);
-uintptr_t CTxdStore__TxdStoreFindCB_hook(const char *a1)
+uintptr_t (*CTxdStore__TxdStoreFindCB)(const char * name);
+
+uintptr_t CTxdStore__TxdStoreFindCB_hook(const char* name)
 {
-	static char* texdbs[] = { "samp", "gta_int", "gta3" };
-	for(auto &texdb : texdbs)
-	{
-		// TextureDatabaseRuntime::GetDatabase
-		uintptr_t db_handle = ((uintptr_t (*)(const char *))(g_libGTASA+0x1EAC8C+1))(texdb);
+    if (!g_libGTASA || !name || !name[0])
+        return 0;
 
-		// TextureDatabaseRuntime::registered
-		uint32_t unk_61B8D4 = *(uint32_t*)(g_libGTASA+0x6BD174+4);
-		if(unk_61B8D4)
-		{
-			// TextureDatabaseRuntime::registered
-			uintptr_t dword_61B8D8 = *(uintptr_t*)(g_libGTASA+0x6BD174+8);
+    // Funções originais da build arm64 2.10.
+    using GetDatabaseFn = uintptr_t (*)(const char*);
+    using RegisterFn = void (*)(uintptr_t);
+    using GetTextureFn = uintptr_t (*)(const char*);
+    using UnregisterFn = void (*)(uintptr_t);
+    using GetCurrentTxdFn = int32_t (*)();
+    using FindNamedTextureFn = uintptr_t (*)(int32_t, const char*);
+    using GetTxdParentFn = int32_t (*)(int32_t);
 
-			int index = 0;
-			while(*(uint32_t*)(dword_61B8D8 + 4 * index) != db_handle)
-			{
-				if(++index >= unk_61B8D4)
-					goto GetTheTexture;
-			}
+    auto GetDatabase = reinterpret_cast<GetDatabaseFn>(
+        g_libGTASA + 0x1EAC8C + 1);
 
-			continue;
-		}
+    auto Register = reinterpret_cast<RegisterFn>(
+        g_libGTASA + 0x1E9BC8 + 1);
 
-		GetTheTexture:
-		// TextureDatabaseRuntime::Register
-		((void (*)(int))(g_libGTASA+0x1E9BC8+1))(db_handle);
+    auto GetTexture = reinterpret_cast<GetTextureFn>(
+        g_libGTASA + 0x1E9C64 + 1);
 
-		// TextureDatabaseRuntime::GetTexture
-		uintptr_t tex = ((uintptr_t (*)(const char *))(g_libGTASA+0x1E9C64+1))(a1);
+    auto Unregister = reinterpret_cast<UnregisterFn>(
+        g_libGTASA + 0x1E9C80 + 1);
 
-		// TextureDatabaseRuntime::Unregister
-		((void (*)(int))(g_libGTASA+0x1E9C80+1))(db_handle);
+    auto GetCurrentTxd = reinterpret_cast<GetCurrentTxdFn>(
+        g_libGTASA + 0x1DBA64 + 1);
 
-		if(tex) return tex;
-	}
+    auto FindNamedTexture = reinterpret_cast<FindNamedTextureFn>(
+        g_libGTASA + 0x1DB9B0 + 1);
 
-	// RwTexDictionaryGetCurrent
-	int current = ((int (*)(void))(g_libGTASA+0x1DBA64+1))();
-	if(current)
-	{
-		while(true)
-		{
-			// RwTexDictionaryFindNamedTexture
-			uintptr_t tex = ((int (*)(int, const char *))(g_libGTASA+0x1DB9B0+1))(current, a1);
-			if(tex) return tex;
+    auto GetTxdParent = reinterpret_cast<GetTxdParentFn>(
+        g_libGTASA + 0x5D428C + 1);
 
-			// CTxdStore::GetTxdParent
-			current = ((int (*)(int))(g_libGTASA+0x5D428C+1))(current);
-			if(!current) return 0;
-		}
-	}
+    // Mantém a ordem de busca utilizada pelo projeto.
+    static const char* const databases[] = {
+        "samp",
+        "gta_int",
+        "gta3"
+    };
 
-	return 0;
+    // Estrutura nativa: numAlloced (4), numEntries (4), dataPtr.
+    // Em arm64, dataPtr e cada elemento da lista ocupam 8 bytes.
+    const uintptr_t registeredArray = g_libGTASA + 0x6BD174;
+
+    const uint32_t count =
+        *reinterpret_cast<const uint32_t*>(registeredArray + 4);
+
+    const uintptr_t entries =
+        *reinterpret_cast<const uintptr_t*>(registeredArray + 8);
+
+    // Não percorre uma lista incoerente ou sem armazenamento.
+    const bool validList = count <= 4096 && (count == 0 || entries != 0);
+
+    for (const char* dbName : databases)
+    {
+        uintptr_t db = GetDatabase(dbName);
+
+        // Um banco ausente não pode ser registrado nem consultado.
+        if (!db)
+        {
+            FLog("[TEXFIX] banco '%s' não carregado; ignorando a busca nele",
+                 dbName);
+            continue;
+        }
+
+        bool alreadyRegistered = false;
+
+        if (validList && entries)
+        {
+            const auto* registered =
+                reinterpret_cast<const uintptr_t*>(entries);
+
+            for (uint32_t i = 0; i < count; ++i)
+            {
+                if (registered[i] == db)
+                {
+                    alreadyRegistered = true;
+                    break;
+                }
+            }
+        }
+
+        // Só desfazemos o registro quando fomos nós que o adicionamos.
+        if (!alreadyRegistered)
+            Register(db);
+
+        uintptr_t texture = GetTexture(name);
+
+        if (!alreadyRegistered)
+            Unregister(db);
+
+        if (texture)
+            return texture;
+    }
+
+    // Fallback original: procurar no TXD atual e nos seus pais.
+    int32_t current = GetCurrentTxd();
+
+    // Protege contra ciclos acidentais na cadeia de TXDs.
+    for (int depth = 0; current && depth < 128; ++depth)
+    {
+        uintptr_t texture = FindNamedTexture(current, name);
+
+        if (texture)
+            return texture;
+
+        int32_t parent = GetTxdParent(current);
+
+        if (parent == current)
+            break;
+
+        current = parent;
+    }
+
+    return 0;
 }
+
+
 
 int (*CCustomRoadsignMgr_RenderRoadsignAtomic)(int a1, int a2);
 int CCustomRoadsignMgr_RenderRoadsignAtomic_hook(int a1, int a2)

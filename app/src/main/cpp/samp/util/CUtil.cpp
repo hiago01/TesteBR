@@ -24,10 +24,17 @@ uintptr_t CUtil::FindLib(const char* libname)
     return 0;
 }
 
+
+
 RwTexture* CUtil::LoadTextureFromDB(const char* dbname, const char* texture)
 {
-    TextureDatabaseRuntime* db_handle = TextureDatabaseRuntime::GetDatabase(dbname);
-    if(!db_handle)
+    if (!dbname || !dbname[0] || !texture || !texture[0])
+        return nullptr;
+
+    TextureDatabaseRuntime* db_handle =
+        TextureDatabaseRuntime::GetDatabase(dbname);
+
+    if (!db_handle)
     {
         FLog("Error: Database not found! (%s)", dbname);
         return nullptr;
@@ -35,17 +42,21 @@ RwTexture* CUtil::LoadTextureFromDB(const char* dbname, const char* texture)
 
     TextureDatabaseRuntime::Register(db_handle);
 
-    auto tex = CUtil::GetTexture(texture);
-    if(!tex)
+    RwTexture* tex = CUtil::GetTexture(texture);
+
+    // Sempre desfaz o registro, inclusive quando a textura não existe.
+    TextureDatabaseRuntime::Unregister(db_handle);
+
+    if (!tex)
     {
-        FLog("Error: Texture (%s) not found in database (%s)", dbname, texture);
+        FLog("Error: Texture (%s) not found in database (%s)",
+             texture, dbname);
         return nullptr;
     }
 
-    TextureDatabaseRuntime::Unregister(db_handle);
-
     return tex;
 }
+
 
 RwTexture* CUtil::GetTexture(const char* name)
 {
