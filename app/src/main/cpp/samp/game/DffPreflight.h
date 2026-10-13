@@ -19,6 +19,18 @@
 
 namespace DffPreflight
 {
+    struct MaterialInfo
+    {
+        int         geom    = 0;        // índice da geometria
+        int         index   = 0;        // índice do material dentro da geometria
+        std::string texture;            // nome da textura (vazio se não texturizado)
+        std::string mask;
+        uint8_t     r = 255, g = 255, b = 255, a = 255;
+        bool        textured = false;
+        uint32_t    tris     = 0;       // triângulos que o jogo desenha com este material
+        bool        trisFromBinMesh = false;
+    };
+
     struct Info
     {
         uint32_t stamp          = 0;      // versão RW (ex.: 0x1803FFFF = 3.6.0.3, GTA SA)
@@ -37,6 +49,7 @@ namespace DffPreflight
         bool     nativeGeometry = false;  // geometria "native" = dados específicos de plataforma
         std::set<int> hanimIds;
         std::set<std::string> frameNames;   // nomes dos frames (plugin 0x253F2FE)
+        std::vector<MaterialInfo> materialsList;   // todos os materiais, na ordem das geometrias
     };
 
     // IDs de ossos do esqueleto de ped do SA
@@ -128,21 +141,80 @@ namespace DffPreflight
                 while (Next(d, n, q, c.end, g))
                 {
                     if (g.type != 0x0F) continue;
-                    ++out.geoms;
+                    const int geomIndex = out.geoms++;
+                    const size_t firstMat = out.materialsList.size();
+                    std::vector<uint32_t> triByStructId;     // contagem pelos ids gravados nos triângulos
+                    std::vector<uint32_t> triByBinMesh;      // contagem pelo BinMesh PLG (o que o jogo desenha)
+                    bool haveBinMesh = false;
                     size_t t = g.body; Chunk x{};
                     while (Next(d, n, t, g.end, x))
                     {
                         if (x.type == 0x01 && x.size >= 16)
                         {
                             const uint32_t flags = U32(d, x.body);
-                            out.tris  += U32(d, x.body + 4);
-                            out.verts += U32(d, x.body + 8);
+                            const uint32_t ntri  = U32(d, x.body + 4);
+                            const uint32_t nver  = U32(d, x.body + 8);
+                            out.tris  += ntri;
+                            out.verts += nver;
                             if (flags & 0x01000000u) out.nativeGeometry = true;
+
+                            // ids de material gravados nos triângulos (formato 3.4+: sem as 3 floats de iluminação)
+                            if (!(flags & 0x01000000u) && nver < 0x1000000u && ntri < 0x1000000u)
+                            {
+                                size_t p = x.body + 16;
+                                if (flags & 0x8u) p += (size_t)nver * 4;
+                                uint32_t texSets = (flags >> 16) & 0xFFu;
+                                if (texSets == 0) texSets = (flags & 0x4u) ? 1u : ((flags & 0x80u) ? 2u : 0u);
+                                p += (size_t)texSets * nver * 8;
+                                const size_t need = (size_t)ntri * 8;
+                                if (p <= x.end && need <= x.end - p)
+                                {
+                                    for (uint32_t k = 0; k < ntri; ++k)
+                                    {
+                                        const uint16_t mid = (uint16_t)(d[p + k * 8 + 4] | (d[p + k * 8 + 5] << 8));
+                                        if (mid < 4096)
+                                        {
+                                            if (triByStructId.size() <= mid) triByStructId.resize((size_t)mid + 1, 0);
+                                            ++triByStructId[mid];
+                                        }
+                                    }
+                                }
+                            }
                         }
                         else if (x.type == 0x08)       // MaterialList
                         {
                             size_t m = x.body; Chunk y{};
-                            while (Next(d, n, m, x.end, y)) if (y.type == 0x07) ++out.materials;
+                            while (Next(d, n, m, x.end, y))
+                            {
+                                if (y.type != 0x07) continue;
+                                ++out.materials;
+                                MaterialInfo mi;
+                                mi.geom  = geomIndex;
+                                mi.index = (int)(out.materialsList.size() - firstMat);
+                                size_t q = y.body; Chunk z{};
+                                while (Next(d, n, q, y.end, z))
+                                {
+                                    if (z.type == 0x01 && z.size >= 16)   // flags, color RGBA, unused, textured
+                                    {
+                                        mi.r = d[z.body + 4]; mi.g = d[z.body + 5]; mi.b = d[z.body + 6]; mi.a = d[z.body + 7];
+                                        mi.textured = U32(d, z.body + 12) != 0;
+                                    }
+                                    else if (z.type == 0x06)               // Texture: struct, nome, máscara
+                                    {
+                                        size_t w = z.body; Chunk s{};
+                                        int strIdx = 0;
+                                        while (Next(d, n, w, z.end, s))
+                                        {
+                                            if (s.type != 0x02 || s.size == 0 || s.size > 256) continue;
+                                            std::string nm((const char*)d + s.body, s.size);
+                                            nm.resize(std::strlen(nm.c_str()));
+                                            if (strIdx == 0) mi.texture = nm; else if (strIdx == 1) mi.mask = nm;
+                                            ++strIdx;
+                                        }
+                                    }
+                                }
+                                out.materialsList.push_back(mi);
+                            }
                         }
                         else if (x.type == 0x03)       // Extension da geometria
                         {
@@ -156,8 +228,35 @@ namespace DffPreflight
                                     out.usedBones  = d[y.body + 1];
                                     out.maxWeights = d[y.body + 2];
                                 }
+                                else if (y.type == 0x50E && y.size >= 12)   // BinMesh PLG: flags, numMeshes, totalIndices
+                                {
+                                    const uint32_t bflags = U32(d, y.body);
+                                    const uint32_t nmesh  = U32(d, y.body + 4);
+                                    size_t r = y.body + 12;
+                                    bool good = nmesh <= 4096;
+                                    for (uint32_t k = 0; good && k < nmesh; ++k)
+                                    {
+                                        if (r + 8 > y.end) { good = false; break; }
+                                        const uint32_t nidx = U32(d, r);
+                                        const uint32_t midx = U32(d, r + 4);
+                                        if (nidx > (y.end - r) / 4 || midx >= 4096) { good = false; break; }
+                                        const uint32_t tris = (bflags == 0) ? nidx / 3 : (nidx > 2 ? nidx - 2 : 0);
+                                        if (triByBinMesh.size() <= midx) triByBinMesh.resize((size_t)midx + 1, 0);
+                                        triByBinMesh[midx] += tris;
+                                        r += 8 + (size_t)nidx * 4;
+                                    }
+                                    haveBinMesh = good;
+                                }
                             }
                         }
+                    }
+                    // triângulos por material: o BinMesh manda (é o que o RW desenha); senão, os ids dos triângulos
+                    for (size_t k = firstMat; k < out.materialsList.size(); ++k)
+                    {
+                        MaterialInfo& mi = out.materialsList[k];
+                        const std::vector<uint32_t>& src = haveBinMesh ? triByBinMesh : triByStructId;
+                        mi.tris = (size_t)mi.index < src.size() ? src[(size_t)mi.index] : 0;
+                        mi.trisFromBinMesh = haveBinMesh;
                     }
                 }
             }

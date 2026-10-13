@@ -1,52 +1,39 @@
 #pragma once
 
 // ---------------------------------------------------------------------------
-// Skin customizada (DFF) para o modelo 7
+// Skin customizada (DFF) para o modelo 7 + inventário/texturização/ocultação de materiais
 //
-//   arquivo:  <raiz de armazenamento>/SAMP/skins/skin.dff
-//             (normalmente Android/data/com.samp.mobile/files/SAMP/skins/skin.dff)
+//   arquivo:   <raiz>/SAMP/skins/skin.dff          (raiz = Android/data/com.samp.mobile/files/)
+//   PNGs:      <raiz>/SAMP/skins/textures/mat_NN.png     (identificação por índice, NN = 00..41)
+//              <raiz>/SAMP/skins/textures/<Textura>.png  (textura real, pelo nome gravado no DFF)
+//   inventário:<raiz>/SAMP/skins/materials.csv           (gerado por /skin7 mats)
 //
-// Comandos de chat (/skin7 ...), todos executados na thread do jogo pelo tick:
-//   load    lê o arquivo, valida (DffPreflight, sem engine) e testa o leitor do jogo
-//   apply   instala o DFF no modelo 7 (carrega antes, se preciso)
-//   wear    põe o ped LOCAL no modelo 7 (para ver o resultado sem mexer no servidor)
-//   unwear  devolve o ped local ao modelo 0
-//   info / status / unload
+// COMANDOS (/skin7 ...). Tudo roda na thread do jogo, no próximo frame; veja o resultado com /skin7 info.
+//   load | apply | wear | unwear | unload | info
+//   mats                    inventário dos materiais: log [SKIN7-MAT] + materials.csv
+//   mat list                mostra quais estão ocultos
+//   mat off <lista>         oculta materiais     (lista: 5 | 3-7 | 1,4,9-12 | all)
+//   mat on  <lista>         mostra de novo
+//   mat only <lista>        mostra só estes e oculta o resto
+//   mat reset               mostra todos
+//   tex auto|idx|none       modo dos PNGs (vale no próximo apply/png):
+//                             auto = <Textura>.png se existir, senão mat_NN.png
+//                             idx  = só mat_NN.png (identificar partes)   none = não aplica PNG
+//   png                     recarrega os PNGs ao vivo no molde instalado (sem reler o DFF)
 //
-// COMO A TROCA FUNCIONA (conferido na libGTASA 2.10 arm64 do projeto)
-//   * Modelo 7 = MODEL_MALE01, o ped "placeholder": o jogo o carrega na partida e o
-//     CStreaming::RemoveModel do projeto nunca o descarrega. Por isso a troca é feita
-//     NO LUGAR, no CPedModelInfo já carregado, e não por hook de carregamento.
-//   * Sequência (a mesma do engine em RemoveModel + LoadClumpFile):
-//       RpClumpStreamRead(bytes do arquivo)        -> clump novo (leitor do próprio jogo)
-//       CPedModelInfo::DeleteRwObject()  @0x45D744 -> destrói o clump-molde antigo e o
-//                                                    hit-col (e solta a ref do TXD)
-//       CPedModelInfo::SetClump(novo)    @0x45D514 -> base CClumpModelInfo::SetClump
-//                                                    (liga HAnim aos atomics skinned,
-//                                                    normaliza pesos, ref do TXD), SetFrameIds
-//                                                    (m_pPedIds) e CreateHitColModelSkinned
-//   * Peds já existentes são clones e não mudam; só quem for criado depois usa o novo molde.
-//   * CPed::SetModelIndex chama RpAnimBlendClumpInit na INSTÂNCIA (conferido no binário);
-//     o molde não precisa disso.
-//   * A troca não persiste: reiniciar o jogo volta ao modelo original (e kAutoApply refaz
-//     a troca na partida seguinte, se o arquivo existir).
-//
-// APLICAÇÃO AUTOMÁTICA (kAutoApply) E TRAVAS DE SEGURANÇA
-//   * Quando o modelo 7 estiver carregado, lê SAMP/skins/skin.dff e instala (1x por sessão).
-//   * SAMP/skins/disable  (arquivo vazio) desliga a aplicação automática.
-//   * SAMP/skins/.applying é criado antes de instalar e apagado ~15 s depois; se ele existir
-//     na partida seguinte, a aplicação automática é PULADA (a anterior pode ter crashado).
-//   * Ped que já usa o modelo 7 não muda sozinho: use /skin7 wear ou troque a skin de novo.
-//
-// LIMITES CONHECIDOS
-//   * As 42 texturas do DFF não existem nos bancos TEXDB: aparecem sem textura (parte 3:
-//     carregar PNGs/TXD próprios).
-//   * O DFF não tem os 12 frames-marcador (Smid, Shead, ...) que SetFrameIds procura por
-//     nome; o jogo ignora os ausentes.
-//   * Por ser o placeholder, qualquer ped sem modelo carregado aparece com o modelo 7.
+// COMO OS MATERIAIS SÃO OCULTADOS
+//   O DFF tem 1 geometria com 42 materiais; os triângulos gravam material 0 e a divisão real
+//   está só no BinMesh PLG. Por isso NUNCA se faz RpGeometryLock/Unlock (reconstruiria a malha
+//   por material 0). Ocultar = trocar a textura do material por uma textura 8888 transparente
+//   (e alfa 0 na cor do material); mostrar = devolver textura e cor originais. O molde é
+//   compartilhado pelos clones (geometria/material por referência), então vale ao vivo para
+//   quem já está usando o modelo 7. Mantemos uma referência nossa de cada textura em uso, então
+//   a troca nunca derruba a contagem a zero (sem textura destruída enquanto o render a usa).
+//   Se as partes ocultas aparecerem rosa (magenta), o pipeline ignora o alfa da textura.
 //
 // Thread: tudo que toca o RenderWare roda na thread do jogo (CGame::Process ->
-// ClothesFrameTick -> CCustomSkin::Process). O chat só liga flags.
+// ClothesFrameTick -> CCustomSkin::Process). O chat só enfileira comandos.
+// (As notas de como a troca do modelo 7 funciona estão em CustomSkin.cpp.)
 // ---------------------------------------------------------------------------
 
 #include <string>
