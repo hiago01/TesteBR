@@ -18,7 +18,7 @@
 #include "game/Models/ModelInfo.h"
 #include "MatrixLink.h"
 #include "MatrixLinkList.h"
-#in{clude "game/Collision/Collision.h"
+#include "game/Collision/Collision.h"
 #include "TxdStore.h"
 #include "util/CUtil.h"
 #include "Coronas.h"
