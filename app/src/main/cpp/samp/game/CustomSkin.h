@@ -8,6 +8,14 @@
 //              <raiz>/SAMP/skins/textures/<Textura>.png  (textura real, pelo nome gravado no DFF)
 //   inventário:<raiz>/SAMP/skins/materials.csv           (gerado por /skin7 mats)
 //
+// FLUXO DE TEXTURAS NO ANDROID (correção das partes brancas)
+//   * O nome do PNG é achado SEM diferenciar maiúscula/minúscula (DFF "Jaqueta" -> jaqueta.png).
+//   * O PNG vira RwRaster potência de 2 (lado máx. 1024), SEM flags de mipmap, filtro LINEAR e
+//     endereçamento WRAP gravados na textura (antes: NPOT/mip vazio => branco/preto no GLES).
+//   * Material texturizado sem PNG e sem textura válida vinda do DFF: tenta o banco de texturas do
+//     jogo pelo nome; se não achar, o log mostra "AVISO PNG: ... NAO ENCONTRADA ... ficara branco".
+//   * tools/skin_to_android.py converte TXD de PC (D3D8/D3D9) em textures/<Nome>.png e audita o DFF.
+//
 // COMANDOS (/skin7 ...). Tudo roda na thread do jogo, no próximo frame; veja o resultado com /skin7 info.
 //   load | apply | wear | unwear | unload | info
 //   mats                    inventário dos materiais: log [SKIN7-MAT] + materials.csv

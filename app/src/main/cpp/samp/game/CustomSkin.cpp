@@ -21,12 +21,14 @@
 #include "game.h"
 #include "RW/RenderWare.h"
 #include "DffPreflight.h"
+#include "SkinImageUtil.h"
 
 #ifndef CUSTOMSKIN_HOST_STUBS
 #include "../vendor/stb/stb_image.h"      // a implementação (STB_IMAGE_IMPLEMENTATION) está em sprite2d.cpp
 #include "../net/netgame.h"
 #include "playerped.h"
 #include "Streaming.h"
+#include "Textures/TextureDatabaseRuntime.h"   // banco de texturas do jogo (fluxo Android)
 extern CNetGame* pNetGame;
 #else
 extern void* g_hostModelInfo;                // definidos pelo teste de host
@@ -80,6 +82,7 @@ namespace
     constexpr uint32_t  kRwIdClump    = 0x10;
     constexpr int       kMaxMaterials = 512;
     constexpr uint64_t  kGraveyardMs  = 5000;
+    constexpr int       kMaxTexSize   = 1024;   // teto de lado das texturas de skin no celular (potência de 2)
 
     enum TexMode { TEX_AUTO = 0, TEX_IDX = 1, TEX_NONE = 2 };
 
@@ -154,9 +157,22 @@ namespace
         return SkinDir() + b;
     }
 
+    // Índice (nome em minúsculas -> caminho real) da pasta textures/. O Android diferencia
+    // maiúscula de minúscula no arquivo, o RenderWare não: "Jaqueta" no DFF acha "jaqueta.png".
+    std::unordered_map<std::string, std::string> s_pngIndex;
+
+    void RebuildPngIndex()
+    {
+        s_pngIndex = SkinImg::IndexPngDir(SkinDir() + "textures");
+    }
+
     std::string PngRealPath(const std::string& texName)
     {
-        return texName.empty() ? std::string() : SkinDir() + "textures/" + texName + ".png";
+        if (texName.empty()) return {};
+        const std::string exact = SkinDir() + "textures/" + texName + ".png";
+        if (FileExists(exact)) return exact;
+        const auto it = s_pngIndex.find(SkinImg::Lower(texName));
+        return it != s_pngIndex.end() ? it->second : exact;   // sem achar: devolve o exato (FileExists=false)
     }
 
     // ===================================================================
@@ -265,20 +281,46 @@ namespace
     std::string TexName(RwTexture* t)  { return t ? std::string(t->name, strnlen(t->name, sizeof(t->name))) : std::string("NULL"); }
     bool TexHasRaster(RwTexture* t)    { return t && t->raster; }
 
-    // RGBA 8-bit -> RwTexture (mesmo caminho do radar em sprite2d.cpp: RwImage -> RwRaster -> RwTexture)
+    // RGBA 8-bit -> RwTexture (mesmo caminho do radar em sprite2d.cpp: RwImage -> RwRaster -> RwTexture),
+    // com os ajustes para o GLES do Android (os que faltavam e deixavam partes brancas):
+    //   1) dimensões potência de 2 e teto kMaxTexSize (PNG de PC costuma ser NPOT/gigante);
+    //   2) raster SEM flags de mipmap: SetFromImage só preenche o nível 0, os demais ficariam
+    //      vazios (branco/preto à distância) e, com filtro de mip, a textura fica "incompleta";
+    //   3) formato nunca paletizado e sempre com pixel-format definido;
+    //   4) filtro LINEAR (sem mip) e endereçamento WRAP gravados explicitamente na textura.
     RwTexture* CreateTextureRgba(const uint8_t* px, int w, int h, const char* name)
     {
         if (!px || w <= 0 || h <= 0) return nullptr;
 
-        RwImage* image = RwImageCreate(w, h, 32);
+        std::vector<uint8_t> scaled;
+        int tw = SkinImg::PotFor(w, kMaxTexSize);
+        int th = SkinImg::PotFor(h, kMaxTexSize);
+        const uint8_t* src = px;
+        if (tw != w || th != h)
+        {
+            if (!SkinImg::ResizeRgba(px, w, h, tw, th, scaled)) return nullptr;
+            src = scaled.data();
+            FLog("[SKIN7] textura '%s': %dx%d -> %dx%d (potencia de 2 / teto %d)", name ? name : "?", w, h, tw, th, kMaxTexSize);
+        }
+
+        RwImage* image = RwImageCreate(tw, th, 32);
         if (!image) return nullptr;
         if (!RwImageAllocatePixels(image)) { RwImageDestroy(image); return nullptr; }
 
-        for (int y = 0; y < h; ++y)
-            std::memcpy(image->cpPixels + (size_t)y * image->stride, px + (size_t)y * w * 4, (size_t)w * 4);
+        for (int y = 0; y < th; ++y)
+            std::memcpy(image->cpPixels + (size_t)y * image->stride, src + (size_t)y * tw * 4, (size_t)tw * 4);
 
-        int rw = w, rh = h, rd = 32, rf = 0;
+        int rw = tw, rh = th, rd = 32, rf = 0;
         RwImageFindRasterFormat(image, rwRASTERTYPETEXTURE, &rw, &rh, &rd, &rf);
+
+        rf &= ~(rwRASTERFORMATMIPMAP | rwRASTERFORMATAUTOMIPMAP);
+        if (rf & (rwRASTERFORMATPAL8 | rwRASTERFORMATPAL4))
+        {
+            rf &= ~(rwRASTERFORMATPAL8 | rwRASTERFORMATPAL4 | rwRASTERFORMATPIXELFORMATMASK);
+            rf |= rwRASTERFORMAT8888;
+            rd = 32;
+        }
+        if ((rf & rwRASTERFORMATPIXELFORMATMASK) == 0) rf |= rwRASTERFORMAT8888;
 
         RwRaster* raster = RwRasterCreate(rw, rh, rd, rf);
         if (!raster) { RwImageDestroy(image); return nullptr; }
@@ -297,7 +339,25 @@ namespace
             return nullptr;
         }
         RwTextureSetName(tex, name ? name : "skin7");
+        RwTextureSetFilterMode(tex, rwFILTERLINEAR);
+        RwTextureSetAddressing(tex, rwTEXTUREADDRESSWRAP);
+        FLog("[SKIN7] textura '%s' criada: raster %dx%d depth=%d fmt=0x%x (sem mipmap, filtro linear, wrap)",
+             name ? name : "?", rw, rh, rd, rf);
         return tex;
+    }
+
+    // Textura pelo nome no banco de texturas do jogo (é onde o Android guarda as texturas do GTA SA:
+    // dxt/etc/pvr). GetTexture devolve SEM ref; quem guarda (SetMatTexture) já soma a ref.
+    RwTexture* LookupGameTexture(const std::string& name)
+    {
+        if (name.empty() || name.size() >= 32) return nullptr;
+        RwTexture* t = TextureDatabaseRuntime::GetTexture(name.c_str());
+        if (!t)
+        {
+            const std::string lo = SkinImg::Lower(name);
+            if (lo != name) t = TextureDatabaseRuntime::GetTexture(lo.c_str());
+        }
+        return (t && t->raster) ? t : nullptr;
     }
 
     RwTexture* LoadPngTexture(const std::string& path, const char* name, std::string& err)
@@ -359,6 +419,7 @@ namespace
         if (!FileExists(path)) { err = "arquivo ausente"; return nullptr; }
         return CreateTextureRgba(nullptr, 1, 1, name);
     }
+    RwTexture* LookupGameTexture(const std::string&) { return nullptr; }
 #endif
 
     bool ReadFile(const std::string& path, std::vector<uint8_t>& out, std::string& err)
@@ -438,6 +499,7 @@ namespace
     int TexturePass(const std::vector<RpMaterial*>& mats, bool reload, int mode, std::vector<std::string>& problems)
     {
         const size_t n = mats.size();
+        RebuildPngIndex();                                      // PNG achado sem diferenciar maiúscula/minúscula
         if (!reload)
         {
             s_enabledTex.assign(n, nullptr);
@@ -482,6 +544,29 @@ namespace
             {
                 if (t) { SetMatTexture(mats[i], t); ++assigned; }
                 RwTexture* cur = MatTexture(mats[i]);                // PNG novo ou a textura original do DFF
+
+                // Sem PNG e sem textura utilizável vinda do DFF (nula, sem raster ou "marcador" com outro nome):
+                // é isto que aparece como parte BRANCA. Tenta o banco de texturas do jogo pelo nome do DFF.
+                const DffPreflight::MaterialInfo& mi = s_parsed.materialsList[i];
+                if (!t && mi.textured && !mi.texture.empty())
+                {
+                    const bool nameDiffers = cur && SkinImg::Lower(TexName(cur)) != SkinImg::Lower(mi.texture);
+                    if (!cur || !TexHasRaster(cur) || nameDiffers)
+                    {
+                        RwTexture* db = LookupGameTexture(mi.texture);
+                        if (db)
+                        {
+                            SetMatTexture(mats[i], db);
+                            cur = db;
+                            FLog("[SKIN7] material %zu: textura '%s' veio do banco de texturas do jogo", i, mi.texture.c_str());
+                        }
+                        else if (!cur || !TexHasRaster(cur))
+                        {
+                            problems.push_back("material " + std::to_string(i) + " textura '" + mi.texture +
+                                               "' NAO ENCONTRADA (sem PNG em textures/, sem textura no DFF/banco do jogo): ficara branco");
+                        }
+                    }
+                }
                 TexAddRef(cur);
                 s_enabledTex[i] = cur;
                 s_origAlpha[i] = MatAlpha(mats[i]);
@@ -722,6 +807,7 @@ namespace
     void DoMats()
     {
         if (!s_loadedOk && !DoLoad(false)) return;
+        RebuildPngIndex();
 
         std::vector<RpMaterial*> eng;
         const bool haveEngine = InstalledOurs() && CollectMaterials(TemplateClump(), eng) && eng.size() == s_parsed.materialsList.size();
