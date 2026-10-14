@@ -33,6 +33,9 @@ CJavaWrapper::CJavaWrapper(JNIEnv *env, jobject activity)
     s_showEditObject = env->GetMethodID(clas, "showEditObject", "()V");
     s_hideEditObject = env->GetMethodID(clas, "hideEditObject", "()V");
 
+    s_showClothesUI = env->GetMethodID(clas, "showClothesUI", "()V");
+    s_hideClothesUI = env->GetMethodID(clas, "hideClothesUI", "()V");
+
     env->DeleteLocalRef(clas);
 }
 
@@ -190,4 +193,34 @@ void CJavaWrapper::HideEditObject() {
     }
 
     env->CallVoidMethod(this->activity, this->s_hideEditObject);
+}
+
+void CJavaWrapper::ShowClothesUI() {
+
+    JNIEnv* env;
+    javaVM->GetEnv((void**)&env, JNI_VERSION_1_6);
+
+    if (!env)
+    {
+        FLog("No env");
+        return;
+    }
+
+    env->CallVoidMethod(this->activity, this->s_showClothesUI);
+    EXCEPTION_CHECK(env);
+}
+
+void CJavaWrapper::HideClothesUI() {
+
+    JNIEnv* env;
+    javaVM->GetEnv((void**)&env, JNI_VERSION_1_6);
+
+    if (!env)
+    {
+        FLog("No env");
+        return;
+    }
+
+    env->CallVoidMethod(this->activity, this->s_hideClothesUI);
+    EXCEPTION_CHECK(env);
 }

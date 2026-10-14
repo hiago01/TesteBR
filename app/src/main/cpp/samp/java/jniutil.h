@@ -43,6 +43,9 @@ public:
 	void ShowEditObject();
 	void HideEditObject();
 
+	void ShowClothesUI();
+	void HideClothesUI();
+
     jobject activity;
     jmethodID s_setPauseState;
     jmethodID s_showLoadingScreen;
@@ -57,4 +60,6 @@ public:
 	jmethodID s_exitGame;
 	jmethodID s_showEditObject;
 	jmethodID s_hideEditObject;
+	jmethodID s_showClothesUI;
+	jmethodID s_hideClothesUI;
 };

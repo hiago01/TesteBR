@@ -155,6 +155,25 @@ if (input == "/skin7" || input.rfind("/skin7 ", 0) == 0)
 
             return;
         }
+if (input == "/roupas" || input.rfind("/roupas ", 0) == 0)
+        {
+            // tela de roupas em HTML: /roupas (abre) | /roupas fechar
+            // le <Android/data/com.samp.mobile/files>/SAMP/NET/ROUPAS.HTML
+            std::string args = input.size() > 7 ? input.substr(8) : std::string();
+
+            if (args == "fechar")
+            {
+                pJavaWrapper->HideClothesUI();
+                addDebugMessage("[ROUPAS] fechado");
+            }
+            else
+            {
+                pJavaWrapper->ShowClothesUI();
+                addDebugMessage("[ROUPAS] abrindo SAMP/NET/ROUPAS.HTML");
+            }
+
+            return;
+        }
 if (input == "/hiago22")
         {
             TestPlayerClothesDescHG();

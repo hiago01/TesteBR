@@ -9,6 +9,7 @@ import android.widget.Toast;
 import com.google.firebase.crashlytics.FirebaseCrashlytics;
 import com.joom.paranoid.Obfuscate;
 import com.samp.mobile.game.ui.AttachEdit;
+import com.samp.mobile.game.ui.ClothesUI;
 import com.samp.mobile.game.ui.CustomKeyboard;
 import com.samp.mobile.game.ui.LoadingScreen;
 import com.samp.mobile.game.ui.dialog.DialogManager;
@@ -27,6 +28,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
     private HeightProvider mHeightProvider;
 
     private AttachEdit mAttachEdit;
+    private ClothesUI mClothes;
     private LoadingScreen mLoadingScreen;
 
     public native void sendDialogResponse(int i, int i2, int i3, byte[] str);
@@ -74,6 +76,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
+                if (mClothes != null) mClothes.setPaused(pause);
                 if (pause) {
                     mDialog.hideWithoutReset();
                     mAttachEdit.hideWithoutReset();
@@ -156,6 +159,16 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         });
     }
 
+    private void showClothesUI()
+    {
+        mClothes.show();
+    }
+
+    private void hideClothesUI()
+    {
+        mClothes.hide();
+    }
+
     private void hideEditObject()
     {
         runOnUiThread(new Runnable() {
@@ -184,6 +197,8 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         mDialog = new DialogManager(this);
 
         mAttachEdit = new AttachEdit(this);
+
+        mClothes = new ClothesUI(this);
 
         mLoadingScreen = new LoadingScreen(this);
 
@@ -224,6 +239,10 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
 
     @Override
     public void onBackPressed() {
+        if (mClothes != null && mClothes.isShowing()) {
+            mClothes.hide();
+            return;
+        }
         super.onBackPressed();
         onEventBackPressed();
     }
@@ -232,6 +251,10 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if(keyCode == KeyEvent.KEYCODE_BACK)
         {
+            if (mClothes != null && mClothes.isShowing()) {
+                mClothes.hide();
+                return true;
+            }
             onEventBackPressed();
         }
         return super.onKeyDown(keyCode, event);
