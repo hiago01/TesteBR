@@ -1,8 +1,12 @@
 // Ponte Java -> servidor da tela de roupas em HTML (ROUPAS.HTML).
 // A classe Java ClothesUI converte cada toque do HTML em um comando e chama sendCommand().
 #include <jni.h>
-#include "../main.h"
-#include "../net/netgame.h"
+#include "main.h"
+
+// A ordem importa: netgame.h usa tipos declarados em game.h (mesma ordem do editobject.cpp)
+#include "../game/game.h"
+#include "net/netgame.h"
+#include "gui/gui.h"
 
 #include <string>
 
