@@ -103,7 +103,7 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, 
         sampVer = pSettings->Get().szVersion;
 
 	if (pUI) pUI->chat()->addDebugMessage("{FFFFFF}Carregando o SA-MP {B9C9BF}v%s {FFFFFF}..", sampVer);
-	pGame->FindPlayerPed()->m_pPed->TogglePlayerControllable(true);
+	pGame->FindPlayerPed()->TogglePlayerControllable(true);
 }
 // 0.3.7
 CNetGame::~CNetGame()
