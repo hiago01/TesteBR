@@ -2255,6 +2255,73 @@ void CGame_Process_hook()
     }
 }
 
+// =====================================================================================
+//  VITAL STATS (segurar o HUD do player) -> tela de roupas (/roupas)
+// =====================================================================================
+//  Menu nativo (STAMINA / MUSCLE / FAT / SEX APPEAL / RESPECT, com o dia "WED") esta
+//  compilado dentro da libGTASA.so. Cadeia (arm64, este build):
+//
+//    CTouchInterface::IsHeldDown(0xA0)                 <- dedo segurado no HUD (player info)
+//      -> CPad::GetDisplayVitalStats(CPed*)  0x4DF310  <- true enquanto segura, false ao soltar
+//      -> CHud::Draw()  0x51F6F0 (chamada em 0x51F8B0) <- grava CHud::bDrawingVitalStats e
+//                                                         liga o widget 0xB7 (CWidgetVitalStats)
+//      -> CWidgetVitalStats::Draw()  0x389420          <- desenha o painel
+//
+//  Aqui o hook chama o original (mantem a logica nativa de "segurar": pausa, cutscene...) e:
+//     false -> true  : abre a tela de roupas   (mesmo efeito de digitar  /roupas)
+//     true  -> false : fecha a tela de roupas  (mesmo efeito de          /roupas fechar)
+//  e SEMPRE devolve false ao jogo, entao o painel nativo nunca aparece.
+//  /roupas e /roupas fechar sao comandos locais (chat.cpp): chamam estes mesmos metodos.
+static bool (*CPad__GetDisplayVitalStats)(void* thiz, void* ped) = nullptr;
+static bool g_vitalStatsClothesOpen = false;   // true = a tela foi aberta POR este hook
+static int  g_vitalStatsMissedFrames = 0;      // frames seguidos sem o jogo perguntar
+
+static void VitalStatsClothes_Set(bool open)
+{
+    if (g_vitalStatsClothesOpen == open)
+        return;                                 // so age na MUDANCA (nada de JNI por frame)
+
+    g_vitalStatsClothesOpen = open;
+
+    if (!pJavaWrapper)
+        return;
+
+    if (open)
+    {
+        pJavaWrapper->ShowClothesUI();          // == /roupas
+        FLog("[VITALSTATS->ROUPAS] segurou: abrindo ROUPAS.HTML");
+    }
+    else
+    {
+        pJavaWrapper->HideClothesUI();          // == /roupas fechar
+        FLog("[VITALSTATS->ROUPAS] soltou: fechando ROUPAS.HTML");
+        // Opcional: avisar o servidor, como o botao FECHAR do HTML faz.
+        // if (pNetGame) pNetGame->SendChatCommand("/roupas_fechar");
+    }
+}
+
+bool CPad__GetDisplayVitalStats_hook(void* thiz, void* ped)
+{
+    const bool held = CPad__GetDisplayVitalStats ? CPad__GetDisplayVitalStats(thiz, ped) : false;
+
+    g_vitalStatsMissedFrames = 0;
+    VitalStatsClothes_Set(held);
+
+    return false;                               // desativa o menu nativo
+}
+
+// Trava de seguranca (chamada 1x por frame em ClothesFrameTick). CHud::Draw nao pergunta
+// nada quando o menu de pausa esta aberto, em cutscene/widescreen, ao tirar foto etc.
+// Se isso acontecer com a tela aberta, o "soltou" nunca chegaria: fecha apos 3 frames.
+static void VitalStatsClothesWatchdog()
+{
+    if (!g_vitalStatsClothesOpen)
+        return;
+
+    if (++g_vitalStatsMissedFrames > 3)
+        VitalStatsClothes_Set(false);
+}
+
 // Dedicated CGame::Process hook for clothes only. Do not enable the older
 // CGame_Process_hook above: it also processes unrelated objects/textdraws.
 // Always call the original first; only then drain a queued clothes request.
@@ -2270,6 +2337,7 @@ void ClothesFrameTick()
     if (pGame && pGame->bIsGameExiting)
         return;
 
+    VitalStatsClothesWatchdog();           // fecha /roupas se o jogo parou de perguntar
     CClothesSync::Process();               // CJ real (RPC do servidor e /cj)
     CCustomSkin::Process();                // skin DFF (/skin7)
     ProcessPendingPlayerClothesRebuild();  // testes manuais (/testeclothes)
@@ -3500,6 +3568,11 @@ CHook::InlineHook(
 CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
     CHook::Redirect("_Z13RenderEffectsv", &RenderEffects);
     CHook::InlineHook("_Z14AND_TouchEventiiii", &AND_TouchEvent_hook, &AND_TouchEvent);
+
+    // Segurar o HUD (menu nativo de stats) -> abre /roupas ; soltar -> /roupas fechar
+    CHook::InlineHook("_ZN4CPad20GetDisplayVitalStatsEP4CPed",
+                      &CPad__GetDisplayVitalStats_hook,
+                      &CPad__GetDisplayVitalStats);
 
     CHook::Redirect("_ZN11CHudColours12GetIntColourEh", &CHudColours__GetIntColour); // dangerous
     CHook::Redirect("_ZN6CRadar19GetRadarTraceColourEjhh", &CRadar__GetRadarTraceColor); // dangerous
