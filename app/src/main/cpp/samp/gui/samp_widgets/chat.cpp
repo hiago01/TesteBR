@@ -9,6 +9,7 @@
 #include "../../game/ClothesTest.h"
 #include "../../game/ClothesSync.h"
 #include "../../game/CustomSkin.h"
+#include "../../game/camerazoom.h"
 extern UI* pUI;
 extern CGame* pGame;
 extern CNetGame* pNetGame;
@@ -151,6 +152,16 @@ if (input == "/skin7" || input.rfind("/skin7 ", 0) == 0)
             // skin DFF customizada: /skin7 load | info | unload
             std::string args = input.size() > 6 ? input.substr(7) : std::string();
             std::string reply = CCustomSkin::DebugCommand(args);
+            addDebugMessage("%s", reply.c_str());
+
+            return;
+        }
+if (input == "/camera" || input.rfind("/camera ", 0) == 0 || input == "/cam" || input.rfind("/cam ", 0) == 0)
+        {
+            // zoom da camera: /camera | /camera <1-3> | /camera pe <1-3> | /camera carro <1-3> | /camera pinca on|off
+            size_t sp = input.find(' ');
+            std::string args = (sp == std::string::npos) ? std::string() : input.substr(sp + 1);
+            std::string reply = CCameraZoom::DebugCommand(args);
             addDebugMessage("%s", reply.c_str());
 
             return;

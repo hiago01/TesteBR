@@ -2308,6 +2308,11 @@ bool CPad__GetDisplayVitalStats_hook(void* thiz, void* ped)
 // Trava de seguranca (chamada 1x por frame em ClothesFrameTick). CHud::Draw nao pergunta
 // nada quando o menu de pausa esta aberto, em cutscene/widescreen, ao tirar foto etc.
 // Se isso acontecer com a tela aberta, o "soltou" nunca chegaria: fecha apos 3 frames.
+// Esconde o ICONE e a MUNICAO nativos de arma do HUD (CWidgetPlayerInfo, canto superior
+// direito). So essas 2 funcoes de desenho: vida/colete/dinheiro/relogio continuam, e o
+// "segurar o HUD" (abre /roupas) tambem. Ponha false para o HUD nativo voltar.
+static const bool kHideNativeWeaponHud = true;
+
 static void VitalStatsClothesWatchdog()
 {
     if (!g_vitalStatsClothesOpen)
@@ -3568,6 +3573,14 @@ CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
     CHook::InlineHook("_ZN4CPad20GetDisplayVitalStatsEP4CPed",
                       &CPad__GetDisplayVitalStats_hook,
                       &CPad__GetDisplayVitalStats);
+
+    // Remove o icone de arma e a municao nativos (a WeaponBar substitui). `ret` no inicio
+    // das duas funcoes void: nada e desenhado e nenhum render state e alterado.
+    if (kHideNativeWeaponHud)
+    {
+        CHook::RET("_ZN17CWidgetPlayerInfo14DrawWeaponIconEP4CPed5CRectf");
+        CHook::RET("_ZN17CWidgetPlayerInfo8DrawAmmoEP4CPed5CRectf");
+    }
 
     CHook::Redirect("_ZN11CHudColours12GetIntColourEh", &CHudColours__GetIntColour); // dangerous
     CHook::Redirect("_ZN6CRadar19GetRadarTraceColourEjhh", &CRadar__GetRadarTraceColor); // dangerous

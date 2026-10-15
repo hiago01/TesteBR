@@ -5,6 +5,7 @@
 #include "../main.h"
 #include "../vendor/armhook/patch.h"
 #include "game.h"
+#include "camerazoom.h"
 #include "../net/netgame.h"
 #include "../gui/gui.h"
 #include "Textures/TextureDatabase.h"
@@ -2338,6 +2339,7 @@ void ClothesFrameTick()
         return;
 
     VitalStatsClothesWatchdog();           // fecha /roupas se o jogo parou de perguntar
+    CCameraZoom::Process();                // aplica o zoom de camera salvo (pinca desativada)
     CClothesSync::Process();               // CJ real (RPC do servidor e /cj)
     CCustomSkin::Process();                // skin DFF (/skin7)
     ProcessPendingPlayerClothesRebuild();  // testes manuais (/testeclothes)
@@ -3568,6 +3570,9 @@ CHook::InlineHook(
 CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
     CHook::Redirect("_Z13RenderEffectsv", &RenderEffects);
     CHook::InlineHook("_Z14AND_TouchEventiiii", &AND_TouchEvent_hook, &AND_TouchEvent);
+
+    // Camera: desativa o zoom por pinca (2 dedos), guarda o nivel em settings.ini e habilita /camera
+    CCameraZoom::Init();
 
     // Segurar o HUD (menu nativo de stats) -> abre /roupas ; soltar -> /roupas fechar
     CHook::InlineHook("_ZN4CPad20GetDisplayVitalStatsEP4CPed",
