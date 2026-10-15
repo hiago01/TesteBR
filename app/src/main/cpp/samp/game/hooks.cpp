@@ -1382,45 +1382,43 @@ int RwFrameAddChild_hook(int a1, int a2)
 int iLastTouchedWidgetId = -1;
 int iLastReleasedWidgetId = -1;
 
-// libGTASA 2.10 arm64 signature: IsReleased(WidgetIDs, CVector2D*, int).
-// The old prototype treated the vector pointer as an int, which truncates it on ARM64.
-int (*CTouchInterface__IsReleased)(int iWidgetId, CVector2D* pVecOut, int iEnableWidget);
-int CTouchInterface__IsReleased_hook(int iWidgetId, CVector2D* pVecOut, int iEnableWidget)
+// libGTASA arm64: IsReleased(WidgetIDs, CVector2D*, int).
+// The third argument is NOT a boolean "enabled" flag; the original function
+// uses it as a numeric threshold. Do not use it to decide whether to intercept.
+int (*CTouchInterface__IsReleased)(int iWidgetId, CVector2D* pVecOut, int iThreshold);
+int CTouchInterface__IsReleased_hook(int iWidgetId, CVector2D* pVecOut, int iThreshold)
 {
-    const int iReleased = CTouchInterface__IsReleased(iWidgetId, pVecOut, iEnableWidget);
-    if (!iReleased || !iEnableWidget)
+    const int iReleased = CTouchInterface__IsReleased(iWidgetId, pVecOut, iThreshold);
+    if (!iReleased)
         return iReleased;
 
     iLastReleasedWidgetId = iWidgetId;
 
-    // The top-right player/weapon icon is WIDGET_PLAYER_INFO (0xA0). In this
-    // game build its release normally opens the GTA vital-stats panel. Redirect
-    // that single tap to the client's existing local /roupas handler instead.
+    // Diagnostic: records which native touch widget actually received a tap.
+    // This lets us verify the ID on the device instead of assuming it is 0xA0.
+    FLog("[TOUCH RELEASE] widget=0x%X (%d), arg3=%d", iWidgetId, iWidgetId, iThreshold);
+
     if (iWidgetId == WIDGET_PLAYER_INFO)
     {
         static uint32_t lastOpenTick = 0;
         static bool hasOpened = false;
         const uint32_t now = GetTickCount();
 
-        // Avoid opening the HTML repeatedly if multiple game routines inspect
-        // the same release in one frame.
+        // Avoid repeated opens if the same release is queried more than once.
         if (!hasOpened || static_cast<uint32_t>(now - lastOpenTick) > 350U)
         {
             hasOpened = true;
             lastOpenTick = now;
 
             if (pUI && pUI->chat())
-            {
                 pUI->chat()->keyboardEvent("/roupas");
-            }
             else if (pJavaWrapper)
-            {
                 pJavaWrapper->ShowClothesUI();
-            }
-            FLog("[ROUPAS] toque em WIDGET_PLAYER_INFO redirecionado para /roupas");
+
+            FLog("[ROUPAS] WIDGET_PLAYER_INFO (0xA0) redirecionado para /roupas");
         }
 
-        // Consume the event so the original GTA status screen is not opened.
+        // Consume the release so the caller cannot open the original status panel.
         return 0;
     }
 
@@ -1633,7 +1631,7 @@ void HandleTextureEnhancements_hook(RwRaster* raster)
     // Ignora somente raster nulo.
     if (raster == nullptr)
     {
-        FLog("[RASTER GUARD] Raster nulo ignorado");
+        //FLog("[RASTER GUARD] Raster nulo ignorado");
         return;
     }
 
