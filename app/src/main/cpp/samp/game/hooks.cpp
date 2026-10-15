@@ -5,6 +5,7 @@
 #include "../main.h"
 #include "../vendor/armhook/patch.h"
 #include "game.h"
+#include "Widgets/TouchInterface.h"
 #include "../net/netgame.h"
 #include "../gui/gui.h"
 #include "Textures/TextureDatabase.h"
@@ -1378,23 +1379,51 @@ int RwFrameAddChild_hook(int a1, int a2)
 }
 
 int iLastTouchedWidgetId = -1;
-
 int iLastReleasedWidgetId = -1;
 
-int (*CTouchInterface__IsReleased)(int iWidgetId, int iUnk, int iEnableWidget);
-int CTouchInterface__IsReleased_hook(int iWidgetId, int iUnk, int iEnableWidget)
+// libGTASA 2.10 arm64 signature: IsReleased(WidgetIDs, CVector2D*, int).
+// The old prototype treated the vector pointer as an int, which truncates it on ARM64.
+int (*CTouchInterface__IsReleased)(int iWidgetId, CVector2D* pVecOut, int iEnableWidget);
+int CTouchInterface__IsReleased_hook(int iWidgetId, CVector2D* pVecOut, int iEnableWidget)
 {
-	uintptr_t dwRetAddr = 0;
-	__asm__ volatile ("mov %0, lr" : "=r" (dwRetAddr));
-	dwRetAddr -= g_libGTASA;
+    const int iReleased = CTouchInterface__IsReleased(iWidgetId, pVecOut, iEnableWidget);
+    if (!iReleased || !iEnableWidget)
+        return iReleased;
 
-	int iReleased = CTouchInterface__IsReleased(iWidgetId, iUnk, iEnableWidget);
-	if(iReleased && iEnableWidget)
-	{
-		iLastReleasedWidgetId = iWidgetId;
-	}
+    iLastReleasedWidgetId = iWidgetId;
 
-	return iReleased;
+    // The top-right player/weapon icon is WIDGET_PLAYER_INFO (0xA0). In this
+    // game build its release normally opens the GTA vital-stats panel. Redirect
+    // that single tap to the client's existing local /roupas handler instead.
+    if (iWidgetId == WIDGET_PLAYER_INFO)
+    {
+        static uint32_t lastOpenTick = 0;
+        static bool hasOpened = false;
+        const uint32_t now = GetTickCount();
+
+        // Avoid opening the HTML repeatedly if multiple game routines inspect
+        // the same release in one frame.
+        if (!hasOpened || static_cast<uint32_t>(now - lastOpenTick) > 350U)
+        {
+            hasOpened = true;
+            lastOpenTick = now;
+
+            if (pUI && pUI->chat())
+            {
+                pUI->chat()->keyboardEvent("/roupas");
+            }
+            else if (pJavaWrapper)
+            {
+                pJavaWrapper->ShowClothesUI();
+            }
+            FLog("[ROUPAS] toque em WIDGET_PLAYER_INFO redirecionado para /roupas");
+        }
+
+        // Consume the event so the original GTA status screen is not opened.
+        return 0;
+    }
+
+    return iReleased;
 }
 
 int (*CTextureDatabaseRuntime__GetEntry)(uintptr_t thiz, const char* a2, bool* a3);
@@ -2300,7 +2329,6 @@ int mpg123_param_hook(void* mh, int key, long val, int ZERO, double fval)
     return mpg123_param(mh, key, val | (0x2000 | 0x200 | 0x100 | 0x40), ZERO, fval);
 }
 
-#include "Widgets/TouchInterface.h"
 void InjectHooks()
 {
     FLog("InjectHooks");
@@ -3499,6 +3527,14 @@ CHook::InlineHook(
 CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
     CHook::Redirect("_Z13RenderEffectsv", &RenderEffects);
     CHook::InlineHook("_Z14AND_TouchEventiiii", &AND_TouchEvent_hook, &AND_TouchEvent);
+
+    // Redirect the original top-right player-info/vital-stats tap to /roupas.
+    // This symbol is present in the supplied libGTASA.so (arm64 build).
+    CHook::InlineHook(
+        "_ZN15CTouchInterface10IsReleasedENS_9WidgetIDsEP9CVector2Di",
+        &CTouchInterface__IsReleased_hook,
+        &CTouchInterface__IsReleased
+    );
 
     CHook::Redirect("_ZN11CHudColours12GetIntColourEh", &CHudColours__GetIntColour); // dangerous
     CHook::Redirect("_ZN6CRadar19GetRadarTraceColourEjhh", &CRadar__GetRadarTraceColor); // dangerous
