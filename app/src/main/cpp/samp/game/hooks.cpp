@@ -893,11 +893,6 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 {
 	// imgui
 	//bool bRet = pUI->OnTouchEvent(type, num, posX, posY);
-    if (type == 1 || type == 2)
-    {
-if (pUI) pUI->chat()->addDebugMessage("[TOUCH RAW] type=%d num=%d x=%d y=%d",
-             type, num, posX, posY);
-    }
 	if (pGame->IsGamePaused())
 		return AND_TouchEvent(type, num, posX, posY);
 
@@ -3567,7 +3562,7 @@ CHook::InlineHook(
 
 CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
     CHook::Redirect("_Z13RenderEffectsv", &RenderEffects);
-    CHook::InlineHook("_Z14AND_TouchEventiiii", &AND_TouchEvent_hook, &AND_TouchEvent);
+   // CHook::InlineHook("_Z14AND_TouchEventiiii", &AND_TouchEvent_hook, &AND_TouchEvent);
 
     // Segurar o HUD (menu nativo de stats) -> abre /roupas ; soltar -> /roupas fechar
     CHook::InlineHook("_ZN4CPad20GetDisplayVitalStatsEP4CPed",
