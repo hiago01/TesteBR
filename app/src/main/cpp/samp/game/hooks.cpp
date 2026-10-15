@@ -893,7 +893,11 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 {
 	// imgui
 	//bool bRet = pUI->OnTouchEvent(type, num, posX, posY);
-
+    if (type == 1 || type == 2)
+    {
+if (pUI) pUI->chat()->addDebugMessage("[TOUCH RAW] type=%d num=%d x=%d y=%d",
+             type, num, posX, posY);
+    }
 	if (pGame->IsGamePaused())
 		return AND_TouchEvent(type, num, posX, posY);
 
