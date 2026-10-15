@@ -5,7 +5,6 @@
 #include "../main.h"
 #include "../vendor/armhook/patch.h"
 #include "game.h"
-#include "Widgets/TouchInterface.h"
 #include "../net/netgame.h"
 #include "../gui/gui.h"
 #include "Textures/TextureDatabase.h"
@@ -45,7 +44,6 @@ extern UI* pUI;
 extern CGame* pGame;
 extern CNetGame *pNetGame;
 extern MaterialTextGenerator* pMaterialTextGenerator;
-extern CJavaWrapper* pJavaWrapper;
 
 // Clothing changes are queued by /testeclothes and applied only after the
 // original CGame::Process call returns. The descriptor mutation and native
@@ -1380,49 +1378,23 @@ int RwFrameAddChild_hook(int a1, int a2)
 }
 
 int iLastTouchedWidgetId = -1;
+
 int iLastReleasedWidgetId = -1;
 
-// libGTASA arm64: IsReleased(WidgetIDs, CVector2D*, int).
-// The third argument is NOT a boolean "enabled" flag; the original function
-// uses it as a numeric threshold. Do not use it to decide whether to intercept.
-int (*CTouchInterface__IsReleased)(int iWidgetId, CVector2D* pVecOut, int iThreshold);
-int CTouchInterface__IsReleased_hook(int iWidgetId, CVector2D* pVecOut, int iThreshold)
+int (*CTouchInterface__IsReleased)(int iWidgetId, int iUnk, int iEnableWidget);
+int CTouchInterface__IsReleased_hook(int iWidgetId, int iUnk, int iEnableWidget)
 {
-    const int iReleased = CTouchInterface__IsReleased(iWidgetId, pVecOut, iThreshold);
-    if (!iReleased)
-        return iReleased;
+	uintptr_t dwRetAddr = 0;
+	__asm__ volatile ("mov %0, lr" : "=r" (dwRetAddr));
+	dwRetAddr -= g_libGTASA;
 
-    iLastReleasedWidgetId = iWidgetId;
+	int iReleased = CTouchInterface__IsReleased(iWidgetId, iUnk, iEnableWidget);
+	if(iReleased && iEnableWidget)
+	{
+		iLastReleasedWidgetId = iWidgetId;
+	}
 
-    // Diagnostic: records which native touch widget actually received a tap.
-    // This lets us verify the ID on the device instead of assuming it is 0xA0.
-    FLog("[TOUCH RELEASE] widget=0x%X (%d), arg3=%d", iWidgetId, iWidgetId, iThreshold);
-
-    if (iWidgetId == WIDGET_PLAYER_INFO)
-    {
-        static uint32_t lastOpenTick = 0;
-        static bool hasOpened = false;
-        const uint32_t now = GetTickCount();
-
-        // Avoid repeated opens if the same release is queried more than once.
-        if (!hasOpened || static_cast<uint32_t>(now - lastOpenTick) > 350U)
-        {
-            hasOpened = true;
-            lastOpenTick = now;
-
-            if (pUI && pUI->chat())
-                pUI->chat()->keyboardEvent("/roupas");
-            else if (pJavaWrapper)
-                pJavaWrapper->ShowClothesUI();
-
-            FLog("[ROUPAS] WIDGET_PLAYER_INFO (0xA0) redirecionado para /roupas");
-        }
-
-        // Consume the release so the caller cannot open the original status panel.
-        return 0;
-    }
-
-    return iReleased;
+	return iReleased;
 }
 
 int (*CTextureDatabaseRuntime__GetEntry)(uintptr_t thiz, const char* a2, bool* a3);
@@ -1596,7 +1568,7 @@ void CCamera__Process_hook(uintptr_t thiz)
 	CCamera__Process(thiz);
 }
 
-
+extern CJavaWrapper* pJavaWrapper;
 void (*MainMenuScreen__OnExit)();
 void MainMenuScreen__OnExit_hook()
 {
@@ -1628,12 +1600,9 @@ void (*HandleTextureEnhancements_original)(RwRaster*) = nullptr;
 
 void HandleTextureEnhancements_hook(RwRaster* raster)
 {
-    // Ignora somente raster nulo.
+    // Ignora raster nulo sem gerar log repetitivo.
     if (raster == nullptr)
-    {
-        //FLog("[RASTER GUARD] Raster nulo ignorado");
         return;
-    }
 
     HandleTextureEnhancements_original(raster);
 }
@@ -2328,6 +2297,7 @@ int mpg123_param_hook(void* mh, int key, long val, int ZERO, double fval)
     return mpg123_param(mh, key, val | (0x2000 | 0x200 | 0x100 | 0x40), ZERO, fval);
 }
 
+#include "Widgets/TouchInterface.h"
 void InjectHooks()
 {
     FLog("InjectHooks");
@@ -3526,14 +3496,6 @@ CHook::InlineHook(
 CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
     CHook::Redirect("_Z13RenderEffectsv", &RenderEffects);
     CHook::InlineHook("_Z14AND_TouchEventiiii", &AND_TouchEvent_hook, &AND_TouchEvent);
-
-    // Redirect the original top-right player-info/vital-stats tap to /roupas.
-    // This symbol is present in the supplied libGTASA.so (arm64 build).
-    CHook::InlineHook(
-        "_ZN15CTouchInterface10IsReleasedENS_9WidgetIDsEP9CVector2Di",
-        &CTouchInterface__IsReleased_hook,
-        &CTouchInterface__IsReleased
-    );
 
     CHook::Redirect("_ZN11CHudColours12GetIntColourEh", &CHudColours__GetIntColour); // dangerous
     CHook::Redirect("_ZN6CRadar19GetRadarTraceColourEjhh", &CRadar__GetRadarTraceColor); // dangerous
