@@ -45,6 +45,7 @@ extern UI* pUI;
 extern CGame* pGame;
 extern CNetGame *pNetGame;
 extern MaterialTextGenerator* pMaterialTextGenerator;
+extern CJavaWrapper* pJavaWrapper;
 
 // Clothing changes are queued by /testeclothes and applied only after the
 // original CGame::Process call returns. The descriptor mutation and native
@@ -1597,7 +1598,7 @@ void CCamera__Process_hook(uintptr_t thiz)
 	CCamera__Process(thiz);
 }
 
-extern CJavaWrapper* pJavaWrapper;
+
 void (*MainMenuScreen__OnExit)();
 void MainMenuScreen__OnExit_hook()
 {
