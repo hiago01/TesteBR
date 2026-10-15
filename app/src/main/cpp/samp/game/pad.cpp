@@ -451,10 +451,14 @@ bool CPad__GetEnterTargeting_hook(uintptr_t thiz)
     }
 }
 
+// true = o deslize no HUD (widget 0xA0) NAO troca mais de arma. A troca agora e feita pela
+// barra de armas (WeaponBar). Ponha false para voltar ao comportamento original do jogo.
+static const bool kBlockNativeWeaponCycle = true;
+
 uint32_t(*CPad__CycleWeaponRightJustDown)(uintptr_t thiz);
 uint32_t CPad__CycleWeaponRightJustDown_hook(uintptr_t thiz)
 {
-	if (CWorld::PlayerInFocus)
+	if (kBlockNativeWeaponCycle || CWorld::PlayerInFocus)
 	{
 		return 0;
 	}
@@ -467,7 +471,7 @@ uint32_t CPad__CycleWeaponRightJustDown_hook(uintptr_t thiz)
 uint32_t(*CPad__CycleWeaponLeftJustDown)(uintptr_t thiz);
 uint32_t CPad__CycleWeaponLeftJustDown_hook(uintptr_t thiz)
 {
-	if (CWorld::PlayerInFocus)
+	if (kBlockNativeWeaponCycle || CWorld::PlayerInFocus)
 	{
 		return 0;
 	}
@@ -964,6 +968,7 @@ void HookCPad()
     CHook::InlineHook("_ZN4CPad9GetWeaponEP4CPedb", &CPad__GetWeapon_hook, &CPad__GetWeapon);
     CHook::InlineHook("_ZN7CCamera17IsTargetingActiveEP10CPlayerPed", &CCamera_IsTargetingActive_hook, &CCamera_IsTargetingActive);
     CHook::InlineHook("_ZN4CPad24CycleWeaponRightJustDownEv", &CPad__CycleWeaponRightJustDown_hook, &CPad__CycleWeaponRightJustDown);
+    CHook::InlineHook("_ZN4CPad23CycleWeaponLeftJustDownEv", &CPad__CycleWeaponLeftJustDown_hook, &CPad__CycleWeaponLeftJustDown);
     //CHook::InstallPLT(g_libGTASA + 0x66F304, (uintptr_t)CPad__CycleWeaponLeftJustDown_hook, (uintptr_t*)&CPad__CycleWeaponLeftJustDown);
 
     // nitro
