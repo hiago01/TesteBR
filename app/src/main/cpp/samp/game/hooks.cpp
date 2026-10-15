@@ -3562,7 +3562,7 @@ CHook::InlineHook(
 
 CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
     CHook::Redirect("_Z13RenderEffectsv", &RenderEffects);
-   // CHook::InlineHook("_Z14AND_TouchEventiiii", &AND_TouchEvent_hook, &AND_TouchEvent);
+    CHook::InlineHook("_Z14AND_TouchEventiiii", &AND_TouchEvent_hook, &AND_TouchEvent);
 
     // Segurar o HUD (menu nativo de stats) -> abre /roupas ; soltar -> /roupas fechar
     CHook::InlineHook("_ZN4CPad20GetDisplayVitalStatsEP4CPed",
