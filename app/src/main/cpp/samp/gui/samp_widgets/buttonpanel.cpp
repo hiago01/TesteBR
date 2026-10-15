@@ -17,7 +17,7 @@ ButtonPanel::ButtonPanel()
 {
 
 	CButton* m_bTab = new CButton("TAB", UISettings::fontSize() / 2);
-	OButton* m_bOpen = new OButton(">>", UISettings::fontSize() / 2);
+	//OButton* m_bOpen = new OButton(">>", UISettings::fontSize() / 2);
 	CButton* m_bClose = new CButton("<<", UISettings::fontSize() / 2);
 	CButton* m_bEsc = new CButton("ESC", UISettings::fontSize() / 2);
 	CButton* m_bAlt = new CButton("ALT", UISettings::fontSize() / 2);
@@ -43,7 +43,7 @@ ButtonPanel::ButtonPanel()
 		}
 		//pNetGame->SendChatCommand("/tab"); 
 	});
-	m_bOpen->setCallback([]() { OpenButton = true; });
+	//m_bOpen->setCallback([]() { OpenButton = true; });
 	m_bClose->setCallback([]() { OpenButton = false; });
 	m_bEsc->setCallback([m_bEsc]() {
 		if (pNetGame && m_bEsc->visible()) {
@@ -84,7 +84,7 @@ ButtonPanel::ButtonPanel()
 	//this->addChild(m_bFOOD);
 	//if (Server == 21) this->addChild(m_bGPS);
 	this->addChild(m_b2);
-	this->addChild(m_bOpen);
+	//this->addChild(m_bOpen);
 
 
 	//m_bOpen->setPosition(ImVec2(5.0f, 140.0f));
