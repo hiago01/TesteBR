@@ -96,14 +96,14 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, 
 	SetGameState(GAMESTATE_WAIT_CONNECT);
 	m_bLanMode = false;
 
-    pJavaWrapper->HideLoadingScreen();
+//    pJavaWrapper->HideLoadingScreen();
 
     const char* sampVer = SAMP_VERSION;
     if(pSettings)
         sampVer = pSettings->Get().szVersion;
 
 	if (pUI) pUI->chat()->addDebugMessage("{FFFFFF}Carregando o SA-MP {B9C9BF}v%s {FFFFFF}..", sampVer);
-	pGame->FindPlayerPed()->TogglePlayerControllable(true);
+	pGame->FindPlayerPed()->TogglePlayerControllable(false);
 }
 // 0.3.7
 CNetGame::~CNetGame()
@@ -586,7 +586,7 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 	bsSuccAuth.Read(MyPlayerID);
 	bsSuccAuth.Read(uiChallenge);
 	uiChallenge ^= iVersion;
-
+pJavaWrapper->HideLoadingScreen();
 	if (pUI) pUI->chat()->addDebugMessage("Conectado. Entrando no jogo...");
 
 	SetGameState(GAMESTATE_AWAIT_JOIN);
