@@ -102,7 +102,8 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, 
     if(pSettings)
         sampVer = pSettings->Get().szVersion;
 
-	if (pUI) pUI->chat()->addDebugMessage("{FFFFFF}SA-MP {B9C9BF}%s {FFFFFF}Started", sampVer);
+	if (pUI) pUI->chat()->addDebugMessage("{FFFFFF}Carregando o SA-MP {B9C9BF}v%s {FFFFFF}..", sampVer);
+	pGame->FindPlayerPed()->m_pPed->TogglePlayerControllable(true);
 }
 // 0.3.7
 CNetGame::~CNetGame()
@@ -429,11 +430,11 @@ void CNetGame::ShutdownForGameModeRestart()
 	m_pNetSet->fNameTagDrawDistance = 70.0f;
 	m_pNetSet->byteWorldTime_Hour = 12;
 	m_pNetSet->byteWorldTime_Minute = 0;
-	m_pNetSet->byteWeather = 1;
+	m_pNetSet->byteWeather = 0;// era 1
 	m_pNetSet->byteHoldTime = 1;
-	m_pNetSet->bNameTagLOS = true;
-	m_pNetSet->bUseCJWalk = false;
-	pGame->ToggleCJWalk(false);
+	m_pNetSet->bNameTagLOS = false;//era true
+	m_pNetSet->bUseCJWalk = true;//era false
+	pGame->ToggleCJWalk(true);//era false
 	m_pNetSet->fGravity = 0.008f;
 	m_pNetSet->iDeathDropMoney = 0;
 
@@ -485,8 +486,8 @@ void CNetGame::ProcessLoadingScreen()
 		pPlayerPed->m_pPed->SetPosn(1133.0504, -2038.4034, 69.099998);
 	}
 
-	CCamera::SetPosition(1093.0, -2036.0, 90.0, 0.0, 0.0, 0.0);
-	CCamera::LookAtPoint(384.0, -1557.0, 20.0, 2);
+	CCamera::SetPosition(1537.018,-1660.168,5.8906, 0.0, 0.0, 0.0);
+	CCamera::LookAtPoint(1546.623, -1660.569, 5.8906, 2);
 	pGame->SetWorldWeather(1);
 	pGame->DisplayHUD(false);
 }
@@ -496,7 +497,7 @@ void CNetGame::ProcessConnecting()
 	if (GetTickCount() - m_dwLastConnectAttempt > 1000/*3000*/)
 	{
 		//if (pUI) pUI->chat()->addDebugMessage("Connecting to %s:%d...", m_szHostOrIp, m_iPort);
-		if (pUI) pUI->chat()->addDebugMessage("Conectando ao servidor SA-MP...");
+		if (pUI) pUI->chat()->addDebugMessage("{B3EBF2}Bem vindo ao {FFFFFF}Maximo Roleplay{B3EBF2}!!");
 
 		m_pRakClient->Connect(m_szHostOrIp, m_iPort, 0, 0, 2);
 		
