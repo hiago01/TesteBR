@@ -22,8 +22,11 @@ public:
 		const ImColor& col_bot_right, const ImColor& col_bot_left);
 	void drawTriangle(const ImVec2& a, const ImVec2& b, const ImVec2& c, const ImColor& color, bool fill = false, float thickness = 1.0f);
 	void drawConvexPolyFilled(ImVec2* points, int num_points	, const ImColor& color);
+	void drawPolyline(const ImVec2* points, int num_points, const ImColor& color, bool closed = false, float thickness = 1.0f);
 	void drawText(const ImVec2& pos, const ImColor& color, const std::string& text, bool outlined = false, float font_size = 0.0f);
 	void drawImage(const ImVec2& a, const ImVec2& b, ImTextureID texture);
+	void drawImage(const ImVec2& a, const ImVec2& b, ImTextureID texture, const ImColor& tint,
+		const ImVec2& uv_a = ImVec2(0.0f, 0.0f), const ImVec2& uv_b = ImVec2(1.0f, 1.0f));
 
 	void pushClipRect(const ImVec2& min, const ImVec2& max, bool intersect = false);
 	void popClipRect();

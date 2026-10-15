@@ -56,13 +56,12 @@ bool UI::initialize()
 	m_voiceButton->setPosition(UISettings::buttonVoicePos());
 	m_voiceButton->setVisible(false);
 
-	// Barra de armas: quadrados no topo, centralizados. Altura = lado do quadrado.
+	// Barra de armas: parte inferior, centralizada (tamanho/posicao calculados pelo proprio WeaponBar).
 	{
-		const float sq = size().y * 0.085f;
 		m_weaponBar = new WeaponBar();
 		this->addChild(m_weaponBar);
-		m_weaponBar->setFixedSize(ImVec2(size().x * 0.55f, sq));
-		m_weaponBar->setPosition(ImVec2((size().x - size().x * 0.55f) / 2.0f, size().y * 0.015f));
+		m_weaponBar->setFixedSize(WeaponBar::SizeFor(size()));
+		m_weaponBar->setPosition(WeaponBar::PosFor(size()));
 		m_weaponBar->setVisible(true);   // o proprio draw() so desenha com o jogador em campo
 	}
 

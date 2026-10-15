@@ -37,6 +37,11 @@ void ImGuiRenderer::drawConvexPolyFilled(ImVec2* points, int num_points, const I
 	m_drawList->AddConvexPolyFilled(points, num_points, color);
 }
 
+void ImGuiRenderer::drawPolyline(const ImVec2* points, int num_points, const ImColor& color, bool closed, float thickness)
+{
+	m_drawList->AddPolyline(points, num_points, color, closed, thickness);
+}
+
 void ImGuiRenderer::drawText(const ImVec2& pos, const ImColor& color,
 	const char* begin, const char* end, bool outline, float font_size)
 {
@@ -271,6 +276,12 @@ bool ImGuiRenderer::processInlineHexColor(const char* start, const char* end, Im
 void ImGuiRenderer::drawImage(const ImVec2& a, const ImVec2& b, ImTextureID texture)
 {
 	m_drawList->AddImage(texture, a, b);
+}
+
+void ImGuiRenderer::drawImage(const ImVec2& a, const ImVec2& b, ImTextureID texture, const ImColor& tint,
+	const ImVec2& uv_a, const ImVec2& uv_b)
+{
+	m_drawList->AddImage(texture, a, b, uv_a, uv_b, tint);
 }
 
 void ImGuiRenderer::pushClipRect(const ImVec2& min, const ImVec2& max, bool intersect)
