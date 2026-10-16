@@ -156,6 +156,15 @@ if (input == "/skin7" || input.rfind("/skin7 ", 0) == 0)
 
             return;
         }
+if (input == "/hud" || input.rfind("/hud ", 0) == 0)
+        {
+            // HUD do Maximo RP: /hud | on | off | teste | reset | escala <n> | set <campo> <valor>
+            std::string args = input.size() > 4 ? input.substr(5) : std::string();
+            std::string reply = Hud::DebugCommand(args);
+            addDebugMessage("%s", reply.c_str());
+
+            return;
+        }
 if (input == "/camera" || input.rfind("/camera ", 0) == 0 || input == "/cam" || input.rfind("/cam ", 0) == 0)
         {
             // zoom da camera: /camera | /camera <1-3> | /camera pe <1-3> | /camera carro <1-3> | /camera pinca on|off

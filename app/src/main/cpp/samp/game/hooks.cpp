@@ -2315,6 +2315,11 @@ bool CPad__GetDisplayVitalStats_hook(void* thiz, void* ped)
 // "segurar o HUD" (abre /roupas) tambem. Ponha false para o HUD nativo voltar.
 static const bool kHideNativeWeaponHud = true;
 
+// Esconde a barra de VIDA e a de COLETE nativas (canto superior direito): a HUD do Maximo RP
+// (gui/samp_widgets/hud.cpp) as substitui por circulos. A barra de FOLEGO (nadando) e as
+// estrelas de procurado continuam nativas. Ponha false para as barras nativas voltarem.
+static const bool kHideNativeHealthHud = true;
+
 static void VitalStatsClothesWatchdog()
 {
     if (!g_vitalStatsClothesOpen)
@@ -3586,6 +3591,13 @@ CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
     {
         CHook::RET("_ZN17CWidgetPlayerInfo14DrawWeaponIconEP4CPed5CRectf");
         CHook::RET("_ZN17CWidgetPlayerInfo8DrawAmmoEP4CPed5CRectf");
+    }
+
+    // Remove a barra de vida e a de colete nativas (void RenderHealthBar(int, float) / RenderArmorBar).
+    if (kHideNativeHealthHud)
+    {
+        CHook::RET("_ZN17CWidgetPlayerInfo15RenderHealthBarEif");
+        CHook::RET("_ZN17CWidgetPlayerInfo14RenderArmorBarEif");
     }
 
     CHook::Redirect("_ZN11CHudColours12GetIntColourEh", &CHudColours__GetIntColour); // dangerous

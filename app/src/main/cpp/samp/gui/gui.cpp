@@ -65,6 +65,15 @@ bool UI::initialize()
 		m_weaponBar->setVisible(true);   // o proprio draw() so desenha com o jogador em campo
 	}
 
+	// HUD do jogador (logo Maximo RP + vida/colete/fome/energia/sede + dinheiro): canto superior direito.
+	{
+		m_hud = new HudInfo();
+		this->addChild(m_hud);
+		m_hud->setFixedSize(HudInfo::SizeFor(size()));
+		m_hud->setPosition(HudInfo::PosFor(size()));
+		m_hud->setVisible(true);         // o proprio draw() decide quando aparece
+	}
+
 	m_spawn = new Spawn();
 	this->addChild(m_spawn);
 	m_spawn->setFixedSize(UISettings::spawnSize());

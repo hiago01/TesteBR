@@ -25,6 +25,7 @@
 #include "samp_widgets/playertablist.h"
 #include "samp_widgets/voicebutton.h"
 #include "samp_widgets/weaponbar.h"
+#include "samp_widgets/hud.h"
 
 #include "samp_widgets/dialogs/dialog.h"
 
@@ -55,6 +56,7 @@ public:
 	PlayerTabList* playertablist() const { return m_playerTabList; }
 	VoiceButton* voicebutton() const { return m_voiceButton; }
 	WeaponBar* weaponbar() const { return m_weaponBar; }
+	HudInfo* hud() const { return m_hud; }
 
 	static const ImColor fixcolor(uint32_t color) {
 		return ImColor(
@@ -97,6 +99,7 @@ private:
 	PlayerTabList* m_playerTabList;
 	VoiceButton* m_voiceButton;
 	WeaponBar* m_weaponBar;
+	HudInfo* m_hud = nullptr;
 	Label* label;
     Label* label2;
     Label* label3;

@@ -177,6 +177,7 @@ void ApplyPatches_level0()
 // ---------------------------------------------------------------------------------------
 static constexpr bool kDisableTouchLookBack = true;   // desativa "segurar o dedo = olhar para tras"
 static constexpr bool kHideHudClock         = true;   // remove o relogio "12:00" do HUD
+static constexpr bool kHideNativeMoney      = true;   // remove o dinheiro nativo do HUD (a HUD do Maximo RP mostra)
 
 // Troca UMA instrucao (4 bytes) do libGTASA, mas so se a instrucao atual for a esperada.
 // Se o libGTASA for de outra versao e o endereco nao bater, nao escreve nada.
@@ -218,6 +219,15 @@ static void ApplyHudControlPatches()
         //   NOP nessa chamada = o relogio some; o resto do widget (dinheiro, vida...) continua igual.
         PatchInsn(0x37D3C0, 0x97FAB200 /* bl CFont::PrintString */, 0xD503201F /* nop */,
                   "relogio do HUD");
+    }
+
+    if (kHideNativeMoney)
+    {
+        // CWidgetPlayerInfo::Draw: o 2o CFont::PrintString (libGTASA+0x37D528, logo apos o sprintf do
+        // dinheiro em +0x37D4B8) desenha o valor em $. NOP nessa chamada = o dinheiro nativo some.
+        // Mesma tecnica do relogio acima; so aplica se a instrucao atual for exatamente o `bl PrintString`.
+        PatchInsn(0x37D528, 0x97FAB1A6 /* bl CFont::PrintString */, 0xD503201F /* nop */,
+                  "dinheiro nativo do HUD");
     }
 }
 

@@ -156,3 +156,4 @@ extern int RPC_EditAttachedObject;
 extern int RPC_EnterEditObject;
 // CJ real (RPC customizado servidor -> client; ID livre no 0.3.7)
 extern int RPC_ScrSetPlayerClothes;
+extern int RPC_ScrSetHud;

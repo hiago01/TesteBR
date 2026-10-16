@@ -3,6 +3,7 @@
 #include "netgame.h"
 #include "../audiostream.h"
 #include "../game/ClothesSync.h"
+#include "../gui/samp_widgets/hudstate.h"
 
 extern CGame *pGame;
 extern CNetGame *pNetGame;
@@ -1556,6 +1557,7 @@ void ScrGivePlayerMoney(RPCParameters* rpcParams)
 	bsData.Read(iMoney);
 
 	pGame->AddToLocalMoney(iMoney);
+	Hud::OnMoneyGiven(iMoney);   // HUD propria (Maximo RP)
 }
 // 0.3.7
 void ScrSetPlayerFacingAngle(RPCParameters* rpcParams)
@@ -1573,6 +1575,7 @@ void ScrSetPlayerFacingAngle(RPCParameters* rpcParams)
 void ScrResetPlayerMoney(RPCParameters* rpcParams)
 {
 	pGame->ResetLocalMoney();
+	Hud::OnMoneyReset();         // HUD propria (Maximo RP)
 }
 // 0.3.7
 void ScrResetPlayerWeapons(RPCParameters* rpcParams)
@@ -1988,6 +1991,27 @@ void ScrSetPlayerClothes(RPCParameters* rpcParams)
 	CClothesSync::Receive(playerId, (flags & 1) != 0, items, n);
 }
 
+// HUD do jogador: servidor -> client (RPC_ScrSetHud = 201)
+//   uint8 flags (bit0 = HUD visivel, bit1 = campo dinheiro valido) |
+//   uint8 fome | uint8 sede | uint8 energia (0..100) |
+//   int32 dinheiro | uint16 pessoaAtual | uint16 pessoaMax | int32 extra
+void ScrSetHud(RPCParameters* rpcParams)
+{
+	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
+	int iBitLength = rpcParams->numberOfBitsOfData;
+
+	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+
+	uint8_t flags = 0, hunger = 100, thirst = 100, energy = 100;
+	int32_t money = 0, extra = 0;
+	uint16_t slotA = 0, slotB = 0;
+
+	if (!bsData.Read(flags) || !bsData.Read(hunger) || !bsData.Read(thirst) || !bsData.Read(energy)) return;
+	if (!bsData.Read(money) || !bsData.Read(slotA) || !bsData.Read(slotB) || !bsData.Read(extra)) return;
+
+	Hud::OnServerPacket(flags, hunger, thirst, energy, money, slotA, slotB, extra);
+}
+
 void RegisterScriptRPCs(RakClientInterface *pRakClient)
 {
 	FLog("Registering script RPC's..");
@@ -2044,6 +2068,8 @@ void RegisterScriptRPCs(RakClientInterface *pRakClient)
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetPlayerSkin, ScrSetPlayerSkin);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetPlayerClothes, ScrSetPlayerClothes);
 	CClothesSync::Reset(); // nova conexão: descarta roupas da sessão anterior
+	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetHud, ScrSetHud);
+	Hud::Reset();          // nova conexão: HUD volta ao padrão
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetPlayerName, ScrSetPlayerName);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetPlayerPos, ScrSetPlayerPos);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetPlayerPosFindZ, ScrSetPlayerPosFindZ);
@@ -2096,6 +2122,7 @@ void UnregisterScriptRPCs(RakClientInterface *pRakClient)
 	LOGI("Unregistering script RPC's..");
 
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetPlayerClothes);
+	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetHud);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetMapIcon);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrDisableMapIcon);
 

@@ -152,3 +152,5 @@ int RPC_ScrAttachCameraToObject = 81;
 int RPC_SetPlayerSkillLevel = 34;
 // CJ real (roupas/tatuagens/cabelo) - ID customizado, livre no 0.3.7
 int RPC_ScrSetPlayerClothes = 200;
+// HUD do jogador (fome/sede/energia/dinheiro/pilulas) - ID customizado, livre no 0.3.7
+int RPC_ScrSetHud = 201;
