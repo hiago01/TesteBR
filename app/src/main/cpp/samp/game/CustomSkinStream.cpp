@@ -189,6 +189,9 @@ namespace
         std::memcpy(mem, s_file.data(), s_file.size());
 
         FLog("[SKIN7S] convertendo modelo %d a partir do skin.dff (setores: original=%u skin=%u)", model, oldSectors, sectors);
+        FLog("[SKIN7S] streaming: memoryUsed=%zu memoryAvailable=%zu bufferSize(setores)=%d skin=%u setores (%u bytes)",
+             (size_t)CStreaming::ms_memoryUsed, (size_t)CStreaming::ms_memoryAvailable,
+             (int)CStreaming::ms_streamingBufferSize, sectors, sectors * (uint32_t)STREAMING_SECTOR_SIZE);
         info.m_nCdSize = sectors;          // o jogo monta o stream de memoria com GetCdSize() * 2048
         CheckRegistered("antes-skin", model);
         s_inSkinLoad = true;
