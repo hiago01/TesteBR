@@ -40,6 +40,7 @@
 #include "ClothesSync.h"
 #include "CustomSkin.h"
 #include "Plugins/RpAnimBlendPlugin/RpAnimBlend.h"
+#include "CustomSkinStream.h"
 //#include "CPedGTA.h"
 extern UI* pUI;
 extern CGame* pGame;
@@ -3486,7 +3487,7 @@ void TestPlayerClothesDesc()
 void SetUpGLHooks();
 void InstallHooks()
 {
-
+CustomSkinStream::Install();
 CHook::InlineHook(
     "_Z25HandleTextureEnhancementsP8RwRaster",
     &HandleTextureEnhancements_hook,

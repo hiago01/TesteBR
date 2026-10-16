@@ -1,0 +1,179 @@
+// CustomSkinStream.cpp
+//
+// COMO FUNCIONA
+//   O jogo carrega o modelo 7 por CStreaming::ConvertBufferToObject(buffer, modelId, x): le o DFF do
+//   gta3.img para um buffer de streaming e o jogo mesmo cria o clump, as refs de TXD, o hit-col, etc.
+//   Este modulo so troca A ORIGEM DOS BYTES: quando modelId == 7 e existe SAMP/skins/skin.dff, o buffer
+//   e o tamanho (m_nCdSize, em setores de 2048 bytes) passam a ser os do skin.dff. Todo o resto e o
+//   fluxo original do jogo. Descarregar/recarregar o modelo 7 tambem usa a skin (o hook roda de novo).
+//
+//   Texturas: o DFF so tem NOMES. O jogo resolve cada nome no banco de texturas (texdb) do TXD do modelo,
+//   exatamente como faz com "male01" no 7 original. Os nomes das texturas do skin.dff precisam existir
+//   no mesmo banco onde esta "male01" (procure "male01" no editor de texdb).
+//
+//   SAMP/skins/disable (arquivo vazio) desliga tudo: o jogo carrega o 7 original.
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
+#include <vector>
+#include <unistd.h>
+
+#include "../main.h"
+#include "../vendor/armhook/patch.h"
+#include "game.h"
+#include "Streaming.h"
+#include "CustomSkinStream.h"
+
+namespace
+{
+    constexpr int       kModelId   = 7;
+    constexpr uint32_t  kRwClump   = 0x10;          // id do chunk "clump" do RenderWare
+    constexpr uintptr_t OFF_CONVERT_BUFFER = 0x395114;   // CStreaming::ConvertBufferToObject(char*, int, int)
+    constexpr uintptr_t OFF_GET_TEXTURE    = 0x286718;   // TextureDatabaseRuntime::GetTexture(const char*)
+
+    bool  (*s_convertOrig)(char*, int, int) = nullptr;
+    void* (*s_getTexOrig)(const char*)      = nullptr;
+
+    std::vector<uint8_t> s_file;      // conteudo do skin.dff
+    bool s_fileTried = false;
+    bool s_fileOk    = false;
+    bool s_inSkinLoad = false;        // true enquanto o jogo converte o modelo 7 com a nossa skin
+    bool s_fallbackOn = false;        // SAMP/skins/fallback_tex existe: textura nao achada -> usa "male01"
+
+    // Lista de bancos de textura registrados (suposicao: GOT 0x851CF8 -> TDBArray {numAlloced, numEntries, dataPtr}).
+    // Loga so quando MUDA (n ou nulos) para achar QUANDO um banco nulo entra na lista.
+    void CheckRegistered(const char* tag, int model)
+    {
+        static int lastN = -1, lastNulls = -1, lines = 0;
+        if (lines > 120) return;
+        const uintptr_t arr = *reinterpret_cast<uintptr_t*>(g_libGTASA + 0x851CF8);
+        if (!arr) return;
+        const uint32_t n = *reinterpret_cast<uint32_t*>(arr + 4);
+        uintptr_t* d = *reinterpret_cast<uintptr_t**>(arr + 8);
+        if (n > 256 || (n && !d)) { if (lines++ < 3) FLog("[SKIN7S] registered(%s,modelo=%d): lista incoerente (n=%u)", tag, model, n); return; }
+        int nulls = 0;
+        for (uint32_t i = 0; i < n; ++i) if (!d[i]) ++nulls;
+        if ((int)n == lastN && nulls == lastNulls) return;
+        lastN = (int)n; lastNulls = nulls; ++lines;
+        FLog("[SKIN7S] registered(%s,modelo=%d): n=%u nulos=%d%s", tag, model, n, nulls, nulls ? "   <== BANCO NULO NA LISTA" : "");
+        for (uint32_t i = 0; i < n && i < 6; ++i) FLog("[SKIN7S]    registered[%u]=%p", i, (void*)d[i]);
+    }
+
+    std::string SkinDir()
+    {
+        if (!g_pszStorage || !g_pszStorage[0]) return {};
+        std::string p(g_pszStorage);
+        if (p.back() != '/') p.push_back('/');
+        return p + "SAMP/skins/";
+    }
+
+    bool Exists(const std::string& p) { return !p.empty() && ::access(p.c_str(), F_OK) == 0; }
+
+    // Le o skin.dff UMA vez (na primeira conversao do modelo 7).
+    bool EnsureFile()
+    {
+        if (s_fileTried) return s_fileOk;
+        s_fileTried = true;
+
+        const std::string dir = SkinDir();
+        if (dir.empty()) { FLog("[SKIN7S] storage indisponivel: usando o modelo 7 original"); return false; }
+        if (Exists(dir + "disable")) { FLog("[SKIN7S] SAMP/skins/disable existe: usando o modelo 7 original"); return false; }
+
+        const std::string path = dir + "skin.dff";
+        FILE* f = std::fopen(path.c_str(), "rb");
+        if (!f) { FLog("[SKIN7S] %s nao existe: usando o modelo 7 original", path.c_str()); return false; }
+
+        std::fseek(f, 0, SEEK_END);
+        const long size = std::ftell(f);
+        std::fseek(f, 0, SEEK_SET);
+        if (size < 12 || size > 64L * 1024 * 1024) { std::fclose(f); FLog("[SKIN7S] skin.dff com tamanho invalido (%ld)", size); return false; }
+
+        s_file.resize((size_t)size);
+        const size_t got = std::fread(s_file.data(), 1, s_file.size(), f);
+        std::fclose(f);
+        if (got != s_file.size()) { s_file.clear(); FLog("[SKIN7S] leitura incompleta do skin.dff"); return false; }
+
+        uint32_t chunkType = 0;
+        std::memcpy(&chunkType, s_file.data(), 4);
+        if (chunkType != kRwClump) { FLog("[SKIN7S] skin.dff nao comeca com chunk clump (0x%x)", chunkType); s_file.clear(); return false; }
+
+        s_fallbackOn = Exists(dir + "fallback_tex");
+        FLog("[SKIN7S] fallback_tex=%s", s_fallbackOn ? "LIGADO (textura nao achada usa 'male01')" : "desligado");
+        FLog("[SKIN7S] skin.dff lido: %zu bytes (%u setores)", s_file.size(),
+             (unsigned)((s_file.size() + STREAMING_SECTOR_SIZE - 1) / STREAMING_SECTOR_SIZE));
+        s_fileOk = true;
+        return true;
+    }
+
+    // log de cada textura pedida pelo DFF da skin: "-> (nil)" = nao existe no banco (parte branca).
+    // Com SAMP/skins/fallback_tex: no lugar de devolver NULL, devolve a textura "male01" (teste: o crash some
+    // quando o DFF nao tem nenhuma busca "perdida"?).
+    void* GetTexture_hook(const char* name)
+    {
+        void* r = s_getTexOrig(name);
+        if (!s_inSkinLoad) return r;
+
+        if (!r && s_fallbackOn)
+        {
+            static void* fb = nullptr;
+            if (!fb) fb = s_getTexOrig("male01");
+            if (fb)
+            {
+                FLog("[SKIN7S] textura '%s' nao achada -> fallback male01 %p", name ? name : "(null)", fb);
+                return fb;
+            }
+        }
+        FLog("[SKIN7S] textura '%s' -> %p%s", name ? name : "(null)", r, r ? "" : "   <== NAO ACHADA NO TEXDB");
+        return r;
+    }
+
+    bool Convert_hook(char* buf, int model, int a3)
+    {
+        if (model != kModelId || !EnsureFile())
+        {
+            CheckRegistered("antes", model);
+            return s_convertOrig(buf, model, a3);
+        }
+
+        CStreamingInfo& info = CStreaming::GetInfo(model);
+        const uint32_t oldSectors = info.m_nCdSize;
+        const uint32_t sectors = (uint32_t)((s_file.size() + STREAMING_SECTOR_SIZE - 1) / STREAMING_SECTOR_SIZE);
+
+        void* mem = nullptr;
+        if (posix_memalign(&mem, 64, (size_t)sectors * STREAMING_SECTOR_SIZE) != 0 || !mem)
+        {
+            FLog("[SKIN7S] sem memoria para o buffer da skin: usando o modelo 7 original");
+            return s_convertOrig(buf, model, a3);
+        }
+        std::memset(mem, 0, (size_t)sectors * STREAMING_SECTOR_SIZE);
+        std::memcpy(mem, s_file.data(), s_file.size());
+
+        FLog("[SKIN7S] convertendo modelo %d a partir do skin.dff (setores: original=%u skin=%u)", model, oldSectors, sectors);
+        info.m_nCdSize = sectors;          // o jogo monta o stream de memoria com GetCdSize() * 2048
+        CheckRegistered("antes-skin", model);
+        s_inSkinLoad = true;
+        const bool ok = s_convertOrig((char*)mem, model, a3);
+        s_inSkinLoad = false;
+        CheckRegistered("depois-skin", model);
+        info.m_nCdSize = oldSectors;       // mantem a contabilidade original do streaming
+        std::free(mem);
+
+        FLog("[SKIN7S] modelo %d convertido: ok=%d", model, (int)ok);
+        return ok;
+    }
+}
+
+namespace CustomSkinStream
+{
+    void Install()
+    {
+        static bool done = false;
+        if (done) return;
+        done = true;
+
+        void* s1 = shadowhook_hook_func_addr((void*)(g_libGTASA + OFF_CONVERT_BUFFER), (void*)&Convert_hook, (void**)&s_convertOrig);
+        void* s2 = shadowhook_hook_func_addr((void*)(g_libGTASA + OFF_GET_TEXTURE),    (void*)&GetTexture_hook, (void**)&s_getTexOrig);
+        FLog("[SKIN7S] hooks: ConvertBufferToObject=%s GetTexture=%s", s1 ? "OK" : "ERRO", s2 ? "OK" : "ERRO");
+    }
+}
