@@ -171,6 +171,56 @@ void ApplyPatches_level0()
     CHook::RET("_ZN4Fx_c13AddWheelSprayEP8CVehicle7CVectorhhf"); // Fx_c::AddWheelSpray (เพิ่มเอฟเฟกต์น้ำกระเซ็นจากล้อ)
 }
 
+// ---------------------------------------------------------------------------------------
+//  Patches de HUD / controle (libGTASA arm64)
+//  Troque para 'false' para voltar ao comportamento original do jogo.
+// ---------------------------------------------------------------------------------------
+static constexpr bool kDisableTouchLookBack = true;   // desativa "segurar o dedo = olhar para tras"
+static constexpr bool kHideHudClock         = true;   // remove o relogio "12:00" do HUD
+
+// Troca UMA instrucao (4 bytes) do libGTASA, mas so se a instrucao atual for a esperada.
+// Se o libGTASA for de outra versao e o endereco nao bater, nao escreve nada.
+static bool PatchInsn(uintptr_t offset, uint32_t expected, uint32_t value, const char* what)
+{
+    const uint32_t cur = *(const uint32_t*)(g_libGTASA + offset);
+    if (cur != expected)
+    {
+        FLog("[PATCH] %s: instrucao inesperada em libGTASA+0x%X (0x%08X, esperado 0x%08X) - ignorado",
+             what, (unsigned)offset, cur, expected);
+        return false;
+    }
+
+    CHook::Write(g_libGTASA + offset, value);
+    FLog("[PATCH] %s: aplicado em libGTASA+0x%X", what, (unsigned)offset);
+    return true;
+}
+
+static void ApplyHudControlPatches()
+{
+    if (kDisableTouchLookBack)
+    {
+        // CWidgetRegionLook::Update (libGTASA+0x381654):
+        //   enquanto o dedo fica PARADO na regiao de camera, o timer em this+0x50 sobe; quando passa de
+        //   0.5 s o jogo grava m_bLookBack (this+0xA4) = 1  ->  "mov w8, #1" em +0x3817AC.
+        //   CWidgetRegionLook::IsHeldDown() devolve esse flag e o CPad usa como "olhar para tras".
+        //   Trocando por "mov w8, wzr" o flag nunca liga, entao segurar o dedo (inclusive em cima do
+        //   icone do microfone, que o jogo nao enxerga como widget) deixa de virar a camera.
+        //   Look-back por teclado/controle (HID 0x12 / 0x15) continua funcionando.
+        PatchInsn(0x3817AC, 0x320003E8 /* mov w8, #1 */, 0x2A1F03E8 /* mov w8, wzr */,
+                  "gesto olhar-para-tras (toque segurado)");
+    }
+
+    if (kHideHudClock)
+    {
+        // CWidgetPlayerInfo::Draw (libGTASA+0x37D2D0...):
+        //   sprintf(buf, "%02d:%02d", horas, minutos)  em +0x37D34C
+        //   CFont::PrintString(x, y, texto)            em +0x37D3C0  <- desenha o "12:00"
+        //   NOP nessa chamada = o relogio some; o resto do widget (dinheiro, vida...) continua igual.
+        PatchInsn(0x37D3C0, 0x97FAB200 /* bl CFont::PrintString */, 0xD503201F /* nop */,
+                  "relogio do HUD");
+    }
+}
+
 void ApplyGlobalPatches()
 {
     FLog("Installing patches..");
@@ -276,6 +326,8 @@ void ApplyGlobalPatches()
     CHook::RET("_ZN8CMirrors17RenderReflectionsEv"); // การเรนเดอร์สะท้อน
 
     CHook::RET("_ZN8CCarCtrl18GenerateRandomCarsEv"); // สร้างรถแบบสุ่ม
+
+    ApplyHudControlPatches();
 }
 
 void InstallVehicleEngineLightPatches()
