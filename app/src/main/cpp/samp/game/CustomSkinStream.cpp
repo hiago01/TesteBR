@@ -24,6 +24,7 @@
 #include "game.h"
 #include "Streaming.h"
 #include "CustomSkinStream.h"
+#include "DffPreflight.h"
 
 namespace
 {
@@ -98,6 +99,25 @@ namespace
         std::memcpy(&chunkType, s_file.data(), 4);
         if (chunkType != kRwClump) { FLog("[SKIN7S] skin.dff nao comeca com chunk clump (0x%x)", chunkType); s_file.clear(); return false; }
 
+        // Pre-validacao estrutural (so le bytes, nao toca no engine). Se falhar, o jogo carrega o 7 original
+        // em vez de entregar um DFF invalido ao RpClumpStreamRead (que quase nao valida limites).
+        {
+            DffPreflight::Info info;
+            std::string err;
+            if (!DffPreflight::Parse(s_file.data(), s_file.size(), info, err))
+            {
+                FLog("[SKIN7S] preflight REPROVOU o skin.dff: %s -> usando o modelo 7 original", err.c_str());
+                s_file.clear();
+                return false;
+            }
+            FLog("[SKIN7S] preflight OK | RW %s | frames=%d atomics=%d geom=%d tris=%llu verts=%llu mats=%d | ossos=%d usados=%d pesos=%d | HAnim ids=%zu",
+                 DffPreflight::VersionString(info.stamp).c_str(), info.frames, info.atomics, info.geoms,
+                 (unsigned long long)info.tris, (unsigned long long)info.verts, info.materials,
+                 info.bones, info.usedBones, info.maxWeights, info.hanimIds.size());
+            for (const std::string& w : DffPreflight::Warnings(info))
+                FLog("[SKIN7S] AVISO: %s", w.c_str());
+        }
+
         s_fallbackOn = Exists(dir + "fallback_tex");
         FLog("[SKIN7S] fallback_tex=%s", s_fallbackOn ? "LIGADO (textura nao achada usa 'male01')" : "desligado");
         FLog("[SKIN7S] skin.dff lido: %zu bytes (%u setores)", s_file.size(),
@@ -109,8 +129,27 @@ namespace
     // log de cada textura pedida pelo DFF da skin: "-> (nil)" = nao existe no banco (parte branca).
     // Com SAMP/skins/fallback_tex: no lugar de devolver NULL, devolve a textura "male01" (teste: o crash some
     // quando o DFF nao tem nenhuma busca "perdida"?).
+    // true se a lista de bancos registrados tem entrada nula (GetTexture le um campo em +0x110 de cada banco:
+    // o SIGSEGV "Fault address: 0x110" bate com isso). Hipotese, ainda nao confirmada.
+    bool HasNullRegistered()
+    {
+        const uintptr_t arr = *reinterpret_cast<uintptr_t*>(g_libGTASA + 0x851CF8);
+        if (!arr) return false;
+        const uint32_t n = *reinterpret_cast<uint32_t*>(arr + 4);
+        uintptr_t* d = *reinterpret_cast<uintptr_t**>(arr + 8);
+        if (n > 256 || (n && !d)) return false;
+        for (uint32_t i = 0; i < n; ++i) if (!d[i]) return true;
+        return false;
+    }
+
     void* GetTexture_hook(const char* name)
     {
+        if (HasNullRegistered())
+        {
+            static int logged = 0;
+            if (logged++ < 5) FLog("[SKIN7S] GetTexture('%s') com BANCO NULO na lista: devolvendo NULL para evitar SIGSEGV (inSkinLoad=%d)", name ? name : "(null)", (int)s_inSkinLoad);
+            return nullptr;
+        }
         void* r = s_getTexOrig(name);
         if (!s_inSkinLoad) return r;
 
