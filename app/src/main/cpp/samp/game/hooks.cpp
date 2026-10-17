@@ -381,10 +381,10 @@ void CRadar__DrawRadarMask_hook()
 
     if (pUI && pUI->chat() && debugCount < 3)
     {
-        pUI->chat()->addDebugMessage(
+      /*  pUI->chat()->addDebugMessage(
             "[RADAR MASK] DrawRadarMask #%d",
             debugCount + 1
-        );
+        );*/
         debugCount++;
     }
 
