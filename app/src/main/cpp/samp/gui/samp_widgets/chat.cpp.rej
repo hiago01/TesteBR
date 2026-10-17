@@ -1,0 +1,35 @@
+--- app/src/main/cpp/samp/gui/samp_widgets/chat.cpp	2026-10-16 17:16:09.000000000 +0000
++++ app/src/main/cpp/samp/gui/samp_widgets/chat.cpp	2026-10-17 04:09:09.508629301 +0000
+@@ -8,6 +8,7 @@
+ #include "../../game/sprite2d.h"
+ #include "../../game/ClothesTest.h"
+ #include "../../game/ClothesSync.h"
++#include "../../game/Hose.h"
+ #include "../../game/CustomSkin.h"
+ #include "../../game/camerazoom.h"
+ extern UI* pUI;
+@@ -155,6 +156,24 @@
+             addDebugMessage("%s", reply.c_str());
+ 
+             return;
++        }
++if (input == "/mangueira" || input.rfind("/mangueira ", 0) == 0)
++        {
++            // mangueira de parede: /mangueira a | pegar | soltar | limpar | config ...
++            std::string args = input.size() > 10 ? input.substr(11) : std::string();
++            std::string reply = Hose_Command(args);
++            addDebugMessage("%s", reply.c_str());
++
++            return;
++        }
++if (input == "/hud" || input.rfind("/hud ", 0) == 0)
++        {
++            // HUD do Maximo RP: /hud | on | off | teste | reset | escala <n> | set <campo> <valor>
++            std::string args = input.size() > 4 ? input.substr(5) : std::string();
++            std::string reply = Hud::DebugCommand(args);
++            addDebugMessage("%s", reply.c_str());
++
++            return;
+         }
+ if (input == "/camera" || input.rfind("/camera ", 0) == 0 || input == "/cam" || input.rfind("/cam ", 0) == 0)
+         {

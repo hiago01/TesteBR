@@ -1,0 +1,47 @@
+--- app/src/main/cpp/samp/game/hooks.cpp	2026-10-16 17:16:09.000000000 +0000
++++ app/src/main/cpp/samp/game/hooks.cpp	2026-10-17 04:09:09.507987621 +0000
+@@ -27,6 +27,7 @@
+ #include "Streaming.h"
+ #include "References.h"
+ #include "VisibilityPlugins.h"
++#include "Hose.h"
+ #include "game/Animation/AnimManager.h"
+ #include "FileLoader.h"
+ #include "Renderer.h"
+@@ -539,7 +540,9 @@
+ //	RenderEffects();
+     CHook::CallFunction<void>(g_libGTASA + 0x6C1D6C);
+     CHook::CallFunction<void>(g_libGTASA + 0x6E2FB4);
+-//    CRopes::Render();
++//    CRopes::Render();   // desligado no projeto: o CRope nativo nao e usado (ver HOSE_MAXIMO.md)
++    Hose_Update();        // mangueira (visual, sem colisao): logica + pontos
++    Hose_Render();        // mangueira: desenho do tubo (RwIm3D)
+ //    CGlass::Render();
+     CHook::CallFunction<void>(g_libGTASA + 0x6CA5D0);
+     CVisibilityPlugins::RenderReallyDrawLastObjects();
+@@ -2315,6 +2318,11 @@
+ // "segurar o HUD" (abre /roupas) tambem. Ponha false para o HUD nativo voltar.
+ static const bool kHideNativeWeaponHud = true;
+ 
++// Esconde a barra de VIDA e a de COLETE nativas (canto superior direito): a HUD do Maximo RP
++// (gui/samp_widgets/hud.cpp) as substitui por circulos. A barra de FOLEGO (nadando) e as
++// estrelas de procurado continuam nativas. Ponha false para as barras nativas voltarem.
++static const bool kHideNativeHealthHud = true;
++
+ static void VitalStatsClothesWatchdog()
+ {
+     if (!g_vitalStatsClothesOpen)
+@@ -3588,6 +3596,13 @@
+         CHook::RET("_ZN17CWidgetPlayerInfo8DrawAmmoEP4CPed5CRectf");
+     }
+ 
++    // Remove a barra de vida e a de colete nativas (void RenderHealthBar(int, float) / RenderArmorBar).
++    if (kHideNativeHealthHud)
++    {
++        CHook::RET("_ZN17CWidgetPlayerInfo15RenderHealthBarEif");
++        CHook::RET("_ZN17CWidgetPlayerInfo14RenderArmorBarEif");
++    }
++
+     CHook::Redirect("_ZN11CHudColours12GetIntColourEh", &CHudColours__GetIntColour); // dangerous
+     CHook::Redirect("_ZN6CRadar19GetRadarTraceColourEjhh", &CRadar__GetRadarTraceColor); // dangerous
+     CHook::InlineHook("_ZN6CRadar12SetCoordBlipE9eBlipType7CVectorj12eBlipDisplayPc", &CRadar__SetCoordBlip_hook, &CRadar__SetCoordBlip);

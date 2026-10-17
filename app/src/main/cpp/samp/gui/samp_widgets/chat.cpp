@@ -8,6 +8,7 @@
 #include "../../game/sprite2d.h"
 #include "../../game/ClothesTest.h"
 #include "../../game/ClothesSync.h"
+#include "../../game/Hose.h"
 #include "../../game/CustomSkin.h"
 #include "../../game/camerazoom.h"
 extern UI* pUI;
@@ -152,6 +153,15 @@ if (input == "/skin7" || input.rfind("/skin7 ", 0) == 0)
             // skin DFF customizada: /skin7 load | info | unload
             std::string args = input.size() > 6 ? input.substr(7) : std::string();
             std::string reply = CCustomSkin::DebugCommand(args);
+            addDebugMessage("%s", reply.c_str());
+
+            return;
+        }
+if (input == "/mangueira" || input.rfind("/mangueira ", 0) == 0)
+        {
+            // mangueira de parede: /mangueira a | pegar | soltar | limpar | config ...
+            std::string args = input.size() > 10 ? input.substr(11) : std::string();
+            std::string reply = Hose_Command(args);
             addDebugMessage("%s", reply.c_str());
 
             return;

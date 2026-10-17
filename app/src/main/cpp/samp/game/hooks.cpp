@@ -27,6 +27,7 @@
 #include "Streaming.h"
 #include "References.h"
 #include "VisibilityPlugins.h"
+#include "Hose.h"
 #include "game/Animation/AnimManager.h"
 #include "FileLoader.h"
 #include "Renderer.h"
@@ -539,7 +540,9 @@ void RenderEffects() {
 //	RenderEffects();
     CHook::CallFunction<void>(g_libGTASA + 0x6C1D6C);
     CHook::CallFunction<void>(g_libGTASA + 0x6E2FB4);
-//    CRopes::Render();
+//    CRopes::Render();   // desligado no projeto: o CRope nativo nao e usado (ver HOSE_MAXIMO.md)
+    Hose_Update();        // mangueira (visual, sem colisao): logica + pontos
+    Hose_Render();        // mangueira: desenho do tubo (RwIm3D)
 //    CGlass::Render();
     CHook::CallFunction<void>(g_libGTASA + 0x6CA5D0);
     CVisibilityPlugins::RenderReallyDrawLastObjects();
