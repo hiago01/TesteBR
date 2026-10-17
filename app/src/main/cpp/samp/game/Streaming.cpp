@@ -24,6 +24,7 @@ extern UI *pUI;
 
 bool CStreaming::TryLoadModel(int modelId) {
     FLog("TryLoadModel %d", modelId);
+    if (modelId >= 612) CustomImg::LogModelState(modelId, "TryLoadModel");
     if(!CStreaming::GetInfo(modelId).IsLoaded()) {
         if (!CStreaming::GetInfo(modelId).HasCdPosnAndSize()) {
             // ID sem entrada em nenhum IMG: nada sera lido do disco, nao adianta esperar
@@ -277,7 +278,8 @@ void CStreaming::InitImageList() {
     if (CustomImg::ImgPresent())
     {
         const int idx = CStreaming::AddImageToList(CustomImg::kImgListName, true);
-        FLog("[TOUCH] %s registrado no slot %d", CustomImg::kImgListName, idx);
+        FLog("[TOUCH] %s registrado no slot %d (handle=%d)", CustomImg::kImgListName, idx,
+             (idx >= 0 && idx < (int)TOTAL_IMG_ARCHIVES) ? ms_files[idx].m_StreamHandle : -1);
     }
     else
     {

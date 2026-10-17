@@ -26,6 +26,8 @@
 #include <sys/stat.h>
 
 #include "../main.h"   // g_pszStorage
+#include "Streaming.h"
+#include "game/Models/ModelInfo.h"
 
 namespace CustomImg
 {
@@ -54,5 +56,24 @@ namespace CustomImg
         if (r.empty()) return true;
         struct stat st {};
         return ::stat((r + "texdb/touch").c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+    }
+
+    // Diagnostico: escreve no log o estado real de um ID customizado, em cada etapa do caminho
+    //   IDE -> ModelInfo -> diretorio do IMG -> slot do IMG -> banco de texturas.
+    inline void LogModelState(int modelId, const char* quando)
+    {
+        if (modelId < 0 || modelId >= (int)TOTAL_DFF_MODEL_IDS) return;
+        auto* mi = CModelInfo::GetModelInfo(modelId);
+        auto& info = CStreaming::GetInfo(modelId);
+        const int img = info.m_nImgId;
+        const char* imgName = (img >= 0 && img < (int)TOTAL_IMG_ARCHIVES) ? CStreaming::ms_files[img].m_szName : "?";
+        const int imgHandle = (img >= 0 && img < (int)TOTAL_IMG_ARCHIVES) ? CStreaming::ms_files[img].m_StreamHandle : -1;
+        const char* db = info.HasCdPosnAndSize() ? CStreaming::GetModelCDName(modelId) : "(sem entrada no IMG)";
+        FLog("[TOUCH][%s] id=%d modelInfo=%p txdIdx=%d | img=%d '%s' handle=%d posn=%u size=%u state=%d | db='%s'",
+             quando, modelId, (void*)mi, mi ? (int)mi->m_nTxdIndex : -1,
+             img, imgName, imgHandle, (unsigned)info.m_nCdPosn, (unsigned)info.m_nCdSize,
+             (int)info.m_nLoadState, db);
+        if (!mi)
+            FLog("[TOUCH] id=%d: SEM ModelInfo -> o vehicles.ide nao foi lido (ou a linha falhou no parse)", modelId);
     }
 }
