@@ -14,6 +14,7 @@
 #include "IplStore.h"
 #include "Camera.h"
 #include "Renderer.h"
+#include "CustomImg.h"
 #include <algorithm>
 #include <functional>
 #include <vector>
@@ -265,6 +266,18 @@ void CStreaming::InitImageList() {
     CStreaming::AddImageToList("TEXDB\\SAMP.IMG", true);
     CStreaming::AddImageToList("TEXDB\\SAMPCOL.IMG", true);
 #endif
+
+    // touch.img: veiculos/skins customizados (ids no samp.ide / vehicles.ide). So o diretorio e' lido aqui;
+    // o DFF so vem do disco quando o modelo e' requisitado (criar veiculo / setar skin com o ID).
+    if (CustomImg::ImgPresent())
+    {
+        const int idx = CStreaming::AddImageToList(CustomImg::kImgListName, true);
+        FLog("[TOUCH] %s registrado no slot %d", CustomImg::kImgListName, idx);
+    }
+    else
+    {
+        FLog("[TOUCH] texdb/touch.img nao encontrado: ignorado");
+    }
 }
 
 // Request a given model to be loaded.

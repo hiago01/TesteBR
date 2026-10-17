@@ -15,6 +15,7 @@
 #include "ClothesSync.h"
 #include "game/Collision/Collision.h"
 #include "sprite2d.h"
+#include "CustomImg.h"
 
 void ApplySAMPPatchesInGame();
 void InitScripting();
@@ -683,6 +684,16 @@ bool CGame::InitialiseRenderWare() {
     TextureDatabaseRuntime::Register(cars);*/
 #endif
 
+    // banco de texturas do touch.img (texdb/touch/). fullyLoad=false: so o indice; texturas sob demanda.
+    if (CustomImg::DbPresent())
+    {
+        const auto db = TextureDatabaseRuntime::Load(CustomImg::kDbName, false, TextureDatabaseFormat::DF_Default);
+        FLog("[TOUCH] banco '%s' %s", CustomImg::kDbName, db ? "carregado" : "FALHOU ao carregar");
+    }
+    else
+    {
+        FLog("[TOUCH] pasta texdb/touch nao encontrada: banco ignorado");
+    }
 
     const auto camera = RwCameraCreate();
     if (!camera) {
