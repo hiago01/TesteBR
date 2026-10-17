@@ -87,6 +87,10 @@ void CGame::Initialize()
 {
 	FLog("CGame initializing..");
 
+    // diagnostico do touch.img: IDE x diretorio do IMG de cada entrada (roda depois dos IDEs e dos diretorios)
+    if (CustomImg::ImgPresent())
+        CustomImg::Audit("CGame::Initialize");
+
     ApplySAMPPatchesInGame();
 	GameResetRadarColors();
 

@@ -27,9 +27,15 @@ bool CStreaming::TryLoadModel(int modelId) {
     if (modelId >= 612) CustomImg::LogModelState(modelId, "TryLoadModel");
     if(!CStreaming::GetInfo(modelId).IsLoaded()) {
         if (!CStreaming::GetInfo(modelId).HasCdPosnAndSize()) {
-            // ID sem entrada em nenhum IMG: nada sera lido do disco, nao adianta esperar
-            FLog("[TOUCH] modelo %d sem entrada em nenhum IMG (m_nCdSize=0): confira o nome do .dff no touch.img e o ID no vehicles.ide", modelId);
-            return false;
+            // O LoadCdDirectory nao ligou este ID a nenhum IMG. Plano B: se o nome do modelo existe no touch.img,
+            // liga na mao (causa tipica: cache posicional MODELS\MINFO.BIN velho, ja contornado em InitImageList).
+            if (modelId >= 612 && CustomImg::AttachFromTouch(modelId))
+                CustomImg::LogModelState(modelId, "TryLoadModel/apos-plano-B");
+            else {
+                // ID sem entrada em nenhum IMG: nada sera lido do disco, nao adianta esperar
+                FLog("[TOUCH] modelo %d sem entrada em nenhum IMG (m_nCdSize=0) e o nome tambem nao existe no touch.img: confira o nome do .dff no touch.img e o ID/nome no vehicles.ide (veja as linhas [TOUCH][AUDIT])", modelId);
+                return false;
+            }
         }
         FLog("TryLoadModel 1");
         CStreaming::RequestModel(modelId, STREAMING_GAME_REQUIRED | STREAMING_KEEP_IN_MEMORY);
@@ -232,6 +238,8 @@ void CStreaming::InjectHooks() {
     CHook::Write(g_libGTASA + 0x84DBD0, &CStreaming::ms_aInfoForModel);
 
     CHook::Redirect("_ZN10CStreaming13InitImageListEv", &CStreaming::InitImageList);
+    // touch.img: ignora o cache posicional MODELS\MINFO.BIN (ver CustomImg.h) para o diretorio dos IMGs ser ligado pelo NOME
+    CustomImg::InstallAcceleratorBypass();
     CHook::Redirect("_ZN10CStreaming12MakeSpaceForEi", &CStreaming::MakeSpaceFor);
     //CHook::Redirect("_ZN10CStreaming22LoadAllRequestedModelsEb", &CStreaming::LoadAllRequestedModels);
 }
@@ -280,6 +288,7 @@ void CStreaming::InitImageList() {
         const int idx = CStreaming::AddImageToList(CustomImg::kImgListName, true);
         FLog("[TOUCH] %s registrado no slot %d (handle=%d)", CustomImg::kImgListName, idx,
              (idx >= 0 && idx < (int)TOTAL_IMG_ARCHIVES) ? ms_files[idx].m_StreamHandle : -1);
+        FLog("[TOUCH] cache MODELS\\MINFO.BIN ignorado: IMG -> modelo e' ligado pelo nome (CModelInfoAccelerator::GetEntry redirecionado)");
     }
     else
     {
