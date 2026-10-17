@@ -478,8 +478,11 @@ void CGame::EnabledAutoAim()
 CVehicle* CGame::NewVehicle(int iVehicleType, float fX, float fY, float fZ, float fRotation, bool bAddSiren)
 {
 	bool bPreloaded = false;
-	if (m_bPreloadedVehicleModels[iVehicleType - 400] == true) {
-		bPreloaded = true;
+	{
+		const int iPreIdx = iVehicleType - 400;
+		if (iPreIdx >= 0 && iPreIdx < (int)(sizeof(m_bPreloadedVehicleModels) / sizeof(m_bPreloadedVehicleModels[0])) && m_bPreloadedVehicleModels[iPreIdx] == true) {
+			bPreloaded = true;
+		}
 	}
 
 	CVehicle* pNewVehicle = new CVehicle(iVehicleType, fX, fY, fZ, fRotation, bPreloaded, bAddSiren);

@@ -1707,7 +1707,9 @@ static uintptr_t addr_veh_audio = (uintptr_t) &VehicleAudioProperties[0];
 void (*CAEVehicleAudioEntity__GetVehicleAudioSettings)(uintptr_t thiz, int16_t a2, int a3);
 
 void CAEVehicleAudioEntity__GetVehicleAudioSettings_hook(uintptr_t dest, int16_t a2, int ID) {
-	memcpy((void *) dest, &VehicleAudioProperties[(ID - 400)], sizeof(VehicleAudioPropertiesStruct));
+	int iAudioIdx = ID - 400;
+	if (iAudioIdx < 0 || iAudioIdx >= 20000) iAudioIdx = 0; // ID customizado/invalido: usa o 1o perfil de audio
+	memcpy((void *) dest, &VehicleAudioProperties[iAudioIdx], sizeof(VehicleAudioPropertiesStruct));
 }
 
 void (*CRadar_ClearBlip)(uint32_t a2);

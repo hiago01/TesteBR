@@ -25,6 +25,11 @@ extern UI *pUI;
 bool CStreaming::TryLoadModel(int modelId) {
     FLog("TryLoadModel %d", modelId);
     if(!CStreaming::GetInfo(modelId).IsLoaded()) {
+        if (!CStreaming::GetInfo(modelId).HasCdPosnAndSize()) {
+            // ID sem entrada em nenhum IMG: nada sera lido do disco, nao adianta esperar
+            FLog("[TOUCH] modelo %d sem entrada em nenhum IMG (m_nCdSize=0): confira o nome do .dff no touch.img e o ID no vehicles.ide", modelId);
+            return false;
+        }
         FLog("TryLoadModel 1");
         CStreaming::RequestModel(modelId, STREAMING_GAME_REQUIRED | STREAMING_KEEP_IN_MEMORY);
         FLog("TryLoadModel 11");

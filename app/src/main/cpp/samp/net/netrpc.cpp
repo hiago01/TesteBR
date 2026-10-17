@@ -738,7 +738,8 @@ void WorldVehicleAdd(RPCParameters* rpcParams)
 	Log::addParameter("VehicleModinfo.iBodyColor1", VehicleInfo.iBodyColor1);
 	Log::addParameter("VehicleModinfo.iBodyColor2", VehicleInfo.iBodyColor2);
 
-	if (VehicleInfo.iVehicleType < 400 || VehicleInfo.iVehicleType > 611) return;
+	// aceita IDs customizados do touch.img (ate 19999); IDs fora do intervalo do ModelInfo sao descartados
+	if (VehicleInfo.iVehicleType < 400 || VehicleInfo.iVehicleType >= 20000) return;
 
 	pVehiclePool->New(&VehicleInfo);
 	/*CVehicle* pVehicle = pVehiclePool->GetAt(VehicleInfo.VehicleID);

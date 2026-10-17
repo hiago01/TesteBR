@@ -35,13 +35,19 @@ bool CVehiclePool::New(NEW_VEHICLE* new_veh)
         Delete(new_veh->VehicleID);
     }
 
-    CVehicle* pNewVehicle = pGame->NewVehicle(
-            new_veh->iVehicleType,
-            new_veh->vecPos.x,
-            new_veh->vecPos.y,
-            new_veh->vecPos.z,
-            new_veh->fRotation,
-            new_veh->byteAddSiren);
+    CVehicle* pNewVehicle = nullptr;
+    try {
+        pNewVehicle = pGame->NewVehicle(
+                new_veh->iVehicleType,
+                new_veh->vecPos.x,
+                new_veh->vecPos.y,
+                new_veh->vecPos.z,
+                new_veh->fRotation,
+                new_veh->byteAddSiren);
+    } catch (...) {
+        FLog("[TOUCH] falha ao criar veiculo id=%d modelo=%d (modelo nao carregou)", (int)new_veh->VehicleID, (int)new_veh->iVehicleType);
+        pNewVehicle = nullptr;
+    }
 
     m_pVehicles[new_veh->VehicleID] = pNewVehicle;
 
