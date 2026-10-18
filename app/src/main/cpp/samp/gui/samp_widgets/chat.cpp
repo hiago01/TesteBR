@@ -11,6 +11,7 @@
 #include "../../game/Hose.h"
 #include "../../game/CustomSkin.h"
 #include "../../game/camerazoom.h"
+#include "../../game/CustomAnimTest.h"
 extern UI* pUI;
 extern CGame* pGame;
 extern CNetGame* pNetGame;
@@ -211,6 +212,15 @@ if (input == "/hiago22")
             addDebugMessage(
                 "[CLOTHES TEST] Verifique o samp.log"
             );
+
+            return;
+        }
+if (input == "/ifp" || input.rfind("/ifp ", 0) == 0)
+        {
+            // teste de IFP customizado: /ifp ajuda | carregar | lista | tocar | parar | remoto
+            std::string args = input.size() > 4 ? input.substr(5) : std::string();
+            std::string reply = CustomAnimTest::Command(args);
+            addDebugMessage("%s", reply.c_str());
 
             return;
         }

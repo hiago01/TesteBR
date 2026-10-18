@@ -5,6 +5,8 @@
 #include "../game/ClothesSync.h"
 #include "../gui/samp_widgets/hudstate.h"
 #include "../game/Hose.h"
+#include "../game/CustomAnimSync.h"
+#include "../game/CustomAnimTest.h"
 
 extern CGame *pGame;
 extern CNetGame *pNetGame;
@@ -2071,6 +2073,9 @@ void RegisterScriptRPCs(RakClientInterface *pRakClient)
 	CClothesSync::Reset(); // nova conexão: descarta roupas da sessão anterior
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetHud, ScrSetHud);
 	Hud::Reset();          // nova conexão: HUD volta ao padrão
+	CustomAnimSync::Register(pRakClient);   // RPC 230: anim customizada (servidor -> cliente)
+	CustomAnimSync::ClearAll();             // nova conexão: descarta estado da sessão anterior
+	CustomAnimTest::AutoLoad();                // carrega SAMP/anims/poses.ifp (cruzar bracos / apontar) se existir
 	Hose_Stop(-1);         // nova conexão: solta qualquer mangueira da sessão anterior
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetPlayerName, ScrSetPlayerName);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetPlayerPos, ScrSetPlayerPos);
@@ -2125,6 +2130,7 @@ void UnregisterScriptRPCs(RakClientInterface *pRakClient)
 
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetPlayerClothes);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetHud);
+	CustomAnimSync::Unregister(pRakClient);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetMapIcon);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrDisableMapIcon);
 

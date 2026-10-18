@@ -4,6 +4,7 @@
 #include "../gui/gui.h"
 #include "../vendor/encoding/encoding.h"
 #include "../settings.h"
+#include "../game/CustomAnimSync.h"
 
 extern UI* pUI;
 extern CGame *pGame;
@@ -633,6 +634,7 @@ void WorldPlayerAdd(RPCParameters *rpcParams)
 			if (pRemotePlayer->Spawn(byteTeam, iSkin, &vecPos, fRotation, dwColor, byteFightingStyle))
 			{
                 FLog("WorldPlayerAdd");
+				CustomAnimSync::OnPlayerStreamIn(playerId);   // reaplica anim customizada em cache
 				pPlayerPed = pRemotePlayer->GetPlayerPed();
 				if (pPlayerPed)
 				{

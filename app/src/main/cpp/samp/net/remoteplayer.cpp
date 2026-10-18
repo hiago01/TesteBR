@@ -4,6 +4,7 @@
 #include "remoteplayer.h"
 #include "../gui/gui.h"
 #include "../vendor/encoding/encoding.h"
+#include "../game/CustomAnimSync.h"
 
 extern UI* pUI;
 extern CGame *pGame;
@@ -42,6 +43,8 @@ CRemotePlayer::~CRemotePlayer()
 	}
 
 	// field_1E9 = 0;
+
+	CustomAnimSync::OnPlayerStreamOut(m_PlayerID);   // anim customizada: limpa cache deste slot
 
 	if (m_pPlayerPed) {
 		pGame->RemovePlayer(m_pPlayerPed);
@@ -562,6 +565,7 @@ void CRemotePlayer::Remove()
 {
 	if (m_pPlayerPed)
 	{
+		CustomAnimSync::OnPlayerStreamOut(m_PlayerID);   // ANTES de destruir o ped
 		ResetAllSyncAttributes();
 		pGame->RemovePlayer(m_pPlayerPed);
 		m_pPlayerPed = nullptr;
@@ -1069,6 +1073,8 @@ void CRemotePlayer::HideGlobalMarker()
 // 0.3.7
 void CRemotePlayer::StateChange(uint8_t byteNewState, uint8_t byteOldState)
 {
+	CustomAnimSync::OnPlayerStateChange(m_PlayerID, byteNewState);   // saiu de ONFOOT -> limpa anim customizada
+
 	if (byteNewState == PLAYER_STATE_DRIVER && byteOldState == PLAYER_STATE_ONFOOT)
 	{
 		CPlayerPed* pPlayerPed = pGame->FindPlayerPed();
