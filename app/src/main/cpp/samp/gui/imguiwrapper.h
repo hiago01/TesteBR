@@ -31,6 +31,7 @@ public:
 	virtual void shutdown();
 
 	ImGuiRenderer* renderer() const { return m_renderer; }
+	const ImVec2& displaySize() { return m_displaySize; }
 	/*
 		Выводит массив вертексов средствами API движка рендера
 	*/
@@ -44,7 +45,6 @@ protected:
 	*/
 	virtual void drawList() = 0;
 
-	const ImVec2& displaySize() { return m_displaySize; }
 
 private:
 	/*
