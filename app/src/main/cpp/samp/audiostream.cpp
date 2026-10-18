@@ -65,6 +65,10 @@ bool CAudioStream::Initialize()
 	return true;
 }
 
+// Volume global dos streams do servidor (BASS_CONFIG_GVOL_STREAM, 0..10000). Alterado pelo
+// menu Maximo RP (slider "Volume do servidor"); padrao original do cliente = 5000.
+volatile int g_iBassStreamVolume = 5000;
+
 void CAudioStream::Process()
 {
 	if (g_bAudioStreamThreadWorked)
@@ -76,7 +80,7 @@ void CAudioStream::Process()
 		}
 		else
 		{
-			BASS_SetConfig(5, 5000);
+			BASS_SetConfig(5, g_iBassStreamVolume);
 		}
 	}
 }

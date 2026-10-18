@@ -98,6 +98,14 @@ bool UI::initialize()
 	m_playerTabList->setMaxSize(UISettings::dialogMaxSize());
 	m_playerTabList->setVisible(false);
 
+	// Menu "Maximo RP" (substitui o menu de pausa nativo). Ultimo filho = desenhado por cima.
+	// So desenha quando aberto (/menu ou botao Voltar); a captura de toque fica em AND_TouchEvent_hook.
+	m_maximoMenu = new MaximoMenu();
+	this->addChild(m_maximoMenu);
+	m_maximoMenu->setFixedSize(size());
+	m_maximoMenu->setPosition(ImVec2(0.0f, 0.0f));
+	m_maximoMenu->setVisible(true);
+
     label = new Label(" ", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
     pUI->addChild(label);
 

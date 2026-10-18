@@ -893,9 +893,48 @@ uint32_t CHudColours__GetIntColour(uintptr* thiz, uint8 colour_id)
 
 /* =============================================================================== */
 
+// -------------------------------------------------------------------------------------
+//  Menu de pausa NATIVO (MobileMenu): desativado. Todos os caminhos que o abrem
+//  (Voltar, botao Pause, app minimizado -> AndroidPause) passam por MobileMenu::InitForPause,
+//  que e quem monta a tela de pausa. Sem ela nada e desenhado/aberto; o jogo NAO e pausado
+//  por nos e a conexao com o servidor segue ativa. Mude para false para reverter.
+//  ATENCAO: nao validado em aparelho (sem NDK/aparelho neste ambiente) -- ver relatorio.
+// -------------------------------------------------------------------------------------
+static const bool kDisableNativePauseMenu = true;
+
+void (*MobileMenu__InitForPause)(void* thiz);
+void MobileMenu__InitForPause_hook(void* thiz)
+{
+	if (kDisableNativePauseMenu)
+	{
+		static int s_log = 0;
+		if (s_log++ < 5) FLog("[MaximoMenu] MobileMenu::InitForPause bloqueado (menu nativo desativado)");
+		return;
+	}
+	MobileMenu__InitForPause(thiz);
+}
+
+// Marcas de derrapagem: opcao "Marcas de derrapagem" do menu Maximo RP.
+void (*CSkidmarks__Render)();
+void CSkidmarks__Render_hook()
+{
+	if (!MaximoMenu::SkidmarksEnabled()) return;
+	CSkidmarks__Render();
+}
+
 void (*AND_TouchEvent)(int type, int num, int posX, int posY);
 void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 {
+	// Menu Maximo RP aberto: ele reivindica TODOS os toques (ate o UP/CANCEL de cada dedo).
+	// Ao abrir, solta primeiro os dedos que o jogo ainda considera pressionados.
+	if (MaximoMenu::ConsumeFlushRequest())
+	{
+		for (int i = 0; i < 3; i++)
+			AND_TouchEvent(1, i, 0, 0);
+	}
+	if (MaximoMenu::HandleRawTouch(type, num, posX, posY))
+		return;
+
 	// imgui
 	//bool bRet = pUI->OnTouchEvent(type, num, posX, posY);
 	if (pGame->IsGamePaused())
@@ -3586,6 +3625,8 @@ CHook::InlineHook(
 CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
     CHook::Redirect("_Z13RenderEffectsv", &RenderEffects);
     CHook::InlineHook("_Z14AND_TouchEventiiii", &AND_TouchEvent_hook, &AND_TouchEvent);
+    CHook::InlineHook("_ZN10MobileMenu12InitForPauseEv", &MobileMenu__InitForPause_hook, &MobileMenu__InitForPause);
+    CHook::InlineHook("_ZN10CSkidmarks6RenderEv", &CSkidmarks__Render_hook, &CSkidmarks__Render);
 
     // Camera: desativa o zoom por pinca (2 dedos), guarda o nivel em settings.ini e habilita /camera
     CCameraZoom::Init();

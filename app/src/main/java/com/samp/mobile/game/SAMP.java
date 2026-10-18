@@ -235,7 +235,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         //mHeightProvider.init(view);
     }
 
-    public native void onEventBackPressed();
+    public native boolean onEventBackPressed();
 
     @Override
     public void onBackPressed() {
@@ -243,7 +243,8 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
             mClothes.hide();
             return;
         }
-        super.onBackPressed();
+        // Menu Maximo RP: Voltar abre/fecha o menu. Nunca chama super (nao finaliza a Activity,
+        // nao aciona o Pause nativo e nao desconecta o jogador).
         onEventBackPressed();
     }
 
@@ -255,7 +256,10 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
                 mClothes.hide();
                 return true;
             }
-            onEventBackPressed();
+            // Tratado pelo menu Maximo RP; NAO repassa ao motor (NvEventQueueActivity encaminharia
+            // o BACK ao jogo, que abriria o menu de pausa nativo).
+            if (event.getRepeatCount() == 0) onEventBackPressed();
+            return true;
         }
         return super.onKeyDown(keyCode, event);
     }

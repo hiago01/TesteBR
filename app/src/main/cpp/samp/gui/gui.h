@@ -26,6 +26,7 @@
 #include "samp_widgets/voicebutton.h"
 #include "samp_widgets/weaponbar.h"
 #include "samp_widgets/hud.h"
+#include "samp_widgets/maximomenu.h"
 
 #include "samp_widgets/dialogs/dialog.h"
 
@@ -57,6 +58,7 @@ public:
 	VoiceButton* voicebutton() const { return m_voiceButton; }
 	WeaponBar* weaponbar() const { return m_weaponBar; }
 	HudInfo* hud() const { return m_hud; }
+	MaximoMenu* maximomenu() const { return m_maximoMenu; }
 
 	static const ImColor fixcolor(uint32_t color) {
 		return ImColor(
@@ -100,6 +102,7 @@ private:
 	VoiceButton* m_voiceButton;
 	WeaponBar* m_weaponBar;
 	HudInfo* m_hud = nullptr;
+	MaximoMenu* m_maximoMenu = nullptr;
 	Label* label;
     Label* label2;
     Label* label3;

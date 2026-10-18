@@ -168,6 +168,13 @@ if (input == "/mangueira" || input.rfind("/mangueira ", 0) == 0)
 
             return;
         }
+// /menu: abre/fecha o menu "Maximo RP" (sobreposicao; nao usa o Pause nativo, nao desconecta).
+if (input == "/menu")
+{
+        MaximoMenu::Toggle();
+        return;
+}
+
 if (input == "/hud" || input.rfind("/hud ", 0) == 0)
         {
             // HUD do Maximo RP: /hud | on | off | teste | reset | escala <n> | set <campo> <valor>

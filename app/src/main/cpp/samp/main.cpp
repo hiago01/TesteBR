@@ -274,13 +274,19 @@ extern "C" {
 			pUI->keyboard()->sendForGB(pEnv, thiz, str);
 		}
 	}
-	JNIEXPORT void JNICALL Java_com_samp_mobile_game_SAMP_onEventBackPressed(JNIEnv *pEnv, jobject thiz)
+	// Retorna true quando o evento foi tratado pelo menu Maximo RP (abre/fecha o menu);
+	// o Java entao NAO repassa o Voltar ao jogo (evita o Pause nativo e o finish() da Activity).
+	JNIEXPORT jboolean JNICALL Java_com_samp_mobile_game_SAMP_onEventBackPressed(JNIEnv *pEnv, jobject thiz)
 	{
 		if(pSettings)
 		{
 			if(pSettings->Get().iAndroidKeyboard)
 				pJavaWrapper->HideKeyboard();
 		}
+		// So abre/fecha o menu quando o jogo esta pronto (UI criada); antes disso, engole o Voltar.
+		if (pUI && pUI->maximomenu())
+			return MaximoMenu::OnBackPressed() ? JNI_TRUE : JNI_FALSE;
+		return JNI_TRUE;
 	}
 	JNIEXPORT void JNICALL Java_com_samp_mobile_game_ui_dialog_DialogManager_sendDialogResponse(JNIEnv* pEnv, jobject thiz, jint i3, jint i, jint i2, jbyteArray str)
 	{
