@@ -347,23 +347,22 @@ static void DrawWeaponGlyph(ImGuiRenderer* r, CPedGTA* ped, int slot, float cx, 
 	else
 	{
 		const float fs = boxH * 0.34f;
-		const char* nm = kWeaponNames[t];
-		const char* e = nm + std::strlen(nm);
-		ImVec2 ts = r->calculateTextSize(nm, e, fs);
-		r->drawText(ImVec2(cx - ts.x * 0.5f, cy - fs * 0.5f), Col(255, 255, 255, 255, k), nm, e, true, fs);
+		const std::string nm = kWeaponNames[t];            // curto: cabe no SSO, sem heap
+		const ImVec2 ts = r->calculateTextSize(nm, fs);
+		r->drawText(ImVec2(cx - ts.x * 0.5f, cy - fs * 0.5f), Col(255, 255, 255, 255, k), nm, true, fs);
 	}
 }
 
 static void DrawTextCentered(ImGuiRenderer* r, const char* txt, float cx, float y, float fs, float maxW, const ImColor& col)
 {
-	const char* e = txt + std::strlen(txt);
-	ImVec2 ts = r->calculateTextSize(txt, e, fs);
+	const std::string s = txt;                              // curto: cabe no SSO, sem heap
+	ImVec2 ts = r->calculateTextSize(s, fs);
 	if (ts.x > maxW && ts.x > 0.0f)
 	{
 		fs *= maxW / ts.x;
-		ts = r->calculateTextSize(txt, e, fs);
+		ts = r->calculateTextSize(s, fs);
 	}
-	r->drawText(ImVec2(cx - ts.x * 0.5f, y), col, txt, e, true, fs);
+	r->drawText(ImVec2(cx - ts.x * 0.5f, y), col, s, true, fs);
 }
 
 // =====================================================================================
@@ -393,9 +392,9 @@ static void DrawButton(ImGuiRenderer* r, CPedGTA* ped, const ImVec2& screen, boo
 	if (BuildAmmoText(w, ammo, sizeof(ammo)))
 	{
 		const float fs = h * 0.27f;
-		const char* e = ammo + std::strlen(ammo);
-		const ImVec2 ts = r->calculateTextSize(ammo, e, fs);
-		r->drawText(ImVec2(b.x - h * 0.55f - ts.x, b.y - h * 0.14f - ts.y), kWhite, ammo, e, true, fs);
+		const std::string s = ammo;
+		const ImVec2 ts = r->calculateTextSize(s, fs);
+		r->drawText(ImVec2(b.x - h * 0.55f - ts.x, b.y - h * 0.14f - ts.y), kWhite, s, true, fs);
 	}
 }
 
@@ -522,7 +521,7 @@ static void DrawWheel(ImGuiRenderer* r, CPedGTA* ped, const ImVec2& screen, cons
 
 	// dica curta embaixo da roda
 	{
-		const char* hint = "Solte sobre a arma para equipar";
+		const char* hint = "Solte para equipar";
 		DrawTextCentered(r, hint, c.x, c.y + rCan + 8.0f * u, std::max(12.0f, 20.0f * u), screen.x * 0.4f, Col(255, 255, 255, 210, A));
 	}
 
