@@ -62,6 +62,12 @@ namespace
 
 	std::atomic<int> s_holdMs(WeaponBar::kDefaultHoldMs);
 
+	// Caixas de ajuda: a dica inicial aparece por kTipSeconds (acumulados em jogo) ou ate o jogador
+	// escolher uma arma pela roda uma vez. So a thread de draw usa.
+	constexpr float kTipSeconds = 25.0f;
+	bool  s_learned = false;
+	float s_tipTime = 0.0f;
+
 	inline int64_t NowMs()
 	{
 		using namespace std::chrono;
@@ -365,6 +371,58 @@ static void DrawTextCentered(ImGuiRenderer* r, const char* txt, float cx, float 
 	r->drawText(ImVec2(cx - ts.x * 0.5f, y), col, s, true, fs);
 }
 
+// Caixa de ajuda no estilo da referencia: icone "!" a esquerda + 1 ou 2 linhas de texto.
+// 'centered': ancora no meio-topo (senao, no canto superior esquerdo). Sem alocacao: as linhas
+// sao std::string estaticas, criadas uma vez pelo chamador.
+static void DrawHelpBox(ImGuiRenderer* r, const ImVec2& anchor, bool centered,
+						const std::string& l1, const std::string& l2, float u, float k)
+{
+	if (k <= 0.0f) return;
+
+	const float fs    = std::max(11.0f, 19.0f * u);
+	const float pad   = 10.0f * u;
+	const float iconW = 46.0f * u;
+	const bool  two   = !l2.empty();
+
+	const ImVec2 s1 = r->calculateTextSize(l1, fs);
+	const ImVec2 s2 = two ? r->calculateTextSize(l2, fs) : ImVec2(0.0f, 0.0f);
+	const float textW = std::max(s1.x, s2.x);
+	const float lineH = fs * 1.2f;
+
+	const float w = iconW + pad * 2.0f + textW;
+	const float h = std::max(52.0f * u, pad * 2.0f + lineH * (two ? 2.0f : 1.0f));
+
+	const ImVec2 a(centered ? anchor.x - w * 0.5f : anchor.x, anchor.y);
+	const ImVec2 b(a.x + w, a.y + h);
+
+	// fundo (octogono: cantos chanfrados, convexo e horario)
+	const float c = 6.0f * u;
+	ImVec2 poly[8] = {
+		ImVec2(a.x + c, a.y), ImVec2(b.x - c, a.y), ImVec2(b.x, a.y + c), ImVec2(b.x, b.y - c),
+		ImVec2(b.x - c, b.y), ImVec2(a.x + c, b.y), ImVec2(a.x, b.y - c), ImVec2(a.x, a.y + c)
+	};
+	r->drawConvexPolyFilled(poly, 8, Col(0, 0, 0, 185, k));
+	r->drawPolyline(poly, 8, Col(255, 255, 255, 60, k), true, std::max(1.2f, 1.5f * u));
+
+	// quadro do icone + "!"
+	{
+		ImVec2 q[4] = { ImVec2(a.x, a.y), ImVec2(a.x + iconW, a.y), ImVec2(a.x + iconW, b.y), ImVec2(a.x, b.y) };
+		r->drawConvexPolyFilled(q, 4, Col(255, 255, 255, 26, k));
+
+		const ImVec2 ic(a.x + iconW * 0.5f, (a.y + b.y) * 0.5f);
+		StrokeCircle(r, ic, iconW * 0.30f, Col(255, 255, 255, 235, k), std::max(1.8f, 2.4f * u));
+		static const std::string kBang = "!";
+		const ImVec2 ts = r->calculateTextSize(kBang, fs * 1.1f);
+		r->drawText(ImVec2(ic.x - ts.x * 0.5f, ic.y - ts.y * 0.5f), Col(255, 255, 255, 255, k), kBang, true, fs * 1.1f);
+	}
+
+	// texto
+	const float tx = a.x + iconW + pad;
+	const float ty = a.y + (h - lineH * (two ? 2.0f : 1.0f)) * 0.5f;
+	r->drawText(ImVec2(tx, ty), Col(255, 255, 255, 255, k), l1, true, fs);
+	if (two) r->drawText(ImVec2(tx, ty + lineH), Col(255, 255, 255, 215, k), l2, true, fs);
+}
+
 // =====================================================================================
 //  Botao (roda fechada)
 // =====================================================================================
@@ -519,10 +577,11 @@ static void DrawWheel(ImGuiRenderer* r, CPedGTA* ped, const ImVec2& screen, cons
 		}
 	}
 
-	// dica curta embaixo da roda
+	// caixa de ajuda embaixo da roda: como escolher
 	{
-		const char* hint = "Solte para equipar";
-		DrawTextCentered(r, hint, c.x, c.y + rCan + 8.0f * u, std::max(12.0f, 20.0f * u), screen.x * 0.4f, Col(255, 255, 255, 210, A));
+		static const std::string kL1 = "Arraste ate a arma e solte para equipar";
+		static const std::string kL2 = "Solte fora da roda para cancelar";
+		DrawHelpBox(r, ImVec2(c.x, c.y + rCan + 8.0f * u), true, kL1, kL2, u, A);
 	}
 
 	(void)active;
@@ -578,6 +637,8 @@ void WeaponBar::draw(ImGuiRenderer* r)
 	const uint32_t owned = OwnedMask(ped);
 	const Ring ring = BuildRing(owned);
 
+	if (!s_learned) s_tipTime += dt;
+
 	int subCount[kNumCats] = {};
 	int defSlot[kNumCats]  = {};
 	for (int i = 0; i < ring.count; i++)
@@ -609,6 +670,7 @@ void WeaponBar::draw(ImGuiRenderer* r)
 		if (!m_cancelRelease.load())
 		{
 			const int slot = SlotForPick(pick, ring, owned, active);
+			if (slot >= 0) s_learned = true;        // ja escolheu pela roda: some a dica inicial
 			if (slot >= 0 && slot != active) m_pendingSlot.store(slot);
 		}
 		m_state.store(kIdle);
@@ -639,6 +701,16 @@ void WeaponBar::draw(ImGuiRenderer* r)
 
 	const int stNow = m_state.load();
 	DrawButton(r, ped, screen, stNow == kPressed || stNow == kOpen);
+
+	// dica inicial: como usar o seletor (some sozinha, ou depois da primeira escolha pela roda)
+	if (!s_learned && m_anim <= 0.0f && s_tipTime < kTipSeconds)
+	{
+		static const std::string kL1 = "Dica: toque rapido no botao troca de arma.";
+		static const std::string kL2 = "Segure, arraste ate a arma e solte para equipar.";
+		const float u = screen.y / 841.0f;
+		const float k = std::clamp((kTipSeconds - s_tipTime) / 1.5f, 0.0f, 1.0f);   // some suavemente
+		DrawHelpBox(r, ImVec2(screen.x * 0.022f, screen.y * 0.886f), false, kL1, kL2, u, k);
+	}
 
 	if (m_anim > 0.0f)
 		DrawWheel(r, ped, screen, ring, subCount, defSlot, owned, g, pick, active, m_anim);
