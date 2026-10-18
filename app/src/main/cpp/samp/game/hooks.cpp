@@ -28,6 +28,7 @@
 #include "References.h"
 #include "VisibilityPlugins.h"
 #include "Hose.h"
+#include "IdCard3D.h"
 #include "game/Animation/AnimManager.h"
 #include "FileLoader.h"
 #include "Renderer.h"
@@ -543,6 +544,7 @@ void RenderEffects() {
 //    CRopes::Render();   // desligado no projeto: o CRope nativo nao e usado (ver HOSE_MAXIMO.md)
     Hose_Update();        // mangueira (visual, sem colisao): logica + pontos
     Hose_Render();        // mangueira: desenho do tubo (RwIm3D)
+    IdCard3D_Render();    // cartao de identidade 3D acima da cabeca (RwIm3D, billboard)
 //    CGlass::Render();
     CHook::CallFunction<void>(g_libGTASA + 0x6CA5D0);
     CVisibilityPlugins::RenderReallyDrawLastObjects();

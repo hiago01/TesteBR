@@ -3,6 +3,7 @@
 #include "netgame.h"
 #include "playerpool.h"
 #include "../game/ClothesSync.h"
+#include "../game/IdCard3D.h"
 
 CPlayerPool::CPlayerPool()
 {
@@ -94,6 +95,7 @@ bool CPlayerPool::Delete(PLAYERID playerId, uint8_t byteReason)
 	}
 	m_bPlayerSlotState[playerId] = false;
 	CClothesSync::ClearPlayer(playerId); // CJ real: descarta roupas do slot
+	IdCard3D_ClearPlayer(playerId);      // cartao de identidade 3D do jogador que saiu
 
 	if (m_pPlayers[playerId]) {
 		delete m_pPlayers[playerId];

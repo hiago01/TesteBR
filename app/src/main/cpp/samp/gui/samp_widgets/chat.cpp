@@ -9,6 +9,7 @@
 #include "../../game/ClothesTest.h"
 #include "../../game/ClothesSync.h"
 #include "../../game/Hose.h"
+#include "../../game/IdCard3D.h"
 #include "../../game/CustomSkin.h"
 #include "../../game/camerazoom.h"
 #include "../../game/CustomAnimTest.h"
@@ -175,6 +176,15 @@ if (input == "/menu")
         return;
 }
 
+if (input == "/cartao" || input.rfind("/cartao ", 0) == 0)
+        {
+            // cartao de identidade 3D: /cartao | teste [categoria] [id] | anim | limpar | dist|altura|largura <n> | los|proprio on|off
+            std::string args = input.size() > 7 ? input.substr(8) : std::string();
+            std::string reply = IdCard3D_Command(args);
+            addDebugMessage("%s", reply.c_str());
+
+            return;
+        }
 if (input == "/hud" || input.rfind("/hud ", 0) == 0)
         {
             // HUD do Maximo RP: /hud | on | off | teste | reset | escala <n> | set <campo> <valor>

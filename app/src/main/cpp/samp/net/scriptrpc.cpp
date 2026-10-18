@@ -5,6 +5,7 @@
 #include "../game/ClothesSync.h"
 #include "../gui/samp_widgets/hudstate.h"
 #include "../game/Hose.h"
+#include "../game/IdCard3D.h"
 #include "../game/CustomAnimSync.h"
 #include "../game/CustomAnimTest.h"
 
@@ -2015,6 +2016,30 @@ void ScrSetHud(RPCParameters* rpcParams)
 	Hud::OnServerPacket(flags, hunger, thirst, energy, money, slotA, slotB, extra);
 }
 
+// Cartao de identidade 3D: servidor -> client (RPC_ScrSetIdCard = 202)
+//   uint16 playerId | uint8 flags (bit0 = visivel) | uint8 categoria (0..5) |
+//   uint8 cargoLen | char cargo[cargoLen] | uint8 funcLen | char func[funcLen]
+// Nome e ID exibidos vem do pool de jogadores (ja sincronizado pelo SA-MP).
+void ScrSetIdCard(RPCParameters* rpcParams)
+{
+	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
+	int iBitLength = rpcParams->numberOfBitsOfData;
+
+	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+
+	uint16_t playerId = 0;
+	uint8_t flags = 0, category = 0, cargoLen = 0, funcLen = 0;
+	char cargo[32] = {}, func[24] = {};
+
+	if (!bsData.Read(playerId) || !bsData.Read(flags) || !bsData.Read(category)) return;
+	if (!bsData.Read(cargoLen) || cargoLen >= sizeof(cargo)) return;
+	if (cargoLen && !bsData.Read(cargo, cargoLen)) return;
+	if (!bsData.Read(funcLen) || funcLen >= sizeof(func)) return;
+	if (funcLen && !bsData.Read(func, funcLen)) return;
+
+	IdCard3D_OnServerPacket(playerId, (flags & 1) != 0, category, cargo, func);
+}
+
 void RegisterScriptRPCs(RakClientInterface *pRakClient)
 {
 	FLog("Registering script RPC's..");
@@ -2073,6 +2098,8 @@ void RegisterScriptRPCs(RakClientInterface *pRakClient)
 	CClothesSync::Reset(); // nova conexão: descarta roupas da sessão anterior
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetHud, ScrSetHud);
 	Hud::Reset();          // nova conexão: HUD volta ao padrão
+	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetIdCard, ScrSetIdCard);
+	IdCard3D_Reset();      // nova conexão: descarta cartões da sessão anterior
 	CustomAnimSync::Register(pRakClient);   // RPC 230: anim customizada (servidor -> cliente)
 	CustomAnimSync::ClearAll();             // nova conexão: descarta estado da sessão anterior
 	CustomAnimTest::AutoLoad();                // carrega SAMP/anims/poses.ifp (cruzar bracos / apontar) se existir
@@ -2130,6 +2157,8 @@ void UnregisterScriptRPCs(RakClientInterface *pRakClient)
 
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetPlayerClothes);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetHud);
+	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetIdCard);
+	IdCard3D_Reset();      // saiu do servidor: limpa cartões
 	CustomAnimSync::Unregister(pRakClient);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetMapIcon);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrDisableMapIcon);

@@ -154,3 +154,5 @@ int RPC_SetPlayerSkillLevel = 34;
 int RPC_ScrSetPlayerClothes = 200;
 // HUD do jogador (fome/sede/energia/dinheiro/pilulas) - ID customizado, livre no 0.3.7
 int RPC_ScrSetHud = 201;
+// Cartao de identidade 3D (categoria/cargo/n. funcional) - ID customizado, livre no 0.3.7
+int RPC_ScrSetIdCard = 202;
