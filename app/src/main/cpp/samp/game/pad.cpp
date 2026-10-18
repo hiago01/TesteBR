@@ -4,6 +4,7 @@
 #include "../gui/gui.h"
 #include "../vendor/armhook/patch.h"
 #include "World.h"
+#include "movemode.h"
 
 extern UI* pUI;
 extern CGame* pGame;
@@ -16,6 +17,7 @@ PAD_KEYS LocalPlayerKeys;
 PAD_KEYS RemotePlayerKeys[PLAYER_PED_SLOTS];
 
 uint16_t(*CPad__GetPedWalkLeftRight)(uintptr_t thiz);
+extern uint16_t(*CPad__GetPedWalkUpDown)(uintptr_t thiz); // definido logo abaixo (usado pelo modo de movimento)
 uint16_t CPad__GetPedWalkLeftRight_hook(uintptr_t thiz)
 {
 	if (CWorld::PlayerInFocus)
@@ -32,7 +34,15 @@ uint16_t CPad__GetPedWalkLeftRight_hook(uintptr_t thiz)
 	else
 	{
 		// Local player
-		LocalPlayerKeys.wKeyLR = CPad__GetPedWalkLeftRight(thiz);
+		// Modo de movimento (WALK/JOG/SPRINT): molda o modulo do stick mantendo a direcao.
+		// Lemos os dois eixos do original para escalar o vetor (e nao cada eixo isolado).
+		int16_t lr = (int16_t)CPad__GetPedWalkLeftRight(thiz);
+		if (CPad__GetPedWalkUpDown)
+		{
+			int16_t ud = (int16_t)CPad__GetPedWalkUpDown(thiz);
+			CMoveMode::ApplyToStick(lr, ud);
+		}
+		LocalPlayerKeys.wKeyLR = (uint16_t)lr;
 		return LocalPlayerKeys.wKeyLR;
 	}
 }
@@ -54,7 +64,14 @@ uint16_t CPad__GetPedWalkUpDown_hook(uintptr_t thiz)
 	else
 	{
 		// Local player
-		LocalPlayerKeys.wKeyUD = CPad__GetPedWalkUpDown(thiz);
+		// Modo de movimento (WALK/JOG/SPRINT): ver CPad__GetPedWalkLeftRight_hook.
+		int16_t ud = (int16_t)CPad__GetPedWalkUpDown(thiz);
+		if (CPad__GetPedWalkLeftRight)
+		{
+			int16_t lr = (int16_t)CPad__GetPedWalkLeftRight(thiz);
+			CMoveMode::ApplyToStick(lr, ud);
+		}
+		LocalPlayerKeys.wKeyUD = (uint16_t)ud;
 		return LocalPlayerKeys.wKeyUD;
 	}
 }
@@ -68,7 +85,15 @@ uint32_t CPad__GetSprint_hook(uintptr_t thiz, uint32_t unk)
 	}
 	else
 	{
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT] = CPad__GetSprint(thiz, unk);
+		uint32_t dwSprint = CPad__GetSprint(thiz, unk);
+		if (CPad__GetPedWalkLeftRight && CPad__GetPedWalkUpDown)
+		{
+			// SPRINT: forca a corrida rapida normal enquanto ha entrada; WALK/JOG: o botao nao promove a corrida.
+			int16_t lr = (int16_t)CPad__GetPedWalkLeftRight(thiz);
+			int16_t ud = (int16_t)CPad__GetPedWalkUpDown(thiz);
+			dwSprint = CMoveMode::ApplySprint(dwSprint, lr, ud);
+		}
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT] = dwSprint;
 		return LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT];
 	}
 }

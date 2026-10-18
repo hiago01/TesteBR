@@ -12,6 +12,7 @@
 #include "../../game/CustomSkin.h"
 #include "../../game/camerazoom.h"
 #include "../../game/CustomAnimTest.h"
+#include "../../game/movemode.h"
 extern UI* pUI;
 extern CGame* pGame;
 extern CNetGame* pNetGame;
@@ -202,6 +203,15 @@ if (input == "/roupas" || input.rfind("/roupas ", 0) == 0)
                 pJavaWrapper->ShowClothesUI();
                 addDebugMessage("[ROUPAS] abrindo SAMP/NET/ROUPAS.HTML");
             }
+
+            return;
+        }
+if (input == "/movimento" || input.rfind("/movimento ", 0) == 0)
+        {
+            // modo de movimento do joystick: /movimento | walk | jog | sprint | reset | ajuste ...
+            std::string args = input.size() > 10 ? input.substr(11) : std::string();
+            std::string reply = CMoveMode::Command(args);
+            addDebugMessage("%s", reply.c_str());
 
             return;
         }
