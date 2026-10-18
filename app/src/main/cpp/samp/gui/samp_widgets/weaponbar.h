@@ -1,57 +1,68 @@
 #pragma once
 
 #include <atomic>
+#include <cstdint>
 
 // =====================================================================================
-//  Barra de armas na HUD  (parte inferior, centralizada)
+//  Seletor de armas radial (estilo GTA V) -- substitui a antiga barra inferior central.
 //
-//  Visual:
-//    - [<] [arma] [arma] [ARMA SELECIONADA] [arma] [arma] [>]
-//    - celulas com cantos chanfrados, fundo escuro translucido e borda branca fina
-//    - arma selecionada: maior, borda verde com brilho, "colchetes" nos cantos de baixo
-//      e triangulo verde apontando pra ela (em cima)
-//    - setas laterais (chevron verde): arma anterior / proxima (da a volta no fim)
-//    - icones ORIGINAIS do jogo (textura "<modelo>icon" do banco gta3, igual ao
-//      CWidgetPlayerInfo::DrawWeaponIcon do libGTASA; punho = "fist")
-//    - municao no formato  total-pente  (ex.: 196-7)
+//  HUD normal (roda fechada):
+//    - so um botao pequeno no canto inferior direito, com o icone da arma atual e a
+//      municao no formato  total-pente  (ex.: 9999-34). O centro inferior fica livre.
 //
-//  Comportamento:
-//    - lista TODAS as armas que o jogador tem (m_aWeapons[13] do ped local)
-//    - toque numa celula = coloca a arma na mao; setas = anterior / proxima
-//    - mostra no maximo kMaxVisible celulas; com mais armas a janela acompanha a selecionada
+//  Toque no botao:
+//    - toque CURTO  (< hold, padrao 280 ms): proxima arma disponivel, sem abrir a roda;
+//    - toque LONGO  (>= hold)             : abre a roda; arraste ate o segmento e solte;
+//      soltar fora de uma opcao valida (ou o Android cancelar o toque) mantem a arma atual.
 //
-//  Implementacao: weaponbar.cpp
+//  Roda: fundo escuro translucido, centro = punhos, segmentos = categorias de armas
+//  (ver weaponwheel_logic.h). Categorias com varias armas (pesadas/explosivos, outros)
+//  abrem um leque de sub-celulas por fora do segmento.
+//
+//  Toques: o dedo que comeca no botao e "reivindicado" por onRawTouch() (chamado de
+//  AND_TouchEvent_hook, que conhece o id do dedo) e NAO chega ao jogo, entao a camera
+//  nao gira enquanto a roda esta aberta. A troca de arma em si continua sendo feita pela
+//  funcao nativa CPed::SetCurrentWeapon (o SA-MP sincroniza a arma ativa no sync onfoot).
+//
+//  Implementacao: weaponbar.cpp | logica pura testavel: weaponwheel_logic.h
 // =====================================================================================
 
 class WeaponBar : public Widget
 {
 public:
-	// Altura total do widget = altura de UMA celula * kHeightRatio
-	// (cabe: triangulo + celula selecionada (maior) + folga pro brilho).
-	static constexpr float kHeightRatio = 1.42f;
-	// Quantas celulas aparecem ao mesmo tempo.
-	static constexpr int   kMaxVisible  = 5;
+	// O widget cobre a tela inteira (a roda e desenhada em coordenadas absolutas).
+	static ImVec2 SizeFor(const ImVec2& screen) { return screen; }
+	static ImVec2 PosFor(const ImVec2& screen)  { (void)screen; return ImVec2(0.0f, 0.0f); }
 
-	// Tamanho / posicao do widget (inferior central) para uma tela de tamanho 'screen'.
-	static ImVec2 SizeFor(const ImVec2& screen);
-	static ImVec2 PosFor(const ImVec2& screen);
+	// Tempo (ms) que diferencia toque curto de toque longo. Configuravel em tempo de execucao.
+	static constexpr int kDefaultHoldMs = 280;
+	static void SetHoldMs(int ms);
+	static int  HoldMs();
 
 	WeaponBar();
 
 	virtual void draw(ImGuiRenderer* renderer) override;
-	virtual void touchEvent(const ImVec2& pos, TouchType type) override;
+	// A entrada e tratada em onRawTouch(); aqui nao ha nada a fazer (evita foco/ativacao do Widget).
+	virtual void touchEvent(const ImVec2& pos, TouchType type) override { (void)pos; (void)type; }
+
+	// type: 2 = push, 3 = move, 1 = pop (igual a AND_TouchEvent). Retorna true se o evento
+	// pertence ao botao/roda e portanto NAO deve seguir para o jogo nem para os outros widgets.
+	bool onRawTouch(int type, int num, int x, int y);
 
 private:
-	// ids de toque: >= 0 e o slot da arma; negativos sao as setas
-	enum : int { kHitNone = -1, kHitPrev = -2, kHitNext = -3 };
+	enum State : int { kIdle = 0, kPressed = 1, kOpen = 2, kReleasing = 3 };
 
-	struct Cell { ImVec2 min, max; int id; };
-	static constexpr int kMaxCells = kMaxVisible + 2;
+	// Escritos pela thread de entrada, lidos no draw (e vice-versa): tudo atomico.
+	std::atomic<int>     m_state;
+	std::atomic<int>     m_finger;        // id do dedo dono do toque (-1 = nenhum)
+	std::atomic<int>     m_orphan;        // dedo cujo toque foi fechado a forca e ainda esta na tela
+	std::atomic<int64_t> m_downMs;
+	std::atomic<float>   m_downX, m_downY;
+	std::atomic<float>   m_curX, m_curY;
+	std::atomic<bool>    m_cancelRelease; // soltura por ACTION_CANCEL do Android
+	std::atomic<bool>    m_available;     // botao visivel/usavel neste frame
+	std::atomic<int>     m_pendingSlot;   // troca pedida (aplicada no draw), -1 = nenhuma
+	std::atomic<int>     m_pendingStep;   // +1/-1: proxima/anterior (toque curto)
 
-	// Escritos no draw (thread de render), lidos no touch (thread de input).
-	Cell             m_cells[kMaxCells];
-	std::atomic<int> m_cellCount;
-	std::atomic<int> m_pushedId;     // id sob o dedo no push (kHitNone = nenhum)
-	std::atomic<int> m_pendingSlot;  // troca pedida pelo toque, aplicada no draw (-1 = nenhuma)
-	std::atomic<int> m_pendingStep;  // -1 / +1 pedido pelas setas, aplicado no draw
+	float m_anim;                         // 0..1, so a thread de draw usa
 };

@@ -56,7 +56,7 @@ bool UI::initialize()
 	m_voiceButton->setPosition(UISettings::buttonVoicePos());
 	m_voiceButton->setVisible(false);
 
-	// Barra de armas: parte inferior, centralizada (tamanho/posicao calculados pelo proprio WeaponBar).
+	// Seletor de armas radial: botao no canto inferior direito + roda (cobre a tela; o proprio WeaponBar calcula tudo).
 	{
 		m_weaponBar = new WeaponBar();
 		this->addChild(m_weaponBar);

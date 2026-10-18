@@ -17,6 +17,10 @@ void touch_event(int type, int num, int x, int y)
 }
 
 int lastNvEvent;
+
+// true enquanto um evento ACTION_CANCEL (convertido em UP abaixo) esta sendo despachado.
+// Usado pelo seletor de armas para nao equipar nada quando o Android cancela o toque.
+volatile bool g_bTouchCancel = false;
 #include "..//nv_event.h"
 int32_t(*NVEventGetNextEvent_hooked)(NVEvent* ev, int waitMSecs);
 int32_t NVEventGetNextEvent_hook(NVEvent* ev, int waitMSecs)
@@ -43,6 +47,7 @@ int32_t NVEventGetNextEvent_hook(NVEvent* ev, int waitMSecs)
         int x3 = event.m_data.m_multi.m_x3;
         int y3 = event.m_data.m_multi.m_y3;
 
+        g_bTouchCancel = (type == NV_MULTITOUCH_CANCEL);
         if (type == NV_MULTITOUCH_CANCEL)
         {
             type = NV_MULTITOUCH_UP;
@@ -82,6 +87,7 @@ int32_t NVEventGetNextEvent_hook(NVEvent* ev, int waitMSecs)
                 ((void(*)(int, int, int posX, int posY))(g_libGTASA +  0x31EC0C))(NV_MULTITOUCH_MOVE, 2, x3, y3); // AND_TouchEvent
             }
         }
+        g_bTouchCancel = false;
     }
 
     return ret;

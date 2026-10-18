@@ -6,23 +6,31 @@
 #include "../../vendor/armhook/patch.h"
 #include "../../util/CUtil.h"
 #include "../../game/Models/ModelInfo.h"
+#include "weaponwheel_logic.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <string>
 
 extern CNetGame* pNetGame;
+extern CGame*    pGame;
+extern UI*       pUI;
+
+// definido em game/multitouch.cpp: true enquanto o evento em despacho veio de ACTION_CANCEL
+extern volatile bool g_bTouchCancel;
 
 // CWeaponInfo::GetWeaponInfo(type, skill) -- definido em game/playerped.cpp
 extern uintptr_t GetWeaponInfo(int iWeapon, int iSkill);
 
+using namespace WeaponWheel;
+
 // =====================================================================================
-//  Dados
+//  Dados (nomes curtos so aparecem se a textura do icone nao for encontrada)
 // =====================================================================================
 
-// Nome curto (so aparece se a textura do icone nao for encontrada).
 static const char* const kWeaponNames[47] = {
 	"PUNHO", "SOCO-ING", "GOLF", "CASSETE", "FACA", "TACO", "PA", "SINUCA", "KATANA", "SERRA",
 	"DILDO", "DILDO", "VIBRA", "VIBRA", "FLORES", "BENGALA", "GRANADA", "GAS", "MOLOTOV", "-",
@@ -31,8 +39,7 @@ static const char* const kWeaponNames[47] = {
 	"DETONAD.", "SPRAY", "EXTINTOR", "CAMERA", "VISAO", "TERMICO", "PARAQ."
 };
 
-// Nome do modelo (dff) de cada arma. So e usado se o modelinfo nao estiver disponivel;
-// o caminho normal le o nome direto do CModelInfo, igual ao jogo.
+// Nome do modelo (dff) de cada arma; so usado se o modelinfo nao estiver disponivel.
 static const char* const kFallbackModel[47] = {
 	nullptr, "brassknuckle", "golfclub", "nitestick", "knifecur", "bat", "shovel", "poolcue", "katana", "chnsaw",
 	"gun_dildo1", "gun_dildo2", "gun_vibe1", "gun_vibe2", "flowera", "gun_cane", "grenade", "teargas", "molotov", nullptr,
@@ -42,38 +49,56 @@ static const char* const kFallbackModel[47] = {
 };
 
 // =====================================================================================
-//  Tema / proporcoes (tudo relativo a altura 'ch' de uma celula normal)
+//  Tema / proporcoes (tudo relativo a altura da tela, para escalar em qualquer resolucao)
 // =====================================================================================
 
 namespace
 {
-	// cores
-	const ImColor kGreen      (50, 235, 30, 255);   // borda / triangulo / setas
-	const ImColor kGreenLight (130, 255, 105, 255); // colchetes e detalhes
-	const ImColor kWhite      (255, 255, 255, 255);
-	const ImColor kAmmoColor  (255, 255, 255, 255);
+	const ImColor kGreen (50, 235, 30, 255);
+	const ImColor kWhite (255, 255, 255, 255);
 
-	// celula
-	constexpr float kCellAspect   = 1.30f;   // largura / altura da celula normal
-	constexpr float kSelScaleW    = 1.17f;   // selecionada: largura  x
-	constexpr float kSelScaleH    = 1.09f;   // selecionada: altura   x
-	constexpr float kGap          = 0.12f;   // espaco entre celulas
-	constexpr float kChamferTop   = 0.10f;   // chanfro dos cantos de cima (x altura da celula)
-	constexpr float kChamferBot   = 0.12f;   // chanfro dos cantos de baixo
-	constexpr float kSelChamferTop = 0.09f;
-	constexpr float kSelChamferBot = 0.17f;
+	constexpr float kAnimSeconds = 0.12f;      // abrir/fechar
+	constexpr int   kArcSteps    = 48;
 
-	// setas laterais
-	constexpr float kArrowW       = 0.28f;
-	constexpr float kArrowH       = 0.68f;
-	constexpr float kArrowGap     = 0.20f;
+	std::atomic<int> s_holdMs(WeaponBar::kDefaultHoldMs);
 
-	// triangulo indicador (em cima da selecionada)
-	constexpr float kTriW         = 0.27f;
-	constexpr float kTriH         = 0.14f;
-	constexpr float kTriGap       = 0.06f;
-	constexpr float kTopMargin    = 0.05f;   // folga do brilho no topo do widget
-	constexpr float kBottomMargin = 0.08f;   // folga do brilho embaixo
+	inline int64_t NowMs()
+	{
+		using namespace std::chrono;
+		return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+	}
+
+	inline ImVec2 Polar(const ImVec2& c, float a, float rad)
+	{
+		return ImVec2(c.x + std::sin(a) * rad, c.y - std::cos(a) * rad);
+	}
+
+	inline ImColor Col(int r, int g, int b, int a, float k)
+	{
+		return ImColor(r, g, b, std::clamp((int)((float)a * k), 0, 255));
+	}
+
+	// Roda: centro e raios (referencia: print 1870x841 -> centro ~ (0.68w, 0.48h), raio ~ 0.26h)
+	struct Geo { ImVec2 c; float rIn, rOut, rCancel; };
+
+	Geo WheelGeo(const ImVec2& screen)
+	{
+		Geo g;
+		g.c       = ImVec2(screen.x * 0.68f, screen.y * 0.48f);
+		g.rOut    = screen.y * 0.262f;
+		g.rIn     = g.rOut * 0.50f;
+		g.rCancel = g.rOut * 1.42f;   // anel externo (leque de sub-celulas); alem disso = cancelar
+		return g;
+	}
+
+	// Botao no canto inferior direito (referencia: capsula ~12% x 7.8% da tela, margem ~2.4% / 3.9%).
+	void ButtonRect(const ImVec2& screen, ImVec2& a, ImVec2& b)
+	{
+		const float h = screen.y * 0.078f;
+		const float w = std::max(screen.x * 0.125f, h * 1.9f);
+		b = ImVec2(screen.x * 0.976f, screen.y * 0.961f);
+		a = ImVec2(b.x - w, b.y - h);
+	}
 }
 
 // =====================================================================================
@@ -85,8 +110,8 @@ namespace
 	struct IconEntry
 	{
 		RwTexture* tex = nullptr;
-		uint8_t    tries = 0;       // tentativas de carga ja feitas
-		uint32_t   nextTry = 0;     // frame minimo da proxima tentativa
+		uint8_t    tries = 0;
+		uint32_t   nextTry = 0;
 	};
 
 	IconEntry s_icons[47];
@@ -102,9 +127,8 @@ namespace
 		return nullptr;
 	}
 
-	// Mesma resolucao que o CWidgetPlayerInfo::DrawWeaponIcon do jogo:
-	//   modelo = CWeaponInfo::GetWeaponInfo(tipo, 1)->m_nModelId1
-	//   textura = CModelInfo[modelo]->nome + "icon"      (modelo < 1 => punho => "fist")
+	// Mesma resolucao do CWidgetPlayerInfo::DrawWeaponIcon do jogo:
+	//   modelo = CWeaponInfo::GetWeaponInfo(tipo, 1)->m_nModelId1 ; textura = nome do modelo + "icon"
 	bool ResolveIconName(unsigned type, char* out, size_t n)
 	{
 		if (type == 0)
@@ -134,8 +158,6 @@ namespace
 		return false;
 	}
 
-	// Carrega (uma vez) e guarda o icone. Se nao achar, tenta de novo algumas vezes
-	// (o banco pode ainda nao estar pronto no primeiro frame) e depois desiste.
 	RwTexture* GetWeaponIcon(unsigned type)
 	{
 		if (type >= 47) type = 0;
@@ -150,7 +172,6 @@ namespace
 		char name[48];
 		if (!ResolveIconName(type, name, sizeof(name))) { e.tries = 4; return nullptr; }
 
-		// ordem igual a do jogo (gta3 primeiro); o punho vive no banco do HUD (txd)
 		static const char* const kDbsGun[]  = { "gta3", "txd", "gta_int", "samp", "player", "mobile" };
 		static const char* const kDbsFist[] = { "txd", "gta3", "gta_int", "samp", "player", "mobile" };
 		const char* const* dbs = (type == 0) ? kDbsFist : kDbsGun;
@@ -170,7 +191,7 @@ namespace
 }
 
 // =====================================================================================
-//  Regras de exibicao
+//  Regras de estado do jogo
 // =====================================================================================
 
 static CPedGTA* GetLocalPed()
@@ -182,8 +203,8 @@ static CPedGTA* GetLocalPed()
 	return pp ? pp->m_pPed : nullptr;
 }
 
-// Slot 0 sempre aparece (punho / soco-ingles). Os demais, so se tiver a arma
-// (corpo a corpo conta sempre; arma de fogo so com municao).
+// Slot 0 (punhos) sempre existe. Os demais so se tiver a arma (corpo a corpo conta sempre;
+// arma de fogo so com municao). Mesma regra da barra antiga.
 static bool SlotOwned(CPedGTA* ped, int slot)
 {
 	const CWeapon& w = ped->m_aWeapons[slot];
@@ -192,8 +213,35 @@ static bool SlotOwned(CPedGTA* ped, int slot)
 	return w.dwType <= 15 || w.dwAmmo > 0;
 }
 
-// Monta o texto de municao. Armas de fogo (22..34): "total-pente".
-// Lancadores, minigun, spray, camera etc.: so o total. Corpo a corpo: sem texto.
+static uint32_t OwnedMask(CPedGTA* ped)
+{
+	uint32_t m = 0;
+	for (int s = 0; s < kNumSlots; s++)
+		if (SlotOwned(ped, s)) m |= (1u << s);
+	return m;
+}
+
+// Estados em que o seletor nao aparece e a roda fecha: morto, em veiculo, jogo pausado,
+// teclado/dialogo/lista de jogadores/spawn/splash visiveis.
+static bool IsBlocked(CPedGTA* ped)
+{
+	if (!ped) return true;
+	if (ped->m_fHealth <= 0.0f) return true;
+	if (ped->IsInVehicle()) return true;
+	if (pGame && pGame->IsGamePaused()) return true;
+	if (pUI)
+	{
+		if (pUI->keyboard()      && pUI->keyboard()->visible())      return true;
+		if (pUI->dialog()        && pUI->dialog()->visible())        return true;
+		if (pUI->playertablist() && pUI->playertablist()->visible()) return true;
+		if (pUI->spawn()         && pUI->spawn()->visible())         return true;
+		if (pUI->splashscreen()  && pUI->splashscreen()->visible())  return true;
+	}
+	return false;
+}
+
+// Municao: armas de fogo (22..34) "total-pente"; lancadores, minigun, spray, camera: so o total;
+// corpo a corpo: sem texto.
 static bool BuildAmmoText(const CWeapon& w, char* out, size_t n)
 {
 	const unsigned t = w.dwType;
@@ -216,62 +264,64 @@ static bool BuildAmmoText(const CWeapon& w, char* out, size_t n)
 }
 
 // =====================================================================================
-//  Desenho (primitivas)
+//  Primitivas de desenho (sem alocacao: so arrays na pilha)
 // =====================================================================================
 
-// Octogono (retangulo com os 4 cantos chanfrados), em ordem horaria.
-static void MakeChamfer(ImVec2* out, const ImVec2& a, const ImVec2& b, float ct, float cb)
+static void FillDiscN(ImGuiRenderer* r, const ImVec2& c, float rad, const ImColor& col, int n)
 {
-	out[0] = ImVec2(a.x + ct, a.y);
-	out[1] = ImVec2(b.x - ct, a.y);
-	out[2] = ImVec2(b.x,      a.y + ct);
-	out[3] = ImVec2(b.x,      b.y - cb);
-	out[4] = ImVec2(b.x - cb, b.y);
-	out[5] = ImVec2(a.x + cb, b.y);
-	out[6] = ImVec2(a.x,      b.y - cb);
-	out[7] = ImVec2(a.x,      a.y + ct);
+	ImVec2 p[kArcSteps];
+	if (n > kArcSteps) n = kArcSteps;
+	for (int i = 0; i < n; i++) p[i] = Polar(c, (float)i * (kTwoPi / (float)n), rad);
+	r->drawConvexPolyFilled(p, n, col);
 }
 
-// Triangulo sempre em ordem horaria (necessario p/ o anti-aliasing do ImGui).
-static void FillTriangle(ImGuiRenderer* r, ImVec2 p0, ImVec2 p1, ImVec2 p2, const ImColor& col)
+static void StrokeCircle(ImGuiRenderer* r, const ImVec2& c, float rad, const ImColor& col, float th)
 {
-	const float cross = (p1.x - p0.x) * (p2.y - p1.y) - (p1.y - p0.y) * (p2.x - p1.x);
-	if (cross < 0.0f) std::swap(p1, p2);
-	r->drawTriangle(p0, p1, p2, col, true);
+	ImVec2 p[kArcSteps];
+	for (int i = 0; i < kArcSteps; i++) p[i] = Polar(c, (float)i * (kTwoPi / (float)kArcSteps), rad);
+	r->drawPolyline(p, kArcSteps, col, true, th);
 }
 
-// Seta lateral: "boomerang" (ponta grossa que afina nas duas pernas).
-static void DrawChevron(ImGuiRenderer* r, float x, float cy, float w, float h, bool left, bool pressed)
+static void StrokeArc(ImGuiRenderer* r, const ImVec2& c, float rad, float a0, float a1, const ImColor& col, float th)
 {
-	const float hy = h * 0.5f;
-	ImVec2 tip, top, bot, notch;
-	if (left)
+	int n = (int)std::ceil((a1 - a0) / 0.10f);
+	n = std::clamp(n, 2, kArcSteps - 1);
+	ImVec2 p[kArcSteps];
+	for (int i = 0; i <= n; i++) p[i] = Polar(c, a0 + (a1 - a0) * ((float)i / (float)n), rad);
+	r->drawPolyline(p, n + 1, col, false, th);
+}
+
+// Setor anular preenchido [a0,a1] x [r0,r1], em fatias convexas (sentido horario).
+static void FillAnnularSector(ImGuiRenderer* r, const ImVec2& c, float r0, float r1, float a0, float a1, const ImColor& col)
+{
+	int n = (int)std::ceil((a1 - a0) / 0.105f);
+	if (n < 1) n = 1;
+	for (int i = 0; i < n; i++)
 	{
-		tip   = ImVec2(x,              cy);
-		top   = ImVec2(x + w,          cy - hy);
-		bot   = ImVec2(x + w,          cy + hy);
-		notch = ImVec2(x + w * 0.46f,  cy);
+		const float aa = a0 + (a1 - a0) * ((float)i / (float)n);
+		const float ab = a0 + (a1 - a0) * ((float)(i + 1) / (float)n);
+		ImVec2 q[4] = { Polar(c, aa, r0), Polar(c, aa, r1), Polar(c, ab, r1), Polar(c, ab, r0) };
+		r->drawConvexPolyFilled(q, 4, col);
 	}
-	else
-	{
-		tip   = ImVec2(x + w,          cy);
-		top   = ImVec2(x,              cy - hy);
-		bot   = ImVec2(x,              cy + hy);
-		notch = ImVec2(x + w * 0.54f,  cy);
-	}
-
-	// brilho
-	ImVec2 outline[4] = { tip, top, notch, bot };
-	const float gs = std::max(1.0f, h * 0.035f);
-	r->drawPolyline(outline, 4, ImColor(50, 235, 30, pressed ? 90 : 55), true, gs * 4.0f);
-	r->drawPolyline(outline, 4, ImColor(50, 235, 30, pressed ? 140 : 95), true, gs * 2.0f);
-
-	const ImColor col = pressed ? kGreenLight : kGreen;
-	FillTriangle(r, tip, top, notch, col);
-	FillTriangle(r, tip, notch, bot, col);
 }
 
-// Icone original (mantem proporcao) dentro da caixa [cx,cy] +- [boxW,boxH]/2.
+// Capsula (retangulo com as pontas semicirculares), convexa e em sentido horario.
+static void FillCapsule(ImGuiRenderer* r, const ImVec2& a, const ImVec2& b, const ImColor& col, bool outline, const ImColor& line, float th)
+{
+	const float h  = b.y - a.y;
+	const float hr = h * 0.5f;
+	const float my = a.y + hr;
+	const ImVec2 cr(b.x - hr, my), cl(a.x + hr, my);
+
+	ImVec2 p[26];
+	for (int i = 0; i < 13; i++) p[i]      = Polar(cr, kPi * ((float)i / 12.0f), hr);
+	for (int i = 0; i < 13; i++) p[13 + i] = Polar(cl, kPi + kPi * ((float)i / 12.0f), hr);
+
+	r->drawConvexPolyFilled(p, 26, col);
+	if (outline) r->drawPolyline(p, 26, line, true, th);
+}
+
+// Icone original (mantem proporcao) dentro da caixa centrada em [cx,cy].
 static void DrawIcon(ImGuiRenderer* r, RwTexture* tex, float cx, float cy, float boxW, float boxH, int alpha)
 {
 	float iw = (float)tex->raster->width;
@@ -285,350 +335,388 @@ static void DrawIcon(ImGuiRenderer* r, RwTexture* tex, float cx, float cy, float
 				 (ImTextureID)tex->raster, ImColor(255, 255, 255, alpha));
 }
 
-// Conteudo da celula: icone (ou nome, se nao houver textura) + municao.
-static void DrawCellContent(ImGuiRenderer* r, const ImVec2& a, const ImVec2& b, const CWeapon& w, bool selected)
+// Icone da arma do slot (ou nome curto se nao houver textura).
+static void DrawWeaponGlyph(ImGuiRenderer* r, CPedGTA* ped, int slot, float cx, float cy, float boxW, float boxH, float k)
 {
-	const float cw = b.x - a.x;
-	const float ch = b.y - a.y;
-	const float cx = (a.x + b.x) * 0.5f;
-
-	char ammo[24];
-	const bool hasAmmo = BuildAmmoText(w, ammo, sizeof(ammo));
-
-	// icone
-	const unsigned t = ((unsigned)w.dwType < 47u) ? (unsigned)w.dwType : 0u;
+	const unsigned t = ((unsigned)ped->m_aWeapons[slot].dwType < 47u) ? (unsigned)ped->m_aWeapons[slot].dwType : 0u;
 	RwTexture* tex = GetWeaponIcon(t);
-
-	const float boxW = cw * 0.78f;
-	const float boxH = ch * (hasAmmo ? 0.50f : 0.66f);
-	const float icy  = hasAmmo ? a.y + ch * 0.38f : (a.y + b.y) * 0.5f;
-
 	if (tex)
 	{
-		DrawIcon(r, tex, cx, icy, boxW, boxH, selected ? 255 : 235);
+		DrawIcon(r, tex, cx, cy, boxW, boxH, (int)(255.0f * k));
 	}
 	else
 	{
-		// sem textura: mostra o nome curto da arma
-		const float fs = ch * 0.19f;
-		const std::string name = kWeaponNames[t];
-		ImVec2 ts = r->calculateTextSize(name, fs);
-		if (ts.x > cw * 0.9f) ts.x = cw * 0.9f;
-		r->drawText(ImVec2(cx - ts.x * 0.5f, icy - fs * 0.5f), kWhite, name, true, fs);
-	}
-
-	// municao
-	if (hasAmmo)
-	{
-		float fs = ch * 0.25f;
-		std::string txt = ammo;
-		ImVec2 ts = r->calculateTextSize(txt, fs);
-		if (ts.x > cw * 0.90f)
-		{
-			fs *= (cw * 0.90f) / ts.x;
-			ts = r->calculateTextSize(txt, fs);
-		}
-		r->drawText(ImVec2(cx - ts.x * 0.5f, b.y - ts.y - ch * 0.05f), kAmmoColor, txt, true, fs);
+		const float fs = boxH * 0.34f;
+		const char* nm = kWeaponNames[t];
+		const char* e = nm + std::strlen(nm);
+		ImVec2 ts = r->calculateTextSize(nm, e, fs);
+		r->drawText(ImVec2(cx - ts.x * 0.5f, cy - fs * 0.5f), Col(255, 255, 255, 255, k), nm, e, true, fs);
 	}
 }
 
-// Celula normal: fundo escuro translucido + borda branca fina, cantos chanfrados.
-static void DrawNormalCell(ImGuiRenderer* r, const ImVec2& a, const ImVec2& b, const CWeapon& w, bool pressed)
+static void DrawTextCentered(ImGuiRenderer* r, const char* txt, float cx, float y, float fs, float maxW, const ImColor& col)
 {
+	const char* e = txt + std::strlen(txt);
+	ImVec2 ts = r->calculateTextSize(txt, e, fs);
+	if (ts.x > maxW && ts.x > 0.0f)
+	{
+		fs *= maxW / ts.x;
+		ts = r->calculateTextSize(txt, e, fs);
+	}
+	r->drawText(ImVec2(cx - ts.x * 0.5f, y), col, txt, e, true, fs);
+}
+
+// =====================================================================================
+//  Botao (roda fechada)
+// =====================================================================================
+
+static void DrawButton(ImGuiRenderer* r, CPedGTA* ped, const ImVec2& screen, bool engaged)
+{
+	ImVec2 a, b;
+	ButtonRect(screen, a, b);
 	const float h = b.y - a.y;
 
-	ImVec2 poly[8];
-	MakeChamfer(poly, a, b, h * kChamferTop, h * kChamferBot);
+	const int active = (ped->m_nActiveWeaponSlot < kNumSlots) ? ped->m_nActiveWeaponSlot : 0;
+	const CWeapon& w = ped->m_aWeapons[active];
 
-	r->drawConvexPolyFilled(poly, 8, ImColor(0, 0, 0, 105));
-	if (pressed) r->drawConvexPolyFilled(poly, 8, ImColor(255, 255, 255, 50));
+	FillCapsule(r, a, b, ImColor(0, 0, 0, engaged ? 185 : 130), true,
+				engaged ? kGreen : ImColor(255, 255, 255, 70), std::max(1.5f, h * 0.025f));
 
-	r->drawPolyline(poly, 8, ImColor(255, 255, 255, 235), true, std::max(1.4f, h * 0.018f));
+	// icone a esquerda
+	DrawWeaponGlyph(r, ped, active, a.x + h * 0.95f, a.y + h * 0.44f, h * 1.15f, h * 0.60f, 1.0f);
 
-	DrawCellContent(r, a, b, w, false);
+	// sublinhado verde sob o icone
+	r->drawLine(ImVec2(a.x + h * 0.40f, b.y - h * 0.16f), ImVec2(a.x + h * 1.50f, b.y - h * 0.16f), kGreen, std::max(2.0f, h * 0.05f));
+
+	// municao embaixo a direita
+	char ammo[24];
+	if (BuildAmmoText(w, ammo, sizeof(ammo)))
+	{
+		const float fs = h * 0.27f;
+		const char* e = ammo + std::strlen(ammo);
+		const ImVec2 ts = r->calculateTextSize(ammo, e, fs);
+		r->drawText(ImVec2(b.x - h * 0.55f - ts.x, b.y - h * 0.14f - ts.y), kWhite, ammo, e, true, fs);
+	}
 }
 
-// Celula selecionada: maior, borda verde com brilho, colchetes nos cantos de baixo.
-static void DrawSelectedCell(ImGuiRenderer* r, const ImVec2& a, const ImVec2& b, const CWeapon& w, bool pressed)
+// =====================================================================================
+//  Roda
+// =====================================================================================
+
+// Slot escolhido por um Pick (ou -1 = nada / cancelar).
+static int SlotForPick(const Pick& pk, const Ring& ring, uint32_t owned, int active)
 {
-	const float cw = b.x - a.x;
-	const float h  = b.y - a.y;
-	const float ct = h * kSelChamferTop;
-	const float cb = h * kSelChamferBot;
+	if (pk.zone == Zone::Center) return 0;
+	if (pk.zone == Zone::Cancel || pk.seg < 0 || pk.seg >= ring.count) return -1;
 
-	ImVec2 poly[8];
-	MakeChamfer(poly, a, b, ct, cb);
-
-	// fundo (escuro com um toque de verde)
-	r->drawConvexPolyFilled(poly, 8, ImColor(4, 20, 4, 150));
-	if (pressed) r->drawConvexPolyFilled(poly, 8, ImColor(255, 255, 255, 40));
-
-	// brilho (varias passadas, da mais larga p/ a mais estreita)
-	const float t  = std::max(2.0f, h * 0.034f);
-	const float gs = std::max(1.0f, h * 0.020f);
-	r->drawPolyline(poly, 8, ImColor(50, 235, 30, 10), true, t + gs * 8.0f);
-	r->drawPolyline(poly, 8, ImColor(50, 235, 30, 24), true, t + gs * 6.0f);
-	r->drawPolyline(poly, 8, ImColor(50, 235, 30, 44), true, t + gs * 4.0f);
-	r->drawPolyline(poly, 8, ImColor(50, 235, 30, 70), true, t + gs * 2.0f);
-
-	// borda
-	r->drawPolyline(poly, 8, kGreen, true, t);
-
-	// colchetes (trecho mais grosso e claro) nos dois cantos de baixo
-	const float arm = cw * 0.17f;
-	const float up  = h * 0.10f;
-	const float bt  = t * 1.55f;
+	const int cat = ring.cat[pk.seg];
+	if (pk.zone == Zone::Sub)
 	{
-		ImVec2 bl[4] = {
-			ImVec2(a.x,              b.y - cb - up),
-			ImVec2(a.x,              b.y - cb),
-			ImVec2(a.x + cb,         b.y),
-			ImVec2(a.x + cb + arm,   b.y)
-		};
-		ImVec2 br[4] = {
-			ImVec2(b.x,              b.y - cb - up),
-			ImVec2(b.x,              b.y - cb),
-			ImVec2(b.x - cb,         b.y),
-			ImVec2(b.x - cb - arm,   b.y)
-		};
-		r->drawPolyline(bl, 4, kGreenLight, false, bt);
-		r->drawPolyline(br, 4, kGreenLight, false, bt);
+		int list[3];
+		const int n = OwnedInCat(owned, cat, list);
+		return (pk.sub >= 0 && pk.sub < n) ? list[pk.sub] : -1;
+	}
+	return DefaultSlotInCat(owned, cat, active);
+}
 
-		// fio interno paralelo ao chanfro (efeito de linha dupla)
-		const float d = h * 0.06f;
-		ImVec2 il[3] = {
-			ImVec2(a.x + d,              b.y - cb - d * 0.35f),
-			ImVec2(a.x + cb + d * 0.35f, b.y - d),
-			ImVec2(a.x + cb + arm * 0.6f, b.y - d)
-		};
-		ImVec2 ir[3] = {
-			ImVec2(b.x - d,              b.y - cb - d * 0.35f),
-			ImVec2(b.x - cb - d * 0.35f, b.y - d),
-			ImVec2(b.x - cb - arm * 0.6f, b.y - d)
-		};
-		const float it = std::max(1.2f, t * 0.45f);
-		r->drawPolyline(il, 3, ImColor(150, 255, 130, 210), false, it);
-		r->drawPolyline(ir, 3, ImColor(150, 255, 130, 210), false, it);
+static void DrawWheel(ImGuiRenderer* r, CPedGTA* ped, const ImVec2& screen, const Ring& ring,
+					  const int* subCount, const int* defSlot, uint32_t owned, const Geo& g0,
+					  const Pick& pick, int active, float anim)
+{
+	const float A  = anim * anim * (3.0f - 2.0f * anim);        // smoothstep
+	const float sc = 0.88f + 0.12f * A;                         // "cresce" ao abrir
+	const float rIn = g0.rIn * sc, rOut = g0.rOut * sc, rCan = g0.rCancel * sc;
+	const ImVec2 c = g0.c;
+	const int n = ring.count;
+	const float u = screen.y / 841.0f;                          // 1 px da imagem de referencia
+
+	// fundo escuro translucido + contornos
+	FillDiscN(r, c, rOut, Col(8, 8, 8, 150, A), kArcSteps);
+	FillDiscN(r, c, rIn,  Col(0, 0, 0, 70, A),  kArcSteps);
+	StrokeCircle(r, c, rOut, Col(255, 255, 255, 80, A), std::max(1.5f, 2.0f * u));
+	StrokeCircle(r, c, rIn,  Col(255, 255, 255, 70, A), std::max(1.5f, 2.0f * u));
+
+	const float segSpan = (n > 0) ? (kTwoPi / (float)n) : kTwoPi;
+
+	// divisorias entre segmentos
+	if (n > 1)
+	{
+		for (int i = 0; i < n; i++)
+		{
+			const float a = SegmentCenter(i, n) + segSpan * 0.5f;
+			r->drawLine(Polar(c, a, rIn), Polar(c, a, rOut), Col(255, 255, 255, 60, A), std::max(1.5f, 2.0f * u));
+		}
 	}
 
-	DrawCellContent(r, a, b, w, true);
-
-	// triangulo apontando pra arma selecionada
+	// segmento destacado + arco verde por fora (so a categoria selecionada fica verde)
+	if ((pick.zone == Zone::Ring || pick.zone == Zone::Sub) && pick.seg >= 0 && pick.seg < n)
 	{
-		const float ch = h / kSelScaleH;           // altura da celula normal
-		const float tw = ch * kTriW;
-		const float th = ch * kTriH;
-		const float cx = (a.x + b.x) * 0.5f;
-		const float ty = a.y - ch * kTriGap - th;
-
-		ImVec2 p0(cx - tw * 0.5f, ty), p1(cx + tw * 0.5f, ty), p2(cx, ty + th);
-		ImVec2 tri[3] = { p0, p1, p2 };
-		r->drawPolyline(tri, 3, ImColor(50, 235, 30, 55), true, gs * 4.0f);
-		r->drawPolyline(tri, 3, ImColor(50, 235, 30, 100), true, gs * 2.0f);
-		FillTriangle(r, p0, p1, p2, kGreen);
+		const float a0 = SegmentCenter(pick.seg, n) - segSpan * 0.5f;
+		const float a1 = SegmentCenter(pick.seg, n) + segSpan * 0.5f;
+		FillAnnularSector(r, c, rIn, rOut, a0, a1, Col(255, 255, 255, 34, A));
+		StrokeArc(r, c, rOut + 5.0f * u, a0 + 0.04f, a1 - 0.04f, Col(50, 235, 30, 255, A), std::max(3.0f, 6.0f * u));
 	}
+
+	// icones + municao por segmento
+	const float midR = (rIn + rOut) * 0.5f;
+	const float box  = (rOut - rIn) * 0.78f;
+	for (int i = 0; i < n; i++)
+	{
+		const int slot = defSlot[i];
+		if (slot < 0) continue;
+
+		const ImVec2 p = Polar(c, SegmentCenter(i, n), midR - (rOut - rIn) * 0.08f);
+		const bool sel = ((pick.zone == Zone::Ring || pick.zone == Zone::Sub) && pick.seg == i);
+
+		DrawWeaponGlyph(r, ped, slot, p.x, p.y, box, box * 0.62f, A);
+
+		char ammo[24];
+		if (BuildAmmoText(ped->m_aWeapons[slot], ammo, sizeof(ammo)))
+			DrawTextCentered(r, ammo, p.x, p.y + box * 0.30f, box * 0.27f, box * 1.05f,
+							 sel ? Col(50, 235, 30, 255, A) : Col(255, 255, 255, 255, A));
+
+		// pontinhos: a categoria tem mais de uma arma (arraste pra fora para escolher)
+		if (subCount[i] > 1)
+		{
+			const int m = subCount[i];
+			for (int k = 0; k < m; k++)
+			{
+				const float da = ((float)k - (float)(m - 1) * 0.5f) * 0.075f;
+				FillDiscN(r, Polar(c, SegmentCenter(i, n) + da, rOut - 7.0f * u), std::max(1.5f, 2.6f * u),
+						  Col(255, 255, 255, 200, A), 10);
+			}
+		}
+	}
+
+	// centro = punhos
+	{
+		const bool sel = (pick.zone == Zone::Center);
+		if (sel) StrokeCircle(r, c, rIn, Col(50, 235, 30, 255, A), std::max(3.0f, 5.0f * u));
+		DrawWeaponGlyph(r, ped, 0, c.x, c.y, rIn * 1.15f, rIn * 1.0f, A);
+	}
+
+	// leque de sub-celulas da categoria sob o dedo (so se tiver mais de uma arma)
+	if ((pick.zone == Zone::Ring || pick.zone == Zone::Sub) && pick.seg >= 0 && pick.seg < n && subCount[pick.seg] > 1)
+	{
+		const int m = subCount[pick.seg];
+		int list[3];
+		OwnedInCat(owned, ring.cat[pick.seg], list);
+
+		const float rho  = (rOut + rCan) * 0.5f;
+		const float cellR = (rCan - rOut) * 0.40f;
+
+		for (int k = 0; k < m; k++)
+		{
+			const ImVec2 p = Polar(c, SubCenter(pick.seg, n, k, m), rho);
+			const bool sel = (pick.zone == Zone::Sub && pick.sub == k);
+
+			FillDiscN(r, p, cellR, Col(8, 8, 8, sel ? 215 : 170, A), 32);
+			StrokeCircle(r, p, cellR, sel ? Col(50, 235, 30, 255, A) : Col(255, 255, 255, 110, A), std::max(2.0f, (sel ? 3.5f : 2.0f) * u));
+			DrawWeaponGlyph(r, ped, list[k], p.x, p.y - cellR * 0.12f, cellR * 1.45f, cellR * 0.95f, A);
+
+			char ammo[24];
+			if (BuildAmmoText(ped->m_aWeapons[list[k]], ammo, sizeof(ammo)))
+				DrawTextCentered(r, ammo, p.x, p.y + cellR * 0.38f, cellR * 0.38f, cellR * 1.6f, Col(255, 255, 255, 255, A));
+		}
+	}
+
+	// dica curta embaixo da roda
+	{
+		const char* hint = "Solte sobre a arma para equipar";
+		DrawTextCentered(r, hint, c.x, c.y + rCan + 8.0f * u, std::max(12.0f, 20.0f * u), screen.x * 0.4f, Col(255, 255, 255, 210, A));
+	}
+
+	(void)active;
 }
 
 // =====================================================================================
 //  WeaponBar
 // =====================================================================================
 
-ImVec2 WeaponBar::SizeFor(const ImVec2& screen)
-{
-	const float ch = screen.y * 0.12f;                 // altura de uma celula normal
-	return ImVec2(screen.x * 0.62f, ch * kHeightRatio);
-}
-
-ImVec2 WeaponBar::PosFor(const ImVec2& screen)
-{
-	const ImVec2 sz = SizeFor(screen);
-	return ImVec2((screen.x - sz.x) * 0.5f, screen.y - sz.y - screen.y * 0.025f);
-}
+void WeaponBar::SetHoldMs(int ms) { s_holdMs.store(std::clamp(ms, 80, 1500)); }
+int  WeaponBar::HoldMs()          { return s_holdMs.load(); }
 
 WeaponBar::WeaponBar()
 	: Widget()
 {
-	m_cellCount.store(0);
-	m_pushedId.store(kHitNone);
+	m_state.store(kIdle);
+	m_finger.store(-1);
+	m_orphan.store(-1);
+	m_downMs.store(0);
+	m_downX.store(0.0f); m_downY.store(0.0f);
+	m_curX.store(0.0f);  m_curY.store(0.0f);
+	m_cancelRelease.store(false);
+	m_available.store(false);
 	m_pendingSlot.store(-1);
 	m_pendingStep.store(0);
+	m_anim = 0.0f;
 }
 
-void WeaponBar::draw(ImGuiRenderer* renderer)
+void WeaponBar::draw(ImGuiRenderer* r)
 {
 	s_frame++;
-	m_cellCount.store(0);          // sem celulas = nada clicavel
 
 	CPedGTA* ped = GetLocalPed();
-	if (!ped) return;
+	const bool usable = (ped != nullptr) && !IsBlocked(ped);
+	m_available.store(usable);
 
-	// armas que o jogador tem, em ordem de slot
-	int slots[13], n = 0;
-	for (int s = 0; s < 13; s++)
-		if (SlotOwned(ped, s)) slots[n++] = s;
+	if (!usable)
+	{
+		// fecha a roda e solta o toque: o dedo que ainda estiver na tela vira "orfao"
+		// (seus eventos seguintes sao engolidos ate o pop, para nao chegarem ao jogo pela metade)
+		if (m_state.exchange(kIdle) != kIdle) m_orphan.store(m_finger.load());
+		m_pendingSlot.store(-1);
+		m_pendingStep.store(0);
+		m_anim = 0.0f;
+		return;
+	}
 
-	auto indexOfSlot = [&](int slot) -> int {
-		for (int i = 0; i < n; i++) if (slots[i] == slot) return i;
-		return -1;
-	};
+	const ImGuiIO& io = ImGui::GetIO();
+	const ImVec2 screen = io.DisplaySize;
+	const float dt = std::clamp(io.DeltaTime, 0.0f, 0.1f);
 
-	// ---- aplica a troca pedida pelo toque (aqui estamos na thread de render/jogo) ----
+	const int active = (ped->m_nActiveWeaponSlot < kNumSlots) ? (int)ped->m_nActiveWeaponSlot : 0;
+	const uint32_t owned = OwnedMask(ped);
+	const Ring ring = BuildRing(owned);
+
+	int subCount[kNumCats] = {};
+	int defSlot[kNumCats]  = {};
+	for (int i = 0; i < ring.count; i++)
+	{
+		int tmp[3];
+		subCount[i] = OwnedInCat(owned, ring.cat[i], tmp);
+		defSlot[i]  = DefaultSlotInCat(owned, ring.cat[i], active);
+	}
+
+	const Geo g = WheelGeo(screen);
+	const Params prm = { g.rIn, g.rOut, g.rCancel };
+
+	// toque longo: abre a roda
+	if (m_state.load() == kPressed && Classify(NowMs() - m_downMs.load(), HoldMs()) == Gesture::Hold)
+	{
+		int expected = kPressed;
+		m_state.compare_exchange_strong(expected, kOpen);
+	}
+
+	// opcao sob o dedo
+	const int st = m_state.load();
+	Pick pick = { Zone::Cancel, -1, -1 };
+	if (st == kOpen || st == kReleasing)
+		pick = PickAt(m_curX.load() - g.c.x, m_curY.load() - g.c.y, prm, ring.count, subCount);
+
+	// soltura: equipa se for uma opcao valida; senao preserva a arma anterior
+	if (st == kReleasing)
+	{
+		if (!m_cancelRelease.load())
+		{
+			const int slot = SlotForPick(pick, ring, owned, active);
+			if (slot >= 0 && slot != active) m_pendingSlot.store(slot);
+		}
+		m_state.store(kIdle);
+	}
+
+	// aplica a troca (toque curto ou soltura da roda) pela funcao NATIVA do jogo
 	{
 		const int reqSlot = m_pendingSlot.exchange(-1);
 		const int reqStep = m_pendingStep.exchange(0);
 
-		if ((reqSlot >= 0 || reqStep != 0) && n > 0 && !ped->IsInVehicle())
-		{
-			int slot = -1;
-			if (reqSlot >= 0)
-			{
-				slot = reqSlot;
-			}
-			else
-			{
-				const int cur = indexOfSlot(ped->m_nActiveWeaponSlot);
-				const int ni  = (cur < 0) ? (reqStep > 0 ? 0 : n - 1) : (cur + reqStep + n) % n;
-				slot = slots[ni];
-			}
+		int slot = -1;
+		if (reqSlot >= 0)      slot = reqSlot;
+		else if (reqStep != 0) slot = NextSlot(owned, active, reqStep);
 
-			if (slot >= 0 && slot < 13 && SlotOwned(ped, slot))
-			{
-				// CPed::SetCurrentWeapon(eWeaponType): acha o slot, tira o modelo antigo da mao,
-				// grava m_nActiveWeaponSlot e chama AddWeaponModel (arma aparece na mao).
-				// O SAMP ja sincroniza a arma ativa no sync onfoot (byteCurrentWeapon).
-				CHook::CallFunction<void>("_ZN4CPed16SetCurrentWeaponE11eWeaponType",
-										  ped, (eWeaponType)ped->m_aWeapons[slot].dwType);
-			}
+		if (slot >= 0 && slot < kNumSlots && slot != active && SlotOwned(ped, slot))
+		{
+			// CPed::SetCurrentWeapon(eWeaponType): acha o slot, tira o modelo antigo da mao,
+			// grava m_nActiveWeaponSlot e chama AddWeaponModel. O SAMP ja sincroniza a arma
+			// ativa no sync onfoot (byteCurrentWeapon).
+			CHook::CallFunction<void>("_ZN4CPed16SetCurrentWeaponE11eWeaponType",
+									  ped, (eWeaponType)ped->m_aWeapons[slot].dwType);
 		}
 	}
 
-	if (ped->IsInVehicle()) return;       // dentro de veiculo nao mostra
-	if (n == 0) return;
+	// animacao de abertura/fechamento
+	const bool wantOpen = (m_state.load() == kOpen);
+	m_anim = std::clamp(m_anim + (wantOpen ? dt : -dt) / kAnimSeconds, 0.0f, 1.0f);
 
-	// ---- janela de celulas visiveis ----
-	const int active = ped->m_nActiveWeaponSlot;
-	const int sel    = indexOfSlot(active);               // -1 se a arma ativa nao esta na lista
-	const int vis    = std::min(n, kMaxVisible);
-	int first = 0;
-	if (n > kMaxVisible)
-		first = std::clamp((sel >= 0 ? sel : 0) - vis / 2, 0, n - vis);
+	const int stNow = m_state.load();
+	DrawButton(r, ped, screen, stNow == kPressed || stNow == kOpen);
 
-	const bool arrows = n > 1;
-
-	// ---- medidas ----
-	const float ch0 = size().y / kHeightRatio;            // altura da celula normal (sem reduzir)
-
-	float perCh = (vis - 1) * (kCellAspect + kGap) + kCellAspect;       // em multiplos de ch
-	if (sel >= first && sel < first + vis) perCh += kCellAspect * (kSelScaleW - 1.0f);
-	if (arrows) perCh += 2.0f * (kArrowW + kArrowGap);
-
-	float ch = ch0;
-	if (perCh * ch > size().x) ch = size().x / perCh;     // tela estreita: encolhe tudo
-
-	const float cw     = ch * kCellAspect;
-	const float selW   = cw * kSelScaleW;
-	const float selH   = ch * kSelScaleH;
-	const float gap    = ch * kGap;
-	const float arrowW = ch * kArrowW;
-	const float arrowH = ch * kArrowH;
-	const float arrowG = ch * kArrowGap;
-
-	const float absX = absolutePosition().x;
-	const float absY = absolutePosition().y;
-
-	// linha de centro das celulas: ancorada na base do widget
-	const float cy = absY + size().y - ch0 * kBottomMargin - ch0 * kSelScaleH * 0.5f;
-
-	const float totalW = perCh * ch;
-	const float startX = absX + (size().x - totalW) * 0.5f;
-
-	const float hitHalfH = selH * 0.5f + ch * 0.10f;
-
-	Cell tmp[kMaxCells];
-	int  cnt = 0;
-
-	const int pushed = m_pushedId.load();
-
-	float x = startX + (arrows ? arrowW + arrowG : 0.0f);
-
-	// seta esquerda
-	const float leftArrowX = startX;
-	if (arrows)
-	{
-		DrawChevron(renderer, leftArrowX, cy, arrowW, arrowH, true, pushed == kHitPrev);
-		tmp[cnt++] = { ImVec2(leftArrowX - ch * 0.30f, cy - hitHalfH),
-					   ImVec2(leftArrowX + arrowW + arrowG - gap * 0.5f, cy + hitHalfH), kHitPrev };
-	}
-
-	// celulas (as normais primeiro; a selecionada por cima, com o brilho)
-	ImVec2 selA(0, 0), selB(0, 0);
-	int    selSlotIdx = -1;
-
-	for (int i = 0; i < vis; i++)
-	{
-		const int idx = first + i;
-		const int s   = slots[idx];
-		const bool isSel = (idx == sel);
-
-		const float w = isSel ? selW : cw;
-		const float h = isSel ? selH : ch;
-
-		const ImVec2 a(x, cy - h * 0.5f);
-		const ImVec2 b(x + w, cy + h * 0.5f);
-
-		tmp[cnt++] = { ImVec2(a.x - gap * 0.5f, cy - hitHalfH), ImVec2(b.x + gap * 0.5f, cy + hitHalfH), s };
-
-		if (isSel) { selA = a; selB = b; selSlotIdx = s; }
-		else       DrawNormalCell(renderer, a, b, ped->m_aWeapons[s], pushed == s);
-
-		x += w + gap;
-	}
-
-	if (selSlotIdx >= 0)
-		DrawSelectedCell(renderer, selA, selB, ped->m_aWeapons[selSlotIdx], pushed == selSlotIdx);
-
-	// seta direita
-	if (arrows)
-	{
-		const float rightArrowX = (x - gap) + arrowG;
-		DrawChevron(renderer, rightArrowX, cy, arrowW, arrowH, false, pushed == kHitNext);
-		tmp[cnt++] = { ImVec2(rightArrowX - arrowG + gap * 0.5f, cy - hitHalfH),
-					   ImVec2(rightArrowX + arrowW + ch * 0.30f, cy + hitHalfH), kHitNext };
-	}
-
-	// publica as areas de toque deste frame
-	for (int i = 0; i < cnt; i++) m_cells[i] = tmp[i];
-	m_cellCount.store(cnt);
+	if (m_anim > 0.0f)
+		DrawWheel(r, ped, screen, ring, subCount, defSlot, owned, g, pick, active, m_anim);
 }
 
-void WeaponBar::touchEvent(const ImVec2& pos, TouchType type)
+bool WeaponBar::onRawTouch(int type, int num, int x, int y)
 {
-	auto hit = [&](const ImVec2& p) -> int {
-		const int n = m_cellCount.load();
-		for (int i = 0; i < n; i++)
-		{
-			const Cell& c = m_cells[i];
-			if (p.x >= c.min.x && p.x <= c.max.x && p.y >= c.min.y && p.y <= c.max.y)
-				return c.id;
-		}
-		return kHitNone;
-	};
+	const float fx = (float)x, fy = (float)y;
 
-	if (type == TouchType::push)
+	// 1) dedo orfao (roda fechada a forca): engole ate o pop
 	{
-		m_pushedId.store(hit(pos));
-	}
-	else if (type == TouchType::pop)
-	{
-		// so conta como clique se soltou no mesmo lugar em que apertou
-		const int up      = hit(pos);
-		const int pushed  = m_pushedId.exchange(kHitNone);
-
-		if (pushed != kHitNone && up == pushed)
+		const int orphan = m_orphan.load();
+		if (orphan >= 0 && orphan == num)
 		{
-			if (up >= 0)               m_pendingSlot.store(up);
-			else if (up == kHitPrev)   m_pendingStep.store(-1);
-			else if (up == kHitNext)   m_pendingStep.store(+1);
+			if (type == 2) m_orphan.store(-1);              // novo push no mesmo id: perdeu-se o pop
+			else
+			{
+				if (type == 1) m_orphan.store(-1);
+				return true;
+			}
 		}
 	}
+
+	// 2) push: so comeca se nao ha toque em andamento e o dedo caiu em cima do botao
+	if (type == 2)
+	{
+		if (m_state.load() != kIdle || !m_available.load()) return false;
+
+		const ImVec2 screen = ImGui::GetIO().DisplaySize;
+		ImVec2 a, b;
+		ButtonRect(screen, a, b);
+		const float pad = (b.y - a.y) * 0.22f;              // area de toque um pouco maior que o desenho
+
+		if (fx < a.x - pad || fx > b.x + pad || fy < a.y - pad || fy > b.y + pad) return false;
+
+		m_finger.store(num);
+		m_downMs.store(NowMs());
+		m_downX.store(fx); m_downY.store(fy);
+		m_curX.store(fx);  m_curY.store(fy);
+		m_cancelRelease.store(false);
+		m_state.store(kPressed);
+		return true;
+	}
+
+	// 3) move / pop: so do dedo dono
+	const int st = m_state.load();
+	if (st == kIdle || st == kReleasing || num != m_finger.load()) return false;
+
+	m_curX.store(fx);
+	m_curY.store(fy);
+
+	if (type == 3) return true;
+
+	if (type == 1)
+	{
+		const bool cancel = g_bTouchCancel;                 // ACTION_CANCEL do Android
+		const int64_t held = NowMs() - m_downMs.load();
+
+		int expected = kPressed;
+		if (m_state.compare_exchange_strong(expected, kIdle))
+		{
+			// soltou antes de abrir a roda: toque curto = proxima arma (a menos que tenha sido
+			// cancelado, ou o dedo tenha arrastado para longe do botao)
+			const float dx = fx - m_downX.load(), dy = fy - m_downY.load();
+			const float slop = ImGui::GetIO().DisplaySize.y * 0.05f;
+			if (!cancel && Classify(held, HoldMs()) == Gesture::Tap && (dx * dx + dy * dy) <= slop * slop)
+				m_pendingStep.store(+1);
+		}
+		else
+		{
+			// a roda ja estava aberta: o draw decide o slot com a posicao final
+			m_cancelRelease.store(cancel);
+			expected = kOpen;
+			if (!m_state.compare_exchange_strong(expected, kReleasing)) m_state.store(kIdle);
+		}
+		return true;
+	}
+
+	return false;
 }

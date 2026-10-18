@@ -903,6 +903,11 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 
 	if (pUI != nullptr)
 	{
+		// Seletor de armas: o dedo que comecou no botao (ou na roda aberta) pertence a ele e nao
+		// segue para o jogo (camera/joystick) nem para os outros widgets.
+		if (pUI->weaponbar() && pUI->weaponbar()->onRawTouch(type, num, posX, posY))
+			return;
+
 		switch (type)
 		{
 			case 2: // push
