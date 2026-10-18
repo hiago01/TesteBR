@@ -1,7 +1,7 @@
 // CustomAnimSync.h - sincronizacao servidor -> clientes proximos
 #pragma once
 #include <cstdint>
-#include "net/netgame.h"       // PLAYERID (ajuste o include ao seu projeto)
+typedef unsigned short PLAYERID;   // mesmo typedef de net/netgame.h (redeclaracao identica e valida); evita puxar netgame.h antes de CVector existir
 
 class RakClientInterface;
 

@@ -5,12 +5,11 @@
 //   blockLen == 0  => limpar as anims customizadas desse player.
 // Estado e enviado so na MUDANCA (nao e por tick). Quem entra no stream recebe o estado atual (servidor reenvia em
 // OnPlayerStreamIn; o cliente tambem reaplica o cache ao criar o ped).
+#include "../main.h"
+#include "game/game.h"
+#include "net/netgame.h"
 #include "CustomAnimSync.h"
 #include "CustomAnim.h"
-
-#include "net/netgame.h"
-#include "game/game.h"
-#include "../main.h"
 #include "../vendor/raknet/SAMP/SAMPRPC.h"
 
 #include <cstring>

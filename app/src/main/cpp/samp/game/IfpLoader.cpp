@@ -1,4 +1,6 @@
 // IfpLoader.cpp
+#include <cassert>
+#include "common.h"      // int32/uint8... (precisa vir antes dos headers de Animation/*, como no AnimManager.cpp)
 #include "IfpLoader.h"
 #include "CustomAnim.h"
 

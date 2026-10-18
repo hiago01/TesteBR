@@ -1,13 +1,13 @@
 // CustomAnimTest.cpp - ver CustomAnimTest.h
+#include "../main.h"
+#include "game/game.h"
+#include "net/netgame.h"
+#include "game/Entity/CPedGTA.h"
+
 #include "CustomAnimTest.h"
 #include "CustomAnim.h"
 #include "CustomAnimSync.h"
 #include "IfpLoader.h"
-
-#include "net/netgame.h"
-#include "game/game.h"
-#include "game/Entity/CPedGTA.h"
-#include "../main.h"
 
 #include <sstream>
 #include <vector>
