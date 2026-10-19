@@ -9,7 +9,7 @@
 //    uint8 cargoLen | cargo[] | uint8 funcLen | func[]
 //  Nome e ID mostrados no cartao o cliente pega do pool de jogadores (nao trafegam aqui).
 //
-//  Categorias: 0 Civil | 1 Policial | 2 Delegado | 3 Medico | 4 Administrador | 5 Militar do Exercito
+//  Categorias: 0 Civil | 1 Policial | 2 Delegado | 3 Medico | 4 Administrador | 5 Militar do Exercito | 6 CNH | 7 Identidade funcional
 //
 //  Uso:
 //    #include <maximo_idcard>
@@ -31,7 +31,8 @@
 enum
 {
     MAXCARD_CIVIL = 0, MAXCARD_POLICIAL, MAXCARD_DELEGADO,
-    MAXCARD_MEDICO, MAXCARD_ADMINISTRADOR, MAXCARD_MILITAR
+    MAXCARD_MEDICO, MAXCARD_ADMINISTRADOR, MAXCARD_MILITAR,
+    MAXCARD_CNH, MAXCARD_FUNCIONAL          // documentos 3D: habilitacao / identidade funcional
 }
 
 static MaxCard_Cat[MAX_PLAYERS] = {-1, ...};
@@ -62,7 +63,7 @@ static MaxCard_SendTo(sendTo, owner, bool:visivel, cat, const cargo[], const fun
 // cargo: ate 31 caracteres | func (n. funcional): ate 23 caracteres
 stock MaxCard_Set(playerid, categoria, const cargo[], const func[] = "")
 {
-    if (!IsPlayerConnected(playerid) || categoria < 0 || categoria > MAXCARD_MILITAR) return 0;
+    if (!IsPlayerConnected(playerid) || categoria < 0 || categoria > MAXCARD_FUNCIONAL) return 0;
 
     MaxCard_Cat[playerid] = categoria;
     format(MaxCard_Cargo[playerid], 32, "%s", cargo);

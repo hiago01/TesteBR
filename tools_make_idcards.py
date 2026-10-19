@@ -7,6 +7,7 @@ import sys, os, io
 from PIL import Image, ImageDraw
 SRC = sys.argv[1] if len(sys.argv) > 1 else 'cards/Cards'
 OUT = sys.argv[2] if len(sys.argv) > 2 else 'out'
+DOCS = sys.argv[3] if len(sys.argv) > 3 else 'tools_assets'   # docs de mundo (6=CNH, 7=Identidade funcional)
 os.makedirs(OUT, exist_ok=True)
 W = 512
 S = 1620 / 1402.0                      # coordenadas medidas na previa 1402 px -> arquivo 1620 px
@@ -24,6 +25,10 @@ cards = [  # id, nome, imagem, caixa, cor de destaque (r,g,b)
  (4, 'administrador', sheet, box(348,565, 1052, 824), (170, 70, 235)),
  (5, 'militar',       mil,   box(8,   50, 1394, 786), (90, 200, 40)),
 ]
+for _cid, _name, _file, _acc in [(6, 'cnh', 'doc_cnh_transito.png', (80, 180, 90)),
+                                 (7, 'funcional', 'doc_identidade_funcional.png', (212, 170, 60))]:
+    _im = Image.open(f'{DOCS}/{_file}').convert('RGBA')
+    cards.append((_cid, _name, _im, (0, 0, _im.width, _im.height), _acc))
 
 def clean_militar(im):
     # apaga os valores ficticios (mantem os rotulos e a FUNCAO "MILITAR DO EXERCITO")
@@ -71,4 +76,4 @@ with open(f'{OUT}/idcard_assets.h', 'w') as f:
     f.write('\n    static const Card kCards[] = {\n')
     for cid, name, w, h, acc, data in png_bytes:
         f.write(f'        {{ "{name}", {w}, {h}, {acc[0]}, {acc[1]}, {acc[2]}, kPng_{name}, sizeof(kPng_{name}) }},\n')
-    f.write('    };\n    constexpr int kCount = 6;\n}\n')
+    f.write('    };\n    constexpr int kCount = %d;\n}\n' % len(png_bytes))

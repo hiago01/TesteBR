@@ -26,7 +26,10 @@
 
 namespace IdCardCat
 {
-	enum : uint8_t { Civil = 0, Policial, Delegado, Medico, Administrador, Militar, Count };
+	enum : uint8_t { Civil = 0, Policial, Delegado, Medico, Administrador, Militar,
+					 Cnh,          // 6: documento de habilitacao (Departamento de Transito)
+					 Funcional,    // 7: identidade funcional policial (carteira)
+					 Count };
 }
 
 // visible=false remove o cartao do jogador.  cargo/numFuncional: texto UTF-8 (ate 31 / 23 bytes).

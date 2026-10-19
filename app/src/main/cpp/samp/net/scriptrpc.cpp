@@ -2017,7 +2017,7 @@ void ScrSetHud(RPCParameters* rpcParams)
 }
 
 // Cartao de identidade 3D: servidor -> client (RPC_ScrSetIdCard = 202)
-//   uint16 playerId | uint8 flags (bit0 = visivel) | uint8 categoria (0..5) |
+//   uint16 playerId | uint8 flags (bit0 = visivel) | uint8 categoria (0..7) |
 //   uint8 cargoLen | char cargo[cargoLen] | uint8 funcLen | char func[funcLen]
 // Nome e ID exibidos vem do pool de jogadores (ja sincronizado pelo SA-MP).
 void ScrSetIdCard(RPCParameters* rpcParams)

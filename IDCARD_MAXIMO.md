@@ -9,7 +9,7 @@ Rode o build real (`./gradlew assembleDebug`, ou Android Studio > Refresh Linked
 ## Como testar (no jogo, conectado a um servidor)
 `/cartao teste` (Civil no seu jogador) · `/cartao teste medico` · `/cartao teste militar 12` (no jogador 12) ·
 `/cartao anim` (repete a subida) · `/cartao limpar` · `/cartao dist|altura|largura <n>` · `/cartao los on|off` · `/cartao proprio on|off`.
-Categorias: civil policial delegado medico administrador militar (ou 0–5). Logs: `[IDCARD]` no samp_log.txt.
+Categorias: civil policial delegado medico administrador militar **cnh funcional** (ou 0–7). `cnh` = habilitação (Departamento de Trânsito), `funcional` = identidade funcional policial na carteira. Logs: `[IDCARD]` no samp_log.txt.
 
 ## Animação
 Na **primeira** vez que o cartão de um jogador é desenhado, ele sobe 0,90 m (ease-out cúbico, 0,85 s) com fade-in (0,30 s)
@@ -43,3 +43,7 @@ Não usei as artes "REDUTO RP" (outra marca). Texto dinâmico (Nome (ID) / Cargo
 - Orientação do billboard calculada a partir da posição da câmera (Z do mundo = vertical), não da matriz da câmera; sem roll.
 - Um cartão por jogador; sem cache de placas além do raster por jogador; rasters são destruídos na thread de render.
 - Não oculta em veículo/spectate; `proprio` (cartão em si mesmo) fica desligado por padrão.
+
+
+## Documentos 3D (categorias 6 e 7)
+CNH e Identidade Funcional usam o mesmo sistema do cartão (billboard, animação, distância, placa Nome (ID) / Cargo | Nº). A arte de mundo não leva dados fictícios (campos em branco; o texto real vem da placa). Fontes: `tools_assets/doc_*.png` (geradas por `BLANK=1 python3 tools_make_docs.py`); para regenerar as texturas embutidas: `python3 tools_make_idcards.py <pasta_Cards> /tmp/gen tools_assets` e copie `/tmp/gen/idcard_assets.h` para `app/src/main/cpp/samp/game/`. Servidor: `MaxCard_Set(playerid, MAXCARD_CNH, "Habilitação AB", "")`. Um jogador mostra um cartão por vez (o último enviado substitui o anterior).

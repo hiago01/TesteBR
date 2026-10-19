@@ -352,8 +352,8 @@ namespace
 
 	struct Item { int id; V3 head; float dist; };
 
-	const char* const kCatKey[IdCardCat::Count]  = { "civil", "policial", "delegado", "medico", "administrador", "militar" };
-	const char* const kCatName[IdCardCat::Count] = { "Civil", "Policial", "Delegado", "Médico", "Administrador", "Militar do Exército" };
+	const char* const kCatKey[IdCardCat::Count]  = { "civil", "policial", "delegado", "medico", "administrador", "militar", "cnh", "funcional" };
+	const char* const kCatName[IdCardCat::Count] = { "Civil", "Policial", "Delegado", "Médico", "Administrador", "Militar do Exército", "Habilitação", "Identidade Funcional" };
 }
 
 // =====================================================================================
@@ -534,7 +534,7 @@ std::string IdCard3D_Command(const std::string& args)
 		snprintf(buf, sizeof(buf),
 				 "[CARTAO] ativos: %d | dist=%.1f altura=%.2f largura=%.2f los=%s proprio=%s | "
 				 "uso: teste [categoria|0-5] [id] | anim | limpar | dist <m> | altura <m> | largura <m> | los on|off | proprio on|off | "
-				 "categorias: civil policial delegado medico administrador militar",
+				 "categorias: civil policial delegado medico administrador militar cnh funcional",
 				 ativos, g_cfg.maxDist, g_cfg.headOffset, g_cfg.width,
 				 g_cfg.los ? "on" : "off", g_cfg.showSelf ? "on" : "off");
 		return buf;
@@ -550,8 +550,8 @@ std::string IdCard3D_Command(const std::string& args)
 			const std::string k = lower(a[1]);
 			cat = -1;
 			for (int i = 0; i < IdCardCat::Count; i++) if (k == kCatKey[i]) cat = i;
-			if (cat < 0 && k.size() == 1 && k[0] >= '0' && k[0] <= '5') cat = k[0] - '0';
-			if (cat < 0) return "[CARTAO] categoria invalida (civil policial delegado medico administrador militar ou 0-5)";
+			if (cat < 0 && k.size() == 1 && k[0] >= '0' && k[0] < '0' + IdCardCat::Count) cat = k[0] - '0';
+			if (cat < 0) return "[CARTAO] categoria invalida (civil policial delegado medico administrador militar cnh funcional ou 0-7)";
 		}
 		if (!pNetGame || !pNetGame->GetPlayerPool()) return "[CARTAO] sem conexao com o servidor";
 		CPlayerPool* pool = pNetGame->GetPlayerPool();
