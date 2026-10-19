@@ -65,6 +65,7 @@ namespace
 		char     nameShown[32] = {};    // texto com que a placa foi gerada
 		int      idShown = -1;
 		RwRaster* plate = nullptr;
+		float    plateU1 = 1.0f, plateV1 = 1.0f;
 		bool     plateDirty = true;
 
 		bool     started = false;       // animacao de entrada ja comecou (so 1x)
@@ -75,7 +76,6 @@ namespace
 	Entry                  g_e[MAX_PLAYERS];
 	std::vector<RwRaster*> g_dead;       // rasters a destruir na thread de render
 
-	RwRaster* g_cardRaster[IdCardAssets::kCount] = {};
 	bool      g_cardsTried = false;
 
 	// ---- fonte ----
@@ -129,6 +129,35 @@ namespace
 		return raster;
 	}
 
+	// O raster do RenderWare/GLES precisa de dimensoes potencia de 2 e RwRasterSetFromImage COPIA sem escalar:
+	// uma imagem 512x198 virava raster 512x128 e perdia o rodape. Aqui preenchemos ate a proxima potencia
+	// de 2 (transparente) e guardamos a fracao usada para ajustar o UV.
+	struct Tex { RwRaster* r = nullptr; float u1 = 1.0f, v1 = 1.0f; };
+
+	int NextPow2(int v) { int p = 1; while (p < v) p <<= 1; return p; }
+
+	Tex CreateTexPOT(const unsigned char* px, int w, int h)
+	{
+		Tex t;
+		const int pw = NextPow2(w), ph = NextPow2(h);
+		std::vector<unsigned char> pad((size_t)pw * ph * 4, 0);
+		for (int y = 0; y < ph; y++)
+			for (int x = 0; x < pw; x++)
+			{
+				const int sx = std::min(x, w - 1), sy = std::min(y, h - 1);   // borda replicada (alpha 0 fora): sem franja
+				const unsigned char* sp = px + ((size_t)sy * w + sx) * 4;
+				unsigned char* dp = &pad[((size_t)y * pw + x) * 4];
+				dp[0] = sp[0]; dp[1] = sp[1]; dp[2] = sp[2];
+				dp[3] = (x < w && y < h) ? sp[3] : 0;
+			}
+		t.r  = CreateRasterRGBA(pad.data(), pw, ph);
+		t.u1 = ((float)w - 0.5f) / (float)pw;     // meio texel de folga contra sangramento do filtro linear
+		t.v1 = ((float)h - 0.5f) / (float)ph;
+		return t;
+	}
+
+	Tex g_card[IdCardAssets::kCount];
+
 	void EnsureCardRasters()
 	{
 		if (g_cardsTried) return;
@@ -140,9 +169,9 @@ namespace
 			int w = 0, h = 0, ch = 0;
 			unsigned char* px = stbi_load_from_memory(c.png, (int)c.size, &w, &h, &ch, 4);
 			if (!px) { FLog("[IDCARD] stbi falhou (%s): %s", c.name, stbi_failure_reason()); continue; }
-			g_cardRaster[i] = CreateRasterRGBA(px, w, h);
+			g_card[i] = CreateTexPOT(px, w, h);
 			stbi_image_free(px);
-			FLog("[IDCARD] textura %s %dx%d %s", c.name, w, h, g_cardRaster[i] ? "ok" : "FALHOU");
+			FLog("[IDCARD] textura %s %dx%d (pot %dx%d) %s", c.name, w, h, NextPow2(w), NextPow2(h), g_card[i].r ? "ok" : "FALHOU");
 		}
 	}
 
@@ -196,7 +225,8 @@ namespace
 		else if ((p[0] & 0xE0) == 0xC0 && (p[1] & 0xC0) == 0x80) { cp = ((p[0] & 0x1F) << 6) | (p[1] & 0x3F); s += 2; }
 		else if ((p[0] & 0xF0) == 0xE0 && (p[1] & 0xC0) == 0x80 && (p[2] & 0xC0) == 0x80)
 		                                       { cp = ((p[0] & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F); s += 3; }
-		else                                   { cp = '?'; s += 1; }   // byte invalido / 4 bytes: troca por '?'
+		else if (p[0] >= 0xA0)                 { cp = p[0]; s += 1; }   // byte solto >=0xA0: Latin-1 (servidor .pwn salvo em ANSI/CP1252: ç ã é...)
+		else                                   { cp = '?'; s += 1; }
 		return cp;
 	}
 
@@ -260,9 +290,9 @@ namespace
 	}
 
 	// Gera a placa:  [ Nome (ID) ]  /  [ Cargo | N. funcional ]  com borda na cor da categoria.
-	RwRaster* BuildPlate(const Entry& e, const char* name, int id)
+	Tex BuildPlate(const Entry& e, const char* name, int id)
 	{
-		if (!LoadFont()) return nullptr;
+		if (!LoadFont()) return Tex();
 
 		const IdCardAssets::Card& c = IdCardAssets::kCards[e.cat < IdCardAssets::kCount ? e.cat : 0];
 		std::vector<uint8_t> px((size_t)kPlateW * kPlateH * 4, 0);
@@ -293,7 +323,7 @@ namespace
 		if (w2 > maxW) { s2 *= maxW / w2; w2 = maxW; }
 		DrawText(px, kPlateW, kPlateH, (kPlateW - w2) * 0.5f, 94, l2, s2, c.accentR, c.accentG, c.accentB);
 
-		return CreateRasterRGBA(px.data(), kPlateW, kPlateH);
+		return CreateTexPOT(px.data(), kPlateW, kPlateH);
 	}
 
 	// =================================================================================
@@ -323,13 +353,13 @@ namespace
 	}
 
 	// Quad com cantos BL, BR, TR, TL.
-	void DrawQuad(RwRaster* raster, V3 bl, V3 br, V3 tr, V3 tl, V3 normal, uint8_t alpha)
+	void DrawQuad(RwRaster* raster, V3 bl, V3 br, V3 tr, V3 tl, V3 normal, uint8_t alpha, float u1, float v1)
 	{
 		if (!raster || alpha == 0) return;
 
 		RxObjSpace3DVertex v[4];
 		const V3 p[4] = { bl, br, tr, tl };
-		const float u[4] = { 0, 1, 1, 0 }, t[4] = { 1, 1, 0, 0 };
+		const float u[4] = { 0, u1, u1, 0 }, t[4] = { v1, v1, 0, 0 };   // so a parte usada da textura POT
 		const uint32_t col = ((uint32_t)alpha << 24) | 0x00FFFFFFu;
 		for (int i = 0; i < 4; i++)
 		{
@@ -472,7 +502,8 @@ void IdCard3D_Render()
 		if (e.plateDirty || e.idShown != it.id || strncmp(e.nameShown, name, sizeof(e.nameShown) - 1) != 0)
 		{
 			if (e.plate) g_dead.push_back(e.plate);
-			e.plate = BuildPlate(e, name, it.id);
+			const Tex pt = BuildPlate(e, name, it.id);
+			e.plate = pt.r; e.plateU1 = pt.u1; e.plateV1 = pt.v1;
 			snprintf(e.nameShown, sizeof(e.nameShown), "%s", name);
 			e.idShown = it.id;
 			e.plateDirty = false;
@@ -495,11 +526,11 @@ void IdCard3D_Render()
 		if (e.plate)
 		{
 			const V3 bl = base - R * (w * 0.5f);
-			DrawQuad(e.plate, bl, bl + R * w, bl + R * w + U * plateH, bl + U * plateH, nrm, a);
+			DrawQuad(e.plate, bl, bl + R * w, bl + R * w + U * plateH, bl + U * plateH, nrm, a, e.plateU1, e.plateV1);
 		}
 		{
 			const V3 bl = base + U * ((e.plate ? plateH + kGap : 0.0f)) - R * (w * 0.5f);
-			DrawQuad(g_cardRaster[e.cat], bl, bl + R * w, bl + R * w + U * cardH, bl + U * cardH, nrm, a);
+			DrawQuad(g_card[e.cat].r, bl, bl + R * w, bl + R * w + U * cardH, bl + U * cardH, nrm, a, g_card[e.cat].u1, g_card[e.cat].v1);
 		}
 	}
 }
