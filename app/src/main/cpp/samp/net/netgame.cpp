@@ -497,7 +497,7 @@ void CNetGame::ProcessConnecting()
 	if (GetTickCount() - m_dwLastConnectAttempt > 1000/*3000*/)
 	{
 		//if (pUI) pUI->chat()->addDebugMessage("Connecting to %s:%d...", m_szHostOrIp, m_iPort);
-		if (pUI) pUI->chat()->addDebugMessage("{B3EBF2}Bem vindo ao {FFFFFF}Maximo Roleplay{B3EBF2}!!");
+//		if (pUI) pUI->chat()->addDebugMessage("{B3EBF2}Bem vindo ao {FFFFFF}Maximo Roleplay{B3EBF2}!!");
 
 		m_pRakClient->Connect(m_szHostOrIp, m_iPort, 0, 0, 2);
 		
@@ -586,8 +586,8 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 	bsSuccAuth.Read(MyPlayerID);
 	bsSuccAuth.Read(uiChallenge);
 	uiChallenge ^= iVersion;
-pJavaWrapper->HideLoadingScreen();
-	if (pUI) pUI->chat()->addDebugMessage("Conectado. Entrando no jogo...");
+        pJavaWrapper->HideLoadingScreen();//HIDE TELA CARREGAMENTO
+	//if (pUI) pUI->chat()->addDebugMessage("Conectado. Entrando no jogo...");
 
 	SetGameState(GAMESTATE_AWAIT_JOIN);
 

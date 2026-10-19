@@ -181,7 +181,7 @@ if (input == "/cartao" || input.rfind("/cartao ", 0) == 0)
             // cartao de identidade 3D: /cartao | teste [categoria] [id] | anim | limpar | dist|altura|largura <n> | los|proprio on|off
             std::string args = input.size() > 7 ? input.substr(8) : std::string();
             std::string reply = IdCard3D_Command(args);
-            addDebugMessage("(Cliente): %s", reply.c_str());
+//            addDebugMessage("(Cliente): %s", reply.c_str());
         }
 if (input == "/hud" || input.rfind("/hud ", 0) == 0)
         {
