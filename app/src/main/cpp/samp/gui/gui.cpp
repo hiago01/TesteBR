@@ -98,6 +98,13 @@ bool UI::initialize()
 	m_playerTabList->setMaxSize(UISettings::dialogMaxSize());
 	m_playerTabList->setVisible(false);
 
+	// Inventario Maximo RP (abre por ordem do servidor: /inv). Fica abaixo do menu.
+	m_inventory = new InventoryUI();
+	this->addChild(m_inventory);
+	m_inventory->setFixedSize(size());
+	m_inventory->setPosition(ImVec2(0.0f, 0.0f));
+	m_inventory->setVisible(true);
+
 	// Menu "Maximo RP" (substitui o menu de pausa nativo). Ultimo filho = desenhado por cima.
 	// So desenha quando aberto (/menu ou botao Voltar); a captura de toque fica em AND_TouchEvent_hook.
 	m_maximoMenu = new MaximoMenu();

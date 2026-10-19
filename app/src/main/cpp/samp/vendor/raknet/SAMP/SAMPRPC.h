@@ -158,3 +158,4 @@ extern int RPC_EnterEditObject;
 extern int RPC_ScrSetPlayerClothes;
 extern int RPC_ScrSetHud;
 extern int RPC_ScrSetIdCard;
+extern int RPC_ScrInventory;

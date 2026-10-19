@@ -284,6 +284,7 @@ extern "C" {
 				pJavaWrapper->HideKeyboard();
 		}
 		// So abre/fecha o menu quando o jogo esta pronto (UI criada); antes disso, engole o Voltar.
+		if (InventoryUI::OnBackPressed()) return JNI_TRUE;   // inventário aberto: Voltar fecha só ele
 		if (pUI && pUI->maximomenu())
 			return MaximoMenu::OnBackPressed() ? JNI_TRUE : JNI_FALSE;
 		return JNI_TRUE;

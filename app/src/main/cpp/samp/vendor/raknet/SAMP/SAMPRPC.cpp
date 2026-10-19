@@ -156,3 +156,5 @@ int RPC_ScrSetPlayerClothes = 200;
 int RPC_ScrSetHud = 201;
 // Cartao de identidade 3D (categoria/cargo/n. funcional) - ID customizado, livre no 0.3.7
 int RPC_ScrSetIdCard = 202;
+// Inventario Maximo RP (servidor -> cliente; ver gui/samp_widgets/inventory.h) - ID customizado, livre no 0.3.7
+int RPC_ScrInventory = 203;

@@ -929,6 +929,14 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 {
 	// Menu Maximo RP aberto: ele reivindica TODOS os toques (ate o UP/CANCEL de cada dedo).
 	// Ao abrir, solta primeiro os dedos que o jogo ainda considera pressionados.
+	// Inventario Maximo RP: mesmo esquema do menu (consome todos os toques enquanto aberto).
+	if (InventoryUI::ConsumeFlushRequest())
+	{
+		for (int i = 0; i < 3; i++)
+			AND_TouchEvent(1, i, 0, 0);
+	}
+	if (InventoryUI::HandleRawTouch(type, num, posX, posY))
+		return;
 	if (MaximoMenu::ConsumeFlushRequest())
 	{
 		for (int i = 0; i < 3; i++)

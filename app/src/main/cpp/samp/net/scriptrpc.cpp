@@ -6,6 +6,7 @@
 #include "../gui/samp_widgets/hudstate.h"
 #include "../game/Hose.h"
 #include "../game/IdCard3D.h"
+#include "../gui/samp_widgets/inventory.h"
 #include "../game/CustomAnimSync.h"
 #include "../game/CustomAnimTest.h"
 
@@ -2040,6 +2041,14 @@ void ScrSetIdCard(RPCParameters* rpcParams)
 	IdCard3D_OnServerPacket(playerId, (flags & 1) != 0, category, cargo, func);
 }
 
+// Inventario Maximo RP: servidor -> client (RPC_ScrInventory = 203). Formato em maximo_inv.inc / inventory.h.
+void ScrInventory(RPCParameters* rpcParams)
+{
+	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
+	int iBitLength = rpcParams->numberOfBitsOfData;
+	InventoryUI::OnServerPacket(Data, (iBitLength / 8) + 1);
+}
+
 void RegisterScriptRPCs(RakClientInterface *pRakClient)
 {
 	FLog("Registering script RPC's..");
@@ -2100,6 +2109,8 @@ void RegisterScriptRPCs(RakClientInterface *pRakClient)
 	Hud::Reset();          // nova conexão: HUD volta ao padrão
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetIdCard, ScrSetIdCard);
 	IdCard3D_Reset();      // nova conexão: descarta cartões da sessão anterior
+	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrInventory, ScrInventory);
+	InventoryUI::Reset();  // nova conexão: inventário fechado e vazio
 	CustomAnimSync::Register(pRakClient);   // RPC 230: anim customizada (servidor -> cliente)
 	CustomAnimSync::ClearAll();             // nova conexão: descarta estado da sessão anterior
 	CustomAnimTest::AutoLoad();                // carrega SAMP/anims/poses.ifp (cruzar bracos / apontar) se existir
@@ -2158,6 +2169,8 @@ void UnregisterScriptRPCs(RakClientInterface *pRakClient)
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetPlayerClothes);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetHud);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetIdCard);
+	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrInventory);
+	InventoryUI::Reset();
 	IdCard3D_Reset();      // saiu do servidor: limpa cartões
 	CustomAnimSync::Unregister(pRakClient);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetMapIcon);
