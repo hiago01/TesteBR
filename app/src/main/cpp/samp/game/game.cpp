@@ -949,7 +949,7 @@ void CGame::Process() {
             CHook::CallFunction<void>(g_libGTASA+0x3D4134); //CGarages::Update();
 // 			CEntryExitManager::Update();
             CHook::CallFunction<void>(g_libGTASA+0x4304D0); //	CStuntJumpManager::Update();
-            ((void (*)()) (g_libGTASA + 0x6C13F0))(); // CBirds::Update()
+//            ((void (*)()) (g_libGTASA + 0x6C13F0))(); // CBirds::Update()
             ((void (*)()) (g_libGTASA + 0x6E4A7C))(); // CSpecialFX::Update()
             // CRopes::Update();
         }
