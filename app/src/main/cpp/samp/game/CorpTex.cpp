@@ -1,22 +1,29 @@
-// CorpTex.cpp - ver CorpTex.h
+// CorpTex.cpp - aparencia por jogador: corporacao (roupas), rosto, tom de pele e cabelo. Ver CorpTex.h
 //
 // POR QUE TROCAR NO RENDER (e nao no molde do modelo):
 //   Os 76 materiais do skin.dff pertencem a geometria compartilhada pelo molde do modelo e por todos os
 //   clones (RpClumpClone so referencia a geometria). Trocar a textura "de verdade" mudaria TODOS os peds
-//   do modelo. Entao, em CEntity::Render do ped escolhido, pomos a textura da corp nos materiais (atribuicao
+//   do modelo. Entao, em CEntity::Render do ped escolhido, pomos as texturas nos materiais (atribuicao
 //   direta do ponteiro, sem mexer em refcount), o jogo desenha, e devolvemos a original logo depois.
-//   Nossas texturas ficam vivas (1 ref nossa) enquanto houver ped usando a corp.
+//   Nossas texturas ficam vivas (1 ref nossa) enquanto houver ped usando.
 //
 // MAPEAMENTO MATERIAL -> NOME
-//   O DFF so guarda nomes; quando a textura nao existe no texdb, o GetTexture_hook devolve "male01", entao o nome
-//   da textura do material em runtime pode ser "male01" e nao serve de chave. Por isso a chave e o nome gravado
-//   no DFF (DffPreflight::Info::materialsList[i].texture), pelo INDICE do material (mesma ordem que o
-//   CustomSkin usa). So se a contagem do motor diferir da do DFF cai para o nome da textura em runtime.
+//   O DFF so guarda nomes; quando a textura nao existe no texdb, o GetTexture_hook devolve "male01" (invisivel),
+//   entao o nome em runtime pode ser "male01" e nao serve de chave. A chave e o nome gravado no DFF
+//   (DffPreflight::Info::materialsList[i].texture), pelo INDICE do material. Rosto/cabelo/pele/ocultar
+//   so funcionam nesse modo; se a contagem do motor diferir da do DFF, so a corp (por nome) e aplicada.
+//
+// O QUE CADA OPCAO FAZ (tudo e "mostrar a escolhida com o PNG certo, ocultar as outras com a male01")
+//   corp  : pecas fantasy_f_cop_* com PNG em textures/272/<corp>/ recebem o PNG; as sem PNG ficam ocultas.
+//           Sem corp escolhida, as pecas nao sao tocadas.
+//   rosto : body.head1-5 sao a MESMA malha; mostra body.head1 com rosto/<tom>/<variante>.png, oculta head2-5.
+//   pele  : o tom vale para torso/bracos/ombros (pele/torso), pernas (pele/leg) e pes (pele/feet). Regiao do
+//           corpo totalmente coberta por uma peca visivel e ocultada (evita z-fight); parcial fica com pele.
+//   cabelo: fantasy_f_hair<estilo> com cabelo/<estilo>/<cor>.png; os outros 4 estilos ocultos.
 //
 // LIMITES CONHECIDOS (confirmar em jogo, ver log [CORPTEX]):
 //   * Se CPed::Render nao chamar CEntity::Render, o hook nao e atingido; o Process loga um AVISO apos 5 s.
-//   * Ped desenhado pela lista de alfa (fade de distancia) nao passa por CEntity::Render: nesses frames
-//     aparece a textura padrao.
+//   * Ped desenhado pela lista de alfa (fade de distancia) nao passa por CEntity::Render.
 #include "CorpTex.h"
 
 #include <algorithm>
@@ -26,6 +33,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <dirent.h>
@@ -56,34 +64,96 @@ std::atomic<int> g_active{0};
 namespace {
 
 constexpr int      kHostModel      = 7;      // modelo que hospeda o skin.dff da FemininaCorp (hoje 7; quando migrar p/ 272, troque aqui)
-constexpr const char* kSkinFolder  = "272";  // pasta dos PNGs: textures/<kSkinFolder>/<corp>/
+constexpr const char* kSkinFolder  = "272";  // textures/<kSkinFolder>/<corp>/  e  textures/<kSkinFolder>/aparencia/...
+constexpr const char* kAppFolder   = "aparencia";
 constexpr int      kMaxTexSize     = 1024;   // teto de lado no celular (os PNGs de 2048 sao reduzidos)
 constexpr int      kMaxMaterials   = 512;
-constexpr const char* kHideTexture = "male01";          // textura invisivel do texdb: pecas que a corp NAO tem ficam ocultas
-constexpr const char* kPiecePrefix = "fantasy_f_cop_";  // so as pecas de roupa da Corp sao ocultadas (corpo, cabelo e tatuagens nao)
 constexpr size_t   kMaxCachedCorps = 3;
+constexpr size_t   kMaxAppTex      = 40;     // texturas de rosto/cabelo/pele em cache
 constexpr uint64_t kGraveyardMs    = 5000;
+constexpr const char* kHideTexture = "male01";          // textura invisivel do texdb
+constexpr const char* kPiecePrefix = "fantasy_f_cop_";  // pecas de roupa da Corp
 constexpr uintptr_t OFF_GEOM_MATLIST      = 0x28;   // RpGeometry::matList.materials  (igual ao CustomSkin.cpp)
 constexpr uintptr_t OFF_GEOM_NUMMATERIALS = 0x30;   // RpGeometry::matList.numMaterials
 
+// opcoes validas (conferidas contra as pastas): variantes de rosto por tom, cores de cabelo por estilo
+constexpr int kFaceVariants[7] = {0, 6, 8, 8, 7, 6, 12};
+constexpr int kHairColors[6]   = {0, 6, 6, 7, 7, 7};
+constexpr const char* kToneNames[7] = {"nenhum", "medio", "escuro", "claro", "moreno", "avermelhado", "palido"};
+
+// caixas (x absoluto maximo, z min, z max) tiradas da geometria do skin.dff; usadas para saber se uma peca cobre uma regiao
+struct Box { const char* name; float xabs, zmin, zmax; };
+constexpr Box kBodyRegions[] = {
+    {"body.armleft", 0.51f, 0.01f, 0.40f},
+    {"body.armright", 0.51f, 0.01f, 0.40f},
+    {"body.feets", 0.21f, -1.00f, -0.90f},
+    {"body.legleft1", 0.20f, -0.19f, 0.06f},
+    {"body.legleft2", 0.20f, -0.25f, -0.14f},
+    {"body.legleft3", 0.21f, -0.81f, -0.21f},
+    {"body.legleft4", 0.19f, -0.88f, -0.80f},
+    {"body.legleft5", 0.19f, -0.96f, -0.88f},
+    {"body.legleft6", 0.19f, -0.61f, -0.21f},
+    {"body.legright1", 0.20f, -0.19f, 0.06f},
+    {"body.legright2", 0.20f, -0.25f, -0.14f},
+    {"body.legright3", 0.21f, -0.81f, -0.21f},
+    {"body.legright4", 0.19f, -0.88f, -0.80f},
+    {"body.legright5", 0.19f, -0.96f, -0.88f},
+    {"body.legright6", 0.19f, -0.61f, -0.20f},
+    {"body.shoulderleft", 0.28f, 0.33f, 0.53f},
+    {"body.shoulderright", 0.28f, 0.33f, 0.53f},
+    {"body.torso1", 0.19f, 0.24f, 0.57f},
+    {"body.torso3", 0.15f, -0.00f, 0.40f},
+    {"body.torso4", 0.13f, 0.08f, 0.24f}
+};
+constexpr Box kPieces[] = {
+    {"fantasy_f_cop_boot1", 0.22f, -1.00f, -0.79f},
+    {"fantasy_f_cop_boot2", 0.22f, -0.99f, -0.74f},
+    {"fantasy_f_cop_hat2", 0.07f, 0.74f, 0.90f},
+    {"fantasy_f_cop_hat3", 0.10f, 0.73f, 0.83f},
+    {"fantasy_f_cop_pants1", 0.25f, -0.84f, 0.11f},
+    {"fantasy_f_cop_short1", 0.22f, -0.43f, 0.10f},
+    {"fantasy_f_cop_torso1", 0.16f, 0.02f, 0.57f},
+    {"fantasy_f_cop_torso2", 0.30f, 0.00f, 0.58f},
+    {"fantasy_f_cop_torso3", 0.29f, 0.03f, 0.61f},
+    {"fantasy_f_cop_torso4", 0.55f, -0.02f, 0.62f},
+    {"fantasy_f_cop_vest1", 0.18f, 0.09f, 0.59f},
+    {"fantasy_f_cop_vest2", 0.20f, 0.13f, 0.58f},
+    {"fantasy_f_cop_vest3", 0.20f, 0.05f, 0.60f}
+};
+
+// pecas da Corp visiveis por padrao (as que existem no texdb), usadas quando nenhuma corp foi escolhida
+constexpr const char* kDefaultVisible[] = {"fantasy_f_cop_boot2", "fantasy_f_cop_hat3", "fantasy_f_cop_pants1",
+                                           "fantasy_f_cop_torso3", "fantasy_f_cop_torso4", "fantasy_f_cop_vest3"};
+
+struct Look {
+    std::string corp;
+    uint8_t tone = 0, face = 0, hairStyle = 0, hairColor = 0;
+    bool Active() const { return !corp.empty() || tone || hairStyle; }
+    bool operator==(const Look& o) const { return corp == o.corp && tone == o.tone && face == o.face && hairStyle == o.hairStyle && hairColor == o.hairColor; }
+};
+
 // ---- fila RPC/chat -> thread do jogo -------------------------------------------------------
-struct Cmd { enum Kind { Set, Clear, Release } kind; PLAYERID id; char corp[16]; };
+struct Cmd { enum Kind { Set, Clear, Release } kind; PLAYERID id; Look look; };
 std::mutex       s_qMutex;
 std::vector<Cmd> s_q;
+Look             s_localLook;          // espelho do seu proprio visual (protegido por s_qMutex): base dos comandos /rosto, /cabelo...
 
 std::mutex  s_infoMutex;
-std::string s_info = "nada aplicado (use /corp <nome>)";
+std::string s_info = "nada aplicado (use /corp, /rosto, /cabelo, /pele)";
 
 // ---- so a thread do jogo daqui para baixo --------------------------------------------------
 struct Swap  { RpMaterial* mat; RwTexture* repl; RwTexture* saved; };
-struct Entry { PLAYERID id; void* ent; RpClump* clump; std::string corp; std::vector<Swap> swaps; bool swapped; uint32_t renders; };
+struct Entry { PLAYERID id; void* ent; RpClump* clump; Look look; std::vector<Swap> swaps; bool swapped; uint32_t renders; };
 struct Corp  { std::unordered_map<std::string, RwTexture*> tex; uint64_t lastUse; };
+struct Tried { void* ent = nullptr; RpClump* clump = nullptr; Look look; bool valid = false; };
+struct AppTex { RwTexture* tex; uint64_t lastUse; };
 
-std::string                 s_want[MAX_PLAYERS];     // corp pedida por jogador ("" = nenhuma)
-std::string                 s_failedFor[MAX_PLAYERS];// corp que ja falhou ao carregar (nao repete a cada frame)
+Look                        s_look[MAX_PLAYERS];     // visual pedido por jogador
+Tried                       s_tried[MAX_PLAYERS];    // ultima construcao tentada (nao repete a cada frame)
 std::vector<PLAYERID>       s_wantIds;
 std::vector<Entry>          s_entries;
-std::unordered_map<std::string, Corp> s_corps;
+std::unordered_map<std::string, Corp>   s_corps;
+std::unordered_map<std::string, AppTex> s_appTex;    // chave = caminho relativo a aparencia/ (ex.: rosto/3/5.png)
 std::vector<std::pair<RwTexture*, uint64_t>> s_graveyard;
 uint32_t                    s_totalRenders = 0;
 uint64_t                    s_firstEntryMs = 0;
@@ -109,6 +179,19 @@ bool ValidName(const std::string& s)
     return true;
 }
 
+// ajusta o visual a valores validos (vale para o RPC e para os comandos)
+void Sanitize(Look& l)
+{
+    l.corp = SkinImg::Lower(l.corp);
+    if (!ValidName(l.corp) || l.corp == kAppFolder) l.corp.clear();
+    if (l.tone > 6) l.tone = 0;
+    if (l.tone) { if (l.face < 1) l.face = 1; if (l.face > kFaceVariants[l.tone]) l.face = (uint8_t)kFaceVariants[l.tone]; }
+    else l.face = 0;
+    if (l.hairStyle > 5) l.hairStyle = 0;
+    if (l.hairStyle) { if (l.hairColor < 1) l.hairColor = 1; if (l.hairColor > kHairColors[l.hairStyle]) l.hairColor = (uint8_t)kHairColors[l.hairStyle]; }
+    else l.hairColor = 0;
+}
+
 std::vector<std::string> ListCorps()
 {
     std::vector<std::string> out;
@@ -116,7 +199,7 @@ std::vector<std::string> ListCorps()
     if (base.empty()) return out;
     if (DIR* d = ::opendir(base.c_str())) {
         while (dirent* e = ::readdir(d)) {
-            if (e->d_name[0] == '.') continue;
+            if (e->d_name[0] == '.' || std::strcmp(e->d_name, kAppFolder) == 0) continue;
             struct stat st{};
             if (::stat((base + e->d_name).c_str(), &st) == 0 && S_ISDIR(st.st_mode) && ValidName(e->d_name)) out.push_back(e->d_name);
         }
@@ -210,7 +293,7 @@ RwTexture* LoadPng(const std::string& path, const std::string& name)
     return t;
 }
 
-// ---- cache de corps --------------------------------------------------------------------------
+// ---- cache de corps (carrega a pasta inteira: sao poucas pecas) --------------------------------
 Corp* EnsureCorp(const std::string& corp)
 {
     auto it = s_corps.find(corp);
@@ -221,31 +304,54 @@ Corp* EnsureCorp(const std::string& corp)
     if (idx.empty()) { SetInfo("corp '" + corp + "': nenhum PNG em " + dir); return nullptr; }
 
     Corp c; c.lastUse = NowMs();
-    for (const auto& kv : idx) {                       // kv.first = nome em minusculas, kv.second = caminho
+    for (const auto& kv : idx)                         // kv.first = nome em minusculas, kv.second = caminho
         if (RwTexture* t = LoadPng(kv.second, kv.first)) c.tex[kv.first] = t;
-    }
     if (c.tex.empty()) { SetInfo("corp '" + corp + "': nenhum PNG pode ser carregado"); return nullptr; }
     FLog("[CORPTEX] corp '%s' carregada: %zu/%zu PNG(s) (teto %d)", corp.c_str(), c.tex.size(), idx.size(), kMaxTexSize);
     return &(s_corps[corp] = std::move(c));
 }
 
+// ---- cache de texturas de aparencia (1 PNG por vez, sob demanda) -------------------------------
+RwTexture* GetAppTex(const std::string& rel)
+{
+    auto it = s_appTex.find(rel);
+    if (it != s_appTex.end()) { it->second.lastUse = NowMs(); return it->second.tex; }
+    const std::string path = BaseDir() + kAppFolder + "/" + rel;
+    RwTexture* t = ::access(path.c_str(), F_OK) == 0 ? LoadPng(path, rel) : nullptr;
+    if (!t) FLog("[CORPTEX] AVISO: textura de aparencia ausente: %s", path.c_str());
+    s_appTex[rel] = AppTex{t, NowMs()};                // guarda tambem a falha (nao tenta de novo a cada frame)
+    return t;
+}
+
 bool CorpInUse(const std::string& corp)
 {
-    for (const Entry& e : s_entries) if (e.corp == corp) return true;
-    for (PLAYERID id : s_wantIds) if (s_want[id] == corp) return true;
+    for (const Entry& e : s_entries) if (e.look.corp == corp) return true;
+    for (PLAYERID id : s_wantIds) if (s_look[id].corp == corp) return true;
     return false;
 }
 
-void EvictCorps()
+void EvictCaches()
 {
     while (s_corps.size() > kMaxCachedCorps) {
         auto victim = s_corps.end();
         for (auto it = s_corps.begin(); it != s_corps.end(); ++it)
             if (!CorpInUse(it->first) && (victim == s_corps.end() || it->second.lastUse < victim->second.lastUse)) victim = it;
-        if (victim == s_corps.end()) return;
+        if (victim == s_corps.end()) break;
         for (auto& kv : victim->second.tex) s_graveyard.emplace_back(kv.second, NowMs());   // o render pode ainda usar o raster
         FLog("[CORPTEX] corp '%s' descarregada do cache", victim->first.c_str());
         s_corps.erase(victim);
+    }
+    if (s_appTex.size() > kMaxAppTex) {
+        std::unordered_set<RwTexture*> inUse;
+        for (const Entry& e : s_entries) for (const Swap& s : e.swaps) inUse.insert(s.repl);
+        std::vector<std::pair<uint64_t, std::string>> order;
+        for (auto& kv : s_appTex) if (!kv.second.tex || !inUse.count(kv.second.tex)) order.emplace_back(kv.second.lastUse, kv.first);
+        std::sort(order.begin(), order.end());
+        for (size_t i = 0; i < order.size() && s_appTex.size() > kMaxAppTex; ++i) {
+            auto it = s_appTex.find(order[i].second);
+            if (it->second.tex) s_graveyard.emplace_back(it->second.tex, NowMs());
+            s_appTex.erase(it);
+        }
     }
 }
 
@@ -259,100 +365,154 @@ void DropEntry(PLAYERID id)
     g_active.store((int)s_entries.size());
 }
 
-void BuildEntry(PLAYERID id, CEntityGTA* e, Corp* c, const std::string& corp)
+bool PieceCovers(const Box& p, const Box& r)
+{
+    constexpr float tol = 0.03f;
+    return p.zmin <= r.zmin + tol && p.zmax >= r.zmax - tol && p.xabs >= r.xabs - tol;
+}
+
+const Box* FindPiece(const std::string& key)
+{
+    for (const Box& b : kPieces) if (key == b.name) return &b;
+    return nullptr;
+}
+
+void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
 {
     std::vector<RpMaterial*> mats;
     if (!CollectMaterials(e->m_pRwClump, mats)) { SetInfo("jogador " + std::to_string(id) + ": clump sem materiais legiveis"); return; }
 
     const DffPreflight::Info* info = CustomSkinStream::GetInfo();
     const bool byIndex = info && info->materialsList.size() == mats.size();
-    if (!byIndex) FLog("[CORPTEX] AVISO: motor tem %zu materiais, DFF %zu: usando o nome da textura em runtime (pecas fora do texdb viram 'male01' e nao trocam)",
+    if (!byIndex) FLog("[CORPTEX] AVISO: motor tem %zu materiais, DFF %zu: modo nome (so a corp, sem ocultar/rosto/cabelo/pele)",
                        mats.size(), info ? info->materialsList.size() : (size_t)0);
 
-    Entry en{id, e, e->m_pRwClump, corp, {}, false, 0};
-    std::vector<std::string> used, hidden;
-
-    // textura invisivel (male01) do banco do jogo; sem ela as pecas ausentes ficam com a textura padrao
-    RwTexture* hideTex = byIndex ? TextureDatabaseRuntime::GetTexture(kHideTexture) : nullptr;
-    if (byIndex && !hideTex) FLog("[CORPTEX] AVISO: textura '%s' nao achada no texdb: pecas que a corp nao tem ficam com a textura padrao", kHideTexture);
-
+    std::vector<std::string> keys(mats.size());
     for (size_t i = 0; i < mats.size(); ++i) {
-        std::string key;
-        if (byIndex) key = SkinImg::Lower(info->materialsList[i].texture);
-        else if (mats[i] && mats[i]->texture) key = SkinImg::Lower(std::string(mats[i]->texture->name, strnlen(mats[i]->texture->name, 32)));
-        if (key.empty() || !mats[i]) continue;
-        auto it = c->tex.find(key);
-        if (it == c->tex.end()) {
-            // peca de roupa da Corp que esta corp nao tem -> oculta (o nome vem do DFF, so no modo indice)
-            if (hideTex && byIndex && key.compare(0, std::strlen(kPiecePrefix), kPiecePrefix) == 0) {
-                en.swaps.push_back({mats[i], hideTex, nullptr});
-                hidden.push_back(key);
-            }
-            continue;
-        }
-        en.swaps.push_back({mats[i], it->second, nullptr});
-        used.push_back(key);
+        if (byIndex) keys[i] = SkinImg::Lower(info->materialsList[i].texture);
+        else if (mats[i] && mats[i]->texture) keys[i] = SkinImg::Lower(std::string(mats[i]->texture->name, strnlen(mats[i]->texture->name, 32)));
     }
-    std::string unused;
-    for (const auto& kv : c->tex) if (std::find(used.begin(), used.end(), kv.first) == used.end()) unused += " " + kv.first;
 
-    std::string hid;
-    for (const std::string& h : hidden) hid += " " + h;
-    FLog("[CORPTEX] jogador %d corp=%s: %zu material(is) trocado(s) de %zu (modo %s), %zu oculto(s)%s%s%s", (int)id, corp.c_str(), en.swaps.size(), mats.size(),
-         byIndex ? "indice" : "nome", hidden.size(), hid.empty() ? "" : " [ocultos:", hid.c_str(), hid.empty() ? "" : "]");
-    if (!unused.empty()) FLog("[CORPTEX]   PNG sem material:%s", unused.c_str());
-    if (en.swaps.empty()) { SetInfo("corp '" + corp + "': nenhum material do ped casou com os PNGs"); return; }
+    RwTexture* hideTex = byIndex ? TextureDatabaseRuntime::GetTexture(kHideTexture) : nullptr;
+    if (byIndex && !hideTex) FLog("[CORPTEX] AVISO: textura '%s' nao achada no texdb: nada sera ocultado", kHideTexture);
+
+    std::unordered_map<std::string, RwTexture*> over;   // nome do DFF (minusculo) -> textura a usar
+    std::vector<const Box*> visible;                    // pecas da Corp visiveis (para a regra de cobertura)
+    int nCorp = 0, nHidden = 0, nApp = 0;
+
+    // 1) corporacao
+    Corp* c = nullptr;
+    if (!look.corp.empty()) { c = EnsureCorp(look.corp); if (!c) FLog("[CORPTEX] corp '%s' indisponivel: ignorada", look.corp.c_str()); }
+    for (size_t i = 0; i < mats.size(); ++i) {
+        const std::string& k = keys[i];
+        if (k.empty() || !mats[i]) continue;
+        if (c) {
+            auto it = c->tex.find(k);
+            if (it != c->tex.end()) { over[k] = it->second; ++nCorp; if (const Box* b = FindPiece(k)) visible.push_back(b); continue; }
+            if (hideTex && byIndex && k.compare(0, std::strlen(kPiecePrefix), kPiecePrefix) == 0) { over[k] = hideTex; ++nHidden; }
+        } else if (byIndex) {              // sem corp (ou corp indisponivel): vale o que o texdb mostra por padrao
+            for (const char* d : kDefaultVisible) if (k == d) if (const Box* b = FindPiece(k)) visible.push_back(b);
+        }
+    }
+
+    // 2) rosto, pele e cabelo (so no modo indice)
+    if (byIndex && (look.tone || look.hairStyle)) {
+        if (look.tone) {
+            const std::string t = std::to_string(look.tone);
+            if (RwTexture* f = GetAppTex("rosto/" + t + "/" + std::to_string(look.face) + ".png")) {
+                over["body.head1"] = f; ++nApp;
+                if (hideTex) for (int h = 2; h <= 5; ++h) { over["body.head" + std::to_string(h)] = hideTex; ++nHidden; }
+            }
+            RwTexture* tTorso = GetAppTex("pele/torso/" + t + ".png");
+            RwTexture* tLeg   = GetAppTex("pele/leg/" + t + ".png");
+            RwTexture* tFeet  = GetAppTex("pele/feet/" + t + ".png");
+            for (const Box& r : kBodyRegions) {
+                const std::string name = r.name;
+                RwTexture* tex = name == "body.feets" ? tFeet : name.compare(0, 8, "body.leg") == 0 ? tLeg : tTorso;
+                if (!tex) continue;
+                bool covered = false;
+                for (const Box* p : visible) if (PieceCovers(*p, r)) { covered = true; break; }
+                if (covered && hideTex) { over[name] = hideTex; ++nHidden; }
+                else { over[name] = tex; ++nApp; }
+            }
+        }
+        if (look.hairStyle) {
+            for (int s = 1; s <= 5; ++s) {
+                const std::string key = "fantasy_f_hair" + std::to_string(s);
+                if (s == look.hairStyle) {
+                    if (RwTexture* h = GetAppTex("cabelo/" + std::to_string(s) + "/" + std::to_string(look.hairColor) + ".png")) { over[key] = h; ++nApp; }
+                } else if (hideTex) { over[key] = hideTex; ++nHidden; }
+            }
+        }
+    } else if (!byIndex && (look.tone || look.hairStyle)) {
+        FLog("[CORPTEX] AVISO: rosto/pele/cabelo exigem o modo indice (contagem de materiais igual ao DFF)");
+    }
+
+    Entry en{id, e, e->m_pRwClump, look, {}, false, 0};
+    for (size_t i = 0; i < mats.size(); ++i) {
+        if (keys[i].empty() || !mats[i]) continue;
+        auto it = over.find(keys[i]);
+        if (it != over.end()) en.swaps.push_back({mats[i], it->second, nullptr});
+    }
+
+    FLog("[CORPTEX] jogador %d corp='%s' tom=%d rosto=%d cabelo=%d/%d: %zu material(is) trocado(s) de %zu (modo %s) | corp=%d aparencia=%d ocultos=%d",
+         (int)id, look.corp.c_str(), (int)look.tone, (int)look.face, (int)look.hairStyle, (int)look.hairColor, en.swaps.size(), mats.size(),
+         byIndex ? "indice" : "nome", nCorp, nApp, nHidden);
+    if (en.swaps.empty()) { SetInfo("nenhum material do ped casou com o visual pedido"); return; }
 
     if (s_entries.empty()) { s_firstEntryMs = NowMs(); s_totalRenders = 0; s_warnedNoHook = false; }
     s_entries.push_back(std::move(en));
     g_active.store((int)s_entries.size());
-    SetInfo("jogador " + std::to_string(id) + ": corp '" + corp + "' aplicada (" + std::to_string(s_entries.back().swaps.size()) + " textura(s))");
+    SetInfo("jogador " + std::to_string(id) + ": visual aplicado (" + std::to_string(s_entries.back().swaps.size()) + " material(is))");
 }
 
 void Reconcile(PLAYERID id)
 {
-    const std::string& corp = s_want[id];
+    const Look& look = s_look[id];
     CEntityGTA* e = GetEnt(id);
     Entry* en = FindEntry(id);
 
-    if (!e || (int)e->GetModelId() != kHostModel || !e->m_pRwClump) { if (en) DropEntry(id); return; }   // ped ainda nao existe / outra skin
-    if (en && en->ent == (void*)e && en->clump == e->m_pRwClump && en->corp == corp) return;             // em dia
-    if (en) DropEntry(id);                                                                                // ped/clump recriado ou corp mudou
-    if (s_failedFor[id] == corp) return;
-
-    Corp* c = EnsureCorp(corp);
-    if (!c) { s_failedFor[id] = corp; return; }
-    BuildEntry(id, e, c, corp);
+    if (!e || (int)e->GetModelId() != kHostModel || !e->m_pRwClump) { if (en) DropEntry(id); s_tried[id].valid = false; return; }   // ped ainda nao existe / outra skin
+    Tried& t = s_tried[id];
+    if (t.valid && t.ent == (void*)e && t.clump == e->m_pRwClump && t.look == look) return;                                         // em dia (ou ja tentado)
+    if (en) DropEntry(id);                                                                                                           // ped/clump recriado ou visual mudou
+    t.ent = e; t.clump = e->m_pRwClump; t.look = look; t.valid = true;
+    BuildEntry(id, e, look);
 }
 
 void ForgetWant(PLAYERID id)
 {
     DropEntry(id);
-    s_want[id].clear(); s_failedFor[id].clear();
+    s_look[id] = Look{}; s_tried[id] = Tried{};
     s_wantIds.erase(std::remove(s_wantIds.begin(), s_wantIds.end(), id), s_wantIds.end());
 }
 
-void Push(Cmd::Kind k, PLAYERID id, const std::string& corp)
+void Push(Cmd::Kind k, PLAYERID id, const Look& look)
 {
-    Cmd c{}; c.kind = k; c.id = id;
-    std::strncpy(c.corp, corp.c_str(), sizeof(c.corp) - 1);
+    Cmd c{k, id, look};
     std::lock_guard<std::mutex> l(s_qMutex);
-    s_q.push_back(c);
+    s_q.push_back(std::move(c));
 }
 
+void PushLook(PLAYERID id, const Look& l) { Push(l.Active() ? Cmd::Set : Cmd::Clear, id, l); }
+
 // ---- RPC -------------------------------------------------------------------------------------
+// formato: uint16 playerid | uint8 len | char corp[len] | uint8 tom | uint8 rosto | uint8 estiloCabelo | uint8 corCabelo
 void ScrCorpTex(RPCParameters* rpcParams)
 {
     RakNet::BitStream bs((unsigned char*)rpcParams->input, (rpcParams->numberOfBitsOfData / 8) + 1, false);
     PLAYERID id = 0; uint8_t len = 0; char corp[16] = {};
+    Look l;
     if (!bs.Read(id) || id >= MAX_PLAYERS) return;
     if (!bs.Read(len) || len >= sizeof(corp)) return;
     if (len && !bs.Read(corp, len)) return;
-    corp[len] = 0;
-    if (len == 0) { Push(Cmd::Clear, id, ""); return; }
-    std::string name = SkinImg::Lower(corp);
-    if (!ValidName(name)) return;
-    Push(Cmd::Set, id, name);
+    if (!bs.Read(l.tone) || !bs.Read(l.face) || !bs.Read(l.hairStyle) || !bs.Read(l.hairColor)) return;
+    corp[len] = 0; l.corp = corp;
+    Sanitize(l);
+
+    CPlayerPool* pool = pNetGame ? pNetGame->GetPlayerPool() : nullptr;
+    if (pool && id == pool->GetLocalPlayerID()) { std::lock_guard<std::mutex> g(s_qMutex); s_localLook = l; }   // mantem o espelho dos comandos
+    PushLook(id, l);
 }
 
 } // namespace
@@ -362,15 +522,15 @@ void Unregister(RakClientInterface* rak) { rak->UnregisterAsRemoteProcedureCall(
 
 void ClearAll()
 {
-    { std::lock_guard<std::mutex> l(s_qMutex); s_q.clear(); }
-    Push(Cmd::Release, 0xFFFF, "");       // 0xFFFF = todos (executado no Process, na thread do jogo)
+    { std::lock_guard<std::mutex> l(s_qMutex); s_q.clear(); s_localLook = Look{}; }
+    Push(Cmd::Release, 0xFFFF, Look{});       // 0xFFFF = todos (executado no Process, na thread do jogo)
 }
 
 void OnPlayerStreamIn(PLAYERID) { /* o Process reaplica sozinho assim que o ped existir com o modelo certo */ }
 
 void OnPlayerStreamOut(PLAYERID id)
 {
-    if (id < MAX_PLAYERS) Push(Cmd::Release, id, "");      // solta ANTES do ped morrer (servidor reenvia no stream-in)
+    if (id < MAX_PLAYERS) Push(Cmd::Release, id, Look{});      // solta ANTES do ped morrer (servidor reenvia no stream-in)
 }
 
 void Process()
@@ -383,7 +543,7 @@ void Process()
         if (c.id >= MAX_PLAYERS) continue;
         if (c.kind == Cmd::Set) {
             if (std::find(s_wantIds.begin(), s_wantIds.end(), c.id) == s_wantIds.end()) s_wantIds.push_back(c.id);
-            s_want[c.id] = c.corp; s_failedFor[c.id].clear();
+            s_look[c.id] = c.look; s_tried[c.id].valid = false;
         } else {                                            // Clear ou Release de um jogador
             ForgetWant(c.id);
         }
@@ -396,11 +556,11 @@ void Process()
         if (now - s_graveyard[i].second >= kGraveyardMs) { RwTextureDestroy(s_graveyard[i].first); s_graveyard.erase(s_graveyard.begin() + (long)i); }
         else ++i;
     }
-    EvictCorps();
+    EvictCaches();
 
     if (!s_entries.empty() && !s_warnedNoHook && s_totalRenders == 0 && now - s_firstEntryMs > 5000) {
         s_warnedNoHook = true;
-        FLog("[CORPTEX] AVISO: ha %zu ped(s) com corp ativa mas CEntity::Render nunca foi chamado para eles em 5 s. "
+        FLog("[CORPTEX] AVISO: ha %zu ped(s) com visual ativo mas CEntity::Render nunca foi chamado para eles em 5 s. "
              "CPed::Render nao passa por CEntity::Render neste build: e preciso um hook em CPed::Render (offset a localizar no Ghidra).", s_entries.size());
     }
 }
@@ -431,13 +591,59 @@ void EndRender(void* entity)
     }
 }
 
-std::string DebugCommand(const std::string& argsIn)
-{
-    std::string a = argsIn;
-    while (!a.empty() && (a.front() == ' ')) a.erase(a.begin());
-    while (!a.empty() && (a.back() == ' ')) a.pop_back();
-    a = SkinImg::Lower(a);
+// ---- comandos de chat (so o seu proprio ator) ---------------------------------------------------
+namespace {
 
+std::string Trim(std::string a)
+{
+    while (!a.empty() && a.front() == ' ') a.erase(a.begin());
+    while (!a.empty() && a.back() == ' ') a.pop_back();
+    return a;
+}
+
+std::vector<int> Ints(const std::string& a)
+{
+    std::vector<int> v; size_t i = 0;
+    while (i < a.size()) {
+        while (i < a.size() && (a[i] == ' ')) ++i;
+        if (i >= a.size()) break;
+        size_t j = i; bool neg = false;
+        if (a[j] == '-') { neg = true; ++j; }
+        size_t k = j; int n = 0;
+        while (k < a.size() && a[k] >= '0' && a[k] <= '9' && k - j < 4) { n = n * 10 + (a[k] - '0'); ++k; }
+        if (k == j) return {-1000};                          // lixo
+        v.push_back(neg ? -n : n); i = k;
+        if (i < a.size() && a[i] != ' ') return {-1000};
+    }
+    return v;
+}
+
+std::string Describe(const Look& l)
+{
+    std::string s = "corp=" + (l.corp.empty() ? std::string("-") : l.corp);
+    s += " | tom=" + (l.tone ? std::to_string(l.tone) + " (" + kToneNames[l.tone] + ")" : std::string("-"));
+    s += " | rosto=" + (l.face ? std::to_string(l.face) : std::string("-"));
+    s += " | cabelo=" + (l.hairStyle ? std::to_string(l.hairStyle) + "/cor " + std::to_string(l.hairColor) : std::string("-"));
+    return s;
+}
+
+// aplica uma alteracao no espelho local e enfileira o visual completo
+template <class F> std::string ApplyLocal(PLAYERID me, F&& edit)
+{
+    Look l;
+    { std::lock_guard<std::mutex> g(s_qMutex); l = s_localLook; }
+    edit(l);
+    Sanitize(l);
+    { std::lock_guard<std::mutex> g(s_qMutex); s_localLook = l; }
+    PushLook(me, l);
+    return "[CORPTEX] " + Describe(l);
+}
+
+} // namespace
+
+std::string DebugCommand(const std::string& argsIn)     // /corp
+{
+    const std::string a = SkinImg::Lower(Trim(argsIn));
     CPlayerPool* pool = pNetGame ? pNetGame->GetPlayerPool() : nullptr;
     if (!pool) return "[CORPTEX] conecte-se a um servidor primeiro";
     const PLAYERID me = pool->GetLocalPlayerID();
@@ -451,13 +657,47 @@ std::string DebugCommand(const std::string& argsIn)
         for (const std::string& c : ListCorps()) s += (s.empty() ? "" : ", ") + c;
         return s.empty() ? "[CORPTEX] nenhuma pasta em SAMP/skins/textures/" + std::string(kSkinFolder) + "/" : "[CORPTEX] corps: " + s;
     }
-    if (a == "limpar" || a == "clear" || a == "off" || a == "reset") { Push(Cmd::Clear, me, ""); return "[CORPTEX] limpando a sua corp"; }
+    if (a == "limpar" || a == "clear" || a == "off" || a == "reset") return ApplyLocal(me, [](Look& l) { l.corp.clear(); });
 
     if (!ValidName(a)) return "[CORPTEX] nome invalido (use so a-z 0-9 _ -, ate 15)";
     const auto corps = ListCorps();
     if (std::find(corps.begin(), corps.end(), a) == corps.end()) return "[CORPTEX] corp '" + a + "' nao existe (use /corp lista)";
-    Push(Cmd::Set, me, a);
-    return " ";
+    return ApplyLocal(me, [&](Look& l) { l.corp = a; });
+}
+
+std::string VisualCommand(const std::string& cmdIn, const std::string& argsIn)   // /rosto /cabelo /pele /visual
+{
+    const std::string cmd = SkinImg::Lower(cmdIn), args = Trim(SkinImg::Lower(argsIn));
+    CPlayerPool* pool = pNetGame ? pNetGame->GetPlayerPool() : nullptr;
+    if (!pool) return "[CORPTEX] conecte-se a um servidor primeiro";
+    const PLAYERID me = pool->GetLocalPlayerID();
+
+    if (cmd == "visual") {
+        if (args == "limpar" || args == "clear" || args == "reset") return ApplyLocal(me, [](Look& l) { l = Look{}; });
+        Look l; { std::lock_guard<std::mutex> g(s_qMutex); l = s_localLook; }
+        return "[CORPTEX] " + Describe(l) + " | /rosto <tom 1-6> <variante> | /pele <tom> | /cabelo <estilo 1-5> <cor> | /corp <nome> | /visual limpar";
+    }
+
+    const std::vector<int> v = Ints(args);
+    if (v.size() == 1 && v[0] == -1000) return "[CORPTEX] use so numeros";
+
+    if (cmd == "rosto" || cmd == "pele") {
+        if (v.empty() || v.size() > (cmd == "rosto" ? 2u : 1u)) return cmd == "rosto" ? "[CORPTEX] uso: /rosto <tom 1-6> <variante> (0 remove)" : "[CORPTEX] uso: /pele <tom 1-6> (0 remove)";
+        if (v[0] < 0 || v[0] > 6) return "[CORPTEX] tom de 1 a 6 (1 medio, 2 escuro, 3 claro, 4 moreno, 5 avermelhado, 6 palido)";
+        if (v[0] == 0) return ApplyLocal(me, [](Look& l) { l.tone = 0; l.face = 0; });
+        if (v.size() == 2 && (v[1] < 1 || v[1] > kFaceVariants[v[0]]))
+            return "[CORPTEX] tom " + std::to_string(v[0]) + " tem variantes de 1 a " + std::to_string(kFaceVariants[v[0]]);
+        return ApplyLocal(me, [&](Look& l) { l.tone = (uint8_t)v[0]; if (v.size() == 2) l.face = (uint8_t)v[1]; });
+    }
+    if (cmd == "cabelo") {
+        if (v.empty() || v.size() > 2) return "[CORPTEX] uso: /cabelo <estilo 1-5> <cor> (0 remove)";
+        if (v[0] < 0 || v[0] > 5) return "[CORPTEX] estilo de 1 a 5";
+        if (v[0] == 0) return ApplyLocal(me, [](Look& l) { l.hairStyle = 0; l.hairColor = 0; });
+        if (v.size() == 2 && (v[1] < 1 || v[1] > kHairColors[v[0]]))
+            return "[CORPTEX] estilo " + std::to_string(v[0]) + " tem cores de 1 a " + std::to_string(kHairColors[v[0]]);
+        return ApplyLocal(me, [&](Look& l) { l.hairStyle = (uint8_t)v[0]; if (v.size() == 2) l.hairColor = (uint8_t)v[1]; });
+    }
+    return "[CORPTEX] comando desconhecido";
 }
 
 } // namespace CorpTex

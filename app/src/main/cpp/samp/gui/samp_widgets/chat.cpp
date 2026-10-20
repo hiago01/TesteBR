@@ -12,6 +12,8 @@
 #include "../../game/IdCard3D.h"
 #include "../../game/CustomSkin.h"
 #include "../../game/CorpTex.h"
+#include <cstring>
+#include <string>
 #include "../../game/camerazoom.h"
 #include "../../game/CustomAnimTest.h"
 #include "../../game/movemode.h"
@@ -169,6 +171,19 @@ if (input == "/corp" || input.rfind("/corp ", 0) == 0)
             addDebugMessage("%s", reply.c_str());
 
             return;
+        }
+        for (const char* vc : {"/rosto", "/cabelo", "/pele", "/visual"})
+        {
+            const size_t n = std::strlen(vc);
+            if (input == vc || input.rfind(std::string(vc) + " ", 0) == 0)
+            {
+                // aparencia no seu ator: /rosto <tom> <variante> | /cabelo <estilo> <cor> | /pele <tom> | /visual [limpar]
+                std::string args = input.size() > n ? input.substr(n + 1) : std::string();
+                std::string reply = CorpTex::VisualCommand(std::string(vc + 1), args);
+                addDebugMessage("%s", reply.c_str());
+
+                return;
+            }
         }
 if (input == "/mangueira" || input.rfind("/mangueira ", 0) == 0)
         {
