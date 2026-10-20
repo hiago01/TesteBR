@@ -1,7 +1,7 @@
 // CorpTex.cpp - aparencia por jogador: corporacao (roupas), rosto, tom de pele e cabelo. Ver CorpTex.h
 //
 // POR QUE TROCAR NO RENDER (e nao no molde do modelo):
-//   Os 76 materiais do skin.dff pertencem a geometria compartilhada pelo molde do modelo e por todos os
+//   Os 76 (Corp) / 96 (Normal) materiais do DFF pertencem a geometria compartilhada pelo molde do modelo e por todos os
 //   clones (RpClumpClone so referencia a geometria). Trocar a textura "de verdade" mudaria TODOS os peds
 //   do modelo. Entao, em CEntity::Render do ped escolhido, pomos as texturas nos materiais (atribuicao
 //   direta do ponteiro, sem mexer em refcount), o jogo desenha, e devolvemos a original logo depois.
@@ -12,6 +12,9 @@
 //   entao o nome em runtime pode ser "male01" e nao serve de chave. A chave e o nome gravado no DFF
 //   (DffPreflight::Info::materialsList[i].texture), pelo INDICE do material. Rosto/cabelo/pele/ocultar
 //   so funcionam nesse modo; se a contagem do motor diferir da do DFF, so a corp (por nome) e aplicada.
+//
+// MODELOS: 7 = FemininaCorp (corp + aparencia), 9 = FemininaNormal (so aparencia: mesmos body.*, hair e head do DFF da Corp;
+//   as roupas fantasy_f_* da Normal ainda nao foram mapeadas e continuam ocultas pela male01 do texdb).
 //
 // O QUE CADA OPCAO FAZ (tudo e "mostrar a escolhida com o PNG certo, ocultar as outras com a male01")
 //   corp  : pecas fantasy_f_cop_* com PNG em textures/272/<corp>/ recebem o PNG; as sem PNG ficam ocultas.
@@ -63,7 +66,10 @@ std::atomic<int> g_active{0};
 
 namespace {
 
-constexpr int      kHostModel      = 7;      // modelo que hospeda o skin.dff da FemininaCorp (hoje 7; quando migrar p/ 272, troque aqui)
+constexpr int      kCorpModel      = 7;      // hospeda o DFF da FemininaCorp (so este tem as pecas fantasy_f_cop_*)
+constexpr int      kNormalModel    = 9;      // hospeda o DFF da FemininaNormal (mesmo corpo: rosto, cabelo, tom de pele)
+// (quando migrar o DFF da Corp para o 272, troque kCorpModel e a tabela s_skins do CustomSkinStream.cpp)
+bool IsHostModel(int m) { return m == kCorpModel || m == kNormalModel; }
 constexpr const char* kSkinFolder  = "272";  // textures/<kSkinFolder>/<corp>/  e  textures/<kSkinFolder>/aparencia/...
 constexpr const char* kAppFolder   = "aparencia";
 constexpr int      kMaxTexSize     = 1024;   // teto de lado no celular (os PNGs de 2048 sao reduzidos)
@@ -84,6 +90,7 @@ constexpr const char* kToneNames[7] = {"nenhum", "medio", "escuro", "claro", "mo
 // caixas (x absoluto maximo, z min, z max) tiradas da geometria do skin.dff; usadas para saber se uma peca cobre uma regiao
 struct Box { const char* name; float xabs, zmin, zmax; };
 constexpr Box kBodyRegions[] = {
+    {"body.feets2", 0.19f, -0.99f, -0.96f},      // so no DFF da FemininaNormal
     {"body.armleft", 0.51f, 0.01f, 0.40f},
     {"body.armright", 0.51f, 0.01f, 0.40f},
     {"body.feets", 0.21f, -1.00f, -0.90f},
@@ -382,10 +389,11 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
     std::vector<RpMaterial*> mats;
     if (!CollectMaterials(e->m_pRwClump, mats)) { SetInfo("jogador " + std::to_string(id) + ": clump sem materiais legiveis"); return; }
 
-    const DffPreflight::Info* info = CustomSkinStream::GetInfo();
+    const int model = (int)e->GetModelId();
+    const DffPreflight::Info* info = CustomSkinStream::GetInfo(model);
     const bool byIndex = info && info->materialsList.size() == mats.size();
-    if (!byIndex) FLog("[CORPTEX] AVISO: motor tem %zu materiais, DFF %zu: modo nome (so a corp, sem ocultar/rosto/cabelo/pele)",
-                       mats.size(), info ? info->materialsList.size() : (size_t)0);
+    if (!byIndex) FLog("[CORPTEX] AVISO: modelo %d: motor tem %zu materiais, DFF %zu: modo nome (so a corp, sem ocultar/rosto/cabelo/pele)",
+                       model, mats.size(), info ? info->materialsList.size() : (size_t)0);
 
     std::vector<std::string> keys(mats.size());
     for (size_t i = 0; i < mats.size(); ++i) {
@@ -402,7 +410,8 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
 
     // 1) corporacao
     Corp* c = nullptr;
-    if (!look.corp.empty()) { c = EnsureCorp(look.corp); if (!c) FLog("[CORPTEX] corp '%s' indisponivel: ignorada", look.corp.c_str()); }
+    if (!look.corp.empty() && model != kCorpModel) FLog("[CORPTEX] modelo %d nao tem pecas da Corp: corp '%s' ignorada (rosto/cabelo/pele valem)", model, look.corp.c_str());
+    else if (!look.corp.empty()) { c = EnsureCorp(look.corp); if (!c) FLog("[CORPTEX] corp '%s' indisponivel: ignorada", look.corp.c_str()); }
     for (size_t i = 0; i < mats.size(); ++i) {
         const std::string& k = keys[i];
         if (k.empty() || !mats[i]) continue;
@@ -410,7 +419,7 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
             auto it = c->tex.find(k);
             if (it != c->tex.end()) { over[k] = it->second; ++nCorp; if (const Box* b = FindPiece(k)) visible.push_back(b); continue; }
             if (hideTex && byIndex && k.compare(0, std::strlen(kPiecePrefix), kPiecePrefix) == 0) { over[k] = hideTex; ++nHidden; }
-        } else if (byIndex) {              // sem corp (ou corp indisponivel): vale o que o texdb mostra por padrao
+        } else if (byIndex && model == kCorpModel) {   // sem corp (ou corp indisponivel): vale o que o texdb mostra por padrao
             for (const char* d : kDefaultVisible) if (k == d) if (const Box* b = FindPiece(k)) visible.push_back(b);
         }
     }
@@ -428,7 +437,7 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
             RwTexture* tFeet  = GetAppTex("pele/feet/" + t + ".png");
             for (const Box& r : kBodyRegions) {
                 const std::string name = r.name;
-                RwTexture* tex = name == "body.feets" ? tFeet : name.compare(0, 8, "body.leg") == 0 ? tLeg : tTorso;
+                RwTexture* tex = (name == "body.feets" || name == "body.feets2") ? tFeet : name.compare(0, 8, "body.leg") == 0 ? tLeg : tTorso;
                 if (!tex) continue;
                 bool covered = false;
                 for (const Box* p : visible) if (PieceCovers(*p, r)) { covered = true; break; }
@@ -456,8 +465,8 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
         if (it != over.end()) en.swaps.push_back({mats[i], it->second, nullptr});
     }
 
-    FLog("[CORPTEX] jogador %d corp='%s' tom=%d rosto=%d cabelo=%d/%d: %zu material(is) trocado(s) de %zu (modo %s) | corp=%d aparencia=%d ocultos=%d",
-         (int)id, look.corp.c_str(), (int)look.tone, (int)look.face, (int)look.hairStyle, (int)look.hairColor, en.swaps.size(), mats.size(),
+    FLog("[CORPTEX] jogador %d modelo=%d corp='%s' tom=%d rosto=%d cabelo=%d/%d: %zu material(is) trocado(s) de %zu (modo %s) | corp=%d aparencia=%d ocultos=%d",
+         (int)id, model, look.corp.c_str(), (int)look.tone, (int)look.face, (int)look.hairStyle, (int)look.hairColor, en.swaps.size(), mats.size(),
          byIndex ? "indice" : "nome", nCorp, nApp, nHidden);
     if (en.swaps.empty()) { SetInfo("nenhum material do ped casou com o visual pedido"); return; }
 
@@ -473,7 +482,7 @@ void Reconcile(PLAYERID id)
     CEntityGTA* e = GetEnt(id);
     Entry* en = FindEntry(id);
 
-    if (!e || (int)e->GetModelId() != kHostModel || !e->m_pRwClump) { if (en) DropEntry(id); s_tried[id].valid = false; return; }   // ped ainda nao existe / outra skin
+    if (!e || !IsHostModel((int)e->GetModelId()) || !e->m_pRwClump) { if (en) DropEntry(id); s_tried[id].valid = false; return; }   // ped ainda nao existe / outra skin
     Tried& t = s_tried[id];
     if (t.valid && t.ent == (void*)e && t.clump == e->m_pRwClump && t.look == look) return;                                         // em dia (ou ja tentado)
     if (en) DropEntry(id);                                                                                                           // ped/clump recriado ou visual mudou

@@ -1,4 +1,4 @@
-// CorpTex.h - aparencia POR JOGADOR da skin FemininaCorp (DFF do modelo kHostModel): corporacao, rosto, tom de pele, cabelo
+// CorpTex.h - aparencia POR JOGADOR das skins FemininaCorp (modelo 7) e FemininaNormal (modelo 9): corporacao, rosto, tom de pele, cabelo
 //
 //   PNGs:   <raiz>/SAMP/skins/textures/272/<corp>/<NomeDaTextura>.png   (ex.: 272/pmerj/fantasy_f_cop_torso4.png)
 //   Regra:  materiais cujo nome tem PNG naquela pasta recebem o PNG; pecas de roupa da Corp (fantasy_f_cop_*)

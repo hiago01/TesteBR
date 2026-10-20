@@ -1,9 +1,12 @@
 // CustomSkinStream.cpp
 //
 // COMO FUNCIONA
-//   O jogo carrega o modelo 7 por CStreaming::ConvertBufferToObject(buffer, modelId, x): le o DFF do
+//   O jogo carrega cada modelo por CStreaming::ConvertBufferToObject(buffer, modelId, x): le o DFF do
 //   gta3.img para um buffer de streaming e o jogo mesmo cria o clump, as refs de TXD, o hit-col, etc.
-//   Este modulo so troca A ORIGEM DOS BYTES: quando modelId == 7 e existe SAMP/skins/skin.dff, o buffer
+//   Este modulo so troca A ORIGEM DOS BYTES. Modelos substituidos (tabela s_skins):
+//     7 -> SAMP/skins/skin.dff                (FemininaCorp)
+//     9 -> SAMP/skins/skin9.dff  ou  SAMP/skins/(FeminaNormal)skin[ParaModelo9].dff   (FemininaNormal)
+//   Quando o modelo esta na tabela e o DFF existe, o buffer
 //   e o tamanho (m_nCdSize, em setores de 2048 bytes) passam a ser os do skin.dff. Todo o resto e o
 //   fluxo original do jogo. Descarregar/recarregar o modelo 7 tambem usa a skin (o hook roda de novo).
 //
@@ -11,7 +14,7 @@
 //   exatamente como faz com "male01" no 7 original. Os nomes das texturas do skin.dff precisam existir
 //   no mesmo banco onde esta "male01" (procure "male01" no editor de texdb).
 //
-//   SAMP/skins/disable (arquivo vazio) desliga tudo: o jogo carrega o 7 original.
+//   SAMP/skins/disable (arquivo vazio) desliga tudo; SAMP/skins/disable7 ou disable9 desligam so aquele modelo.
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -28,7 +31,6 @@
 
 namespace
 {
-    constexpr int       kModelId   = 7;
     constexpr uint32_t  kRwClump   = 0x10;          // id do chunk "clump" do RenderWare
     constexpr uintptr_t OFF_CONVERT_BUFFER = 0x395114;   // CStreaming::ConvertBufferToObject(char*, int, int)
     constexpr uintptr_t OFF_GET_TEXTURE    = 0x286718;   // TextureDatabaseRuntime::GetTexture(const char*)
@@ -36,12 +38,24 @@ namespace
     bool  (*s_convertOrig)(char*, int, int) = nullptr;
     void* (*s_getTexOrig)(const char*)      = nullptr;
 
-    DffPreflight::Info s_info;        // inventario do skin.dff (exposto por GetInfo para o CorpTex)
-    bool s_infoOk = false;
-    std::vector<uint8_t> s_file;      // conteudo do skin.dff
-    bool s_fileTried = false;
-    bool s_fileOk    = false;
-    bool s_inSkinLoad = false;        // true enquanto o jogo converte o modelo 7 com a nossa skin
+    // Um DFF por modelo substituido. O primeiro nome que existir em SAMP/skins/ e usado.
+    struct Skin
+    {
+        int         model;
+        const char* files[2];
+        std::vector<uint8_t> data;       // conteudo do DFF
+        DffPreflight::Info   info;       // inventario (exposto por GetInfo para o CorpTex)
+        bool infoOk = false;
+        bool tried  = false;
+        bool ok     = false;
+    };
+    Skin s_skins[] = {
+        { 7, { "skin.dff",  nullptr } },                                              // FemininaCorp
+        { 9, { "skin9.dff", "(FeminaNormal)skin[ParaModelo9].dff" } },                // FemininaNormal
+    };
+    Skin* FindSkin(int model) { for (Skin& k : s_skins) if (k.model == model) return &k; return nullptr; }
+
+    bool s_inSkinLoad = false;        // true enquanto o jogo converte um modelo com a nossa skin
     bool s_fallbackOn = false;        // SAMP/skins/fallback_tex existe: textura nao achada -> usa "male01"
 
     // Lista de bancos de textura registrados (suposicao: GOT 0x851CF8 -> TDBArray {numAlloced, numEntries, dataPtr}).
@@ -73,48 +87,54 @@ namespace
 
     bool Exists(const std::string& p) { return !p.empty() && ::access(p.c_str(), F_OK) == 0; }
 
-    // Le o skin.dff UMA vez (na primeira conversao do modelo 7).
-    bool EnsureFile()
+    // Le o DFF do modelo UMA vez (na primeira conversao desse modelo).
+    bool EnsureFile(Skin& sk)
     {
-        if (s_fileTried) return s_fileOk;
-        s_fileTried = true;
+        if (sk.tried) return sk.ok;
+        sk.tried = true;
+        const int model = sk.model;
 
         const std::string dir = SkinDir();
-        if (dir.empty()) { FLog("[SKIN7S] storage indisponivel: usando o modelo 7 original"); return false; }
-        if (Exists(dir + "disable")) { FLog("[SKIN7S] SAMP/skins/disable existe: usando o modelo 7 original"); return false; }
+        if (dir.empty()) { FLog("[SKIN7S] storage indisponivel: usando o modelo %d original", model); return false; }
+        if (Exists(dir + "disable")) { FLog("[SKIN7S] SAMP/skins/disable existe: usando o modelo %d original", model); return false; }
+        if (Exists(dir + "disable" + std::to_string(model))) { FLog("[SKIN7S] SAMP/skins/disable%d existe: usando o modelo %d original", model, model); return false; }
 
-        const std::string path = dir + "skin.dff";
+        std::string path;
+        for (const char* name : sk.files)
+            if (name && Exists(dir + name)) { path = dir + name; break; }
+        if (path.empty()) { FLog("[SKIN7S] nenhum DFF do modelo %d em %s (%s): usando o original", model, dir.c_str(), sk.files[0]); return false; }
+
         FILE* f = std::fopen(path.c_str(), "rb");
-        if (!f) { FLog("[SKIN7S] %s nao existe: usando o modelo 7 original", path.c_str()); return false; }
+        if (!f) { FLog("[SKIN7S] %s nao abriu: usando o modelo %d original", path.c_str(), model); return false; }
 
         std::fseek(f, 0, SEEK_END);
         const long size = std::ftell(f);
         std::fseek(f, 0, SEEK_SET);
-        if (size < 12 || size > 64L * 1024 * 1024) { std::fclose(f); FLog("[SKIN7S] skin.dff com tamanho invalido (%ld)", size); return false; }
+        if (size < 12 || size > 64L * 1024 * 1024) { std::fclose(f); FLog("[SKIN7S] %s com tamanho invalido (%ld)", path.c_str(), size); return false; }
 
-        s_file.resize((size_t)size);
-        const size_t got = std::fread(s_file.data(), 1, s_file.size(), f);
+        sk.data.resize((size_t)size);
+        const size_t got = std::fread(sk.data.data(), 1, sk.data.size(), f);
         std::fclose(f);
-        if (got != s_file.size()) { s_file.clear(); FLog("[SKIN7S] leitura incompleta do skin.dff"); return false; }
+        if (got != sk.data.size()) { sk.data.clear(); FLog("[SKIN7S] leitura incompleta de %s", path.c_str()); return false; }
 
         uint32_t chunkType = 0;
-        std::memcpy(&chunkType, s_file.data(), 4);
-        if (chunkType != kRwClump) { FLog("[SKIN7S] skin.dff nao comeca com chunk clump (0x%x)", chunkType); s_file.clear(); return false; }
+        std::memcpy(&chunkType, sk.data.data(), 4);
+        if (chunkType != kRwClump) { FLog("[SKIN7S] %s nao comeca com chunk clump (0x%x)", path.c_str(), chunkType); sk.data.clear(); return false; }
 
-        // Pre-validacao estrutural (so le bytes, nao toca no engine). Se falhar, o jogo carrega o 7 original
+        // Pre-validacao estrutural (so le bytes, nao toca no engine). Se falhar, o jogo carrega o modelo original
         // em vez de entregar um DFF invalido ao RpClumpStreamRead (que quase nao valida limites).
         {
             DffPreflight::Info info;
             std::string err;
-            if (!DffPreflight::Parse(s_file.data(), s_file.size(), info, err))
+            if (!DffPreflight::Parse(sk.data.data(), sk.data.size(), info, err))
             {
-                FLog("[SKIN7S] preflight REPROVOU o skin.dff: %s -> usando o modelo 7 original", err.c_str());
-                s_file.clear();
+                FLog("[SKIN7S] preflight REPROVOU %s: %s -> usando o modelo %d original", path.c_str(), err.c_str(), model);
+                sk.data.clear();
                 return false;
             }
-            s_info = info; s_infoOk = true;
-            FLog("[SKIN7S] preflight OK | RW %s | frames=%d atomics=%d geom=%d tris=%llu verts=%llu mats=%d | ossos=%d usados=%d pesos=%d | HAnim ids=%zu",
-                 DffPreflight::VersionString(info.stamp).c_str(), info.frames, info.atomics, info.geoms,
+            sk.info = info; sk.infoOk = true;
+            FLog("[SKIN7S] modelo %d: preflight OK (%s) | RW %s | frames=%d atomics=%d geom=%d tris=%llu verts=%llu mats=%d | ossos=%d usados=%d pesos=%d | HAnim ids=%zu",
+                 model, path.c_str(), DffPreflight::VersionString(info.stamp).c_str(), info.frames, info.atomics, info.geoms,
                  (unsigned long long)info.tris, (unsigned long long)info.verts, info.materials,
                  info.bones, info.usedBones, info.maxWeights, info.hanimIds.size());
             for (const std::string& w : DffPreflight::Warnings(info))
@@ -123,9 +143,9 @@ namespace
 
         s_fallbackOn = Exists(dir + "fallback_tex");
         FLog("[SKIN7S] fallback_tex=%s", s_fallbackOn ? "LIGADO (textura nao achada usa 'male01')" : "desligado");
-        FLog("[SKIN7S] skin.dff lido: %zu bytes (%u setores)", s_file.size(),
-             (unsigned)((s_file.size() + STREAMING_SECTOR_SIZE - 1) / STREAMING_SECTOR_SIZE));
-        s_fileOk = true;
+        FLog("[SKIN7S] modelo %d: DFF lido: %zu bytes (%u setores)", model, sk.data.size(),
+             (unsigned)((sk.data.size() + STREAMING_SECTOR_SIZE - 1) / STREAMING_SECTOR_SIZE));
+        sk.ok = true;
         return true;
     }
 
@@ -172,7 +192,8 @@ namespace
 
     bool Convert_hook(char* buf, int model, int a3)
     {
-        if (model != kModelId || !EnsureFile())
+        Skin* sk = FindSkin(model);
+        if (!sk || !EnsureFile(*sk))
         {
             CheckRegistered("antes", model);
             return s_convertOrig(buf, model, a3);
@@ -180,18 +201,18 @@ namespace
 
         CStreamingInfo& info = CStreaming::GetInfo(model);
         const uint32_t oldSectors = info.m_nCdSize;
-        const uint32_t sectors = (uint32_t)((s_file.size() + STREAMING_SECTOR_SIZE - 1) / STREAMING_SECTOR_SIZE);
+        const uint32_t sectors = (uint32_t)((sk->data.size() + STREAMING_SECTOR_SIZE - 1) / STREAMING_SECTOR_SIZE);
 
         void* mem = nullptr;
         if (posix_memalign(&mem, 64, (size_t)sectors * STREAMING_SECTOR_SIZE) != 0 || !mem)
         {
-            FLog("[SKIN7S] sem memoria para o buffer da skin: usando o modelo 7 original");
+            FLog("[SKIN7S] sem memoria para o buffer da skin: usando o modelo %d original", model);
             return s_convertOrig(buf, model, a3);
         }
         std::memset(mem, 0, (size_t)sectors * STREAMING_SECTOR_SIZE);
-        std::memcpy(mem, s_file.data(), s_file.size());
+        std::memcpy(mem, sk->data.data(), sk->data.size());
 
-        FLog("[SKIN7S] convertendo modelo %d a partir do skin.dff (setores: original=%u skin=%u)", model, oldSectors, sectors);
+        FLog("[SKIN7S] convertendo modelo %d a partir do DFF customizado (setores: original=%u skin=%u)", model, oldSectors, sectors);
         FLog("[SKIN7S] streaming: memoryUsed=%zu memoryAvailable=%zu bufferSize(setores)=%d skin=%u setores (%u bytes)",
              (size_t)CStreaming::ms_memoryUsed, (size_t)CStreaming::ms_memoryAvailable,
              (int)CStreaming::ms_streamingBufferSize, sectors, sectors * (uint32_t)STREAMING_SECTOR_SIZE);
@@ -211,7 +232,7 @@ namespace
 
 namespace CustomSkinStream
 {
-    const DffPreflight::Info* GetInfo() { return s_infoOk ? &s_info : nullptr; }
+    const DffPreflight::Info* GetInfo(int model) { const Skin* k = FindSkin(model); return (k && k->infoOk) ? &k->info : nullptr; }
 
     void Install()
     {
