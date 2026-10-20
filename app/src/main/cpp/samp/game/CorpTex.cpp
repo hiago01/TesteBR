@@ -30,6 +30,7 @@
 #include "CorpTex.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -217,6 +218,24 @@ std::string BaseDir()
     return p + "SAMP/skins/textures/" + kSkinFolder + "/";
 }
 
+// ---- roupas da FemininaNormal: onde ficam os PNGs ------------------------------------------------
+// Local novo (MESMA arvore que ja funciona para rosto/pele/cabelo/corp):  textures/272/aparencia/roupa/<tipo>/<pasta>/<variante>.png
+// Local antigo (ainda aceito):                                          textures/9/roupa/...
+// Escolhe o primeiro que ABRE de verdade (fopen), nao so o que existe (access): no Android um arquivo copiado por
+// outro app pode existir e mesmo assim dar "Permission denied" para o jogo.
+bool CanOpen(const std::string& p) { FILE* f = std::fopen(p.c_str(), "rb"); if (!f) return false; std::fclose(f); return true; }
+
+std::string ClothPath(const std::string& sub)      // sub = "boot/1/1.png" | "mapa.txt"
+{
+    const std::string a = BaseDir() + kAppFolder + "/roupa/" + sub;
+    const std::string b = TexRoot() + "9/roupa/" + sub;
+    if (CanOpen(a)) return a;
+    if (CanOpen(b)) return b;
+    if (::access(a.c_str(), F_OK) == 0) return a;   // existe mas nao abre: o chamador mostra o erro
+    if (::access(b.c_str(), F_OK) == 0) return b;
+    return a;
+}
+
 // nome de pasta aceito: 1..15 de [a-z0-9_-]  (impede "../" vindo do servidor)
 bool ValidName(const std::string& s)
 {
@@ -365,8 +384,8 @@ RwTexture* GetAppTex(const std::string& rel)
 {
     auto it = s_appTex.find(rel);
     if (it != s_appTex.end()) { it->second.lastUse = NowMs(); return it->second.tex; }
-    // "roupa/..." vive em textures/9/ (FemininaNormal); o resto em textures/272/aparencia/
-    const std::string path = rel.compare(0, 6, "roupa/") == 0 ? TexRoot() + "9/" + rel : BaseDir() + kAppFolder + "/" + rel;
+    // "roupa/..." : ver ClothPath (272/aparencia/roupa ou 9/roupa); o resto em textures/272/aparencia/
+    const std::string path = rel.compare(0, 6, "roupa/") == 0 ? ClothPath(rel.substr(6)) : BaseDir() + kAppFolder + "/" + rel;
     RwTexture* t = ::access(path.c_str(), F_OK) == 0 ? LoadPng(path, rel) : nullptr;
     if (!t) FLog("[CORPTEX] AVISO: textura de aparencia ausente: %s", path.c_str());
     s_appTex[rel] = AppTex{t, NowMs()};                // guarda tambem a falha (nao tenta de novo a cada frame)
@@ -415,7 +434,7 @@ void LoadClothMap()
     s_clothMap.clear();
     for (const auto& d : kDefaultClothMap) SetClothMap(d[0], std::atoi(d[1]), {d[2]});
     int overridden = 0;
-    const std::string path = TexRoot() + "9/roupa/mapa.txt";
+    const std::string path = ClothPath("mapa.txt");
     if (FILE* f = std::fopen(path.c_str(), "r")) {
         char line[256];
         while (std::fgets(line, sizeof(line), f)) {
@@ -522,8 +541,9 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
 
     // 1) corporacao
     Corp* c = nullptr;
-    if (!look.corp.empty() && model != kCorpModel) FLog("[CORPTEX] modelo %d nao tem pecas da Corp: corp '%s' ignorada (rosto/cabelo/pele valem)", model, look.corp.c_str());
-    else if (!look.corp.empty()) { c = EnsureCorp(look.corp); if (!c) FLog("[CORPTEX] corp '%s' indisponivel: ignorada", look.corp.c_str()); }
+    // Vale para os dois modelos: no 7 (Corp) as pecas fantasy_f_cop_*; no 9 (Normal) qualquer peca pelo NOME do material
+    // (fantasy_f_torso2.png, fantasy_f_pants1.png, fantasy_f_boot1.png ...) dentro de textures/272/<pasta>/  ->  /corp <pasta>
+    if (!look.corp.empty()) { c = EnsureCorp(look.corp); if (!c) FLog("[CORPTEX] corp '%s' indisponivel: ignorada", look.corp.c_str()); }
     for (size_t i = 0; i < mats.size(); ++i) {
         const std::string& k = keys[i];
         if (k.empty() || !mats[i]) continue;
@@ -804,7 +824,7 @@ int CountVariants(const char* tipo, int set)
 {
     int n = 0;
     while (n < 200) {
-        const std::string p = TexRoot() + "9/roupa/" + tipo + "/" + std::to_string(set) + "/" + std::to_string(n + 1) + ".png";
+        const std::string p = ClothPath(std::string(tipo) + "/" + std::to_string(set) + "/" + std::to_string(n + 1) + ".png");
         if (::access(p.c_str(), F_OK) != 0) break;
         ++n;
     }
@@ -882,7 +902,16 @@ std::string VisualCommand(const std::string& cmdIn, const std::string& argsIn)  
         const int n = CountVariants(tipo, v[0]);
         if (n == 0) return "[CORPTEX] a pasta " + std::to_string(v[0]) + " nao existe em textures/9/roupa/" + tipo;
         if (v.size() == 2 && (v[1] < 1 || v[1] > n)) return "[CORPTEX] a pasta " + std::to_string(v[0]) + " tem variantes de 1 a " + std::to_string(n);
-        return ApplyLocal(me, [&](Look& l) { auto f = field(l); *f.first = (uint8_t)v[0]; if (v.size() == 2) *f.second = (uint8_t)v[1]; else if (!*f.second) *f.second = 1; });
+        const int varWanted = v.size() == 2 ? v[1] : 1;
+        std::string warn;
+        {   // diagnostico no chat: o arquivo existe mas o jogo consegue abrir?
+            const std::string pf = ClothPath(std::string(tipo) + "/" + std::to_string(v[0]) + "/" + std::to_string(varWanted) + ".png");
+            FILE* tf = std::fopen(pf.c_str(), "rb");
+            if (!tf) warn = std::string(" | ERRO: nao consigo abrir o PNG (") + std::strerror(errno) + "): " + pf;
+            else std::fclose(tf);
+        }
+        std::string r = ApplyLocal(me, [&](Look& l) { auto f = field(l); *f.first = (uint8_t)v[0]; if (v.size() == 2) *f.second = (uint8_t)v[1]; else if (!*f.second) *f.second = 1; });
+        return r + warn;
     }
     if (cmd == "intima") {
         if (v.size() != 1 || v[0] < 0 || v[0] > 6) return "[CORPTEX] uso: /intima <cor 1-6> (0 = nenhuma): 1 preto, 2 branco, 3 vermelho, 4 azul, 5 rosa, 6 cinza";
