@@ -17,7 +17,7 @@
 //   corp  : pecas fantasy_f_cop_* com PNG em textures/272/<corp>/ recebem o PNG; as sem PNG ficam ocultas.
 //           Sem corp escolhida, as pecas nao sao tocadas.
 //   rosto : body.head1-5 sao a MESMA malha; mostra body.head1 com rosto/<tom>/<variante>.png, oculta head2-5.
-//   pele  : o tom vale para torso/bracos/ombros (pele/torso), pernas (pele/leg) e pes (pele/feet). Regiao do
+//   pele  : o tom vale para torso/bracos/ombros/maos (pele/torso), pernas (pele/leg) e pes (pele/feet). Regiao do
 //           corpo totalmente coberta por uma peca visivel e ocultada (evita z-fight); parcial fica com pele.
 //   cabelo: fantasy_f_hair<estilo> com cabelo/<estilo>/<cor>.png; os outros 4 estilos ocultos.
 //
@@ -435,6 +435,7 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
                 if (covered && hideTex) { over[name] = hideTex; ++nHidden; }
                 else { over[name] = tex; ++nApp; }
             }
+            if (tTorso) { over["body.hand"] = tTorso; ++nApp; }   // maos usam o mesmo PNG do torso (6 tons), nao sao ocultadas por roupa
         }
         if (look.hairStyle) {
             for (int s = 1; s <= 5; ++s) {
