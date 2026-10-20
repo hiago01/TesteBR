@@ -172,7 +172,7 @@ if (input == "/corp" || input.rfind("/corp ", 0) == 0)
 
             return;
         }
-        for (const char* vc : {"/rosto", "/cabelo", "/pele", "/visual"})
+        for (const char* vc : {"/rosto", "/cabelo", "/pele", "/visual", "/bota", "/calca", "/camisa", "/intima", "/roupa"})
         {
             const size_t n = std::strlen(vc);
             if (input == vc || input.rfind(std::string(vc) + " ", 0) == 0)

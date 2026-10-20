@@ -31,6 +31,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <mutex>
@@ -83,6 +84,7 @@ constexpr uintptr_t OFF_GEOM_MATLIST      = 0x28;   // RpGeometry::matList.mater
 constexpr uintptr_t OFF_GEOM_NUMMATERIALS = 0x30;   // RpGeometry::matList.numMaterials
 
 // opcoes validas (conferidas contra as pastas): variantes de rosto por tom, cores de cabelo por estilo
+constexpr int kMaxClothSet = 9;       // pastas de roupa: 1..7 (boot) / 1..6; o limite real e o que existe em disco
 constexpr int kFaceVariants[7] = {0, 6, 8, 8, 7, 6, 12};
 constexpr int kHairColors[6]   = {0, 6, 6, 7, 7, 7};
 constexpr const char* kToneNames[7] = {"nenhum", "medio", "escuro", "claro", "moreno", "avermelhado", "palido"};
@@ -128,6 +130,29 @@ constexpr Box kPieces[] = {
     {"fantasy_f_cop_vest3", 0.20f, 0.05f, 0.60f}
 };
 
+constexpr Box kPieces9[] = {   // roupas da FemininaNormal (modelo 9)
+    {"fantasy_f_bikinibotton", 0.16f, -0.13f, 0.10f},
+    {"fantasy_f_bikinitop", 0.15f, 0.26f, 0.57f},
+    {"fantasy_f_boot1", 0.21f, -1.00f, -0.86f},
+    {"fantasy_f_boot2", 0.22f, -0.99f, -0.88f},
+    {"fantasy_f_boot3", 0.21f, -1.01f, -0.85f},
+    {"fantasy_f_boot5", 0.21f, -1.01f, -0.82f},
+    {"fantasy_f_pants1", 0.21f, -0.91f, 0.11f},
+    {"fantasy_f_pants2", 0.26f, -0.96f, 0.11f},
+    {"fantasy_f_pants4", 0.23f, -0.82f, 0.11f},
+    {"fantasy_f_pants5", 0.21f, -0.90f, 0.11f},
+    {"fantasy_f_short1", 0.20f, -0.19f, 0.11f},
+    {"fantasy_f_slipper1", 0.21f, -1.00f, -0.94f},
+    {"fantasy_f_slipper2", 0.22f, -0.99f, -0.92f},
+    {"fantasy_f_slipper3", 0.21f, -1.00f, -0.79f},
+    {"fantasy_f_torso1", 0.16f, 0.19f, 0.56f},
+    {"fantasy_f_torso2", 0.31f, 0.10f, 0.59f},
+    {"fantasy_f_torso3", 0.15f, 0.03f, 0.38f},
+    {"fantasy_f_torso4", 0.30f, 0.00f, 0.58f},
+    {"fantasy_f_torso5", 0.56f, -0.07f, 0.66f},
+    {"fantasy_f_torso6", 0.21f, -0.25f, 0.56f}
+};
+
 // pecas da Corp visiveis por padrao (as que existem no texdb), usadas quando nenhuma corp foi escolhida
 constexpr const char* kDefaultVisible[] = {"fantasy_f_cop_boot2", "fantasy_f_cop_hat3", "fantasy_f_cop_pants1",
                                            "fantasy_f_cop_torso3", "fantasy_f_cop_torso4", "fantasy_f_cop_vest3"};
@@ -135,12 +160,18 @@ constexpr const char* kDefaultVisible[] = {"fantasy_f_cop_boot2", "fantasy_f_cop
 struct Look {
     std::string corp;
     uint8_t tone = 0, face = 0, hairStyle = 0, hairColor = 0;
-    bool Active() const { return !corp.empty() || tone || hairStyle; }
-    bool operator==(const Look& o) const { return corp == o.corp && tone == o.tone && face == o.face && hairStyle == o.hairStyle && hairColor == o.hairColor; }
+    uint8_t bootSet = 0, bootVar = 0, pantsSet = 0, pantsVar = 0, shirtSet = 0, shirtVar = 0;   // roupas da Normal (pasta + variante)
+    uint8_t under = 0;                                                                           // roupa intima: 0 padrao (preto), 1..6 cor, 9 nenhuma
+    bool Active() const { return !corp.empty() || tone || hairStyle || bootSet || pantsSet || shirtSet; }
+    bool operator==(const Look& o) const {
+        return corp == o.corp && tone == o.tone && face == o.face && hairStyle == o.hairStyle && hairColor == o.hairColor &&
+               bootSet == o.bootSet && bootVar == o.bootVar && pantsSet == o.pantsSet && pantsVar == o.pantsVar &&
+               shirtSet == o.shirtSet && shirtVar == o.shirtVar && under == o.under;
+    }
 };
 
 // ---- fila RPC/chat -> thread do jogo -------------------------------------------------------
-struct Cmd { enum Kind { Set, Clear, Release } kind; PLAYERID id; Look look; };
+struct Cmd { enum Kind { Set, Clear, Release, Reload } kind; PLAYERID id; Look look; };
 std::mutex       s_qMutex;
 std::vector<Cmd> s_q;
 Look             s_localLook;          // espelho do seu proprio visual (protegido por s_qMutex): base dos comandos /rosto, /cabelo...
@@ -170,6 +201,14 @@ uint64_t NowMs() { timespec ts{}; clock_gettime(CLOCK_MONOTONIC, &ts); return (u
 
 void SetInfo(const std::string& t) { { std::lock_guard<std::mutex> l(s_infoMutex); s_info = t; } FLog("[CORPTEX] %s", t.c_str()); }
 
+std::string TexRoot()      // .../SAMP/skins/textures/
+{
+    if (!g_pszStorage || !g_pszStorage[0]) return {};
+    std::string p(g_pszStorage);
+    if (p.back() != '/') p.push_back('/');
+    return p + "SAMP/skins/textures/";
+}
+
 std::string BaseDir()
 {
     if (!g_pszStorage || !g_pszStorage[0]) return {};
@@ -194,6 +233,9 @@ void Sanitize(Look& l)
     if (l.tone > 6) l.tone = 0;
     if (l.tone) { if (l.face < 1) l.face = 1; if (l.face > kFaceVariants[l.tone]) l.face = (uint8_t)kFaceVariants[l.tone]; }
     else l.face = 0;
+    auto cloth = [](uint8_t& set, uint8_t& var) { if (set > kMaxClothSet) set = 0; if (!set) var = 0; else if (var < 1) var = 1; };
+    cloth(l.bootSet, l.bootVar); cloth(l.pantsSet, l.pantsVar); cloth(l.shirtSet, l.shirtVar);
+    if (l.under > 6 && l.under != 9) l.under = 0;
     if (l.hairStyle > 5) l.hairStyle = 0;
     if (l.hairStyle) { if (l.hairColor < 1) l.hairColor = 1; if (l.hairColor > kHairColors[l.hairStyle]) l.hairColor = (uint8_t)kHairColors[l.hairStyle]; }
     else l.hairColor = 0;
@@ -323,11 +365,80 @@ RwTexture* GetAppTex(const std::string& rel)
 {
     auto it = s_appTex.find(rel);
     if (it != s_appTex.end()) { it->second.lastUse = NowMs(); return it->second.tex; }
-    const std::string path = BaseDir() + kAppFolder + "/" + rel;
+    // "roupa/..." vive em textures/9/ (FemininaNormal); o resto em textures/272/aparencia/
+    const std::string path = rel.compare(0, 6, "roupa/") == 0 ? TexRoot() + "9/" + rel : BaseDir() + kAppFolder + "/" + rel;
     RwTexture* t = ::access(path.c_str(), F_OK) == 0 ? LoadPng(path, rel) : nullptr;
     if (!t) FLog("[CORPTEX] AVISO: textura de aparencia ausente: %s", path.c_str());
     s_appTex[rel] = AppTex{t, NowMs()};                // guarda tambem a falha (nao tenta de novo a cada frame)
     return t;
+}
+
+// cor lisa para a roupa intima (bikinitop/bikinibotton nao tem PNG no pacote)
+RwTexture* GetSolidTex(int idx)
+{
+    static const uint8_t kCol[7][3] = {{20, 20, 20}, {20, 20, 20}, {235, 235, 235}, {190, 30, 40}, {30, 60, 170}, {230, 120, 170}, {120, 120, 120}};
+    if (idx < 1 || idx > 6) idx = 1;
+    const std::string key = "solid/" + std::to_string(idx);
+    auto it = s_appTex.find(key);
+    if (it != s_appTex.end()) { it->second.lastUse = NowMs(); return it->second.tex; }
+    std::vector<uint8_t> px(16 * 16 * 4);
+    for (size_t i = 0; i < 16 * 16; ++i) { px[i * 4] = kCol[idx][0]; px[i * 4 + 1] = kCol[idx][1]; px[i * 4 + 2] = kCol[idx][2]; px[i * 4 + 3] = 255; }
+    RwTexture* t = CreateTextureRgba(px.data(), 16, 16, key.c_str());
+    s_appTex[key] = AppTex{t, NowMs()};
+    return t;
+}
+
+// ---- mapa pasta -> material(is) das roupas da Normal (editavel em textures/9/roupa/mapa.txt) ---------------
+// formato do arquivo, uma linha por pasta:   tipo pasta material[,material...]     (# comentario)
+//   ex.:  tshirts 2 fantasy_f_torso1       boot 4 fantasy_f_boot5
+struct ClothMap { std::string tipo; int pasta; std::vector<std::string> mats; };
+std::vector<ClothMap> s_clothMap;
+bool s_clothMapLoaded = false;
+
+constexpr const char* kDefaultClothMap[][3] = {      // PALPITE a confirmar em jogo (ver mapa_roupas.json)
+    {"boot", "1", "fantasy_f_boot1"},   {"boot", "2", "fantasy_f_boot2"},   {"boot", "3", "fantasy_f_boot3"},
+    {"boot", "4", "fantasy_f_boot5"},   {"boot", "5", "fantasy_f_slipper1"}, {"boot", "6", "fantasy_f_slipper2"}, {"boot", "7", "fantasy_f_slipper3"},
+    {"pants", "1", "fantasy_f_pants1"}, {"pants", "2", "fantasy_f_pants2"}, {"pants", "3", "fantasy_f_pants4"},
+    {"pants", "4", "fantasy_f_pants5"}, {"pants", "5", "fantasy_f_short1"}, {"pants", "6", "fantasy_f_torso6"},
+    {"tshirts", "1", "fantasy_f_torso1"}, {"tshirts", "2", "fantasy_f_torso2"}, {"tshirts", "3", "fantasy_f_torso3"},
+    {"tshirts", "4", "fantasy_f_torso4"}, {"tshirts", "5", "fantasy_f_torso5"}, {"tshirts", "6", "fantasy_f_torso6"},
+};
+
+void SetClothMap(const std::string& tipo, int pasta, const std::vector<std::string>& mats)
+{
+    for (ClothMap& c : s_clothMap) if (c.tipo == tipo && c.pasta == pasta) { c.mats = mats; return; }
+    s_clothMap.push_back({tipo, pasta, mats});
+}
+
+void LoadClothMap()
+{
+    s_clothMap.clear();
+    for (const auto& d : kDefaultClothMap) SetClothMap(d[0], std::atoi(d[1]), {d[2]});
+    int overridden = 0;
+    const std::string path = TexRoot() + "9/roupa/mapa.txt";
+    if (FILE* f = std::fopen(path.c_str(), "r")) {
+        char line[256];
+        while (std::fgets(line, sizeof(line), f)) {
+            std::string l = line;
+            const size_t hash = l.find('#'); if (hash != std::string::npos) l.erase(hash);
+            char tipo[16] = {}, mats[200] = {}; int pasta = 0;
+            if (std::sscanf(l.c_str(), "%15s %d %199s", tipo, &pasta, mats) != 3) continue;
+            std::vector<std::string> v; std::string cur;
+            for (char* c = mats;; ++c) { if (*c == ',' || *c == 0) { if (!cur.empty()) v.push_back(SkinImg::Lower(cur)); cur.clear(); if (!*c) break; } else cur.push_back(*c); }
+            const std::string t = SkinImg::Lower(tipo);
+            if ((t == "boot" || t == "pants" || t == "tshirts") && pasta > 0 && !v.empty()) { SetClothMap(t, pasta, v); ++overridden; }
+        }
+        std::fclose(f);
+    }
+    s_clothMapLoaded = true;
+    FLog("[CORPTEX] mapa de roupas: %zu pasta(s) (%d vindas de %s)", s_clothMap.size(), overridden, path.c_str());
+}
+
+const std::vector<std::string>* ClothMats(const char* tipo, int pasta)
+{
+    if (!s_clothMapLoaded) LoadClothMap();
+    for (const ClothMap& c : s_clothMap) if (c.tipo == tipo && c.pasta == pasta) return &c.mats;
+    return nullptr;
 }
 
 bool CorpInUse(const std::string& corp)
@@ -381,6 +492,7 @@ bool PieceCovers(const Box& p, const Box& r)
 const Box* FindPiece(const std::string& key)
 {
     for (const Box& b : kPieces) if (key == b.name) return &b;
+    for (const Box& b : kPieces9) if (key == b.name) return &b;
     return nullptr;
 }
 
@@ -421,6 +533,32 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
             if (hideTex && byIndex && k.compare(0, std::strlen(kPiecePrefix), kPiecePrefix) == 0) { over[k] = hideTex; ++nHidden; }
         } else if (byIndex && model == kCorpModel) {   // sem corp (ou corp indisponivel): vale o que o texdb mostra por padrao
             for (const char* d : kDefaultVisible) if (k == d) if (const Box* b = FindPiece(k)) visible.push_back(b);
+        }
+    }
+
+    // 1b) roupas da FemininaNormal (modelo 9): pasta + variante -> material(is) do DFF, por mapa.txt
+    if (model == kNormalModel && byIndex && (look.bootSet || look.pantsSet || look.shirtSet)) {
+        auto wear = [&](const char* tipo, int set, int var) {
+            if (!set) return;
+            const std::vector<std::string>* mm = ClothMats(tipo, set);
+            if (!mm) { FLog("[CORPTEX] AVISO: sem mapeamento para %s/%d (mapa.txt)", tipo, set); return; }
+            RwTexture* t = GetAppTex(std::string("roupa/") + tipo + "/" + std::to_string(set) + "/" + std::to_string(var) + ".png");
+            if (!t) return;
+            for (const std::string& m : *mm) { over[m] = t; ++nApp; if (const Box* b = FindPiece(m)) visible.push_back(b); }
+        };
+        wear("boot", look.bootSet, look.bootVar);
+        wear("pants", look.pantsSet, look.pantsVar);
+        wear("tshirts", look.shirtSet, look.shirtVar);
+    }
+    // 1c) roupa intima (corpo a mostra): so quando ha tom de pele; some onde uma roupa cobre
+    if (model == kNormalModel && byIndex && look.tone && look.under != 9) {
+        RwTexture* ut = GetSolidTex(look.under ? look.under : 1);
+        for (const char* nm : {"fantasy_f_bikinitop", "fantasy_f_bikinibotton"}) {
+            const Box* ub = FindPiece(nm);
+            bool covered = false;
+            for (const Box* p : visible) if (ub && p != ub && PieceCovers(*p, *ub)) { covered = true; break; }
+            if (covered) { if (hideTex) { over[nm] = hideTex; ++nHidden; } }
+            else if (ut) { over[nm] = ut; ++nApp; }
         }
     }
 
@@ -465,8 +603,9 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
         if (it != over.end()) en.swaps.push_back({mats[i], it->second, nullptr});
     }
 
-    FLog("[CORPTEX] jogador %d modelo=%d corp='%s' tom=%d rosto=%d cabelo=%d/%d: %zu material(is) trocado(s) de %zu (modo %s) | corp=%d aparencia=%d ocultos=%d",
-         (int)id, model, look.corp.c_str(), (int)look.tone, (int)look.face, (int)look.hairStyle, (int)look.hairColor, en.swaps.size(), mats.size(),
+    FLog("[CORPTEX] jogador %d modelo=%d corp='%s' tom=%d rosto=%d cabelo=%d/%d bota=%d/%d calca=%d/%d camisa=%d/%d intima=%d: %zu material(is) trocado(s) de %zu (modo %s) | corp=%d aparencia=%d ocultos=%d",
+         (int)id, model, look.corp.c_str(), (int)look.tone, (int)look.face, (int)look.hairStyle, (int)look.hairColor,
+         (int)look.bootSet, (int)look.bootVar, (int)look.pantsSet, (int)look.pantsVar, (int)look.shirtSet, (int)look.shirtVar, (int)look.under, en.swaps.size(), mats.size(),
          byIndex ? "indice" : "nome", nCorp, nApp, nHidden);
     if (en.swaps.empty()) { SetInfo("nenhum material do ped casou com o visual pedido"); return; }
 
@@ -507,7 +646,8 @@ void Push(Cmd::Kind k, PLAYERID id, const Look& look)
 void PushLook(PLAYERID id, const Look& l) { Push(l.Active() ? Cmd::Set : Cmd::Clear, id, l); }
 
 // ---- RPC -------------------------------------------------------------------------------------
-// formato: uint16 playerid | uint8 len | char corp[len] | uint8 tom | uint8 rosto | uint8 estiloCabelo | uint8 corCabelo
+// formato: uint16 playerid | uint8 len | char corp[len] | uint8 tom | uint8 rosto | uint8 estiloCabelo | uint8 corCabelo |
+//          uint8 botaPasta | botaVar | calcaPasta | calcaVar | camisaPasta | camisaVar | intima
 void ScrCorpTex(RPCParameters* rpcParams)
 {
     RakNet::BitStream bs((unsigned char*)rpcParams->input, (rpcParams->numberOfBitsOfData / 8) + 1, false);
@@ -517,6 +657,8 @@ void ScrCorpTex(RPCParameters* rpcParams)
     if (!bs.Read(len) || len >= sizeof(corp)) return;
     if (len && !bs.Read(corp, len)) return;
     if (!bs.Read(l.tone) || !bs.Read(l.face) || !bs.Read(l.hairStyle) || !bs.Read(l.hairColor)) return;
+    if (!bs.Read(l.bootSet) || !bs.Read(l.bootVar) || !bs.Read(l.pantsSet) || !bs.Read(l.pantsVar) ||
+        !bs.Read(l.shirtSet) || !bs.Read(l.shirtVar) || !bs.Read(l.under)) return;
     corp[len] = 0; l.corp = corp;
     Sanitize(l);
 
@@ -550,6 +692,11 @@ void Process()
 
     for (const Cmd& c : cmds) {
         if (c.kind == Cmd::Release && c.id == 0xFFFF) { while (!s_wantIds.empty()) ForgetWant(s_wantIds.back()); continue; }
+        if (c.kind == Cmd::Reload) {            // /roupa recarregar: le mapa.txt de novo e refaz todo mundo
+            s_clothMapLoaded = false;
+            for (PLAYERID id : s_wantIds) s_tried[id].valid = false;
+            continue;
+        }
         if (c.id >= MAX_PLAYERS) continue;
         if (c.kind == Cmd::Set) {
             if (std::find(s_wantIds.begin(), s_wantIds.end(), c.id) == s_wantIds.end()) s_wantIds.push_back(c.id);
@@ -634,6 +781,9 @@ std::string Describe(const Look& l)
     s += " | tom=" + (l.tone ? std::to_string(l.tone) + " (" + kToneNames[l.tone] + ")" : std::string("-"));
     s += " | rosto=" + (l.face ? std::to_string(l.face) : std::string("-"));
     s += " | cabelo=" + (l.hairStyle ? std::to_string(l.hairStyle) + "/cor " + std::to_string(l.hairColor) : std::string("-"));
+    auto pv = [](uint8_t set, uint8_t var) { return set ? std::to_string(set) + "/" + std::to_string(var) : std::string("-"); };
+    s += " | bota=" + pv(l.bootSet, l.bootVar) + " calca=" + pv(l.pantsSet, l.pantsVar) + " camisa=" + pv(l.shirtSet, l.shirtVar);
+    s += " | intima=" + (l.under == 9 ? std::string("nenhuma") : std::to_string(l.under ? l.under : 1));
     return s;
 }
 
@@ -647,6 +797,18 @@ template <class F> std::string ApplyLocal(PLAYERID me, F&& edit)
     { std::lock_guard<std::mutex> g(s_qMutex); s_localLook = l; }
     PushLook(me, l);
     return "[CORPTEX] " + Describe(l);
+}
+
+// quantas variantes a pasta tem em disco (1.png, 2.png, ... sem buraco)
+int CountVariants(const char* tipo, int set)
+{
+    int n = 0;
+    while (n < 200) {
+        const std::string p = TexRoot() + "9/roupa/" + tipo + "/" + std::to_string(set) + "/" + std::to_string(n + 1) + ".png";
+        if (::access(p.c_str(), F_OK) != 0) break;
+        ++n;
+    }
+    return n;
 }
 
 } // namespace
@@ -685,11 +847,47 @@ std::string VisualCommand(const std::string& cmdIn, const std::string& argsIn)  
     if (cmd == "visual") {
         if (args == "limpar" || args == "clear" || args == "reset") return ApplyLocal(me, [](Look& l) { l = Look{}; });
         Look l; { std::lock_guard<std::mutex> g(s_qMutex); l = s_localLook; }
-        return "[CORPTEX] " + Describe(l) + " | /rosto <tom 1-6> <variante> | /pele <tom> | /cabelo <estilo 1-5> <cor> | /corp <nome> | /visual limpar";
+        return "[CORPTEX] " + Describe(l) + " | /rosto <tom> <var> | /pele <tom> | /cabelo <estilo> <cor> | /bota /calca /camisa <pasta> <var> | /intima <0-6> | /roupa lista | /corp <nome> | /visual limpar";
+    }
+
+    if (cmd == "roupa") {
+        if (args == "limpar" || args == "clear" || args == "reset")
+            return ApplyLocal(me, [](Look& l) { l.bootSet = l.bootVar = l.pantsSet = l.pantsVar = l.shirtSet = l.shirtVar = 0; });
+        if (args == "recarregar" || args == "reload") {
+            Push(Cmd::Reload, me, Look{});
+            return "[CORPTEX] mapa de roupas recarregado (textures/9/roupa/mapa.txt)";
+        }
+        if (args == "lista" || args == "list") {
+            std::string s;
+            for (const char* t : {"boot", "pants", "tshirts"}) {
+                s += std::string(s.empty() ? "" : " | ") + (std::strcmp(t, "boot") == 0 ? "bota" : std::strcmp(t, "pants") == 0 ? "calca" : "camisa") + ":";
+                for (int p = 1; p <= kMaxClothSet; ++p) { const int n = CountVariants(t, p); if (n) s += " " + std::to_string(p) + "(" + std::to_string(n) + ")"; }
+            }
+            return "[CORPTEX] pasta(variantes) - " + s;
+        }
+        return "[CORPTEX] uso: /roupa limpar | lista | recarregar  -  /bota /calca /camisa <pasta> <variante>  -  /intima <0-6>";
     }
 
     const std::vector<int> v = Ints(args);
     if (v.size() == 1 && v[0] == -1000) return "[CORPTEX] use so numeros";
+
+    if (cmd == "bota" || cmd == "calca" || cmd == "camisa") {
+        const char* tipo = cmd == "bota" ? "boot" : cmd == "calca" ? "pants" : "tshirts";
+        if (v.empty() || v.size() > 2) return "[CORPTEX] uso: /" + cmd + " <pasta> <variante> (0 remove; /roupa lista mostra as pastas)";
+        if (v[0] < 0 || v[0] > kMaxClothSet) return "[CORPTEX] pasta invalida";
+        auto field = [&](Look& l) -> std::pair<uint8_t*, uint8_t*> {
+            return cmd == "bota" ? std::make_pair(&l.bootSet, &l.bootVar) : cmd == "calca" ? std::make_pair(&l.pantsSet, &l.pantsVar) : std::make_pair(&l.shirtSet, &l.shirtVar);
+        };
+        if (v[0] == 0) return ApplyLocal(me, [&](Look& l) { auto f = field(l); *f.first = 0; *f.second = 0; });
+        const int n = CountVariants(tipo, v[0]);
+        if (n == 0) return "[CORPTEX] a pasta " + std::to_string(v[0]) + " nao existe em textures/9/roupa/" + tipo;
+        if (v.size() == 2 && (v[1] < 1 || v[1] > n)) return "[CORPTEX] a pasta " + std::to_string(v[0]) + " tem variantes de 1 a " + std::to_string(n);
+        return ApplyLocal(me, [&](Look& l) { auto f = field(l); *f.first = (uint8_t)v[0]; if (v.size() == 2) *f.second = (uint8_t)v[1]; else if (!*f.second) *f.second = 1; });
+    }
+    if (cmd == "intima") {
+        if (v.size() != 1 || v[0] < 0 || v[0] > 6) return "[CORPTEX] uso: /intima <cor 1-6> (0 = nenhuma): 1 preto, 2 branco, 3 vermelho, 4 azul, 5 rosa, 6 cinza";
+        return ApplyLocal(me, [&](Look& l) { l.under = v[0] == 0 ? 9 : (uint8_t)v[0]; });
+    }
 
     if (cmd == "rosto" || cmd == "pele") {
         if (v.empty() || v.size() > (cmd == "rosto" ? 2u : 1u)) return cmd == "rosto" ? "[CORPTEX] uso: /rosto <tom 1-6> <variante> (0 remove)" : "[CORPTEX] uso: /pele <tom 1-6> (0 remove)";

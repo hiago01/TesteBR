@@ -6,8 +6,11 @@
 //   Como:   a troca e feita SO durante o desenho do ped (CEntity::Render): poe a textura da corp nos materiais,
 //           desenha, devolve a original. O molde do modelo e compartilhado, entao nenhum outro ped muda.
 //   PNGs de aparencia: textures/272/aparencia/rosto/<tom 1-6>/<variante>.png | cabelo/<estilo 1-5>/<cor>.png | pele/{torso,leg,feet}/<tom>.png
-//   Teste:  /corp <nome|limpar|lista> | /rosto <tom> <variante> | /pele <tom> | /cabelo <estilo> <cor> | /visual [limpar]   (so no seu ator)
-//   Rede:   RPC 231 servidor -> cliente: uint16 playerid | uint8 len | char corp[len] | uint8 tom | uint8 rosto | uint8 estilo | uint8 cor
+//   Roupas (modelo 9): textures/9/roupa/<boot|pants|tshirts>/<pasta>/<variante>.png ; pasta -> material em textures/9/roupa/mapa.txt (editavel)
+//   Teste:  /corp <nome|limpar|lista> | /rosto <tom> <variante> | /pele <tom> | /cabelo <estilo> <cor> | /visual [limpar]
+//           /bota /calca /camisa <pasta> <variante> | /intima <0-6> | /roupa lista|limpar|recarregar   (so no seu ator)
+//   Rede:   RPC 231 servidor -> cliente: uint16 playerid | uint8 len | char corp[len] | uint8 tom | uint8 rosto | uint8 estilo | uint8 cor |
+//           uint8 botaPasta | botaVar | calcaPasta | calcaVar | camisaPasta | camisaVar | intima
 //           (len 0 e tudo 0 = limpar)
 //
 // Thread: RPC/chat so enfileiram. Tudo que toca o RenderWare roda na thread do jogo (Process + hook de render).
