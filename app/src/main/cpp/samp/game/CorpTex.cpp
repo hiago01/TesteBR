@@ -457,8 +457,7 @@ std::string DebugCommand(const std::string& argsIn)
     const auto corps = ListCorps();
     if (std::find(corps.begin(), corps.end(), a) == corps.end()) return "[CORPTEX] corp '" + a + "' nao existe (use /corp lista)";
     Push(Cmd::Set, me, a);
-//    return "[CORPTEX] corp '" + a + "' pedida; veja /corp info e o log [CORPTEX]";
-    return;
+    return " ";
 }
 
 } // namespace CorpTex
