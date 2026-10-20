@@ -50,7 +50,7 @@ class CCustomSkin
 {
 public:
     static constexpr int  kTargetModelId = 7;      // MODEL_MALE01
-    static constexpr bool kAutoApply     = true;   // aplica sozinho (1x por sessão) quando o modelo 7 estiver pronto
+    static constexpr bool kAutoApply     = false;   // aplica sozinho (1x por sessão) quando o modelo 7 estiver pronto
 
     static void RequestLoad();     // qualquer thread
     static void RequestUnload();

@@ -36,6 +36,8 @@ namespace
     bool  (*s_convertOrig)(char*, int, int) = nullptr;
     void* (*s_getTexOrig)(const char*)      = nullptr;
 
+    DffPreflight::Info s_info;        // inventario do skin.dff (exposto por GetInfo para o CorpTex)
+    bool s_infoOk = false;
     std::vector<uint8_t> s_file;      // conteudo do skin.dff
     bool s_fileTried = false;
     bool s_fileOk    = false;
@@ -110,6 +112,7 @@ namespace
                 s_file.clear();
                 return false;
             }
+            s_info = info; s_infoOk = true;
             FLog("[SKIN7S] preflight OK | RW %s | frames=%d atomics=%d geom=%d tris=%llu verts=%llu mats=%d | ossos=%d usados=%d pesos=%d | HAnim ids=%zu",
                  DffPreflight::VersionString(info.stamp).c_str(), info.frames, info.atomics, info.geoms,
                  (unsigned long long)info.tris, (unsigned long long)info.verts, info.materials,
@@ -208,6 +211,8 @@ namespace
 
 namespace CustomSkinStream
 {
+    const DffPreflight::Info* GetInfo() { return s_infoOk ? &s_info : nullptr; }
+
     void Install()
     {
         static bool done = false;

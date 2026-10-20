@@ -43,6 +43,7 @@
 #include "CustomSkin.h"
 #include "Plugins/RpAnimBlendPlugin/RpAnimBlend.h"
 #include "CustomSkinStream.h"
+#include "CorpTex.h"
 //#include "CPedGTA.h"
 extern UI* pUI;
 extern CGame* pGame;
@@ -733,6 +734,7 @@ void CEntity_Render_hook(CEntityGTA* pEntity)
         }
     }
     g_iLastRenderedObject = pEntity->GetModelId();
+    CorpTex::RenderScope corpScope(pEntity);   // so atua em ped com /corp ativo (fast path: 1 load atomico)
     CEntity_Render(pEntity);
 }
 
@@ -2407,6 +2409,7 @@ void ClothesFrameTick()
     CCameraZoom::Process();                // aplica o zoom de camera salvo (pinca desativada)
     CClothesSync::Process();               // CJ real (RPC do servidor e /cj)
     CCustomSkin::Process();                // skin DFF (/skin7)
+    CorpTex::Process();                    // texturas por corporacao, por jogador (/corp)
     ProcessPendingPlayerClothesRebuild();  // testes manuais (/testeclothes)
 }
 

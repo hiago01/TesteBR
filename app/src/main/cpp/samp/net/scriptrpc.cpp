@@ -8,6 +8,7 @@
 #include "../game/IdCard3D.h"
 #include "../gui/samp_widgets/inventory.h"
 #include "../game/CustomAnimSync.h"
+#include "../game/CorpTex.h"
 #include "../game/CustomAnimTest.h"
 
 extern CGame *pGame;
@@ -2113,6 +2114,8 @@ void RegisterScriptRPCs(RakClientInterface *pRakClient)
 	InventoryUI::Reset();  // nova conexão: inventário fechado e vazio
 	CustomAnimSync::Register(pRakClient);   // RPC 230: anim customizada (servidor -> cliente)
 	CustomAnimSync::ClearAll();             // nova conexão: descarta estado da sessão anterior
+	CorpTex::Register(pRakClient);          // RPC 231: textura por corporação (servidor -> cliente)
+	CorpTex::ClearAll();                    // nova conexão: descarta corps da sessão anterior
 	CustomAnimTest::AutoLoad();                // carrega SAMP/anims/poses.ifp (cruzar bracos / apontar) se existir
 	Hose_Stop(-1);         // nova conexão: solta qualquer mangueira da sessão anterior
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetPlayerName, ScrSetPlayerName);
@@ -2173,6 +2176,7 @@ void UnregisterScriptRPCs(RakClientInterface *pRakClient)
 	InventoryUI::Reset();
 	IdCard3D_Reset();      // saiu do servidor: limpa cartões
 	CustomAnimSync::Unregister(pRakClient);
+	CorpTex::Unregister(pRakClient);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetMapIcon);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrDisableMapIcon);
 

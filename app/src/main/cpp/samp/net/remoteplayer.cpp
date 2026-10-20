@@ -5,6 +5,7 @@
 #include "../gui/gui.h"
 #include "../vendor/encoding/encoding.h"
 #include "../game/CustomAnimSync.h"
+#include "../game/CorpTex.h"
 
 extern UI* pUI;
 extern CGame *pGame;
@@ -45,6 +46,7 @@ CRemotePlayer::~CRemotePlayer()
 	// field_1E9 = 0;
 
 	CustomAnimSync::OnPlayerStreamOut(m_PlayerID);   // anim customizada: limpa cache deste slot
+	CorpTex::OnPlayerStreamOut(m_PlayerID);
 
 	if (m_pPlayerPed) {
 		pGame->RemovePlayer(m_pPlayerPed);
@@ -566,6 +568,7 @@ void CRemotePlayer::Remove()
 	if (m_pPlayerPed)
 	{
 		CustomAnimSync::OnPlayerStreamOut(m_PlayerID);   // ANTES de destruir o ped
+		CorpTex::OnPlayerStreamOut(m_PlayerID);
 		ResetAllSyncAttributes();
 		pGame->RemovePlayer(m_pPlayerPed);
 		m_pPlayerPed = nullptr;

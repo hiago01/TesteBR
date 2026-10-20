@@ -11,6 +11,7 @@
 #include "../../game/Hose.h"
 #include "../../game/IdCard3D.h"
 #include "../../game/CustomSkin.h"
+#include "../../game/CorpTex.h"
 #include "../../game/camerazoom.h"
 #include "../../game/CustomAnimTest.h"
 #include "../../game/movemode.h"
@@ -156,6 +157,15 @@ if (input == "/skin7" || input.rfind("/skin7 ", 0) == 0)
             // skin DFF customizada: /skin7 load | info | unload
             std::string args = input.size() > 6 ? input.substr(7) : std::string();
             std::string reply = CCustomSkin::DebugCommand(args);
+            addDebugMessage("%s", reply.c_str());
+
+            return;
+        }
+if (input == "/corp" || input.rfind("/corp ", 0) == 0)
+        {
+            // texturas por corporacao no seu ator: /corp <nome> | limpar | lista | info
+            std::string args = input.size() > 5 ? input.substr(6) : std::string();
+            std::string reply = CorpTex::DebugCommand(args);
             addDebugMessage("%s", reply.c_str());
 
             return;

@@ -5,6 +5,7 @@
 #include "../vendor/encoding/encoding.h"
 #include "../settings.h"
 #include "../game/CustomAnimSync.h"
+#include "../game/CorpTex.h"
 
 extern UI* pUI;
 extern CGame *pGame;
@@ -635,6 +636,7 @@ void WorldPlayerAdd(RPCParameters *rpcParams)
 			{
                 FLog("WorldPlayerAdd");
 				CustomAnimSync::OnPlayerStreamIn(playerId);   // reaplica anim customizada em cache
+				CorpTex::OnPlayerStreamIn(playerId);          // corp: o Process reaplica quando o ped existir
 				pPlayerPed = pRemotePlayer->GetPlayerPed();
 				if (pPlayerPed)
 				{
