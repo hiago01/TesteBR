@@ -457,7 +457,7 @@ void CNetGame::ShutdownForGameModeRestart()
 	//MicroIcon::Hide();
 	//Network::OnRaknetDisconnect();
 
-	if (pUI) pUI->chat()->addInfoMessage("The server is restarting..");
+//	if (pUI) pUI->chat()->addInfoMessage("The server is restarting..");
 }
 
 int iVehiclePoolProcessFlag = 0;
@@ -624,17 +624,17 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 // 0.3.7
 void CNetGame::Packet_FailedInitializeEncription(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("Falha ao inicializar a criptografia.");
+//	if (pUI) pUI->chat()->addDebugMessage("Falha ao inicializar a criptografia.");
 }
 // 0.3.7
 void CNetGame::Packet_ConnectionBanned(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("Você está banido deste servidor.");
+//	if (pUI) pUI->chat()->addDebugMessage("Você está banido deste servidor.");
 }
 // 0.3.7
 void CNetGame::Packet_InvalidPassword(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("Senha do servidor incorreta.");
+//	if (pUI) pUI->chat()->addDebugMessage("Senha do servidor incorreta.");
 	m_pRakClient->Disconnect(0);
 }
 // 0.3.7
@@ -644,7 +644,7 @@ void CNetGame::Packet_ConnectionLost(Packet *pkt)
 		m_pRakClient->Disconnect(0);
 	}
 
-	if (pUI) pUI->chat()->addDebugMessage("Conexão com o servidor perdida. Reconectando...");
+//	if (pUI) pUI->chat()->addDebugMessage("Conexão com o servidor perdida. Reconectando...");
 	ShutdownForGameModeRestart();
 
 	CPlayerPool *pPlayerPool = GetPlayerPool();
