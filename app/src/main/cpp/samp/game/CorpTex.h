@@ -1,7 +1,8 @@
 // CorpTex.h - texturas por corporacao, POR JOGADOR, para a skin FemininaCorp (DFF do modelo kHostModel)
 //
 //   PNGs:   <raiz>/SAMP/skins/textures/272/<corp>/<NomeDaTextura>.png   (ex.: 272/pmerj/fantasy_f_cop_torso4.png)
-//   Regra:  so os materiais cujo nome tem PNG naquela pasta sao trocados; o resto fica com a textura padrao.
+//   Regra:  materiais cujo nome tem PNG naquela pasta recebem o PNG; pecas de roupa da Corp (fantasy_f_cop_*)
+//           SEM PNG naquela pasta ficam ocultas (textura invisivel "male01" do texdb); corpo/cabelo/tatuagem nao mudam.
 //   Como:   a troca e feita SO durante o desenho do ped (CEntity::Render): poe a textura da corp nos materiais,
 //           desenha, devolve a original. O molde do modelo e compartilhado, entao nenhum outro ped muda.
 //   Teste:  /corp <nome> | /corp limpar | /corp lista | /corp info   (so no seu proprio ator)

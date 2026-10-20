@@ -43,6 +43,7 @@
 #include "../vendor/stb/stb_image.h"      // a implementacao esta em sprite2d.cpp
 #include "../net/netgame.h"
 #include "playerped.h"
+#include "Textures/TextureDatabaseRuntime.h"   // banco de texturas do jogo ("male01" = invisivel)
 #include "../vendor/raknet/SAMP/SAMPRPC.h"
 
 extern CNetGame* pNetGame;
@@ -58,6 +59,8 @@ constexpr int      kHostModel      = 7;      // modelo que hospeda o skin.dff da
 constexpr const char* kSkinFolder  = "272";  // pasta dos PNGs: textures/<kSkinFolder>/<corp>/
 constexpr int      kMaxTexSize     = 1024;   // teto de lado no celular (os PNGs de 2048 sao reduzidos)
 constexpr int      kMaxMaterials   = 512;
+constexpr const char* kHideTexture = "male01";          // textura invisivel do texdb: pecas que a corp NAO tem ficam ocultas
+constexpr const char* kPiecePrefix = "fantasy_f_cop_";  // so as pecas de roupa da Corp sao ocultadas (corpo, cabelo e tatuagens nao)
 constexpr size_t   kMaxCachedCorps = 3;
 constexpr uint64_t kGraveyardMs    = 5000;
 constexpr uintptr_t OFF_GEOM_MATLIST      = 0x28;   // RpGeometry::matList.materials  (igual ao CustomSkin.cpp)
@@ -267,22 +270,37 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, Corp* c, const std::string& corp)
                        mats.size(), info ? info->materialsList.size() : (size_t)0);
 
     Entry en{id, e, e->m_pRwClump, corp, {}, false, 0};
-    std::vector<std::string> used;
+    std::vector<std::string> used, hidden;
+
+    // textura invisivel (male01) do banco do jogo; sem ela as pecas ausentes ficam com a textura padrao
+    RwTexture* hideTex = byIndex ? TextureDatabaseRuntime::GetTexture(kHideTexture) : nullptr;
+    if (byIndex && !hideTex) FLog("[CORPTEX] AVISO: textura '%s' nao achada no texdb: pecas que a corp nao tem ficam com a textura padrao", kHideTexture);
+
     for (size_t i = 0; i < mats.size(); ++i) {
         std::string key;
         if (byIndex) key = SkinImg::Lower(info->materialsList[i].texture);
         else if (mats[i] && mats[i]->texture) key = SkinImg::Lower(std::string(mats[i]->texture->name, strnlen(mats[i]->texture->name, 32)));
         if (key.empty() || !mats[i]) continue;
         auto it = c->tex.find(key);
-        if (it == c->tex.end()) continue;
+        if (it == c->tex.end()) {
+            // peca de roupa da Corp que esta corp nao tem -> oculta (o nome vem do DFF, so no modo indice)
+            if (hideTex && byIndex && key.compare(0, std::strlen(kPiecePrefix), kPiecePrefix) == 0) {
+                en.swaps.push_back({mats[i], hideTex, nullptr});
+                hidden.push_back(key);
+            }
+            continue;
+        }
         en.swaps.push_back({mats[i], it->second, nullptr});
         used.push_back(key);
     }
     std::string unused;
     for (const auto& kv : c->tex) if (std::find(used.begin(), used.end(), kv.first) == used.end()) unused += " " + kv.first;
 
-    FLog("[CORPTEX] jogador %d corp=%s: %zu material(is) trocado(s) de %zu (modo %s)%s%s", (int)id, corp.c_str(), en.swaps.size(), mats.size(),
-         byIndex ? "indice" : "nome", unused.empty() ? "" : " | PNG sem material no DFF:", unused.c_str());
+    std::string hid;
+    for (const std::string& h : hidden) hid += " " + h;
+    FLog("[CORPTEX] jogador %d corp=%s: %zu material(is) trocado(s) de %zu (modo %s), %zu oculto(s)%s%s%s", (int)id, corp.c_str(), en.swaps.size(), mats.size(),
+         byIndex ? "indice" : "nome", hidden.size(), hid.empty() ? "" : " [ocultos:", hid.c_str(), hid.empty() ? "" : "]");
+    if (!unused.empty()) FLog("[CORPTEX]   PNG sem material:%s", unused.c_str());
     if (en.swaps.empty()) { SetInfo("corp '" + corp + "': nenhum material do ped casou com os PNGs"); return; }
 
     if (s_entries.empty()) { s_firstEntryMs = NowMs(); s_totalRenders = 0; s_warnedNoHook = false; }
