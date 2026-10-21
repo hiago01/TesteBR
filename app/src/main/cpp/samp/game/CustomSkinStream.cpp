@@ -22,7 +22,6 @@
 #include <string>
 #include <vector>
 #include <unistd.h>
-#include <sys/stat.h>
 
 #include "../main.h"
 #include "../vendor/armhook/patch.h"
@@ -60,8 +59,6 @@ namespace
 
     bool s_inSkinLoad = false;        // true enquanto o jogo converte um modelo com a nossa skin
     bool s_fallbackOn = false;        // SAMP/skins/fallback_tex existe: textura nao achada -> usa "male01"
-    // [DIAG] contadores do carregamento em andamento (zerados em Convert_hook, resumidos ao final)
-    int  s_texAsked = 0, s_texMissing = 0, s_texFallback = 0;
 
     // Lista de bancos de textura registrados (suposicao: GOT 0x851CF8 -> TDBArray {numAlloced, numEntries, dataPtr}).
     // Loga so quando MUDA (n ou nulos) para achar QUANDO um banco nulo entra na lista.
@@ -109,18 +106,6 @@ namespace
             if (name && Exists(dir + name)) { path = dir + name; break; }
         if (path.empty()) { FLog("[SKIN7S] nenhum DFF do modelo %d em %s (%s): usando o original", model, dir.c_str(), sk.files[0]); return false; }
 
-        // [DIAG] mostra TODOS os candidatos que existem e qual foi escolhido (o primeiro da lista vence; um
-        // skin271.dff esquecido na pasta faz o male.dff ser IGNORADO).
-        for (const char* name : sk.files)
-        {
-            if (!name) continue;
-            const std::string cand = dir + name;
-            struct stat st {};
-            if (::stat(cand.c_str(), &st) == 0)
-                FLog("[SKIN7S] modelo %d: candidato '%s' existe (%lld bytes)%s", model, name, (long long)st.st_size,
-                     cand == path ? "  <== ESCOLHIDO" : "  (IGNORADO: o primeiro da lista vence)");
-        }
-
         FILE* f = std::fopen(path.c_str(), "rb");
         if (!f) { FLog("[SKIN7S] %s nao abriu: usando o modelo %d original", path.c_str(), model); return false; }
 
@@ -156,9 +141,6 @@ namespace
                  info.bones, info.usedBones, info.maxWeights, info.hanimIds.size());
             for (const std::string& w : DffPreflight::Warnings(info))
                 FLog("[SKIN7S] AVISO: %s", w.c_str());
-            // [DIAG] inventario: textura e triangulos de cada material (o jogo vai pedir cada nome ao texdb)
-            for (const DffPreflight::MaterialInfo& mi : info.materialsList)
-                FLog("[SKIN7S] modelo %d mat %d: tex='%s' tris=%u%s", model, mi.index, mi.texture.c_str(), (unsigned)mi.tris, mi.textured ? "" : " (sem textura)");
         }
 
         s_fallbackOn = Exists(dir + "fallback_tex");
@@ -195,8 +177,6 @@ namespace
         }
         void* r = s_getTexOrig(name);
         if (!s_inSkinLoad) return r;
-        ++s_texAsked;
-        if (!r) ++s_texMissing;
 
         if (!r && s_fallbackOn)
         {
@@ -204,7 +184,6 @@ namespace
             if (!fb) fb = s_getTexOrig("male01");
             if (fb)
             {
-                ++s_texFallback;
                 FLog("[SKIN7S] textura '%s' nao achada -> fallback male01 %p", name ? name : "(null)", fb);
                 return fb;
             }
@@ -241,13 +220,9 @@ namespace
              (int)CStreaming::ms_streamingBufferSize, sectors, sectors * (uint32_t)STREAMING_SECTOR_SIZE);
         info.m_nCdSize = sectors;          // o jogo monta o stream de memoria com GetCdSize() * 2048
         CheckRegistered("antes-skin", model);
-        s_texAsked = s_texMissing = s_texFallback = 0;
-        FLog("[SKIN7S] modelo %d: chamando ConvertBufferToObject (se o log PARAR aqui, o crash e dentro do motor/texdb)", model);
         s_inSkinLoad = true;
         const bool ok = s_convertOrig((char*)mem, model, a3);
         s_inSkinLoad = false;
-        FLog("[SKIN7S] modelo %d: ConvertBufferToObject retornou ok=%d | texturas pedidas=%d nao achadas=%d via fallback=%d",
-             model, (int)ok, s_texAsked, s_texMissing, s_texFallback);
         CheckRegistered("depois-skin", model);
         info.m_nCdSize = oldSectors;       // mantem a contabilidade original do streaming
         std::free(mem);

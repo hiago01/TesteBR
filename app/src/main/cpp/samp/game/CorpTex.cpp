@@ -71,7 +71,9 @@ namespace {
 constexpr int      kCorpModel      = 7;      // hospeda o DFF da FemininaCorp (so este tem as pecas fantasy_f_cop_*)
 constexpr int      kNormalModel    = 9;      // hospeda o DFF da FemininaNormal (mesmo corpo: rosto, cabelo, tom de pele)
 // (quando migrar o DFF da Corp para o 272, troque kCorpModel e a tabela s_skins do CustomSkinStream.cpp)
-bool IsHostModel(int m) { return m == kCorpModel || m == kNormalModel; }
+constexpr int      kMaleModel      = 271;    // hospeda o DFF masculino (male.dff): so texturas por NOME do material (sem rosto/pele/roupa)
+constexpr const char* kMaleDefault = "masculino";   // pasta usada pelo 271 quando nenhuma /corp foi escolhida: textures/272/masculino/
+bool IsHostModel(int m) { return m == kCorpModel || m == kNormalModel || m == kMaleModel; }
 constexpr const char* kSkinFolder  = "272";  // textures/<kSkinFolder>/<corp>/  e  textures/<kSkinFolder>/aparencia/...
 constexpr const char* kAppFolder   = "aparencia";
 constexpr int      kMaxTexSize     = 1024;   // teto de lado no celular (os PNGs de 2048 sao reduzidos)
@@ -543,7 +545,9 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
     Corp* c = nullptr;
     // Vale para os dois modelos: no 7 (Corp) as pecas fantasy_f_cop_*; no 9 (Normal) qualquer peca pelo NOME do material
     // (fantasy_f_torso2.png, fantasy_f_pants1.png, fantasy_f_boot1.png ...) dentro de textures/272/<pasta>/  ->  /corp <pasta>
-    if (!look.corp.empty()) { c = EnsureCorp(look.corp); if (!c) FLog("[CORPTEX] corp '%s' indisponivel: ignorada", look.corp.c_str()); }
+    // Modelo 271 (masculino): sem /corp usa a pasta padrao, senao o corpo fica invisivel (todo material sem PNG = male01 = oculto)
+    const std::string corpName = (look.corp.empty() && model == kMaleModel) ? std::string(kMaleDefault) : look.corp;
+    if (!corpName.empty()) { c = EnsureCorp(corpName); if (!c) FLog("[CORPTEX] corp '%s' indisponivel: ignorada", corpName.c_str()); }
     for (size_t i = 0; i < mats.size(); ++i) {
         const std::string& k = keys[i];
         if (k.empty() || !mats[i]) continue;
@@ -723,6 +727,20 @@ void Process()
             s_look[c.id] = c.look; s_tried[c.id].valid = false;
         } else {                                            // Clear ou Release de um jogador
             ForgetWant(c.id);
+        }
+    }
+
+    // Modelo 271: o servidor nao precisa mandar nada. A cada 0,5 s inclui quem esta com a skin 271 para receber a pasta padrao.
+    {
+        static uint64_t s_lastScanMs = 0;
+        const uint64_t nowScan = NowMs();
+        if (nowScan - s_lastScanMs >= 500) {
+            s_lastScanMs = nowScan;
+            for (PLAYERID id = 0; id < MAX_PLAYERS; ++id) {
+                CEntityGTA* e = GetEnt(id);
+                if (e && (int)e->GetModelId() == kMaleModel && std::find(s_wantIds.begin(), s_wantIds.end(), id) == s_wantIds.end())
+                    s_wantIds.push_back(id);
+            }
         }
     }
 
