@@ -29,6 +29,17 @@
 //                             idx  = só mat_NN.png (identificar partes)   none = não aplica PNG
 //   png                     recarrega os PNGs ao vivo no molde instalado (sem reler o DFF)
 //
+// PACK DE TEXTURAS POR SLOT (variantes de roupa; veja SkinSlots.h e tools_skin_pack.py)
+//   pasta no aparelho:  <raiz>/SAMP/skins/pack/<pasta>/<n>.png   (o cliente só lê PNG: converta os .jpeg)
+//   pack                    confere o pack: quantos PNG e quantos JPEG (JPEG não carrega) por pasta
+//   slots                   slot -> material(is) do DFF -> pasta do pack; grava SAMP/skins/slots.csv
+//   slot <nome> <n>         aplica a variante n (pasta do slot) ao vivo e deixa o slot visível
+//   slot <nome> + | -       próxima / anterior variante existente (percorre o pack)
+//   slot <nome> on | off    mostra / oculta o slot
+//   slot <nome> pasta/arq   caminho explícito (marcas: versace/tshirts/2_1)
+//   set <materiais> <pasta/arq>   teste livre por índice de material (ex.: set 25 tshirts/1/34)
+//   Slots com evidência 0 em SkinSlots.h são HIPÓTESES (pants/shorts, heads, sobrancelha, barba, pele).
+//
 // COMO OS MATERIAIS SÃO OCULTADOS
 //   O DFF tem 1 geometria com 42 materiais; os triângulos gravam material 0 e a divisão real
 //   está só no BinMesh PLG. Por isso NUNCA se faz RpGeometryLock/Unlock (reconstruiria a malha

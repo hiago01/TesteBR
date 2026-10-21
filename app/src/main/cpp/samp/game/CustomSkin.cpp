@@ -15,6 +15,7 @@
 #include <vector>
 
 #include <unistd.h>
+#include <sys/stat.h>
 
 #include "../main.h"
 #include "../vendor/armhook/patch.h"
@@ -22,6 +23,7 @@
 #include "RW/RenderWare.h"
 #include "DffPreflight.h"
 #include "SkinImageUtil.h"
+#include "SkinSlots.h"
 
 #ifndef CUSTOMSKIN_HOST_STUBS
 #include "../vendor/stb/stb_image.h"      // a implementação (STB_IMAGE_IMPLEMENTATION) está em sprite2d.cpp
@@ -956,6 +958,288 @@ namespace
                 (problems.empty() ? std::string() : " | " + std::to_string(problems.size()) + " falha(s): veja o log"));
     }
 
+    // ===================================================================
+    // Pack de texturas por slot: /skin7 pack | slots | slot | set
+    //   <raiz>/SAMP/skins/pack/<pasta>/<n>.png      (tools_skin_pack.py converte os .jpeg em .png)
+    //   O cliente compila o stb_image com STBI_ONLY_PNG: arquivo .jpeg NÃO carrega.
+    // ===================================================================
+    std::unordered_map<std::string, int> s_slotVar;   // slot -> última variante numérica aplicada
+
+    std::string PackDir()
+    {
+        const std::string d = SkinDir();
+        return d.empty() ? d : d + "pack/";
+    }
+
+    bool IsDirPath(const std::string& path)
+    {
+        struct stat st {};
+        return ::stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+    }
+
+    // Variantes numéricas "<n>.png" existentes em pack/<folder>, em ordem crescente.
+    std::vector<int> PackVariants(const std::string& folder)
+    {
+        std::vector<int> v;
+        DIR* d = ::opendir((PackDir() + folder).c_str());
+        if (!d) return v;
+        while (dirent* e = ::readdir(d))
+        {
+            const std::string fn = e->d_name;
+            if (fn.size() < 5 || SkinImg::Lower(fn.substr(fn.size() - 4)) != ".png") continue;
+            const std::string stem = fn.substr(0, fn.size() - 4);
+            if (stem.empty() || stem.size() > 6) continue;
+            bool digits = true;
+            for (char c : stem) if (!std::isdigit((unsigned char)c)) { digits = false; break; }
+            if (digits) v.push_back(std::atoi(stem.c_str()));
+        }
+        ::closedir(d);
+        std::sort(v.begin(), v.end());
+        return v;
+    }
+
+    // Arquivo do pack para rel ("tshirts/1/34"). Só aceita caminho relativo sem "..".
+    std::string PackFile(const std::string& rel, std::string& err)
+    {
+        if (rel.empty() || rel[0] == '/' || rel.find("..") != std::string::npos || rel.find('\\') != std::string::npos)
+        {
+            err = "caminho inválido (use pasta/n, ex.: tshirts/1/34)";
+            return {};
+        }
+        const std::string base = PackDir() + rel;
+        for (const char* ext : { ".png", ".PNG" })
+            if (FileExists(base + ext)) return base + ext;
+        for (const char* ext : { ".jpeg", ".jpg", ".JPEG", ".JPG" })
+            if (FileExists(base + ext)) { err = "'" + rel + "' é JPEG: converta com tools_skin_pack.py (o cliente só lê PNG)"; return {}; }
+        err = "não achei pack/" + rel + ".png";
+        return {};
+    }
+
+    std::vector<int> SlotMaterials(const SkinSlots::Slot& sl)
+    {
+        std::vector<int> r;
+        for (size_t i = 0; i < s_parsed.materialsList.size(); ++i)
+            if (SkinSlots::TextureListHas(sl.texture, s_parsed.materialsList[i].texture.c_str())) r.push_back((int)i);
+        return r;
+    }
+
+    // Troca a textura dos materiais idx pelo PNG do pack (ao vivo, no molde instalado) e os deixa visíveis.
+    // Mesmas regras de referência do TexturePass(reload): 1 ref nossa por material em s_enabledTex,
+    // a antiga vai para o cemitério com atraso.
+    bool ApplyPack(const std::vector<int>& idx, const std::string& rel, std::string& note)
+    {
+        if (!InstalledOurs()) { note = "ERRO: nosso molde não está instalado (use /skin7 apply primeiro)"; return false; }
+        std::vector<RpMaterial*> mats;
+        if (!CollectMaterials(TemplateClump(), mats) || mats.size() != s_parsed.materialsList.size() || mats.size() != s_enabledTex.size())
+        {
+            note = "ERRO: molde instalado não bate com o inventário (rode /skin7 apply de novo)";
+            return false;
+        }
+        s_hidden.resize(mats.size(), 0);
+        if (idx.empty()) { note = "ERRO: nenhum material para aplicar"; return false; }
+
+        std::string err;
+        const std::string path = PackFile(rel, err);
+        if (path.empty()) { note = "ERRO: " + err; return false; }
+
+        char nm[40];
+        const std::string& tn = s_parsed.materialsList[(size_t)idx[0]].texture;
+        std::snprintf(nm, sizeof(nm), "%s", tn.empty() ? "mat" : tn.c_str());
+        RwTexture* t = LoadPngTexture(path, nm, err);
+        if (!t) { note = "ERRO ao carregar pack/" + rel + ": " + err; return false; }
+
+        const uint64_t now = NowMs();
+        for (int i : idx)
+        {
+            RwTexture* old = s_enabledTex[(size_t)i];
+            TexAddRef(t);
+            s_enabledTex[(size_t)i] = t;
+            s_hidden[(size_t)i] = 0;
+            SetMaterialVisible(mats[(size_t)i], i, true);
+            if (old) s_graveyard.emplace_back(old, now + kGraveyardMs);
+        }
+        TexRelease(t);                       // solta a ref de criação (slots + materiais seguram as deles)
+        RecountHidden();
+        note = "pack/" + rel + ".png -> materiais " + JoinList(idx);
+        return true;
+    }
+
+    // ---- /skin7 pack : confere a pasta pack/ (quantos .png e quantos .jpeg que o cliente não lê) -----
+    void ScanPack(const std::string& rel, int depth, int& png, int& jpg, std::vector<std::string>& lines)
+    {
+        DIR* d = ::opendir((PackDir() + rel).c_str());
+        if (!d) return;
+        int p = 0, j = 0;
+        std::vector<std::string> subs;
+        while (dirent* e = ::readdir(d))
+        {
+            const std::string fn = e->d_name;
+            if (fn == "." || fn == "..") continue;
+            const std::string full = PackDir() + (rel.empty() ? "" : rel + "/") + fn;
+            if (IsDirPath(full)) { subs.push_back(fn); continue; }
+            const size_t dot = fn.rfind('.');
+            if (dot == std::string::npos) continue;
+            const std::string ext = SkinImg::Lower(fn.substr(dot));
+            if (ext == ".png") ++p;
+            else if (ext == ".jpg" || ext == ".jpeg") ++j;
+        }
+        ::closedir(d);
+        if (p || j)
+        {
+            char b[160];
+            std::snprintf(b, sizeof(b), "%s: png=%d jpeg=%d%s", rel.c_str(), p, j, j ? "  <-- converta (tools_skin_pack.py)" : "");
+            lines.push_back(b);
+        }
+        png += p; jpg += j;
+        if (depth >= 3) return;
+        std::sort(subs.begin(), subs.end());
+        for (const std::string& sub : subs) ScanPack(rel.empty() ? sub : rel + "/" + sub, depth + 1, png, jpg, lines);
+    }
+
+    void DoPack()
+    {
+        const std::string dir = PackDir();
+        if (dir.empty() || !IsDirPath(dir))
+        {
+            SetInfo("pack ausente: copie as pastas para " + (dir.empty() ? std::string("<raiz>/SAMP/skins/pack/") : dir));
+            return;
+        }
+        int png = 0, jpg = 0;
+        std::vector<std::string> lines;
+        ScanPack("", 0, png, jpg, lines);
+        for (const std::string& l : lines) FLog("[SKIN7-PACK] %s", l.c_str());
+        char msg[260];
+        std::snprintf(msg, sizeof(msg), "pack: %d PNG ok, %d JPEG (o cliente NÃO lê JPEG; converta)%s; detalhes [SKIN7-PACK] no log",
+                      png, jpg, jpg ? " <-- ATENÇÃO" : "");
+        SetInfo(msg);
+    }
+
+    // ---- /skin7 slots : slot -> material(is) do DFF -> pasta do pack --------------------------
+    void DoSlots()
+    {
+        if (!s_loadedOk && !DoLoad(false)) return;
+        const std::string csvPath = SkinDir() + "slots.csv";
+        FILE* csv = std::fopen(csvPath.c_str(), "wb");
+        if (csv) std::fputs("slot,materiais,textura_dff,pasta_pack,variantes,evidencia,estado,variante_atual\n", csv);
+
+        std::vector<uint8_t> covered(s_parsed.materialsList.size(), 0);
+        int withMat = 0, withVar = 0, hyp = 0;
+        for (int k = 0; k < SkinSlots::kCount; ++k)
+        {
+            const SkinSlots::Slot& sl = SkinSlots::kSlots[k];
+            const std::vector<int> mi = SlotMaterials(sl);
+            for (int i : mi) covered[(size_t)i] = 1;
+            const std::vector<int> var = PackVariants(sl.folder);
+            if (!mi.empty()) ++withMat;
+            if (!var.empty()) ++withVar;
+            if (sl.ev == 0) ++hyp;
+            int off = 0;
+            for (int i : mi) if ((size_t)i < s_hidden.size() && s_hidden[(size_t)i]) ++off;
+            const char* st = mi.empty() ? "SEM_MATERIAL" : (off == 0 ? "on" : (off == (int)mi.size() ? "OFF" : "misto"));
+            const auto cur = s_slotVar.find(sl.name);
+            const int curV = cur != s_slotVar.end() ? cur->second : 0;
+            FLog("[SKIN7-SLOT] %-10s mat=%s pasta=%s variantes=%zu ev=%d estado=%s atual=%d%s", sl.name,
+                 mi.empty() ? "-" : JoinList(mi, 12).c_str(), sl.folder, var.size(), sl.ev, st, curV,
+                 sl.ev == 0 ? "  (HIPOTESE)" : "");
+            if (csv)
+                std::fprintf(csv, "%s,%s,%s,%s,%zu,%d,%s,%d\n", sl.name, mi.empty() ? "" : JoinList(mi, 40).c_str(),
+                             sl.texture, sl.folder, var.size(), sl.ev, st, curV);
+        }
+        if (csv) std::fclose(csv);
+
+        std::vector<int> orphan;
+        for (size_t i = 0; i < covered.size(); ++i) if (!covered[i]) orphan.push_back((int)i);
+        std::string names;
+        for (size_t k = 0; k < orphan.size() && k < 40; ++k)
+        {
+            if (k) names += ", ";
+            names += std::to_string(orphan[k]) + "=" + s_parsed.materialsList[(size_t)orphan[k]].texture;
+        }
+        FLog("[SKIN7-SLOT] materiais SEM slot (%zu): %s", orphan.size(), names.c_str());
+
+        char msg[300];
+        std::snprintf(msg, sizeof(msg), "%d slots: %d com material no DFF, %d com variantes no pack, %d hipótese(s); %zu material(is) sem slot; CSV: SAMP/skins/slots.csv (log [SKIN7-SLOT])",
+                      SkinSlots::kCount, withMat, withVar, hyp, orphan.size());
+        SetInfo(msg);
+    }
+
+    // ---- /skin7 slot <nome> <n | + | - | on | off | pasta/arquivo> ------------------------------
+    void DoSlot(const std::string& rest)
+    {
+        if (!s_loadedOk && !DoLoad(false)) return;
+        std::istringstream in(rest);
+        std::string name, arg;
+        in >> name >> arg;
+        if (name.empty() || arg.empty())
+        {
+            SetInfo("uso: /skin7 slot <nome> <n | + | - | on | off | pasta/arquivo>   (nomes: /skin7 slots; ex.: slot torso1 34)");
+            return;
+        }
+        const SkinSlots::Slot* sl = SkinSlots::Find(name.c_str());
+        if (!sl) { SetInfo("slot desconhecido: '" + name + "' (veja /skin7 slots)"); return; }
+        const std::vector<int> idx = SlotMaterials(*sl);
+        if (idx.empty()) { SetInfo("o DFF carregado não tem o material do slot '" + name + "' (" + sl->texture + ")"); return; }
+
+        if (arg == "on" || arg == "off")
+        {
+            for (int i : idx) { s_hidden.resize(s_parsed.materialsList.size(), 0); s_hidden[(size_t)i] = (arg == "off") ? 1 : 0; }
+            RecountHidden();
+            std::string note; ApplyHiddenToTemplate(note);
+            SetInfo(name + (arg == "off" ? " oculto" : " visível") + " (materiais " + JoinList(idx) + ") | " + note);
+            return;
+        }
+
+        std::string rel;
+        int newVar = 0;
+        if (arg.find('/') != std::string::npos) rel = arg;                 // caminho explícito (marcas: versace/tshirts/2_1)
+        else
+        {
+            const std::vector<int> var = PackVariants(sl->folder);
+            if (arg == "+" || arg == "-")
+            {
+                if (var.empty()) { SetInfo(std::string("sem variantes em pack/") + sl->folder + " (use /skin7 pack)"); return; }
+                const auto it = s_slotVar.find(sl->name);
+                const int cur = it != s_slotVar.end() ? it->second : 0;
+                newVar = var.front();
+                if (arg == "+") { for (int v : var) if (v > cur) { newVar = v; break; } }
+                else            { newVar = var.back(); for (auto r = var.rbegin(); r != var.rend(); ++r) if (*r < cur) { newVar = *r; break; } }
+            }
+            else
+            {
+                char* endp = nullptr;
+                const long n = std::strtol(arg.c_str(), &endp, 10);
+                if (!endp || *endp || n < 0 || n > 99999) { SetInfo("variante inválida: '" + arg + "' (use número, +, -, on, off ou pasta/arquivo)"); return; }
+                newVar = (int)n;
+            }
+            rel = std::string(sl->folder) + "/" + std::to_string(newVar);
+        }
+
+        std::string note;
+        if (!ApplyPack(idx, rel, note)) { SetInfo(note); return; }
+        if (newVar > 0) s_slotVar[sl->name] = newVar;
+        SetInfo(name + " = " + note + (sl->ev == 0 ? " | HIPOTESE de mapeamento: confira no jogo" : ""));
+    }
+
+    // ---- /skin7 set <lista de materiais> <pasta/arquivo> : teste livre (confirma/refuta hipóteses) -----
+    void DoSet(const std::string& rest)
+    {
+        if (!s_loadedOk && !DoLoad(false)) return;
+        std::istringstream in(rest);
+        std::string list, rel;
+        in >> list >> rel;
+        if (list.empty() || rel.empty())
+        {
+            SetInfo("uso: /skin7 set <materiais> <pasta/arquivo>   ex.: /skin7 set 25 tshirts/1/34   (lista: 5 | 3-7 | 1,4,9-12)");
+            return;
+        }
+        std::vector<int> idx;
+        std::string err;
+        if (!ParseIndexList(list, (int)s_parsed.materialsList.size(), idx, err)) { SetInfo("ERRO: " + err); return; }
+        std::string note;
+        ApplyPack(idx, rel, note);
+        SetInfo(note);
+    }
+
     // ---- despacho ----------------------------------------------------------
     void Execute(const std::string& cmdline)
     {
@@ -975,6 +1259,10 @@ namespace
         else if (cmd == "mat")    DoMat(rest);
         else if (cmd == "tex")    DoTex(rest);
         else if (cmd == "png")    DoPng();
+        else if (cmd == "pack")   DoPack();
+        else if (cmd == "slots")  DoSlots();
+        else if (cmd == "slot")   DoSlot(rest);
+        else if (cmd == "set")    DoSet(rest);
         else                      SetInfo("comando desconhecido: " + cmd);
     }
 
@@ -1108,7 +1396,7 @@ std::string CCustomSkin::Info()
 
 std::string CCustomSkin::DebugCommand(const std::string& args)
 {
-    static const char* kNames[] = {"load", "apply", "wear", "unwear", "unload", "mats", "mat", "tex", "png"};
+    static const char* kNames[] = {"load", "apply", "wear", "unwear", "unload", "mats", "mat", "tex", "png", "pack", "slots", "slot", "set"};
     std::istringstream in(args);
     std::string first;
     in >> first;
@@ -1135,6 +1423,6 @@ std::string CCustomSkin::DebugCommand(const std::string& args)
     }
 
     const std::string p = SkinPath();
-    return "[SKIN7] /skin7 load|apply|wear|unwear|unload|info | mats | mat list|reset|off|on|only <lista> | tex auto|idx|none | png   arquivo: " +
+    return "[SKIN7] /skin7 load|apply|wear|unwear|unload|info | mats | mat list|reset|off|on|only <lista> | tex auto|idx|none | png | pack | slots | slot <nome> <n|+|-|on|off|pasta/arq> | set <lista> <pasta/arq>   arquivo: " +
            (p.empty() ? std::string("(storage indisponível)") : p);
 }
