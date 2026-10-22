@@ -1,17 +1,23 @@
-// CorpTex.h - aparencia POR JOGADOR das skins FemininaCorp (modelo 7) e FemininaNormal (modelo 9): corporacao, rosto, tom de pele, cabelo
+// CorpTex.h - aparencia POR JOGADOR do corpo MALE do pack: corporacao (roupas), rosto, tom de pele, cabelo e roupas
+//   Modelo 7   = male normal (skin.dff):   rosto, tom de pele, cabelo e roupas (boot/pants/tshirts) do pack
+//   Modelo 271 = male_police.dff (skin271.dff): pecas fantasy_m_cop_* da corp + a MESMA aparencia (corpo do 7; so troca a roupa)
 //
-//   PNGs:   <raiz>/SAMP/skins/textures/272/<corp>/<NomeDaTextura>.png   (ex.: 272/pmerj/fantasy_f_cop_torso4.png)
-//   Regra:  materiais cujo nome tem PNG naquela pasta recebem o PNG; pecas de roupa da Corp (fantasy_f_cop_*)
+//   PNGs:   <raiz>/SAMP/skins/textures/272/<corp>/<NomeDaTextura>.png   OU   <raiz>/SAMP/skins/pack/corp/<corp>/<NomeDaTextura>.png
+//           (ex.: pack/corp/policia/fantasy_m_cop_torso4.png)
+//   Regra:  materiais cujo nome tem PNG naquela pasta recebem o PNG; pecas de roupa da Corp (fantasy_m_cop_*)
 //           SEM PNG naquela pasta ficam ocultas (textura invisivel "male01" do texdb); corpo/cabelo/tatuagem nao mudam.
 //   Como:   a troca e feita SO durante o desenho do ped (CEntity::Render): poe a textura da corp nos materiais,
 //           desenha, devolve a original. O molde do modelo e compartilhado, entao nenhum outro ped muda.
-//   PNGs de aparencia: textures/272/aparencia/rosto/<tom 1-6>/<variante>.png | cabelo/<estilo 1-5>/<cor>.png | pele/{torso,leg,feet}/<tom>.png
-//   Roupas (modelo 9): textures/9/roupa/<boot|pants|tshirts>/<pasta>/<variante>.png ; pasta -> material em textures/9/roupa/mapa.txt (editavel)
+//   Aparencia: lida de textures/272/aparencia/... ou, se nao existir, DIRETO da pasta pack/ (mapa em CorpTexMap.h):
+//           rosto/<tom 1-6>/<var> = pack/heads/<tom>/<var> | cabelo/<estilo 1-4>/<cor> = pack/hair/<estilo>/<cor> |
+//           pele/{torso,leg,feet}/<tom> = pack/{torso,leg,feet}/1/<tom> | roupa/boot/1-4 = pack/boot, 5-7 = pack/slipper 1-3 |
+//           roupa/pants/<1-7> = pack/pants | roupa/tshirts/<1-4> = pack/tshirts   (pasta -> material em textures/272/aparencia/roupa/mapa.txt, editavel)
 //   Teste:  /corp <nome|limpar|lista> | /rosto <tom> <variante> | /pele <tom> | /cabelo <estilo> <cor> | /visual [limpar]
 //           /bota /calca /camisa <pasta> <variante> | /intima <0-6> | /roupa lista|limpar|recarregar   (so no seu ator)
 //   Rede:   RPC 231 servidor -> cliente: uint16 playerid | uint8 len | char corp[len] | uint8 tom | uint8 rosto | uint8 estilo | uint8 cor |
 //           uint8 botaPasta | botaVar | calcaPasta | calcaVar | camisaPasta | camisaVar | intima
-//           (len 0 e tudo 0 = limpar)
+//           (len 0 e tudo 0 = limpar). Policial: o servidor manda SetPlayerSkin(271) + RPC 231 com corp="policia" e o MESMO
+//           tom/rosto/estilo/cor do visual civil do jogador.
 //
 // Thread: RPC/chat so enfileiram. Tudo que toca o RenderWare roda na thread do jogo (Process + hook de render).
 #pragma once

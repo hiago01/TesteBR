@@ -13,8 +13,10 @@
 //   (DffPreflight::Info::materialsList[i].texture), pelo INDICE do material. Rosto/cabelo/pele/ocultar
 //   so funcionam nesse modo; se a contagem do motor diferir da do DFF, so a corp (por nome) e aplicada.
 //
-// MODELOS: 7 = FemininaCorp (corp + aparencia), 9 = FemininaNormal (so aparencia: mesmos body.*, hair e head do DFF da Corp;
-//   as roupas fantasy_f_* da Normal ainda nao foram mapeadas e continuam ocultas pela male01 do texdb).
+// MODELOS (corpo MALE do pack): 7 = male normal (aparencia + roupas pack), 271 = male_police.dff (pecas fantasy_m_cop_* + a
+//   MESMA aparencia: rosto, tom de pele e cabelo vem do mesmo Look, entao o policial tem o corpo do 7 e so troca de roupa).
+//   Os body.* / hair / head do male_police.dff tem os mesmos nomes e a mesma geometria dos do skin.dff (conferido).
+//   Texturas: textures/272/... OU direto da pasta pack/ (ver CorpTexMap.h); corps tambem em pack/corp/<nome>/.
 //
 // O QUE CADA OPCAO FAZ (tudo e "mostrar a escolhida com o PNG certo, ocultar as outras com a male01")
 //   corp  : pecas fantasy_f_cop_* com PNG em textures/272/<corp>/ recebem o PNG; as sem PNG ficam ocultas.
@@ -28,6 +30,7 @@
 //   * Se CPed::Render nao chamar CEntity::Render, o hook nao e atingido; o Process loga um AVISO apos 5 s.
 //   * Ped desenhado pela lista de alfa (fade de distancia) nao passa por CEntity::Render.
 #include "CorpTex.h"
+#include "CorpTexMap.h"     // mapa pack/ <-> aparencia (rosto, cabelo, pele, roupa) do corpo male; testado no host
 
 #include <algorithm>
 #include <cerrno>
@@ -68,12 +71,9 @@ std::atomic<int> g_active{0};
 
 namespace {
 
-constexpr int      kCorpModel      = 7;      // hospeda o DFF da FemininaCorp (so este tem as pecas fantasy_f_cop_*)
-constexpr int      kNormalModel    = 9;      // hospeda o DFF da FemininaNormal (mesmo corpo: rosto, cabelo, tom de pele)
-// (quando migrar o DFF da Corp para o 272, troque kCorpModel e a tabela s_skins do CustomSkinStream.cpp)
-constexpr int      kMaleModel      = 271;    // hospeda o DFF masculino (male.dff): so texturas por NOME do material (sem rosto/pele/roupa)
-constexpr const char* kMaleDefault = "masculino";   // pasta usada pelo 271 quando nenhuma /corp foi escolhida: textures/272/masculino/
-bool IsHostModel(int m) { return m == kCorpModel || m == kNormalModel || m == kMaleModel; }
+constexpr int      kCorpModel      = 271;    // hospeda o male_police.dff (skin271.dff): pecas fantasy_m_cop_*
+constexpr int      kNormalModel    = 7;      // hospeda o DFF male normal (skin.dff): rosto, cabelo, tom de pele e roupas do pack
+bool IsHostModel(int m) { return m == kCorpModel || m == kNormalModel; }
 constexpr const char* kSkinFolder  = "272";  // textures/<kSkinFolder>/<corp>/  e  textures/<kSkinFolder>/aparencia/...
 constexpr const char* kAppFolder   = "aparencia";
 constexpr int      kMaxTexSize     = 1024;   // teto de lado no celular (os PNGs de 2048 sao reduzidos)
@@ -82,83 +82,82 @@ constexpr size_t   kMaxCachedCorps = 3;
 constexpr size_t   kMaxAppTex      = 40;     // texturas de rosto/cabelo/pele em cache
 constexpr uint64_t kGraveyardMs    = 5000;
 constexpr const char* kHideTexture = "male01";          // textura invisivel do texdb
-constexpr const char* kPiecePrefix = "fantasy_f_cop_";  // pecas de roupa da Corp
+constexpr const char* kPiecePrefix = "fantasy_m_cop_";  // pecas de roupa da Corp (policia)
 constexpr uintptr_t OFF_GEOM_MATLIST      = 0x28;   // RpGeometry::matList.materials  (igual ao CustomSkin.cpp)
 constexpr uintptr_t OFF_GEOM_NUMMATERIALS = 0x30;   // RpGeometry::matList.numMaterials
 
 // opcoes validas (conferidas contra as pastas): variantes de rosto por tom, cores de cabelo por estilo
 constexpr int kMaxClothSet = 9;       // pastas de roupa: 1..7 (boot) / 1..6; o limite real e o que existe em disco
-constexpr int kFaceVariants[7] = {0, 6, 8, 8, 7, 6, 12};
-constexpr int kHairColors[6]   = {0, 6, 6, 7, 7, 7};
-constexpr const char* kToneNames[7] = {"nenhum", "medio", "escuro", "claro", "moreno", "avermelhado", "palido"};
+using CorpMap::kFaceVariants;          // rostos validos por tom (pack/heads/<tom>/, sem a variante transparente)
+using CorpMap::kHairColors;            // cores validas por estilo (pack/hair/<estilo>/)
+constexpr const char* kToneNames[7] = {"nenhum", "tom1", "tom2", "tom3", "tom4", "tom5", "tom6"};   // pack/heads/1..6
 
 // caixas (x absoluto maximo, z min, z max) tiradas da geometria do skin.dff; usadas para saber se uma peca cobre uma regiao
 struct Box { const char* name; float xabs, zmin, zmax; };
-constexpr Box kBodyRegions[] = {
-    {"body.feets2", 0.19f, -0.99f, -0.96f},      // so no DFF da FemininaNormal
-    {"body.armleft", 0.51f, 0.01f, 0.40f},
-    {"body.armright", 0.51f, 0.01f, 0.40f},
-    {"body.feets", 0.21f, -1.00f, -0.90f},
-    {"body.legleft1", 0.20f, -0.19f, 0.06f},
-    {"body.legleft2", 0.20f, -0.25f, -0.14f},
-    {"body.legleft3", 0.21f, -0.81f, -0.21f},
-    {"body.legleft4", 0.19f, -0.88f, -0.80f},
-    {"body.legleft5", 0.19f, -0.96f, -0.88f},
-    {"body.legleft6", 0.19f, -0.61f, -0.21f},
-    {"body.legright1", 0.20f, -0.19f, 0.06f},
-    {"body.legright2", 0.20f, -0.25f, -0.14f},
-    {"body.legright3", 0.21f, -0.81f, -0.21f},
-    {"body.legright4", 0.19f, -0.88f, -0.80f},
-    {"body.legright5", 0.19f, -0.96f, -0.88f},
-    {"body.legright6", 0.19f, -0.61f, -0.20f},
-    {"body.shoulderleft", 0.28f, 0.33f, 0.53f},
-    {"body.shoulderright", 0.28f, 0.33f, 0.53f},
-    {"body.torso1", 0.19f, 0.24f, 0.57f},
-    {"body.torso3", 0.15f, -0.00f, 0.40f},
-    {"body.torso4", 0.13f, 0.08f, 0.24f}
+constexpr Box kBodyRegions[] = {   // body.* do male (mesma geometria no skin.dff e no male_police.dff)
+    {"body.armleft", 0.49f, 0.05f, 0.37f},
+    {"body.armright", 0.50f, 0.05f, 0.37f},
+    {"body.feetleft", 0.21f, -0.97f, -0.90f},
+    {"body.feetright", 0.21f, -0.97f, -0.90f},
+    {"body.legleft1", 0.19f, -0.37f, -0.04f},
+    {"body.legleft2", 0.19f, -0.57f, -0.36f},
+    {"body.legleft3", 0.21f, -0.81f, -0.54f},
+    {"body.legleft4", 0.19f, -0.90f, -0.81f},
+    {"body.legleft5", 0.20f, -0.94f, -0.88f},
+    {"body.legright1", 0.19f, -0.37f, -0.04f},
+    {"body.legright2", 0.19f, -0.57f, -0.36f},
+    {"body.legright3", 0.21f, -0.81f, -0.54f},
+    {"body.legright4", 0.19f, -0.90f, -0.81f},
+    {"body.legright5", 0.20f, -0.94f, -0.88f},
+    {"body.shoulderleft", 0.30f, 0.27f, 0.55f},
+    {"body.shoulderright", 0.30f, 0.27f, 0.55f},
+    {"body.torso1", 0.17f, 0.05f, 0.57f},
+    {"body.torso2", 0.13f, 0.45f, 0.59f},
+    {"body.torso3", 0.08f, 0.49f, 0.55f}
 };
-constexpr Box kPieces[] = {
-    {"fantasy_f_cop_boot1", 0.22f, -1.00f, -0.79f},
-    {"fantasy_f_cop_boot2", 0.22f, -0.99f, -0.74f},
-    {"fantasy_f_cop_hat2", 0.07f, 0.74f, 0.90f},
-    {"fantasy_f_cop_hat3", 0.10f, 0.73f, 0.83f},
-    {"fantasy_f_cop_pants1", 0.25f, -0.84f, 0.11f},
-    {"fantasy_f_cop_short1", 0.22f, -0.43f, 0.10f},
-    {"fantasy_f_cop_torso1", 0.16f, 0.02f, 0.57f},
-    {"fantasy_f_cop_torso2", 0.30f, 0.00f, 0.58f},
-    {"fantasy_f_cop_torso3", 0.29f, 0.03f, 0.61f},
-    {"fantasy_f_cop_torso4", 0.55f, -0.02f, 0.62f},
-    {"fantasy_f_cop_vest1", 0.18f, 0.09f, 0.59f},
-    {"fantasy_f_cop_vest2", 0.20f, 0.13f, 0.58f},
-    {"fantasy_f_cop_vest3", 0.20f, 0.05f, 0.60f}
+constexpr Box kPieces[] = {   // pecas da policia (male_police.dff)
+    {"fantasy_m_cop_belt1", 0.25f, -0.09f, 0.16f},
+    {"fantasy_m_cop_boot1", 0.22f, -0.98f, -0.77f},
+    {"fantasy_m_cop_boot2", 0.22f, -0.97f, -0.72f},
+    {"fantasy_m_cop_hat1", 0.09f, 0.70f, 0.86f},
+    {"fantasy_m_cop_hat2", 0.07f, 0.76f, 0.91f},
+    {"fantasy_m_cop_hat3", 0.10f, 0.75f, 0.84f},
+    {"fantasy_m_cop_pants1", 0.25f, -0.80f, 0.11f},
+    {"fantasy_m_cop_short1", 0.22f, -0.44f, 0.11f},
+    {"fantasy_m_cop_torso1", 0.20f, -0.03f, 0.59f},
+    {"fantasy_m_cop_torso2", 0.33f, -0.07f, 0.59f},
+    {"fantasy_m_cop_torso3", 0.33f, 0.07f, 0.62f},
+    {"fantasy_m_cop_torso4", 0.55f, 0.00f, 0.64f},
+    {"fantasy_m_cop_vest1", 0.20f, 0.11f, 0.60f},
+    {"fantasy_m_cop_vest2", 0.20f, 0.15f, 0.59f},
+    {"fantasy_m_cop_vest3", 0.22f, 0.08f, 0.62f}
 };
 
-constexpr Box kPieces9[] = {   // roupas da FemininaNormal (modelo 9)
-    {"fantasy_f_bikinibotton", 0.16f, -0.13f, 0.10f},
-    {"fantasy_f_bikinitop", 0.15f, 0.26f, 0.57f},
-    {"fantasy_f_boot1", 0.21f, -1.00f, -0.86f},
-    {"fantasy_f_boot2", 0.22f, -0.99f, -0.88f},
-    {"fantasy_f_boot3", 0.21f, -1.01f, -0.85f},
-    {"fantasy_f_boot5", 0.21f, -1.01f, -0.82f},
-    {"fantasy_f_pants1", 0.21f, -0.91f, 0.11f},
-    {"fantasy_f_pants2", 0.26f, -0.96f, 0.11f},
-    {"fantasy_f_pants4", 0.23f, -0.82f, 0.11f},
-    {"fantasy_f_pants5", 0.21f, -0.90f, 0.11f},
-    {"fantasy_f_short1", 0.20f, -0.19f, 0.11f},
-    {"fantasy_f_slipper1", 0.21f, -1.00f, -0.94f},
-    {"fantasy_f_slipper2", 0.22f, -0.99f, -0.92f},
-    {"fantasy_f_slipper3", 0.21f, -1.00f, -0.79f},
-    {"fantasy_f_torso1", 0.16f, 0.19f, 0.56f},
-    {"fantasy_f_torso2", 0.31f, 0.10f, 0.59f},
-    {"fantasy_f_torso3", 0.15f, 0.03f, 0.38f},
-    {"fantasy_f_torso4", 0.30f, 0.00f, 0.58f},
-    {"fantasy_f_torso5", 0.56f, -0.07f, 0.66f},
-    {"fantasy_f_torso6", 0.21f, -0.25f, 0.56f}
+constexpr Box kPieces9[] = {   // roupas do male normal (modelo 7)
+    {"fantasy_m_boot1", 0.22f, -0.98f, -0.84f},
+    {"fantasy_m_boot2", 0.22f, -0.97f, -0.86f},
+    {"fantasy_m_boot3", 0.21f, -0.99f, -0.81f},
+    {"fantasy_m_boot4", 0.22f, -0.98f, -0.80f},
+    {"fantasy_m_pants1", 0.22f, -0.88f, 0.11f},
+    {"fantasy_m_pants2", 0.26f, -0.97f, 0.11f},
+    {"fantasy_m_pants3", 0.22f, -0.61f, 0.11f},
+    {"fantasy_m_pants4", 0.24f, -0.83f, 0.09f},
+    {"fantasy_m_short1", 0.22f, -0.44f, 0.11f},
+    {"fantasy_m_short2", 0.22f, -0.44f, 0.11f},
+    {"fantasy_m_short3", 0.24f, -0.48f, 0.11f},
+    {"fantasy_m_slipper1", 0.22f, -0.98f, -0.92f},
+    {"fantasy_m_slipper2", 0.23f, -0.98f, -0.90f},
+    {"fantasy_m_slipper3", 0.22f, -0.98f, -0.77f},
+    {"fantasy_m_torso1", 0.20f, -0.03f, 0.58f},
+    {"fantasy_m_torso2", 0.33f, -0.07f, 0.59f},
+    {"fantasy_m_torso3", 0.56f, -0.06f, 0.67f},
+    {"fantasy_m_torso4", 0.53f, -0.02f, 0.66f},
+    {"fantasy_m_underwear", 0.21f, -0.22f, 0.11f}
 };
 
 // pecas da Corp visiveis por padrao (as que existem no texdb), usadas quando nenhuma corp foi escolhida
-constexpr const char* kDefaultVisible[] = {"fantasy_f_cop_boot2", "fantasy_f_cop_hat3", "fantasy_f_cop_pants1",
-                                           "fantasy_f_cop_torso3", "fantasy_f_cop_torso4", "fantasy_f_cop_vest3"};
+// (male_police.dff: sem corp escolhida nao assumimos nenhuma peca visivel; escolha com /corp <nome>)
+constexpr const char* kDefaultVisible[] = {"fantasy_m_cop_boot1", "fantasy_m_cop_pants1", "fantasy_m_cop_torso4"};
 
 struct Look {
     std::string corp;
@@ -212,6 +211,20 @@ std::string TexRoot()      // .../SAMP/skins/textures/
     return p + "SAMP/skins/textures/";
 }
 
+std::string SkinsDir()     // .../SAMP/skins/
+{
+    if (!g_pszStorage || !g_pszStorage[0]) return {};
+    std::string p(g_pszStorage);
+    if (p.back() != '/') p.push_back('/');
+    return p + "SAMP/skins/";
+}
+
+std::string PackDir()      // .../SAMP/skins/pack/   (as pastas do 7.zip: heads, hair, torso, leg, feet, boot, pants, tshirts, ...)
+{
+    const std::string d = SkinsDir();
+    return d.empty() ? d : d + "pack/";
+}
+
 std::string BaseDir()
 {
     if (!g_pszStorage || !g_pszStorage[0]) return {};
@@ -233,6 +246,10 @@ std::string ClothPath(const std::string& sub)      // sub = "boot/1/1.png" | "ma
     const std::string b = TexRoot() + "9/roupa/" + sub;
     if (CanOpen(a)) return a;
     if (CanOpen(b)) return b;
+    {   // direto da pasta pack/ (boot/<1-4> + slipper/<1-3>, pants, tshirts): ver CorpTexMap.h
+        std::string pr;
+        if (CorpMap::PackRelFor("roupa/" + sub, pr)) { const std::string c = PackDir() + pr; if (CanOpen(c)) return c; }
+    }
     if (::access(a.c_str(), F_OK) == 0) return a;   // existe mas nao abre: o chamador mostra o erro
     if (::access(b.c_str(), F_OK) == 0) return b;
     return a;
@@ -257,23 +274,41 @@ void Sanitize(Look& l)
     auto cloth = [](uint8_t& set, uint8_t& var) { if (set > kMaxClothSet) set = 0; if (!set) var = 0; else if (var < 1) var = 1; };
     cloth(l.bootSet, l.bootVar); cloth(l.pantsSet, l.pantsVar); cloth(l.shirtSet, l.shirtVar);
     if (l.under > 6 && l.under != 9) l.under = 0;
-    if (l.hairStyle > 5) l.hairStyle = 0;
+    if (l.hairStyle > CorpMap::kHairStyles) l.hairStyle = 0;
     if (l.hairStyle) { if (l.hairColor < 1) l.hairColor = 1; if (l.hairColor > kHairColors[l.hairStyle]) l.hairColor = (uint8_t)kHairColors[l.hairStyle]; }
     else l.hairColor = 0;
 }
 
+// pastas de corp: textures/272/<corp>/  e  pack/corp/<corp>/  (a mesma corp nas duas = vale a de textures/272)
+std::string CorpDir(const std::string& corp)       // "" se nao existe em nenhum dos dois lugares
+{
+    std::vector<std::string> roots;
+    if (!BaseDir().empty()) roots.push_back(BaseDir());
+    if (!PackDir().empty()) roots.push_back(PackDir() + "corp/");
+    for (const std::string& root : roots) {
+        struct stat st{};
+        const std::string d = root + corp + "/";
+        if (::stat(d.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) return d;
+    }
+    return {};
+}
+
 std::vector<std::string> ListCorps()
 {
+    std::vector<std::string> bases;
+    if (!BaseDir().empty()) bases.push_back(BaseDir());
+    if (!PackDir().empty()) bases.push_back(PackDir() + "corp/");
     std::vector<std::string> out;
-    const std::string base = BaseDir();
-    if (base.empty()) return out;
-    if (DIR* d = ::opendir(base.c_str())) {
-        while (dirent* e = ::readdir(d)) {
-            if (e->d_name[0] == '.' || std::strcmp(e->d_name, kAppFolder) == 0) continue;
-            struct stat st{};
-            if (::stat((base + e->d_name).c_str(), &st) == 0 && S_ISDIR(st.st_mode) && ValidName(e->d_name)) out.push_back(e->d_name);
+    for (const std::string& base : bases) {
+        if (DIR* d = ::opendir(base.c_str())) {
+            while (dirent* e = ::readdir(d)) {
+                if (e->d_name[0] == '.' || std::strcmp(e->d_name, kAppFolder) == 0) continue;
+                struct stat st{};
+                if (::stat((base + e->d_name).c_str(), &st) == 0 && S_ISDIR(st.st_mode) && ValidName(e->d_name)
+                    && std::find(out.begin(), out.end(), std::string(e->d_name)) == out.end()) out.push_back(e->d_name);
+            }
+            ::closedir(d);
         }
-        ::closedir(d);
     }
     std::sort(out.begin(), out.end());
     return out;
@@ -369,7 +404,8 @@ Corp* EnsureCorp(const std::string& corp)
     auto it = s_corps.find(corp);
     if (it != s_corps.end()) { it->second.lastUse = NowMs(); return &it->second; }
 
-    const std::string dir = BaseDir() + corp + "/";
+    const std::string cd = CorpDir(corp);
+    const std::string dir = cd.empty() ? BaseDir() + corp + "/" : cd;
     const auto idx = SkinImg::IndexPngDir(dir);
     if (idx.empty()) { SetInfo("corp '" + corp + "': nenhum PNG em " + dir); return nullptr; }
 
@@ -387,14 +423,18 @@ RwTexture* GetAppTex(const std::string& rel)
     auto it = s_appTex.find(rel);
     if (it != s_appTex.end()) { it->second.lastUse = NowMs(); return it->second.tex; }
     // "roupa/..." : ver ClothPath (272/aparencia/roupa ou 9/roupa); o resto em textures/272/aparencia/
-    const std::string path = rel.compare(0, 6, "roupa/") == 0 ? ClothPath(rel.substr(6)) : BaseDir() + kAppFolder + "/" + rel;
+    std::string path = rel.compare(0, 6, "roupa/") == 0 ? ClothPath(rel.substr(6)) : BaseDir() + kAppFolder + "/" + rel;
+    if (::access(path.c_str(), F_OK) != 0) {          // nao existe em textures/272/aparencia: tenta direto na pasta pack/
+        std::string pr;
+        if (CorpMap::PackRelFor(rel, pr) && ::access((PackDir() + pr).c_str(), F_OK) == 0) path = PackDir() + pr;
+    }
     RwTexture* t = ::access(path.c_str(), F_OK) == 0 ? LoadPng(path, rel) : nullptr;
     if (!t) FLog("[CORPTEX] AVISO: textura de aparencia ausente: %s", path.c_str());
     s_appTex[rel] = AppTex{t, NowMs()};                // guarda tambem a falha (nao tenta de novo a cada frame)
     return t;
 }
 
-// cor lisa para a roupa intima (bikinitop/bikinibotton nao tem PNG no pacote)
+// cor lisa para a roupa intima (fantasy_m_underwear: cor lisa, sem PNG)
 RwTexture* GetSolidTex(int idx)
 {
     static const uint8_t kCol[7][3] = {{20, 20, 20}, {20, 20, 20}, {235, 235, 235}, {190, 30, 40}, {30, 60, 170}, {230, 120, 170}, {120, 120, 120}};
@@ -411,18 +451,17 @@ RwTexture* GetSolidTex(int idx)
 
 // ---- mapa pasta -> material(is) das roupas da Normal (editavel em textures/9/roupa/mapa.txt) ---------------
 // formato do arquivo, uma linha por pasta:   tipo pasta material[,material...]     (# comentario)
-//   ex.:  tshirts 2 fantasy_f_torso1       boot 4 fantasy_f_boot5
+//   ex.:  tshirts 2 fantasy_m_torso2       boot 4 fantasy_m_boot4
 struct ClothMap { std::string tipo; int pasta; std::vector<std::string> mats; };
 std::vector<ClothMap> s_clothMap;
 bool s_clothMapLoaded = false;
 
-constexpr const char* kDefaultClothMap[][3] = {      // PALPITE a confirmar em jogo (ver mapa_roupas.json)
-    {"boot", "1", "fantasy_f_boot1"},   {"boot", "2", "fantasy_f_boot2"},   {"boot", "3", "fantasy_f_boot3"},
-    {"boot", "4", "fantasy_f_boot5"},   {"boot", "5", "fantasy_f_slipper1"}, {"boot", "6", "fantasy_f_slipper2"}, {"boot", "7", "fantasy_f_slipper3"},
-    {"pants", "1", "fantasy_f_pants1"}, {"pants", "2", "fantasy_f_pants2"}, {"pants", "3", "fantasy_f_pants4"},
-    {"pants", "4", "fantasy_f_pants5"}, {"pants", "5", "fantasy_f_short1"}, {"pants", "6", "fantasy_f_torso6"},
-    {"tshirts", "1", "fantasy_f_torso1"}, {"tshirts", "2", "fantasy_f_torso2"}, {"tshirts", "3", "fantasy_f_torso3"},
-    {"tshirts", "4", "fantasy_f_torso4"}, {"tshirts", "5", "fantasy_f_torso5"}, {"tshirts", "6", "fantasy_f_torso6"},
+constexpr const char* kDefaultClothMap[][3] = {      // male: nomes do DFF; pastas conforme CorpTexMap.h (5-7 de boot = chinelos; 5-7 de pants = bermudas: HIPOTESE)
+    {"boot", "1", "fantasy_m_boot1"},   {"boot", "2", "fantasy_m_boot2"},   {"boot", "3", "fantasy_m_boot3"},   {"boot", "4", "fantasy_m_boot4"},
+    {"boot", "5", "fantasy_m_slipper1"}, {"boot", "6", "fantasy_m_slipper2"}, {"boot", "7", "fantasy_m_slipper3"},
+    {"pants", "1", "fantasy_m_pants1"}, {"pants", "2", "fantasy_m_pants2"}, {"pants", "3", "fantasy_m_pants3"}, {"pants", "4", "fantasy_m_pants4"},
+    {"pants", "5", "fantasy_m_short1"}, {"pants", "6", "fantasy_m_short2"}, {"pants", "7", "fantasy_m_short3"},
+    {"tshirts", "1", "fantasy_m_torso1"}, {"tshirts", "2", "fantasy_m_torso2"}, {"tshirts", "3", "fantasy_m_torso3"}, {"tshirts", "4", "fantasy_m_torso4"},
 };
 
 void SetClothMap(const std::string& tipo, int pasta, const std::vector<std::string>& mats)
@@ -543,11 +582,9 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
 
     // 1) corporacao
     Corp* c = nullptr;
-    // Vale para os dois modelos: no 7 (Corp) as pecas fantasy_f_cop_*; no 9 (Normal) qualquer peca pelo NOME do material
-    // (fantasy_f_torso2.png, fantasy_f_pants1.png, fantasy_f_boot1.png ...) dentro de textures/272/<pasta>/  ->  /corp <pasta>
-    // Modelo 271 (masculino): sem /corp usa a pasta padrao, senao o corpo fica invisivel (todo material sem PNG = male01 = oculto)
-    const std::string corpName = (look.corp.empty() && model == kMaleModel) ? std::string(kMaleDefault) : look.corp;
-    if (!corpName.empty()) { c = EnsureCorp(corpName); if (!c) FLog("[CORPTEX] corp '%s' indisponivel: ignorada", corpName.c_str()); }
+    // Vale para os dois modelos: no 271 (policia) as pecas fantasy_m_cop_*; no 7 (normal) qualquer peca pelo NOME do material
+    // (fantasy_m_torso2.png, fantasy_m_pants1.png ...) dentro de textures/272/<pasta>/ ou pack/corp/<pasta>/  ->  /corp <pasta>
+    if (!look.corp.empty()) { c = EnsureCorp(look.corp); if (!c) FLog("[CORPTEX] corp '%s' indisponivel: ignorada", look.corp.c_str()); }
     for (size_t i = 0; i < mats.size(); ++i) {
         const std::string& k = keys[i];
         if (k.empty() || !mats[i]) continue;
@@ -577,7 +614,7 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
     // 1c) roupa intima (corpo a mostra): so quando ha tom de pele; some onde uma roupa cobre
     if (model == kNormalModel && byIndex && look.tone && look.under != 9) {
         RwTexture* ut = GetSolidTex(look.under ? look.under : 1);
-        for (const char* nm : {"fantasy_f_bikinitop", "fantasy_f_bikinibotton"}) {
+        for (const char* nm : {"fantasy_m_underwear"}) {
             const Box* ub = FindPiece(nm);
             bool covered = false;
             for (const Box* p : visible) if (ub && p != ub && PieceCovers(*p, *ub)) { covered = true; break; }
@@ -599,7 +636,7 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
             RwTexture* tFeet  = GetAppTex("pele/feet/" + t + ".png");
             for (const Box& r : kBodyRegions) {
                 const std::string name = r.name;
-                RwTexture* tex = (name == "body.feets" || name == "body.feets2") ? tFeet : name.compare(0, 8, "body.leg") == 0 ? tLeg : tTorso;
+                RwTexture* tex = name.compare(0, 9, "body.feet") == 0 ? tFeet : name.compare(0, 8, "body.leg") == 0 ? tLeg : tTorso;
                 if (!tex) continue;
                 bool covered = false;
                 for (const Box* p : visible) if (PieceCovers(*p, r)) { covered = true; break; }
@@ -609,8 +646,8 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
             if (tTorso) { over["body.hand"] = tTorso; ++nApp; }   // maos usam o mesmo PNG do torso (6 tons), nao sao ocultadas por roupa
         }
         if (look.hairStyle) {
-            for (int s = 1; s <= 5; ++s) {
-                const std::string key = "fantasy_f_hair" + std::to_string(s);
+            for (int s = 1; s <= CorpMap::kHairStyles; ++s) {
+                const std::string key = "fantasy_m_hair" + std::to_string(s);
                 if (s == look.hairStyle) {
                     if (RwTexture* h = GetAppTex("cabelo/" + std::to_string(s) + "/" + std::to_string(look.hairColor) + ".png")) { over[key] = h; ++nApp; }
                 } else if (hideTex) { over[key] = hideTex; ++nHidden; }
@@ -727,20 +764,6 @@ void Process()
             s_look[c.id] = c.look; s_tried[c.id].valid = false;
         } else {                                            // Clear ou Release de um jogador
             ForgetWant(c.id);
-        }
-    }
-
-    // Modelo 271: o servidor nao precisa mandar nada. A cada 0,5 s inclui quem esta com a skin 271 para receber a pasta padrao.
-    {
-        static uint64_t s_lastScanMs = 0;
-        const uint64_t nowScan = NowMs();
-        if (nowScan - s_lastScanMs >= 500) {
-            s_lastScanMs = nowScan;
-            for (PLAYERID id = 0; id < MAX_PLAYERS; ++id) {
-                CEntityGTA* e = GetEnt(id);
-                if (e && (int)e->GetModelId() == kMaleModel && std::find(s_wantIds.begin(), s_wantIds.end(), id) == s_wantIds.end())
-                    s_wantIds.push_back(id);
-            }
         }
     }
 
@@ -865,7 +888,7 @@ std::string DebugCommand(const std::string& argsIn)     // /corp
     if (a == "lista" || a == "list") {
         std::string s;
         for (const std::string& c : ListCorps()) s += (s.empty() ? "" : ", ") + c;
-        return s.empty() ? "[CORPTEX] nenhuma pasta em SAMP/skins/textures/" + std::string(kSkinFolder) + "/" : "[CORPTEX] corps: " + s;
+        return s.empty() ? "[CORPTEX] nenhuma corp em SAMP/skins/textures/" + std::string(kSkinFolder) + "/ nem em SAMP/skins/pack/corp/" : "[CORPTEX] corps: " + s;
     }
     if (a == "limpar" || a == "clear" || a == "off" || a == "reset") return ApplyLocal(me, [](Look& l) { l.corp.clear(); });
 
@@ -938,15 +961,15 @@ std::string VisualCommand(const std::string& cmdIn, const std::string& argsIn)  
 
     if (cmd == "rosto" || cmd == "pele") {
         if (v.empty() || v.size() > (cmd == "rosto" ? 2u : 1u)) return cmd == "rosto" ? "[CORPTEX] uso: /rosto <tom 1-6> <variante> (0 remove)" : "[CORPTEX] uso: /pele <tom 1-6> (0 remove)";
-        if (v[0] < 0 || v[0] > 6) return "[CORPTEX] tom de 1 a 6 (1 medio, 2 escuro, 3 claro, 4 moreno, 5 avermelhado, 6 palido)";
+        if (v[0] < 0 || v[0] > 6) return "[CORPTEX] tom de 1 a 6 (pack/heads/1..6)";
         if (v[0] == 0) return ApplyLocal(me, [](Look& l) { l.tone = 0; l.face = 0; });
         if (v.size() == 2 && (v[1] < 1 || v[1] > kFaceVariants[v[0]]))
             return "[CORPTEX] tom " + std::to_string(v[0]) + " tem variantes de 1 a " + std::to_string(kFaceVariants[v[0]]);
         return ApplyLocal(me, [&](Look& l) { l.tone = (uint8_t)v[0]; if (v.size() == 2) l.face = (uint8_t)v[1]; });
     }
     if (cmd == "cabelo") {
-        if (v.empty() || v.size() > 2) return "[CORPTEX] uso: /cabelo <estilo 1-5> <cor> (0 remove)";
-        if (v[0] < 0 || v[0] > 5) return "[CORPTEX] estilo de 1 a 5";
+        if (v.empty() || v.size() > 2) return "[CORPTEX] uso: /cabelo <estilo 1-4> <cor> (0 remove)";
+        if (v[0] < 0 || v[0] > CorpMap::kHairStyles) return "[CORPTEX] estilo de 1 a 4";
         if (v[0] == 0) return ApplyLocal(me, [](Look& l) { l.hairStyle = 0; l.hairColor = 0; });
         if (v.size() == 2 && (v[1] < 1 || v[1] > kHairColors[v[0]]))
             return "[CORPTEX] estilo " + std::to_string(v[0]) + " tem cores de 1 a " + std::to_string(kHairColors[v[0]]);
