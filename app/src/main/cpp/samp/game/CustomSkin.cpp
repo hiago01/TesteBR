@@ -1314,19 +1314,52 @@ namespace
                 std::to_string(hid) + " material(is) oculto(s)" + (rest == "wear" ? ", com wear" : ""));
     }
 
-    // Roda o autoexec.txt. Retorna quantos comandos rodou (-1 = arquivo ausente/ilegível).
+    std::string LastInfo()
+    {
+        std::lock_guard<std::mutex> lock(s_infoMutex);
+        return s_info;
+    }
+
+    // Mensagens de SetInfo que significam "o comando falhou" (para o resumo do autoexec).
+    bool InfoLooksLikeError(const std::string& r)
+    {
+        static const char* kPrefix[] = { "ERRO", "slot desconhecido", "o DFF carregado não tem", "variante inválida",
+                                         "sem variantes", "comando desconhecido", "uso:" };
+        for (const char* p : kPrefix) if (r.rfind(p, 0) == 0) return true;
+        return false;
+    }
+
+    // Roda SAMP/skins/autoexec.txt. Retorna quantos comandos rodou (-1 = não rodou).
+    // Se o molde ainda não foi instalado, faz load + apply antes (os comandos slot/set precisam dele).
+    // No fim deixa um RESUMO em /skin7 info (antes só o log mostrava o resultado).
     int RunAutoexec()
     {
         const std::string dir = SkinDir();
         const std::string path = dir.empty() ? std::string() : dir + "autoexec.txt";
-        if (!FileExists(path)) { FLog("[SKIN7] autoexec: %s ausente (use /skin7 save)", path.c_str()); return -1; }
+        if (!FileExists(path))
+        {
+            SetInfo("autoexec: arquivo ausente: " + (path.empty() ? std::string("(storage indisponível)") : path) +
+                    " (o nome tem que ser exatamente autoexec.txt, sem .txt duplicado)");
+            return -1;
+        }
         std::vector<uint8_t> buf;
         std::string err;
         if (!ReadFile(path, buf, err)) { SetInfo("autoexec ilegível: " + err); return -1; }
 
-        std::istringstream in(std::string(buf.begin(), buf.end()));
-        std::string line;
-        int ran = 0, lines = 0;
+        if (!s_applied)
+        {
+            FLog("[SKIN7] autoexec: molde ainda não aplicado -> load + apply antes");
+            DoApply();
+            if (!s_applied) return -1;                      // DoApply já deixou o motivo em /skin7 info
+        }
+
+        std::string text(buf.begin(), buf.end());
+        if (text.size() >= 3 && (uint8_t)text[0] == 0xEF && (uint8_t)text[1] == 0xBB && (uint8_t)text[2] == 0xBF)
+            text.erase(0, 3);                               // BOM UTF-8 (editores do Android costumam gravar)
+
+        std::istringstream in(text);
+        std::string line, firstErr;
+        int ran = 0, errs = 0, lines = 0;
         while (std::getline(in, line) && lines++ < 400)
         {
             while (!line.empty() && (line.back() == '\r' || line.back() == ' ' || line.back() == '\t')) line.pop_back();
@@ -1341,8 +1374,17 @@ namespace
             FLog("[SKIN7] autoexec: %s", line.c_str());
             Execute(line);
             ++ran;
+            const std::string r = LastInfo();
+            if (InfoLooksLikeError(r))
+            {
+                ++errs;
+                FLog("[SKIN7] autoexec: ERRO na linha '%s': %s", line.c_str(), r.c_str());
+                if (firstErr.empty()) firstErr = "'" + line + "' -> " + r;
+            }
         }
-        FLog("[SKIN7] autoexec: %d comando(s) executado(s)", ran);
+        FLog("[SKIN7] autoexec: %d comando(s) executado(s), %d erro(s)", ran, errs);
+        SetInfo("autoexec: " + std::to_string(ran) + " comando(s), " + std::to_string(errs) + " erro(s)" +
+                (errs ? " | 1º erro: " + firstErr : std::string()) + " (detalhes [SKIN7] no log)");
         return ran;
     }
 
