@@ -37,6 +37,8 @@
 //   slot <nome> + | -       próxima / anterior variante existente (percorre o pack)
 //   slot <nome> on | off    mostra / oculta o slot
 //   slot <nome> pasta/arq   caminho explícito (marcas: versace/tshirts/2_1)
+//   save [wear]             grava o estado atual (texturas + ocultos) em SAMP/skins/autoexec.txt
+//   autoexec                roda o autoexec.txt agora (também roda sozinho após o auto-apply)
 //   set <materiais> <pasta/arq>   teste livre por índice de material (ex.: set 25 tshirts/1/34)
 //   Slots com evidência 0 em SkinSlots.h são HIPÓTESES (pants/shorts, heads, sobrancelha, barba, pele).
 //
@@ -61,7 +63,7 @@ class CCustomSkin
 {
 public:
     static constexpr int  kTargetModelId = 7;      // MODEL_MALE01
-    static constexpr bool kAutoApply     = false;   // aplica sozinho (1x por sessão) quando o modelo 7 estiver pronto
+    static constexpr bool kAutoApply     = true;    // aplica sozinho (1x por sessão) quando o modelo 7 estiver pronto; depois roda SAMP/skins/autoexec.txt
 
     static void RequestLoad();     // qualquer thread
     static void RequestUnload();

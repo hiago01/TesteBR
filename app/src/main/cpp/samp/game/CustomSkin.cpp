@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <map>
 #include <mutex>
 #include <new>
 #include <sstream>
@@ -112,6 +113,8 @@ namespace
     std::vector<uint8_t>        s_bytes;                // conteúdo validado do arquivo
     DffPreflight::Info          s_parsed;               // inventário do último load válido
     std::vector<uint8_t>        s_hidden;               // 1 = material oculto (índice global)
+    std::unordered_map<std::string, int> s_slotVar;     // slot -> última variante numérica aplicada (/skin7 slot)
+    std::map<int, std::string>  s_matPack;              // material -> pasta/arquivo do pack aplicado (usado por /skin7 save)
     RpClump*                    s_installed = nullptr;  // clump-molde instalado por nós
     std::vector<RwTexture*>     s_enabledTex;           // 1 ref nossa por material (textura "ligada")
     std::vector<uint8_t>        s_origAlpha;
@@ -780,6 +783,8 @@ namespace
         FLog("[SKIN7] apply: modelInfo=%p; DeleteRwObject + SetClump(%p)", mi, (void*)fresh);
         InstallClump(mi, fresh);
         s_installed = fresh;
+        s_matPack.clear();                                    // o molde novo volta às texturas do DFF
+        s_slotVar.clear();
 
         for (RwTexture* t : oldEnabled) TexRelease(t);        // refs do apply anterior (os materiais antigos seguram as deles)
 
@@ -963,8 +968,6 @@ namespace
     //   <raiz>/SAMP/skins/pack/<pasta>/<n>.png      (tools_skin_pack.py converte os .jpeg em .png)
     //   O cliente compila o stb_image com STBI_ONLY_PNG: arquivo .jpeg NÃO carrega.
     // ===================================================================
-    std::unordered_map<std::string, int> s_slotVar;   // slot -> última variante numérica aplicada
-
     std::string PackDir()
     {
         const std::string d = SkinDir();
@@ -1059,6 +1062,7 @@ namespace
             if (old) s_graveyard.emplace_back(old, now + kGraveyardMs);
         }
         TexRelease(t);                       // solta a ref de criação (slots + materiais seguram as deles)
+        for (int i : idx) s_matPack[i] = rel;
         RecountHidden();
         note = "pack/" + rel + ".png -> materiais " + JoinList(idx);
         return true;
@@ -1240,6 +1244,87 @@ namespace
         SetInfo(note);
     }
 
+    // ---- autoexec: comandos guardados em SAMP/skins/autoexec.txt (1 por linha) ------------------
+    //   Rodam sozinhos logo depois do auto-apply (kAutoApply). Gere o arquivo com /skin7 save.
+    //   Linhas começando com # e linhas vazias são ignoradas; "/skin7 " no início é opcional.
+    void Execute(const std::string& cmdline);   // definida mais abaixo (mesmo namespace)
+
+    std::string RangeList(const std::vector<int>& v)   // v ordenado e sem repetição -> "0-20,22,28-30"
+    {
+        std::string s;
+        for (size_t i = 0; i < v.size();)
+        {
+            size_t j = i;
+            while (j + 1 < v.size() && v[j + 1] == v[j] + 1) ++j;
+            if (!s.empty()) s += ",";
+            s += std::to_string(v[i]);
+            if (j > i) s += "-" + std::to_string(v[j]);
+            i = j + 1;
+        }
+        return s;
+    }
+
+    // /skin7 save [wear] : grava o estado atual (texturas do pack + materiais ocultos) em autoexec.txt
+    void DoSave(const std::string& rest)
+    {
+        if (!s_loadedOk && !DoLoad(false)) return;
+        const std::string dir = SkinDir();
+        if (dir.empty()) { SetInfo("ERRO: storage indisponível"); return; }
+        const int n = (int)s_parsed.materialsList.size();
+        s_hidden.resize((size_t)n, 0);
+
+        std::string out = "# gerado por /skin7 save (roda sozinho depois do auto-apply; 1 comando por linha)\n";
+        std::map<std::string, std::vector<int>> groups;          // pasta/arquivo -> materiais
+        for (const auto& kv : s_matPack) if (kv.first >= 0 && kv.first < n) groups[kv.second].push_back(kv.first);
+        for (const auto& g : groups) out += "set " + RangeList(g.second) + " " + g.first + "\n";   // set deixa visível: vem antes do mat
+
+        std::vector<int> vis;
+        int hid = 0;
+        for (int i = 0; i < n; ++i) { if (s_hidden[(size_t)i]) ++hid; else vis.push_back(i); }
+        if (hid) out += vis.empty() ? std::string("mat off all\n") : "mat only " + RangeList(vis) + "\n";
+        if (rest == "wear") out += "wear\n";
+
+        const std::string path = dir + "autoexec.txt";
+        FILE* f = std::fopen(path.c_str(), "wb");
+        if (!f) { SetInfo("ERRO: não consegui gravar " + path); return; }
+        std::fwrite(out.data(), 1, out.size(), f);
+        std::fclose(f);
+        SetInfo("salvo SAMP/skins/autoexec.txt: " + std::to_string(groups.size()) + " grupo(s) de textura, " +
+                std::to_string(hid) + " material(is) oculto(s)" + (rest == "wear" ? ", com wear" : ""));
+    }
+
+    // Roda o autoexec.txt. Retorna quantos comandos rodou (-1 = arquivo ausente/ilegível).
+    int RunAutoexec()
+    {
+        const std::string dir = SkinDir();
+        const std::string path = dir.empty() ? std::string() : dir + "autoexec.txt";
+        if (!FileExists(path)) { FLog("[SKIN7] autoexec: %s ausente (use /skin7 save)", path.c_str()); return -1; }
+        std::vector<uint8_t> buf;
+        std::string err;
+        if (!ReadFile(path, buf, err)) { SetInfo("autoexec ilegível: " + err); return -1; }
+
+        std::istringstream in(std::string(buf.begin(), buf.end()));
+        std::string line;
+        int ran = 0, lines = 0;
+        while (std::getline(in, line) && lines++ < 400)
+        {
+            while (!line.empty() && (line.back() == '\r' || line.back() == ' ' || line.back() == '\t')) line.pop_back();
+            size_t b = 0;
+            while (b < line.size() && (line[b] == ' ' || line[b] == '\t')) ++b;
+            line.erase(0, b);
+            if (line.empty() || line[0] == '#') continue;
+            if (line[0] == '/') line.erase(0, 1);
+            if (line.rfind("skin7 ", 0) == 0) line.erase(0, 6);
+            const std::string first = line.substr(0, line.find(' '));
+            if (first == "save" || first == "autoexec") continue;        // evita sobrescrever/recursão
+            FLog("[SKIN7] autoexec: %s", line.c_str());
+            Execute(line);
+            ++ran;
+        }
+        FLog("[SKIN7] autoexec: %d comando(s) executado(s)", ran);
+        return ran;
+    }
+
     // ---- despacho ----------------------------------------------------------
     void Execute(const std::string& cmdline)
     {
@@ -1263,6 +1348,8 @@ namespace
         else if (cmd == "slots")  DoSlots();
         else if (cmd == "slot")   DoSlot(rest);
         else if (cmd == "set")    DoSet(rest);
+        else if (cmd == "save")   DoSave(rest);
+        else if (cmd == "autoexec") RunAutoexec();
         else                      SetInfo("comando desconhecido: " + cmd);
     }
 
@@ -1327,6 +1414,7 @@ namespace
         {
             s_autoApplied = true;
             s_markerClearAtMs = NowMs() + 15000;   // sobreviveu 15 s => apaga o marcador
+            RunAutoexec();                         // roupas/ocultos guardados (SAMP/skins/autoexec.txt), se existir
         }
         else
         {
@@ -1396,7 +1484,7 @@ std::string CCustomSkin::Info()
 
 std::string CCustomSkin::DebugCommand(const std::string& args)
 {
-    static const char* kNames[] = {"load", "apply", "wear", "unwear", "unload", "mats", "mat", "tex", "png", "pack", "slots", "slot", "set"};
+    static const char* kNames[] = {"load", "apply", "wear", "unwear", "unload", "mats", "mat", "tex", "png", "pack", "slots", "slot", "set", "save", "autoexec"};
     std::istringstream in(args);
     std::string first;
     in >> first;
@@ -1423,6 +1511,6 @@ std::string CCustomSkin::DebugCommand(const std::string& args)
     }
 
     const std::string p = SkinPath();
-    return "[SKIN7] /skin7 load|apply|wear|unwear|unload|info | mats | mat list|reset|off|on|only <lista> | tex auto|idx|none | png | pack | slots | slot <nome> <n|+|-|on|off|pasta/arq> | set <lista> <pasta/arq>   arquivo: " +
+    return "[SKIN7] /skin7 load|apply|wear|unwear|unload|info | mats | mat list|reset|off|on|only <lista> | tex auto|idx|none | png | pack | slots | slot <nome> <n|+|-|on|off|pasta/arq> | set <lista> <pasta/arq> | save [wear] | autoexec   arquivo: " +
            (p.empty() ? std::string("(storage indisponível)") : p);
 }
