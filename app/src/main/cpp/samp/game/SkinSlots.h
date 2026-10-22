@@ -86,11 +86,21 @@ namespace SkinSlots
         { "beard3",   "body.beards3",       "beards/1",  0 },
         { "beard4",   "body.beards4",       "beards/1",  0 },
         { "beard5",   "body.beards5",       "beards/1",  0 },
-        // pele do corpo (6 tons): braços/mãos/ombros NÃO estão mapeados (use /skin7 set)
-        { "skin_torso", "body.torso1,body.torso2,body.torso3", "torso/1", 0 },
+        // pele do corpo (6 tons). Evidência (UV): torso+braços+mãos+ombros NÃO se sobrepõem entre si (cabem num atlas
+        // só = torso/1), mas as pernas se sobrepõem ao torso e aos pés, e os pés ao torso (3 atlas = torso, leg, feet).
+        { "skin_torso", "body.torso1,body.torso2,body.torso3,body.armright,body.armleft,body.hand,"
+                        "body.shoulderleft,body.shoulderright", "torso/1", 1 },
         { "skin_leg",   "body.legleft1,body.legleft2,body.legleft3,body.legleft4,body.legleft5,"
-                        "body.legright1,body.legright2,body.legright3,body.legright4,body.legright5", "leg/1", 0 },
-        { "skin_feet",  "body.feetleft,body.feetright", "feet/1", 0 },
+                        "body.legright1,body.legright2,body.legright3,body.legright4,body.legright5", "leg/1", 1 },
+        { "skin_feet",  "body.feetleft,body.feetright", "feet/1", 1 },
+        // tatuagens (overlay sobre as mesmas UVs do corpo). Pastas por NOME de região: HIPÓTESE.
+        { "tat_back",     "fantasy_tatto_torso_back",  "tattoo/torso_back_complete",  0 },
+        { "tat_chest",    "fantasy_tatto_torso_front", "tattoo/torso_chest_complete", 0 },
+        { "tat_arm",      "fantasy_tatto_arm_r,fantasy_tatto_arm_l", "tattoo/torso_arm_complete", 0 },
+        { "tat_shoulder", "fantasy_tatto_shoulder_l,fantasy_tatto_shoulder_r", "tattoo/torso_arm_top", 0 },
+        { "tat_legs",     "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,"
+                          "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5",
+                          "tattoo/legs_top", 0 },
     };
     static constexpr int kCount = (int)(sizeof(kSlots) / sizeof(kSlots[0]));
 

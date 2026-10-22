@@ -567,8 +567,20 @@ namespace
                         }
                         else if (!cur || !TexHasRaster(cur))
                         {
-                            problems.push_back("material " + std::to_string(i) + " textura '" + mi.texture +
-                                               "' NAO ENCONTRADA (sem PNG em textures/, sem textura no DFF/banco do jogo): ficara branco");
+                            // SAMP/skins/fallback_tex (arquivo vazio): no lugar de ficar branco usa a textura "male01"
+                            RwTexture* fb = FileExists(SkinDir() + "fallback_tex") ? LookupGameTexture("male01") : nullptr;
+                            if (fb)
+                            {
+                                SetMatTexture(mats[i], fb);
+                                cur = fb;
+                                FLog("[SKIN7] material %zu: textura '%s' nao achada -> fallback male01", i, mi.texture.c_str());
+                            }
+                            else
+                            {
+                                problems.push_back("material " + std::to_string(i) + " textura '" + mi.texture +
+                                                   "' NAO ENCONTRADA (sem PNG em textures/, sem textura no DFF/banco do jogo): ficara branco" +
+                                                   " (crie SAMP/skins/fallback_tex para usar male01)");
+                            }
                         }
                     }
                 }
@@ -796,8 +808,17 @@ namespace
         SetInfo(msg);
     }
 
+    int RunAutoexec();   // definida mais abaixo (mesmo namespace)
+
     void DoWear(bool on)
     {
+        // "wear" sozinho já basta: se o molde ainda não foi instalado, faz load + apply + autoexec antes de vestir
+        if (on && !s_applied)
+        {
+            FLog("[SKIN7] wear: molde ainda não aplicado -> load + apply + autoexec antes de vestir");
+            DoApply();
+            if (s_applied) RunAutoexec();
+        }
         const int model = on ? CCustomSkin::kTargetModelId : 0;
         FLog("[SKIN7] wear: ped local -> modelo %d (antes)", model);
         std::string err;
