@@ -20,7 +20,7 @@
 //     o buffer original do IMG segue (jogo como antes) e o motivo vai para o log.
 //
 // PASTAS (raiz = Android/data/com.samp.mobile/files/), ordem de busca do arquivo:
-//     SAMP/col/countrye_10.col  ->  SAMP/countrye_10.col  ->  texdb/countrye_10.col
+//     1 SAMP/col/  2 SAMP/  3 texdb/  4 files/ (raiz)  5 col/  6 models/   (a 1a que LER e VALIDAR vence; todas sao logadas)
 // MARCADORES (arquivos vazios em SAMP/):   col_off.on = desliga o replace (testar o original)   cinfo_keep.on = nao mexe no CINFO.BIN
 // LOG (samp_log.txt): prefixos [COL] e [CINFO]
 // ---------------------------------------------------------------------------
@@ -68,27 +68,47 @@ namespace CustomCol
         return !r.empty() && Exists(r + "SAMP/" + rel);
     }
 
+    // PASTAS testadas, em ordem (raiz = .../com.samp.mobile/files/). A 1a que LER e VALIDAR vence.
     inline std::vector<std::string> ColCandidates()
     {
         const std::string r = Root();
         if (r.empty()) return {};
-        return { r + "SAMP/col/" + kColFile, r + "SAMP/" + kColFile, r + "texdb/" + kColFile };
+        return { r + "SAMP/col/" + kColFile,    // 1
+                 r + "SAMP/"     + kColFile,    // 2
+                 r + "texdb/"    + kColFile,    // 3
+                 r +               kColFile,    // 4  files/
+                 r + "col/"      + kColFile,    // 5
+                 r + "models/"   + kColFile };  // 6
     }
 
-    inline bool ReadAll(const std::string& path, std::vector<uint8_t>& out, size_t& fileSize)
+    // le o arquivo inteiro; em falha devolve o errno e diz em que etapa falhou
+    inline bool ReadAll(const std::string& path, std::vector<uint8_t>& out, size_t& fileSize, int* err = nullptr, const char** step = nullptr)
     {
-        out.clear(); fileSize = 0;
+        out.clear(); fileSize = 0; if (err) *err = 0; if (step) *step = "";
         struct stat st {};
-        if (::stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) return false;
+        if (::stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) { if (err) *err = errno; if (step) *step = "stat"; return false; }
         fileSize = (size_t)st.st_size;
-        if (fileSize == 0 || fileSize > kMaxColBytes) return false;
+        if (fileSize == 0)           { if (step) *step = "arquivo vazio"; return false; }
+        if (fileSize > kMaxColBytes) { if (step) *step = "maior que o limite"; return false; }
         FILE* f = ::fopen(path.c_str(), "rb");
-        if (!f) return false;
+        if (!f) { if (err) *err = errno; if (step) *step = "fopen"; return false; }
         out.resize(fileSize);
+        errno = 0;
         const size_t got = ::fread(out.data(), 1, fileSize, f);
+        const int e = errno;
         ::fclose(f);
-        if (got != fileSize) { out.clear(); return false; }
+        if (got != fileSize) { out.clear(); if (err) *err = e; if (step) *step = "fread (leu parcial)"; return false; }
         return true;
+    }
+
+    // diagnostico de UM candidato: existe? dono/permissao? da para abrir?
+    inline void DiagCandidate(int idx, const std::string& p)
+    {
+        struct stat st {};
+        if (::stat(p.c_str(), &st) != 0) { FLog("[COL]   pasta %d: %s -> nao existe (errno=%d %s)", idx + 1, p.c_str(), errno, std::strerror(errno)); return; }
+        FLog("[COL]   pasta %d: %s -> existe | %lld bytes | modo=%o dono=%d grupo=%d | app uid=%d | R_OK=%s",
+             idx + 1, p.c_str(), (long long)st.st_size, (unsigned)(st.st_mode & 0777), (int)st.st_uid, (int)st.st_gid, (int)::getuid(),
+             ::access(p.c_str(), R_OK) == 0 ? "sim" : "NAO");
     }
 
     // ------------------------------------------------- estado do jogo p/ CE_brewery (somente leitura)
@@ -137,7 +157,20 @@ namespace CustomCol
         return CustomColParse::Rd16(c.data.data() + e.offset + 4 + 72);
     }
 
+    inline std::string g_key;                                   // assinatura (caminho|mtime|tamanho) de todas as pastas
+    inline std::chrono::steady_clock::time_point g_lastFail{};
+
+    inline std::string KeyOfCandidates()
+    {
+        std::string k; struct stat st {};
+        for (const auto& c : ColCandidates())
+            if (::stat(c.c_str(), &st) == 0) k += c + "|" + std::to_string((long long)st.st_mtime) + "|" + std::to_string((long long)st.st_size) + ";";
+        if (Marker("col_off.on")) k += "OFF;";
+        return k;
+    }
+
     // chamar com g_m travado. true = existe arquivo valido pronto para o replace.
+    // Testa TODAS as pastas, em ordem; a 1a que ler + validar vence. Falha de leitura NAO e' memorizada: tenta de novo em 30 s.
     inline bool Refresh(bool force = false)
     {
         using namespace std::chrono;
@@ -145,45 +178,58 @@ namespace CustomCol
         if (!force && g_haveChecked && duration_cast<milliseconds>(now - g_lastCheck).count() < 2000) return g_c.valid;
         g_haveChecked = true; g_lastCheck = now;
 
+        const std::string key = KeyOfCandidates();
+        if (!force && key == g_key)
+        {
+            if (g_c.valid) return true;
+            if (duration_cast<seconds>(now - g_lastFail).count() < 30) return false;   // mesma situacao: nao repete o log toda hora
+        }
+        g_key = key;
+
         if (Marker("col_off.on"))
         {
-            if (g_c.valid || !g_c.logged) FLog("[COL] SAMP/col_off.on presente: replace DESLIGADO (jogo usa o countrye_10 do IMG)");
-            g_c = Custom{}; g_c.logged = true; return false;
+            FLog("[COL] SAMP/col_off.on presente: replace DESLIGADO (jogo usa o countrye_10 do IMG)");
+            g_c = Custom{}; g_c.logged = true; g_lastFail = now; return false;
         }
-        std::string found; struct stat st {};
-        for (const auto& c : ColCandidates())
-            if (::stat(c.c_str(), &st) == 0 && S_ISREG(st.st_mode)) { found = c; break; }
-        if (found.empty())
-        {
-            if (!g_c.logged || g_c.valid) FLog("[COL] %s nao esta em SAMP/col, SAMP nem texdb: replace inativo (jogo usa o IMG)", kColFile);
-            g_c = Custom{}; g_c.logged = true; return false;
-        }
-        if (found == g_c.path && st.st_mtime == g_c.mtime && (size_t)st.st_size == g_c.size) return g_c.valid;   // nada mudou
 
-        Custom n; n.path = found; n.mtime = st.st_mtime; n.size = (size_t)st.st_size; n.logged = true;
-        size_t sz = 0;
-        if (!ReadAll(found, n.data, sz))
+        const auto cands = ColCandidates();
+        FLog("[COL] procurando %s em %zu pastas:", kColFile, cands.size());
+        bool anyExists = false;
+        for (size_t i = 0; i < cands.size(); i++)
         {
-            std::snprintf(n.why, sizeof n.why, "falha ao ler (tamanho=%zu, limite=%zu)", sz, kMaxColBytes);
-            FLog("[COL] %s: REPROVADO - %s -> o IMG continua valendo", found.c_str(), n.why);
-            g_c = std::move(n); return false;
-        }
-        n.res = CustomColParse::Parse(n.data.data(), n.data.size());
-        n.valid = CustomColParse::ValidateAll(n.data.data(), n.data.size(), n.res, n.why, sizeof n.why);
-        FLog("[COL] %s: %zu bytes, %zu entradas, estrutura=%s, validacao profunda=%s%s%s",
-             found.c_str(), n.data.size(), n.res.entries.size(), CustomColParse::StatusStr(n.res.status),
-             n.valid ? "OK" : "REPROVADO", n.valid ? "" : " - ", n.valid ? "" : n.why);
-        if (n.valid)
-        {
+            DiagCandidate((int)i, cands[i]);
+            struct stat st {};
+            if (::stat(cands[i].c_str(), &st) != 0 || !S_ISREG(st.st_mode)) continue;
+            anyExists = true;
+
+            Custom n; n.path = cands[i]; n.mtime = st.st_mtime; n.size = (size_t)st.st_size; n.logged = true;
+            size_t sz = 0; int err = 0; const char* step = "";
+            if (!ReadAll(cands[i], n.data, sz, &err, &step))
+            {
+                FLog("[COL]   pasta %zu: REPROVADA na etapa '%s' (errno=%d '%s', tamanho=%zu) -> tentando a proxima pasta", i + 1, step, err, std::strerror(err), sz);
+                continue;
+            }
+            n.res = CustomColParse::Parse(n.data.data(), n.data.size());
+            n.valid = CustomColParse::ValidateAll(n.data.data(), n.data.size(), n.res, n.why, sizeof n.why);
+            FLog("[COL]   pasta %zu: LIDA OK: %zu bytes, %zu entradas, estrutura=%s, validacao profunda=%s%s%s",
+                 i + 1, n.data.size(), n.res.entries.size(), CustomColParse::StatusStr(n.res.status),
+                 n.valid ? "OK" : "REPROVADO", n.valid ? "" : " - ", n.valid ? "" : n.why);
+            if (!n.valid) continue;
+
             n.expectTris = TrisOf(n, kTargetModel);
             const int idx = CustomColParse::Find(n.res, kTargetModel);
             if (idx < 0) FLog("[COL] AVISO: '%s' nao esta dentro de %s (%zu entradas)", kTargetModel, kColFile, n.res.entries.size());
             else FLog("[COL] '%s' no arquivo: entrada #%d %s size=%u triangulos=%u", kTargetModel, idx, n.res.entries[idx].ident, n.res.entries[idx].size, n.expectTris);
-            for (size_t i = 0; i < n.res.entries.size() && i < 60; i++)
-                FLog("[COL]   #%03zu +%-8u %s size=%-8u nome='%s'", i, n.res.entries[i].offset, n.res.entries[i].ident, n.res.entries[i].size, n.res.entries[i].name);
+            for (size_t k = 0; k < n.res.entries.size() && k < 60; k++)
+                FLog("[COL]   #%03zu +%-8u %s size=%-8u nome='%s'", k, n.res.entries[k].offset, n.res.entries[k].ident, n.res.entries[k].size, n.res.entries[k].name);
+            FLog("[COL] >>> USANDO a pasta %zu: %s", i + 1, n.path.c_str());
+            g_c = std::move(n);
+            return true;
         }
-        g_c = std::move(n);
-        return g_c.valid;
+        if (anyExists) FLog("[COL] NENHUMA pasta deu um arquivo legivel e valido -> replace inativo (jogo usa o IMG)");
+        else           FLog("[COL] %s nao existe em nenhuma das pastas -> replace inativo (jogo usa o IMG)", kColFile);
+        g_c = Custom{}; g_c.logged = true; g_lastFail = now;
+        return false;
     }
 
     // ------------------------------------------------------------------ REPLACE: hook em CColStore::LoadCol
@@ -226,8 +272,6 @@ namespace CustomCol
         const std::string r = Root();
         if (r.empty()) { FLog("[COL][AUDIT:%s] sem raiz de storage", quando); return; }
         FLog("[COL][AUDIT:%s] raiz=%s", quando, r.c_str());
-        for (const auto& c : ColCandidates())
-            FLog("[COL] A. %-70s %s", c.c_str(), Exists(c) ? "ENCONTRADO" : "nao existe");
         { std::lock_guard<std::mutex> lk(g_m); Refresh(true); }
         const GameState s = Snapshot();
         LogState("D. jogo agora", s);

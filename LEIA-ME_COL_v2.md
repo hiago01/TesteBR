@@ -5,7 +5,8 @@ Copie por cima, em `app/src/main/cpp/samp/game/`:
 - `CustomCol.h`        (reescrito)
 - `CustomColParse.h`   (ganhou validação profunda)
 
-Coloque o `countrye_10.col` novo em `files/SAMP/col/` (ou `files/SAMP/`, ou `files/texdb/`).
+Coloque o `countrye_10.col` novo em UMA (ou várias) destas pastas, dentro de `Android/data/com.samp.mobile/files/`:
+`SAMP/col/` · `SAMP/` · `texdb/` · `files/` (raiz) · `col/` · `models/`
 Recompile e rode. Para testar o original: crie o arquivo vazio `files/SAMP/col_off.on`.
 
 ## O que estava errado no patch v1 (provado no libGTASA.so arm64 do projeto)
@@ -51,3 +52,17 @@ Se aparecer `DIVERGENTE`, ou nenhuma linha `REPLACE` depois de chegar perto do c
   (não depende do IMG e invalida o CINFO). Se ainda quebrar COM o `[COL] ... DADOS PERSONALIZADOS EM USO`, o problema é físico/geométrico, não de carregamento.
 - Aviso: o loader por **arquivo** (`LoadCollisionFile(const char*,uchar)`, usado para COLFILE do gta.dat) tem um `tempBuffer` estático de 32 768 bytes
   (símbolo do libGTASA). CE_brewery tem 41 408 bytes. Por isso **não** coloque este .col no gta.dat; o caminho do IMG/streaming não usa esse buffer.
+
+## v2.1 — teste em várias pastas (correção do "falha ao ler")
+- O log do seu aparelho mostrou `REPROVADO - falha ao ler (tamanho=122796...)`: o arquivo foi achado mas `fopen/fread` falhou
+  (suspeita: permissão/dono do arquivo copiado pelo Termux como root; o log antigo não gravava o errno).
+- Agora o jogo testa **as 6 pastas em ordem**, loga para cada uma: existe?, tamanho, modo/dono/grupo, uid do app, `R_OK`,
+  e se falhar mostra a etapa (`fopen`/`fread`) com `errno`. A **primeira que ler e validar** vence e aparece
+  `[COL] >>> USANDO a pasta N: ...`. Se uma pasta falhar, ele tenta a próxima.
+- Falha de leitura não fica memorizada: tenta de novo em 30 s (e na hora se o arquivo mudar).
+- Simulação no host como usuário comum: pasta 1 com `chmod 000` → `errno=13 Permission denied` → cai na pasta 3 e usa o arquivo. OK.
+
+### Como fazer o teste de pastas
+1. Copie o mesmo `countrye_10.col` para 2 ou 3 pastas (ex.: `SAMP/col/`, `texdb/` e `SAMP/`).
+2. Abra o jogo e mande as linhas `[COL]`. Cada pasta mostra dono/modo/R_OK e o motivo, então dá para ver qual funciona.
+3. Se TODAS falharem com `errno=13`, corrija no Termux: `chmod 644` no arquivo e `chmod 755` nas pastas, ou copie o arquivo pelo gerenciador de arquivos do Android.

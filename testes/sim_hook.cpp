@@ -16,7 +16,7 @@ static bool FakeNative(int slot,uint8_t* buf,int size){ gSlot=slot; gSeen=buf; g
   gCol.tris=CustomColParse::Rd16(buf+r.entries[i].offset+4+72); return true; }
 static std::vector<uint8_t> Rd(const char* p){ std::vector<uint8_t> v; FILE*f=fopen(p,"rb"); fseek(f,0,SEEK_END); v.resize(ftell(f)); fseek(f,0,SEEK_SET); fread(v.data(),1,v.size(),f); fclose(f); return v; }
 int main(){
-  system("rm -rf /tmp/sroot && mkdir -p /tmp/sroot/SAMP/col");
+  system("rm -rf /tmp/sroot && mkdir -p /tmp/sroot/SAMP/col /tmp/sroot/texdb /tmp/sroot/texdb");
   static char root[]="/tmp/sroot"; g_pszStorage=root;
   auto orig=Rd("/mnt/user-data/uploads/countrye_10_original_.col");
   CustomCol::g_origLoadCol=&FakeNative;
@@ -34,7 +34,13 @@ int main(){
   auto bad=Rd("/mnt/user-data/uploads/countrye_10.col"); bad.resize(bad.size()-77); FILE*f=fopen("/tmp/sroot/SAMP/col/countrye_10.col","wb"); fwrite(bad.data(),1,bad.size(),f); fclose(f);
   CustomCol::g_haveChecked=false; gCol.tris=0; CustomCol::LoadColHook(7,orig.data(),(int)orig.size());
   printf("-> nativo recebeu %s\n", gSeen==orig.data()?"BUFFER DO IMG (correto)":"TROCADO (ERRO)");
+  puts("\n### 4b) pasta 1 ilegivel (chmod 000) -> deve cair na pasta 3 (texdb)");
+  system("cp /mnt/user-data/uploads/countrye_10.col /tmp/sroot/SAMP/col/ && chmod 000 /tmp/sroot/SAMP/col/countrye_10.col && cp /mnt/user-data/uploads/countrye_10.col /tmp/sroot/texdb/");
+  CustomCol::g_haveChecked=false; gCol.tris=0; CustomCol::LoadColHook(7,orig.data(),(int)orig.size());
+  printf("-> nativo recebeu %s\n", gSeen==orig.data()?"BUFFER DO IMG":"COPIA DO ARQUIVO EXTERNO");
+  system("chmod 644 /tmp/sroot/SAMP/col/countrye_10.col; rm -f /tmp/sroot/texdb/countrye_10.col");
   puts("\n### 5) col_off.on");
   system("cp /mnt/user-data/uploads/countrye_10.col /tmp/sroot/SAMP/col/; touch /tmp/sroot/SAMP/col_off.on"); CustomCol::g_haveChecked=false;
   CustomCol::LoadColHook(7,orig.data(),(int)orig.size()); printf("-> nativo recebeu %s\n", gSeen==orig.data()?"BUFFER DO IMG (correto)":"TROCADO (ERRO)");
 }
+// (teste extra 6/7 abaixo e' chamado por main2)
