@@ -1248,7 +1248,7 @@ namespace
         return r;
     }
 
-    // Materiais que HOJE estão totalmente cobertos por uma calça/bermuda visível (pele das pernas e roupa íntima).
+    // Materiais que HOJE estão totalmente cobertos por uma peça visível (camisa, calça/bermuda, tênis): pele do corpo e roupa íntima.
     // Função do estado atual de s_hidden: não guarda nada, então vale também depois de save/autoexec.
     std::vector<int> CoveredByGarments()
     {
@@ -1308,7 +1308,7 @@ namespace
         if (!sl) { SetInfo("slot desconhecido: '" + name + "' (veja /skin7 slots)"); return; }
         const std::vector<int> idx = SlotMaterials(*sl);
         if (idx.empty()) { SetInfo("o DFF carregado não tem o material do slot '" + name + "' (" + sl->texture + ")"); return; }
-        const std::vector<int> covBefore = CoveredByGarments();     // cobertura antes da troca (calça/bermuda x pele/roupa íntima)
+        const std::vector<int> covBefore = CoveredByGarments();     // cobertura antes da troca (camisa/calça/bermuda/tênis x pele/roupa íntima)
 
         if (arg == "on" || arg == "off")
         {

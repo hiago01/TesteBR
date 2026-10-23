@@ -1,0 +1,88 @@
+diff -ruN a/app/src/main/cpp/samp/game/CustomSkin.cpp b/app/src/main/cpp/samp/game/CustomSkin.cpp
+--- a/app/src/main/cpp/samp/game/CustomSkin.cpp	2026-10-23 15:51:27.031634672 +0000
++++ b/app/src/main/cpp/samp/game/CustomSkin.cpp	2026-10-23 15:51:27.033734611 +0000
+@@ -1248,7 +1248,7 @@
+         return r;
+     }
+ 
+-    // Materiais que HOJE estão totalmente cobertos por uma calça/bermuda visível (pele das pernas e roupa íntima).
++    // Materiais que HOJE estão totalmente cobertos por uma peça visível (camisa, calça/bermuda, tênis): pele do corpo e roupa íntima.
+     // Função do estado atual de s_hidden: não guarda nada, então vale também depois de save/autoexec.
+     std::vector<int> CoveredByGarments()
+     {
+@@ -1308,7 +1308,7 @@
+         if (!sl) { SetInfo("slot desconhecido: '" + name + "' (veja /skin7 slots)"); return; }
+         const std::vector<int> idx = SlotMaterials(*sl);
+         if (idx.empty()) { SetInfo("o DFF carregado não tem o material do slot '" + name + "' (" + sl->texture + ")"); return; }
+-        const std::vector<int> covBefore = CoveredByGarments();     // cobertura antes da troca (calça/bermuda x pele/roupa íntima)
++        const std::vector<int> covBefore = CoveredByGarments();     // cobertura antes da troca (camisa/calça/bermuda/tênis x pele/roupa íntima)
+ 
+         if (arg == "on" || arg == "off")
+         {
+diff -ruN a/app/src/main/cpp/samp/game/SkinSlots.h b/app/src/main/cpp/samp/game/SkinSlots.h
+--- a/app/src/main/cpp/samp/game/SkinSlots.h	2026-10-23 15:51:27.034390674 +0000
++++ b/app/src/main/cpp/samp/game/SkinSlots.h	2026-10-23 15:51:27.040330737 +0000
+@@ -141,13 +141,14 @@
+     // ---------------------------------------------------------------------------------------------------
+     // Exclusividade por categoria (/skin7 slot): só UMA variante visível por grupo.
+     // Cada grupo lista slots que existem em kSlots acima (nomes conferidos; slot inexistente é ignorado).
++    // Calçados: tênis (boot*) e chinelo (slipper*) são UM grupo só: com tênis não se usa chinelo (e vice-versa).
+     // Categorias com um único slot (hat1, necklace1, underwear, skin_*) já são exclusivas por natureza.
+     // Fora dos grupos de propósito: brow*/beard* (ev 0; beard1..5 dividem a mesma pasta), skin_leg (um slot só
+     // para as 10 pernas) e tat_* (cada tatuagem é uma região diferente do corpo).
+     // ---------------------------------------------------------------------------------------------------
+     static const char* const kExclusiveGroups[] = {
+         "backpack1,backpack2,backpack3",
+-        "boot1,boot2,boot3,boot4",
++        "boot1,boot2,boot3,boot4,slipper1,slipper2,slipper3",
+         "clock1,clock2",
+         "ear1,ear2,ear3,ear4",
+         "glasse1,glasse2",
+@@ -155,7 +156,6 @@
+         "head1,head2,head3,head4,head5",
+         "mask1,mask2",
+         "pants1,pants2,pants3,pants4,short1,short2,short3",
+-        "slipper1,slipper2,slipper3",
+         "torso1,torso2,torso3,torso4",
+     };
+     static constexpr int kExclusiveGroupCount = (int)(sizeof(kExclusiveGroups) / sizeof(kExclusiveGroups[0]));
+@@ -226,14 +226,23 @@
+     }
+ 
+     // ---------------------------------------------------------------------------------------------------
+-    // Cobertura: enquanto uma calça/bermuda está VISÍVEL, as partes do corpo que ela cobre por inteiro ficam
+-    // ocultas (senão a pele das pernas e a roupa íntima aparecem por baixo do tecido). Cobertura parcial NÃO
+-    // oculta (fica com pele). Mesma regra e mesmas caixas do CorpTex.cpp (medidas da geometria do skin.dff):
++    // Cobertura: enquanto uma camisa, calça/bermuda ou tênis está VISÍVEL, as partes do corpo que ele cobre por
++    // inteiro ficam ocultas (senão a pele do tronco/pernas/pés e a roupa íntima aparecem por baixo do tecido).
++    // Cobertura parcial NÃO oculta (fica com pele). Chinelo NÃO cobre (deixa o pé à mostra). Mãos nunca são
++    // ocultadas. Mesma regra e mesmas caixas do CorpTex.cpp (medidas da geometria do skin.dff):
+     //   xabs = |x| máximo, zmin/zmax = extensão vertical.
+     // ---------------------------------------------------------------------------------------------------
+     struct Box { const char* name; float xabs, zmin, zmax; };      // name = textura/material do DFF
+ 
+-    static const Box kCoverPieces[] = {                            // peças que cobrem (slots pants1-4 e short1-3)
++    static const Box kCoverPieces[] = {                            // peças que cobrem (torso1-4, pants1-4, short1-3, boot1-4)
++        { "fantasy_m_torso1", 0.20f, -0.03f, 0.58f },
++        { "fantasy_m_torso2", 0.33f, -0.07f, 0.59f },
++        { "fantasy_m_torso3", 0.56f, -0.06f, 0.67f },
++        { "fantasy_m_torso4", 0.53f, -0.02f, 0.66f },
++        { "fantasy_m_boot1",  0.22f, -0.98f, -0.84f },
++        { "fantasy_m_boot2",  0.22f, -0.97f, -0.86f },
++        { "fantasy_m_boot3",  0.21f, -0.99f, -0.81f },
++        { "fantasy_m_boot4",  0.22f, -0.98f, -0.80f },
+         { "fantasy_m_pants1", 0.22f, -0.88f, 0.11f },
+         { "fantasy_m_pants2", 0.26f, -0.97f, 0.11f },
+         { "fantasy_m_pants3", 0.22f, -0.61f, 0.11f },
+@@ -249,6 +258,11 @@
+         { "body.legleft4",  0.19f, -0.90f, -0.81f }, { "body.legright4", 0.19f, -0.90f, -0.81f },
+         { "body.legleft5",  0.20f, -0.94f, -0.88f }, { "body.legright5", 0.20f, -0.94f, -0.88f },
+         { "fantasy_m_underwear", 0.21f, -0.22f, 0.11f },
++        { "body.feetleft",  0.21f, -0.97f, -0.90f }, { "body.feetright", 0.21f, -0.97f, -0.90f },
++        { "body.torso1",    0.17f,  0.05f,  0.57f }, { "body.torso2",    0.13f,  0.45f,  0.59f },
++        { "body.torso3",    0.08f,  0.49f,  0.55f },
++        { "body.shoulderleft", 0.30f, 0.27f, 0.55f }, { "body.shoulderright", 0.30f, 0.27f, 0.55f },
++        { "body.armleft",   0.49f,  0.05f,  0.37f }, { "body.armright",  0.50f,  0.05f,  0.37f },
+     };
+ 
+     inline bool PieceCovers(const Box& p, const Box& r)

@@ -164,7 +164,8 @@ int main()
     {
         auto H = [&](const char* tex) { auto v = MaterialsByTexture(tex); CHECK(!v.empty()); return s_hidden[(size_t)v[0]] != 0; };
         s_hidden.assign(n, 0); DiscardBackup();
-        const char* gar[] = {"pants1","pants2","pants3","pants4","short1","short2","short3"};
+        const char* gar[] = {"torso1","torso2","torso3","torso4","boot1","boot2","boot3","boot4","slipper1","slipper2","slipper3",
+                             "pants1","pants2","pants3","pants4","short1","short2","short3"};
         for (auto g : gar) Run(std::string("slot ") + g + " off");
         // sem nenhuma peca: nada coberto, tudo visivel
         CHECK(!H("body.legleft1") && !H("body.legright5") && !H("fantasy_m_underwear"));
@@ -208,6 +209,66 @@ int main()
         // slots de outras categorias nao sao tocados
         const bool hairBefore = Vis("hair3");
         Run("slot pants4 1"); CHECK(Vis("hair3") == hairBefore);
+    }
+
+    // ---- 11) COBERTURA: camisas, tenis (boot) e chinelo ----
+    {
+        auto H = [&](const char* tex) { auto v = MaterialsByTexture(tex); CHECK(!v.empty()); return s_hidden[(size_t)v[0]] != 0; };
+        auto HR = [&](const char* tex) { auto v = MaterialsByTexture(tex); CHECK(!v.empty()); return s_hidden[(size_t)v.back()] != 0; };
+        const char* all[] = {"torso1","torso2","torso3","torso4","boot1","boot2","boot3","boot4","slipper1","slipper2","slipper3",
+                             "pants1","pants2","pants3","pants4","short1","short2","short3"};
+        s_hidden.assign(n, 0); DiscardBackup();
+        for (auto g : all) Run(std::string("slot ") + g + " off");
+        CHECK(!H("body.torso1") && !H("body.armleft") && !H("body.shoulderleft") && !H("body.feetleft") && !H("body.legleft5"));
+
+        // regata (torso1): cobre tronco; bracos e ombros ficam com pele
+        Run("slot torso1 3");
+        CHECK(Vis("torso1"));
+        CHECK(H("body.torso1") && H("body.torso2") && H("body.torso3"));
+        CHECK(!H("body.armleft") && !H("body.armright") && !H("body.shoulderleft") && !H("body.shoulderright"));
+        // camiseta (torso2): tambem cobre os ombros
+        Run("slot torso2 1");
+        CHECK(Vis("torso2") && !Vis("torso1"));
+        CHECK(H("body.torso1") && H("body.shoulderleft") && H("body.shoulderright") && !H("body.armleft"));
+        // jaqueta (torso4): cobre bracos
+        Run("slot torso4 1");
+        CHECK(Vis("torso4") && !Vis("torso2"));
+        CHECK(H("body.torso1") && H("body.shoulderleft") && H("body.armleft") && H("body.armright"));
+        // volta para a regata: bracos e ombros reaparecem
+        Run("slot torso1 3");
+        CHECK(H("body.torso1") && !H("body.shoulderleft") && !H("body.armleft") && !H("body.armright"));
+        Run("slot torso1 off");
+        CHECK(!H("body.torso1") && !H("body.torso3") && !H("body.armleft"));
+
+        // tenis (boot2): esconde a pele dos pes e do tornozelo; panturrilha (leg4) fica
+        Run("slot boot2 1");
+        CHECK(Vis("boot2"));
+        CHECK(H("body.feetleft") && HR("body.feetright") && H("body.legleft5") && H("body.legright5"));
+        CHECK(!H("body.legleft3") && !H("body.legleft4"));
+        // chinelo: com tenis nao usa chinelo (grupo unico); ao ativar o chinelo o tenis sai e o pe volta
+        Run("slot slipper1 1");
+        CHECK(Vis("slipper1") && !Vis("boot2"));
+        CHECK(!H("body.feetleft") && !H("body.feetright") && !H("body.legleft5"));
+        // e o contrario: ativar tenis desliga o chinelo
+        Run("slot boot3 2");
+        CHECK(Vis("boot3") && !Vis("slipper1") && !Vis("boot2"));
+        CHECK(H("body.feetleft") && H("body.legleft5") && H("body.legleft4"));      // boot3 sobe ate -0.81: cobre leg4 tambem
+        { int vis = 0; for (auto g : {"boot1","boot2","boot3","boot4","slipper1","slipper2","slipper3"}) vis += Vis(g); CHECK(vis == 1); }
+
+        // bermuda + tenis: cada um esconde o seu; tirar o tenis nao religa o que a bermuda cobre
+        Run("slot short3 2");
+        CHECK(H("body.legleft1") && H("body.legleft5") && H("body.feetleft"));
+        Run("slot boot3 off");
+        CHECK(!H("body.feetleft") && !H("body.legleft5") && !H("body.legleft4") && H("body.legleft1") && H("fantasy_m_underwear"));
+
+        // previa de camisa + cancelar restaura o que a cobertura escondeu
+        Run("slot short3 off");
+        CHECK(Ui("prev torso4 1")); CHECK(H("body.armleft") && H("body.shoulderleft"));
+        CHECK(Ui("cancel")); CHECK(!H("body.armleft") && !H("body.shoulderleft") && !H("body.torso1"));
+        // mao nunca e ocultada
+        CHECK(Ui("prev torso3 1")); CHECK(H("body.armleft"));
+        { auto hv = MaterialsByTexture("body.hand"); if (!hv.empty()) CHECK(!s_hidden[(size_t)hv[0]]); }
+        CHECK(Ui("cancel"));
     }
     if (fails) { std::printf("RESULTADO: %d FALHA(S)\n", fails); return 1; }
     std::printf("RESULTADO: todos os testes de host passaram\n");
