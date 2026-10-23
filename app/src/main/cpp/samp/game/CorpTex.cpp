@@ -164,11 +164,13 @@ struct Look {
     uint8_t tone = 0, face = 0, hairStyle = 0, hairColor = 0;
     uint8_t bootSet = 0, bootVar = 0, pantsSet = 0, pantsVar = 0, shirtSet = 0, shirtVar = 0;   // roupas da Normal (pasta + variante)
     uint8_t under = 0;                                                                           // roupa intima: 0 padrao (preto), 1..6 cor, 9 nenhuma
-    bool Active() const { return !corp.empty() || tone || hairStyle || bootSet || pantsSet || shirtSet; }
+    // /cop (teste, so local, nao vai pelo RPC): peca da policia (ex. "vest3") -> "off" | "corp:<nome>" | "cop/<tipo>/<pasta>/<n>.png"
+    std::vector<std::pair<std::string, std::string>> ov;
+    bool Active() const { return !corp.empty() || tone || hairStyle || bootSet || pantsSet || shirtSet || !ov.empty(); }
     bool operator==(const Look& o) const {
         return corp == o.corp && tone == o.tone && face == o.face && hairStyle == o.hairStyle && hairColor == o.hairColor &&
                bootSet == o.bootSet && bootVar == o.bootVar && pantsSet == o.pantsSet && pantsVar == o.pantsVar &&
-               shirtSet == o.shirtSet && shirtVar == o.shirtVar && under == o.under;
+               shirtSet == o.shirtSet && shirtVar == o.shirtVar && under == o.under && ov == o.ov;
     }
 };
 
@@ -501,10 +503,17 @@ const std::vector<std::string>* ClothMats(const char* tipo, int pasta)
     return nullptr;
 }
 
+bool LookUsesCorp(const Look& l, const std::string& corp)
+{
+    if (l.corp == corp) return true;
+    for (const auto& o : l.ov) if (o.second == "corp:" + corp) return true;
+    return false;
+}
+
 bool CorpInUse(const std::string& corp)
 {
-    for (const Entry& e : s_entries) if (e.look.corp == corp) return true;
-    for (PLAYERID id : s_wantIds) if (s_look[id].corp == corp) return true;
+    for (const Entry& e : s_entries) if (LookUsesCorp(e.look, corp)) return true;
+    for (PLAYERID id : s_wantIds) if (LookUsesCorp(s_look[id], corp)) return true;
     return false;
 }
 
@@ -585,16 +594,34 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
     // Vale para os dois modelos: no 271 (policia) as pecas fantasy_m_cop_*; no 7 (normal) qualquer peca pelo NOME do material
     // (fantasy_m_torso2.png, fantasy_m_pants1.png ...) dentro de textures/272/<pasta>/ ou pack/corp/<pasta>/  ->  /corp <pasta>
     if (!look.corp.empty()) { c = EnsureCorp(look.corp); if (!c) FLog("[CORPTEX] corp '%s' indisponivel: ignorada", look.corp.c_str()); }
+    const bool copMode = c != nullptr || !look.ov.empty();   // corp escolhida OU pecas trocadas por /cop: peca sem PNG fica oculta
     for (size_t i = 0; i < mats.size(); ++i) {
         const std::string& k = keys[i];
         if (k.empty() || !mats[i]) continue;
-        if (c) {
-            auto it = c->tex.find(k);
-            if (it != c->tex.end()) { over[k] = it->second; ++nCorp; if (const Box* b = FindPiece(k)) visible.push_back(b); continue; }
+        if (copMode) {
+            if (c) {
+                auto it = c->tex.find(k);
+                if (it != c->tex.end()) { over[k] = it->second; ++nCorp; if (const Box* b = FindPiece(k)) visible.push_back(b); continue; }
+            }
             if (hideTex && byIndex && k.compare(0, std::strlen(kPiecePrefix), kPiecePrefix) == 0) { over[k] = hideTex; ++nHidden; }
         } else if (byIndex && model == kCorpModel) {   // sem corp (ou corp indisponivel): vale o que o texdb mostra por padrao
             for (const char* d : kDefaultVisible) if (k == d) if (const Box* b = FindPiece(k)) visible.push_back(b);
         }
+    }
+
+    // 1a) /cop: troca por peca (teste). off | corp:<nome> (PNG da peca nessa corp) | cop/<tipo>/<pasta>/<n>.png (pecas base em pack/271)
+    for (const auto& ovp : look.ov) {
+        const std::string key = std::string(kPiecePrefix) + ovp.first;
+        visible.erase(std::remove_if(visible.begin(), visible.end(), [&](const Box* b) { return key == b->name; }), visible.end());
+        if (ovp.second == "off") { if (hideTex) { over[key] = hideTex; ++nHidden; } continue; }
+        RwTexture* t = nullptr;
+        if (ovp.second.compare(0, 5, "corp:") == 0) {
+            if (Corp* oc = EnsureCorp(ovp.second.substr(5))) { auto it = oc->tex.find(key); if (it != oc->tex.end()) t = it->second; }
+        } else if (ovp.second.compare(0, 4, "cop/") == 0) {
+            t = GetAppTex(ovp.second);
+        }
+        if (t) { over[key] = t; ++nCorp; if (const Box* b = FindPiece(key)) visible.push_back(b); }
+        else FLog("[CORPTEX] AVISO: /cop %s <- '%s': textura indisponivel (peca fica oculta)", ovp.first.c_str(), ovp.second.c_str());
     }
 
     // 1b) roupas da FemininaNormal (modelo 9): pasta + variante -> material(is) do DFF, por mapa.txt
@@ -845,6 +872,7 @@ std::string Describe(const Look& l)
     auto pv = [](uint8_t set, uint8_t var) { return set ? std::to_string(set) + "/" + std::to_string(var) : std::string("-"); };
     s += " | bota=" + pv(l.bootSet, l.bootVar) + " calca=" + pv(l.pantsSet, l.pantsVar) + " camisa=" + pv(l.shirtSet, l.shirtVar);
     s += " | intima=" + (l.under == 9 ? std::string("nenhuma") : std::to_string(l.under ? l.under : 1));
+    if (!l.ov.empty()) { s += " | cop:"; for (const auto& o : l.ov) s += " " + o.first + "=" + o.second; }
     return s;
 }
 
@@ -883,7 +911,7 @@ std::string DebugCommand(const std::string& argsIn)     // /corp
 
     if (a.empty() || a == "info") {
         std::string s; { std::lock_guard<std::mutex> l(s_infoMutex); s = s_info; }
-        return "[CORPTEX] " + s + " | ativos=" + std::to_string(g_active.load()) + " | uso: /corp <nome> | limpar | lista";
+        return "[CORPTEX] " + s + " | ativos=" + std::to_string(g_active.load()) + " | uso: /corp <nome> | limpar | lista | 271 | 7  -  /cop lista";
     }
     if (a == "lista" || a == "list") {
         std::string s;
@@ -891,6 +919,12 @@ std::string DebugCommand(const std::string& argsIn)     // /corp
         return s.empty() ? "[CORPTEX] nenhuma corp em SAMP/skins/textures/" + std::string(kSkinFolder) + "/ nem em SAMP/skins/pack/corp/" : "[CORPTEX] corps: " + s;
     }
     if (a == "limpar" || a == "clear" || a == "off" || a == "reset") return ApplyLocal(me, [](Look& l) { l.corp.clear(); });
+    if (a == "271" || a == "7") {   // teste: coloca o SEU ator no modelo (271 = policia, 7 = male normal); depois use /corp <nome>
+        CLocalPlayer* lp = pool->GetLocalPlayer();
+        if (!lp || !lp->GetPlayerPed()) return "[CORPTEX] ped local indisponivel";
+        lp->GetPlayerPed()->SetModelIndex((unsigned int)std::atoi(a.c_str()));
+        return "[CORPTEX] ator no modelo " + a + (a == "271" ? " (policia: /corp lista, /cop lista)" : " (male normal: /rosto /cabelo /pele /camisa /calca /bota)");
+    }
 
     if (!ValidName(a)) return "[CORPTEX] nome invalido (use so a-z 0-9 _ -, ate 15)";
     const auto corps = ListCorps();
@@ -908,7 +942,7 @@ std::string VisualCommand(const std::string& cmdIn, const std::string& argsIn)  
     if (cmd == "visual") {
         if (args == "limpar" || args == "clear" || args == "reset") return ApplyLocal(me, [](Look& l) { l = Look{}; });
         Look l; { std::lock_guard<std::mutex> g(s_qMutex); l = s_localLook; }
-        return "[CORPTEX] " + Describe(l) + " | /rosto <tom> <var> | /pele <tom> | /cabelo <estilo> <cor> | /bota /calca /camisa <pasta> <var> | /intima <0-6> | /roupa lista | /corp <nome> | /visual limpar";
+        return "[CORPTEX] " + Describe(l) + " | /rosto <tom> <var> | /pele <tom> | /cabelo <estilo> <cor> | /bota /calca /camisa <pasta> <var> | /intima <0-6> | /roupa lista | /corp <nome> | /cop lista | /visual limpar";
     }
 
     if (cmd == "roupa") {
@@ -927,6 +961,47 @@ std::string VisualCommand(const std::string& cmdIn, const std::string& argsIn)  
             return "[CORPTEX] pasta(variantes) - " + s;
         }
         return "[CORPTEX] uso: /roupa limpar | lista | recarregar  -  /bota /calca /camisa <pasta> <variante>  -  /intima <0-6>";
+    }
+
+    if (cmd == "cop") {
+        // /cop lista | /cop limpar | /cop <peca> off | /cop <peca> <corp> | /cop <peca> base [n]     (so no seu ator, modelo 271)
+        std::vector<std::string> w;
+        { std::string cur; for (char ch : args + " ") { if (ch == ' ') { if (!cur.empty()) w.push_back(cur); cur.clear(); } else cur.push_back(ch); } }
+        static const char* kAll = "belt1 boot1 boot2 hat1 hat2 hat3 pants1 short1 torso1 torso2 torso3 torso4 vest1 vest2 vest3";
+        if (w.empty() || w[0] == "lista" || w[0] == "list") {
+            Look l; { std::lock_guard<std::mutex> g(s_qMutex); l = s_localLook; }
+            std::string st;
+            for (const auto& o : l.ov) st += " " + o.first + "=" + o.second;
+            return std::string("[CORPTEX] /cop <peca> <corp> | <peca> base [n] | <peca> off | limpar | lista  -  pecas: ") + kAll +
+                   " | trocas:" + (st.empty() ? std::string(" nenhuma") : st) + " | corps: /corp lista";
+        }
+        if (w[0] == "limpar" || w[0] == "clear" || w[0] == "reset") return ApplyLocal(me, [](Look& l) { l.ov.clear(); });
+        const std::string piece = w[0];
+        if (!CorpMap::CopPieceValid(piece)) return "[CORPTEX] peca invalida '" + piece + "' (pecas: " + kAll + ")";
+        if (w.size() < 2) return "[CORPTEX] uso: /cop " + piece + " <corp> | base [n] | off";
+        std::string src;
+        if (w[1] == "off") src = "off";
+        else if (w[1] == "base") {
+            int n = 1;
+            if (w.size() >= 3) { n = std::atoi(w[2].c_str()); if (n < 1 || n > 99) return "[CORPTEX] variante invalida"; }
+            std::string tipo; int pasta = 0;
+            if (!CorpMap::CopBaseFolder(piece, tipo, pasta)) return "[CORPTEX] peca sem pasta base";
+            const std::string rel = "cop/" + tipo + "/" + std::to_string(pasta) + "/" + std::to_string(n) + ".png";
+            std::string pr;
+            if (!CorpMap::PackRelFor(rel, pr) || !CanOpen(PackDir() + pr)) return "[CORPTEX] nao achei " + PackDir() + pr;
+            src = rel;
+        } else {
+            if (!ValidName(w[1])) return "[CORPTEX] nome de corp invalido";
+            const std::string cd = CorpDir(w[1]);
+            if (cd.empty()) return "[CORPTEX] corp '" + w[1] + "' nao existe (use /corp lista)";
+            if (!CanOpen(cd + kPiecePrefix + piece + ".png")) return "[CORPTEX] a corp '" + w[1] + "' nao tem a peca " + piece + " (" + cd + kPiecePrefix + piece + ".png)";
+            src = "corp:" + w[1];
+        }
+        return ApplyLocal(me, [&](Look& l) {
+            for (auto& o : l.ov) if (o.first == piece) { o.second = src; return; }
+            l.ov.emplace_back(piece, src);
+            std::sort(l.ov.begin(), l.ov.end());
+        });
     }
 
     const std::vector<int> v = Ints(args);

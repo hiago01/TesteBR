@@ -17,6 +17,10 @@
 //     roupa/pants/<1-7>/<var>.png                          -> pants/<pasta>/<var>.png       (5-7 = bermudas: HIPÓTESE)
 //     roupa/tshirts/<1-4>/<var>.png                        -> tshirts/<pasta>/<var>.png
 //
+//   Peças base da polícia (271):   cop/<tipo>/<pasta>/<n>.png  ->  271/<tipo>/<pasta>/<n>.png   (pack/271/...)
+//     tipo = tshirts|hat|boot|pants|vest|belt ; peça fantasy_m_cop_torsoN = tshirts/N, hatN = hat/N, bootN = boot/N,
+//     pants1 = pants/1, short1 = pants/2 (HIPÓTESE), vestN = vest/N, belt1 = belt/1
+//
 //   A última variante de cada pasta (n+1) é um PNG transparente criado para "tirar a peça": fica FORA dos
 //   limites abaixo (o jogador não pode escolher um rosto/cabelo invisível por engano).
 // ---------------------------------------------------------------------------
@@ -48,6 +52,28 @@ namespace CorpMap
         return true;
     }
 
+    // as 15 peças de roupa do male_police.dff (materiais fantasy_m_cop_<peça>)
+    inline bool CopPieceValid(const std::string& p)
+    {
+        static const char* const k[] = { "belt1", "boot1", "boot2", "hat1", "hat2", "hat3", "pants1", "short1",
+                                         "torso1", "torso2", "torso3", "torso4", "vest1", "vest2", "vest3" };
+        for (const char* s : k) if (p == s) return true;
+        return false;
+    }
+
+    // peça -> (tipo, pasta) das texturas base em pack/271/. Retorna false se a peça não existe.
+    inline bool CopBaseFolder(const std::string& piece, std::string& tipo, int& pasta)
+    {
+        if (!CopPieceValid(piece)) return false;
+        const std::string kind = piece.substr(0, piece.size() - 1);
+        const int n = piece.back() - '0';
+        if (kind == "torso") { tipo = "tshirts"; pasta = n; return true; }
+        if (kind == "hat" || kind == "boot" || kind == "vest" || kind == "belt") { tipo = kind; pasta = n; return true; }
+        if (piece == "pants1") { tipo = "pants"; pasta = 1; return true; }
+        if (piece == "short1") { tipo = "pants"; pasta = 2; return true; }       // HIPÓTESE
+        return false;
+    }
+
     // rel (estilo CorpTex) -> caminho relativo dentro de pack/. Retorna false se não há equivalente.
     inline bool PackRelFor(const std::string& rel, std::string& out)
     {
@@ -58,6 +84,12 @@ namespace CorpMap
             return AllDigits(stem);
         };
         std::string stem;
+        if (p.size() == 4 && p[0] == "cop" && AllDigits(p[2]) && isPng(p[3], stem))
+        {
+            if (p[1] == "tshirts" || p[1] == "hat" || p[1] == "boot" || p[1] == "pants" || p[1] == "vest" || p[1] == "belt")
+            { out = "271/" + p[1] + "/" + p[2] + "/" + p[3]; return true; }
+            return false;
+        }
         if (p.size() == 3 && p[0] == "rosto" && AllDigits(p[1]) && isPng(p[2], stem)) { out = "heads/" + p[1] + "/" + p[2]; return true; }
         if (p.size() == 3 && p[0] == "cabelo" && AllDigits(p[1]) && isPng(p[2], stem)) { out = "hair/" + p[1] + "/" + p[2]; return true; }
         if (p.size() == 3 && p[0] == "pele" && isPng(p[2], stem))

@@ -6,7 +6,7 @@
 //   Este modulo so troca A ORIGEM DOS BYTES. Modelos substituidos (tabela s_skins):
 //     7 -> SAMP/skins/skin.dff                (male normal: corpo do pack)
 //     9 -> SAMP/skins/skin9.dff  ou  SAMP/skins/(FeminaNormal)skin[ParaModelo9].dff   (FemininaNormal)
-//   271 -> SAMP/skins/skin271.dff  ou  SAMP/skins/male.dff                              (male_police.dff: policia; mesmo corpo do 7)
+//   271 -> SAMP/skins/skin271.dff | _MasculinaCorp_skin.dff | male_police.dff | male.dff (o 1o que existir)                             (male_police.dff: policia; mesmo corpo do 7)
 //   Quando o modelo esta na tabela e o DFF existe, o buffer
 //   e o tamanho (m_nCdSize, em setores de 2048 bytes) passam a ser os do skin.dff. Todo o resto e o
 //   fluxo original do jogo. Descarregar/recarregar o modelo 7 tambem usa a skin (o hook roda de novo).
@@ -43,7 +43,7 @@ namespace
     struct Skin
     {
         int         model;
-        const char* files[2];
+        const char* files[4];
         std::vector<uint8_t> data;       // conteudo do DFF
         DffPreflight::Info   info;       // inventario (exposto por GetInfo para o CorpTex)
         bool infoOk = false;
@@ -53,7 +53,7 @@ namespace
     Skin s_skins[] = {
         { 7, { "skin.dff",  nullptr } },                                              // male normal (CorpTex: aparencia + roupas pack)
         { 9, { "skin9.dff", "(FeminaNormal)skin[ParaModelo9].dff" } },                // FemininaNormal
-        { 271, { "skin271.dff", "male.dff" } },                                       // male_police.dff (CorpTex: corp + aparencia do 7)
+        { 271, { "skin271.dff", "_MasculinaCorp_skin.dff", "male_police.dff", "male.dff" } },                                       // male_police.dff (CorpTex: corp + aparencia do 7)
     };
     Skin* FindSkin(int model) { for (Skin& k : s_skins) if (k.model == model) return &k; return nullptr; }
 

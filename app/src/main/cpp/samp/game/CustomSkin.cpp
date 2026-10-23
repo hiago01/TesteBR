@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
+#include <cerrno>
 #include <cstring>
 #include <ctime>
 #include <map>
@@ -432,7 +433,9 @@ namespace
         FILE* f = std::fopen(path.c_str(), "rb");
         if (!f)
         {
-            err = "arquivo não encontrado: " + path;
+            const int e = errno;
+            err = (e == ENOENT ? std::string("arquivo não encontrado: ")
+                               : std::string("não consegui abrir (") + std::strerror(e) + "): ") + path;
             return false;
         }
         std::fseek(f, 0, SEEK_END);
@@ -1285,33 +1288,69 @@ namespace
         return s;
     }
 
-    // /skin7 save [wear] : grava o estado atual (texturas do pack + materiais ocultos) em autoexec.txt
+    // /skin7 save [default] [wear]
+    //   (sem argumento) grava o estado atual (texturas do pack + materiais ocultos) em autoexec.txt
+    //   default         grava o "homem base" sem depender do estado: pele, rosto1, sobrancelha1, cabelo1 e underwear
+    //                   ligados, o resto desligado. O arquivo é criado pelo PRÓPRIO jogo, então ele sempre consegue lê-lo.
+    //   wear            acrescenta a linha "wear"
     void DoSave(const std::string& rest)
     {
         if (!s_loadedOk && !DoLoad(false)) return;
         const std::string dir = SkinDir();
         if (dir.empty()) { SetInfo("ERRO: storage indisponível"); return; }
-        const int n = (int)s_parsed.materialsList.size();
-        s_hidden.resize((size_t)n, 0);
 
-        std::string out = "# gerado por /skin7 save (roda sozinho depois do auto-apply; 1 comando por linha)\n";
-        std::map<std::string, std::vector<int>> groups;          // pasta/arquivo -> materiais
-        for (const auto& kv : s_matPack) if (kv.first >= 0 && kv.first < n) groups[kv.second].push_back(kv.first);
-        for (const auto& g : groups) out += "set " + RangeList(g.second) + " " + g.first + "\n";   // set deixa visível: vem antes do mat
+        bool wantWear = false, wantDefault = false;
+        {
+            std::istringstream ws(rest);
+            std::string w;
+            while (ws >> w) { if (w == "wear") wantWear = true; else if (w == "default") wantDefault = true; }
+        }
 
-        std::vector<int> vis;
-        int hid = 0;
-        for (int i = 0; i < n; ++i) { if (s_hidden[(size_t)i]) ++hid; else vis.push_back(i); }
-        if (hid) out += vis.empty() ? std::string("mat off all\n") : "mat only " + RangeList(vis) + "\n";
-        if (rest == "wear") out += "wear\n";
+        std::string out;
+        int groupsN = 0, hid = 0;
+        if (wantDefault)
+        {
+            static const char* kOn[] = { "skin_torso", "skin_leg", "skin_feet", "head1", "brow1", "hair1", "underwear" };
+            out = "# gerado por /skin7 save default: homem base (pele, rosto1, sobrancelha1, cabelo1, underwear); resto desligado\n"
+                  "# Troque as roupas com /skin7 slot <nome> <n> e guarde com /skin7 save\n";
+            for (const char* n : kOn) out += std::string("slot ") + n + " 1\n";
+            for (int k = 0; k < SkinSlots::kCount; ++k)
+            {
+                bool on = false;
+                for (const char* n : kOn) if (std::strcmp(n, SkinSlots::kSlots[k].name) == 0) on = true;
+                if (!on) { out += std::string("slot ") + SkinSlots::kSlots[k].name + " off\n"; ++hid; }
+            }
+            groupsN = (int)(sizeof(kOn) / sizeof(kOn[0]));
+        }
+        else
+        {
+            const int n = (int)s_parsed.materialsList.size();
+            s_hidden.resize((size_t)n, 0);
+            out = "# gerado por /skin7 save (roda sozinho depois do auto-apply; 1 comando por linha)\n";
+            std::map<std::string, std::vector<int>> groups;          // pasta/arquivo -> materiais
+            for (const auto& kv : s_matPack) if (kv.first >= 0 && kv.first < n) groups[kv.second].push_back(kv.first);
+            for (const auto& g : groups) out += "set " + RangeList(g.second) + " " + g.first + "\n";   // set deixa visível: vem antes do mat
+            groupsN = (int)groups.size();
+
+            std::vector<int> vis;
+            for (int i = 0; i < n; ++i) { if (s_hidden[(size_t)i]) ++hid; else vis.push_back(i); }
+            if (hid) out += vis.empty() ? std::string("mat off all\n") : "mat only " + RangeList(vis) + "\n";
+        }
+        if (wantWear) out += "wear\n";
 
         const std::string path = dir + "autoexec.txt";
         FILE* f = std::fopen(path.c_str(), "wb");
-        if (!f) { SetInfo("ERRO: não consegui gravar " + path); return; }
+        if (!f)
+        {
+            SetInfo(std::string("ERRO: não consegui gravar ") + path + " (" + std::strerror(errno) +
+                    "); se já existe um autoexec.txt de outro app, apague-o pelo gerenciador de arquivos");
+            return;
+        }
         std::fwrite(out.data(), 1, out.size(), f);
         std::fclose(f);
-        SetInfo("salvo SAMP/skins/autoexec.txt: " + std::to_string(groups.size()) + " grupo(s) de textura, " +
-                std::to_string(hid) + " material(is) oculto(s)" + (rest == "wear" ? ", com wear" : ""));
+        SetInfo(std::string("salvo SAMP/skins/autoexec.txt") + (wantDefault ? " (homem base)" : "") + ": " +
+                std::to_string(groupsN) + " grupo(s) de textura, " + std::to_string(hid) + " material(is)/slot(s) oculto(s)" +
+                (wantWear ? ", com wear" : ""));
     }
 
     std::string LastInfo()
@@ -1344,7 +1383,11 @@ namespace
         }
         std::vector<uint8_t> buf;
         std::string err;
-        if (!ReadFile(path, buf, err)) { SetInfo("autoexec ilegível: " + err); return -1; }
+        if (!ReadFile(path, buf, err))
+        {
+            SetInfo("autoexec ilegível: " + err + " | dica: apague o autoexec.txt e rode /skin7 save default (o próprio jogo cria o arquivo)");
+            return -1;
+        }
 
         if (!s_applied)
         {
@@ -1574,6 +1617,6 @@ std::string CCustomSkin::DebugCommand(const std::string& args)
     }
 
     const std::string p = SkinPath();
-    return "[SKIN7] /skin7 load|apply|wear|unwear|unload|info | mats | mat list|reset|off|on|only <lista> | tex auto|idx|none | png | pack | slots | slot <nome> <n|+|-|on|off|pasta/arq> | set <lista> <pasta/arq> | save [wear] | autoexec   arquivo: " +
+    return "[SKIN7] /skin7 load|apply|wear|unwear|unload|info | mats | mat list|reset|off|on|only <lista> | tex auto|idx|none | png | pack | slots | slot <nome> <n|+|-|on|off|pasta/arq> | set <lista> <pasta/arq> | save [default] [wear] | autoexec   arquivo: " +
            (p.empty() ? std::string("(storage indisponível)") : p);
 }
