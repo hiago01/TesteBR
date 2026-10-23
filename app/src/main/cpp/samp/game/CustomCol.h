@@ -1,35 +1,35 @@
 #pragma once
 
 // ---------------------------------------------------------------------------
-// countrye_10.col / CE_brewery  +  CINFO.BIN
+// countrye_10.col (CE_brewery) -> REPLACE DIRETO no carregamento nativo + CINFO.BIN   (v2)
 //
-// PASTAS (as duas do pacote do cliente; raiz = Android/data/com.samp.mobile/files/):
-//   1) <raiz>/SAMP/    -> pasta do CLIENTE (samp.ide, vehicles.ide, e aqui tambem SAMP/col/)
-//   2) <raiz>/texdb/   -> pasta do touch.img (texdb/touch.img + texdb/touch/)
+// POR QUE O PATCH v1 NAO FUNCIONAVA (evidencia no libGTASA.so arm64 do projeto):
+//   * O jogo carrega o countrye_10.col do gta3.img por:
+//         CStreaming::ConvertBufferToObject (0x395114) -> CColStore::LoadCol(int slot, uchar* buf, int size) (0x3a579c)
+//         -> CFileLoader::LoadCollisionFileFirstTime(buf,size,slot)   (1a vez do slot, monta o intervalo de modelos)
+//         ou CFileLoader::LoadCollisionFile(buf,size,slot)            (demais vezes; procura o nome SO dentro do
+//            intervalo de modelos do slot: CModelInfo::GetModelInfo(nome,min,max))
+//   * v1 chamava LoadCollisionFile(buf,size, colId=0) UMA vez em CGame::Initialize: slot 0 nao e' o slot do
+//     countrye_10 (nome fora do intervalo -> nada carregado) e, mesmo se carregasse, o streaming recarregava o
+//     IMG depois (RemoveCol/LoadCol) e a colisao original voltava. E o passo era opt-in (col_reload.on).
 //
-// 1) AUDITORIA + NOVA LEITURA do countrye_10.col a partir de OUTRO LOCAL
-//    Procura o arquivo, nesta ordem:  SAMP/col/  ->  SAMP/  ->  texdb/
-//    Passo a passo (tudo no samp_log.txt, prefixo [COL]):
-//      A. acha o arquivo e mostra tamanho
-//      B. le o arquivo inteiro e percorre cada entrada (ident, nome, size, offset)
-//      C. confirma se a entrada "CE_brewery" esta DENTRO do countrye_10.col
-//      D. cruza com o jogo: CModelInfo "CE_brewery" -> id (esperado 12931) -> CColModel
-//      E. (so se existir SAMP/col_reload.on) entrega o arquivo ao CFileLoader::LoadCollisionFile
-//         do proprio jogo (leitura por NOME, igual ao COLFILE do gta.dat) e mostra o antes/depois
-//    Sem nenhum countrye_10.col nessas pastas: 1 linha no log e nada mais (comportamento original).
-//    A leitura (A-D) e' somente-leitura; so o passo E altera estado do jogo e e' opt-in.
+// v2: hook em CColStore::LoadCol. Quando o buffer que o streaming entrega e' o countrye_10 (mesma colecao de nomes),
+//     entrega ao loader NATIVO o arquivo externo no lugar, com o MESMO slot. Toda a cadeia nativa (validacao de versao,
+//     AllocateData, SetColModel, IncludeModelIndex, CColAccel::addCacheCol) roda normalmente sobre os seus dados.
+//     Nao ha bypass de validacao: o arquivo passa antes por Parse + ValidateAll (CustomColParse.h); se reprovar,
+//     o buffer original do IMG segue (jogo como antes) e o motivo vai para o log.
 //
-// 2) CINFO.BIN (cache posicional de colisao do CColAccel; o nome "CINFO.BIN" esta no libGTASA)
-//    Hook em CColAccel::startCache: ANTES do jogo ler o cache, compara uma assinatura das entradas
-//    (countrye_10.col nas pastas acima, touch.img, *.ide de SAMP/) com a gravada em SAMP/cinfo.sig.
-//    Cache ausente de assinatura (1a vez) ou com assinatura diferente => cache velho:
-//    o arquivo e' RENOMEADO para CINFO.BIN.bak-<tempo> (nunca apagado) e o jogo regera o cache.
-//    Cache de 0 bytes tambem e' tratado como invalido. SAMP/cinfo_keep.on desliga tudo isso.
+// PASTAS (raiz = Android/data/com.samp.mobile/files/), ordem de busca do arquivo:
+//     SAMP/col/countrye_10.col  ->  SAMP/countrye_10.col  ->  texdb/countrye_10.col
+// MARCADORES (arquivos vazios em SAMP/):   col_off.on = desliga o replace (testar o original)   cinfo_keep.on = nao mexe no CINFO.BIN
+// LOG (samp_log.txt): prefixos [COL] e [CINFO]
 // ---------------------------------------------------------------------------
 
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <mutex>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <cstdint>
@@ -68,7 +68,6 @@ namespace CustomCol
         return !r.empty() && Exists(r + "SAMP/" + rel);
     }
 
-    // ordem de busca do .col: pasta do cliente (SAMP/col, SAMP) e depois a do touch.img (texdb)
     inline std::vector<std::string> ColCandidates()
     {
         const std::string r = Root();
@@ -82,26 +81,24 @@ namespace CustomCol
         struct stat st {};
         if (::stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) return false;
         fileSize = (size_t)st.st_size;
-        if (fileSize > kMaxColBytes) return false;
+        if (fileSize == 0 || fileSize > kMaxColBytes) return false;
         FILE* f = ::fopen(path.c_str(), "rb");
         if (!f) return false;
         out.resize(fileSize);
-        const size_t got = fileSize ? ::fread(out.data(), 1, fileSize, f) : 0;
+        const size_t got = ::fread(out.data(), 1, fileSize, f);
         ::fclose(f);
         if (got != fileSize) { out.clear(); return false; }
         return true;
     }
 
-    // ------------------------------------------------- estado do jogo p/ CE_brewery
+    // ------------------------------------------------- estado do jogo p/ CE_brewery (somente leitura)
     using FindFn = CBaseModelInfo* (*)(const char*, int*);
-
     struct GameState { int id = -1; void* mi = nullptr; void* col = nullptr; int slot = -1; bool vol = false; unsigned tris = 0; };
 
     inline GameState Snapshot()
     {
         static FindFn find = reinterpret_cast<FindFn>(CHook::getSym("_ZN10CModelInfo12GetModelInfoEPKcPi"));
-        GameState g;
-        int id = -1;
+        GameState g; int id = -1;
         CBaseModelInfo* mi = find(kTargetModel, &id);
         g.id = id; g.mi = mi;
         if (mi && mi->m_pColModel)
@@ -111,92 +108,131 @@ namespace CustomCol
         }
         return g;
     }
-
     inline void LogState(const char* tag, const GameState& g)
     {
         FLog("[COL][%s] '%s' -> id=%d (esperado %d)%s | modelInfo=%p | colModel=%p slot=%d volumes=%d triangulos=%u",
              tag, kTargetModel, g.id, kTargetId, g.id == kTargetId ? " OK" : " DIFERENTE", g.mi, g.col, g.slot, (int)g.vol, g.tris);
     }
 
-    // ------------------------------------------------------------------ AUDITORIA
+    // ------------------------------------------------- arquivo personalizado em memoria (revalidado se mudar)
+    struct Custom
+    {
+        std::string path; time_t mtime = 0; size_t size = 0;
+        std::vector<uint8_t> data; CustomColParse::Result res;
+        bool valid = false; char why[200] = {0};
+        unsigned expectTris = 0;       // triangulos de CE_brewery segundo o ARQUIVO (para conferir o que o jogo carregou)
+        bool logged = false;
+    };
+    inline Custom g_c;
+    inline std::mutex g_m;
+    inline std::chrono::steady_clock::time_point g_lastCheck{};
+    inline bool g_haveChecked = false;
+
+    inline unsigned TrisOf(const Custom& c, const char* name)
+    {
+        const int i = CustomColParse::Find(c.res, name);
+        if (i < 0) return 0;
+        const auto& e = c.res.entries[i];
+        if (e.version < 2) return 0;
+        return CustomColParse::Rd16(c.data.data() + e.offset + 4 + 72);
+    }
+
+    // chamar com g_m travado. true = existe arquivo valido pronto para o replace.
+    inline bool Refresh(bool force = false)
+    {
+        using namespace std::chrono;
+        const auto now = steady_clock::now();
+        if (!force && g_haveChecked && duration_cast<milliseconds>(now - g_lastCheck).count() < 2000) return g_c.valid;
+        g_haveChecked = true; g_lastCheck = now;
+
+        if (Marker("col_off.on"))
+        {
+            if (g_c.valid || !g_c.logged) FLog("[COL] SAMP/col_off.on presente: replace DESLIGADO (jogo usa o countrye_10 do IMG)");
+            g_c = Custom{}; g_c.logged = true; return false;
+        }
+        std::string found; struct stat st {};
+        for (const auto& c : ColCandidates())
+            if (::stat(c.c_str(), &st) == 0 && S_ISREG(st.st_mode)) { found = c; break; }
+        if (found.empty())
+        {
+            if (!g_c.logged || g_c.valid) FLog("[COL] %s nao esta em SAMP/col, SAMP nem texdb: replace inativo (jogo usa o IMG)", kColFile);
+            g_c = Custom{}; g_c.logged = true; return false;
+        }
+        if (found == g_c.path && st.st_mtime == g_c.mtime && (size_t)st.st_size == g_c.size) return g_c.valid;   // nada mudou
+
+        Custom n; n.path = found; n.mtime = st.st_mtime; n.size = (size_t)st.st_size; n.logged = true;
+        size_t sz = 0;
+        if (!ReadAll(found, n.data, sz))
+        {
+            std::snprintf(n.why, sizeof n.why, "falha ao ler (tamanho=%zu, limite=%zu)", sz, kMaxColBytes);
+            FLog("[COL] %s: REPROVADO - %s -> o IMG continua valendo", found.c_str(), n.why);
+            g_c = std::move(n); return false;
+        }
+        n.res = CustomColParse::Parse(n.data.data(), n.data.size());
+        n.valid = CustomColParse::ValidateAll(n.data.data(), n.data.size(), n.res, n.why, sizeof n.why);
+        FLog("[COL] %s: %zu bytes, %zu entradas, estrutura=%s, validacao profunda=%s%s%s",
+             found.c_str(), n.data.size(), n.res.entries.size(), CustomColParse::StatusStr(n.res.status),
+             n.valid ? "OK" : "REPROVADO", n.valid ? "" : " - ", n.valid ? "" : n.why);
+        if (n.valid)
+        {
+            n.expectTris = TrisOf(n, kTargetModel);
+            const int idx = CustomColParse::Find(n.res, kTargetModel);
+            if (idx < 0) FLog("[COL] AVISO: '%s' nao esta dentro de %s (%zu entradas)", kTargetModel, kColFile, n.res.entries.size());
+            else FLog("[COL] '%s' no arquivo: entrada #%d %s size=%u triangulos=%u", kTargetModel, idx, n.res.entries[idx].ident, n.res.entries[idx].size, n.expectTris);
+            for (size_t i = 0; i < n.res.entries.size() && i < 60; i++)
+                FLog("[COL]   #%03zu +%-8u %s size=%-8u nome='%s'", i, n.res.entries[i].offset, n.res.entries[i].ident, n.res.entries[i].size, n.res.entries[i].name);
+        }
+        g_c = std::move(n);
+        return g_c.valid;
+    }
+
+    // ------------------------------------------------------------------ REPLACE: hook em CColStore::LoadCol
+    // assinatura confirmada pelo simbolo exportado _ZN9CColStore7LoadColEiPhi:  bool LoadCol(int slot, uchar* buf, int size)
+    // (o retorno e' bool: o corpo da funcao devolve 0/1 em w0 depois de LoadCollisionFile[FirstTime])
+    inline bool (*g_origLoadCol)(int, uint8_t*, int) = nullptr;
+    inline thread_local std::vector<uint8_t> t_work;   // copia mutavel entregue ao jogo (o arquivo original em g_c nunca e' tocado)
+
+    inline bool LoadColHook(int slot, uint8_t* buf, int size)
+    {
+        uint8_t* useBuf = buf; int useSize = size; bool swapped = false; unsigned expect = 0;
+        if (g_origLoadCol && buf && size > 0)
+        {
+            std::lock_guard<std::mutex> lk(g_m);
+            if (Refresh() && CustomColParse::SameCollection(g_c.res, buf, (size_t)size))
+            {
+                t_work = g_c.data;                      // copia: o loader nativo pode escrever no buffer
+                useBuf = t_work.data(); useSize = (int)t_work.size(); expect = g_c.expectTris; swapped = true;
+                FLog("[COL] REPLACE slot=%d: buffer do IMG (%d bytes) -> %s (%d bytes)", slot, size, g_c.path.c_str(), useSize);
+            }
+        }
+        if (!g_origLoadCol) return false;
+        const bool ok = g_origLoadCol(slot, useBuf, useSize);
+        if (swapped)
+        {
+            const GameState gs = Snapshot();
+            LogState("REPLACE depois", gs);
+            FLog("[COL] REPLACE slot=%d: LoadCol retornou %d | triangulos esperados (arquivo)=%u, no jogo=%u -> %s", slot, (int)ok, expect, gs.tris,
+                 (gs.col && gs.tris == expect) ? "DADOS PERSONALIZADOS EM USO" : "DIVERGENTE (veja as linhas acima)");
+        }
+        return ok;
+    }
+
+    // ------------------------------------------------------------------ AUDITORIA (somente leitura; roda em CGame::Initialize)
     inline void Audit(const char* quando)
     {
         static bool done = false;
         if (done) return;
         done = true;
-
         const std::string r = Root();
-        if (r.empty()) { FLog("[COL][AUDIT:%s] sem raiz de storage: nada a fazer", quando); return; }
-        FLog("[COL][AUDIT:%s] raiz=%s | cliente=%sSAMP/ | touch.img=%stexdb/", quando, r.c_str(), r.c_str(), r.c_str());
-
-        // A. localizar
-        std::string found;
+        if (r.empty()) { FLog("[COL][AUDIT:%s] sem raiz de storage", quando); return; }
+        FLog("[COL][AUDIT:%s] raiz=%s", quando, r.c_str());
         for (const auto& c : ColCandidates())
-        {
-            struct stat st {};
-            const bool ok = ::stat(c.c_str(), &st) == 0 && S_ISREG(st.st_mode);
-            FLog("[COL] A. %-70s %s", c.c_str(), ok ? "ENCONTRADO" : "nao existe");
-            if (ok && found.empty()) found = c;
-        }
-        if (found.empty()) { FLog("[COL][AUDIT:%s] %s nao esta em SAMP/col, SAMP nem texdb: auditoria encerrada (jogo segue como antes)", quando, kColFile); return; }
-
-        // B. ler e percorrer
-        std::vector<uint8_t> buf; size_t sz = 0;
-        if (!ReadAll(found, buf, sz)) { FLog("[COL] B. falha ao ler %s (tamanho=%zu, limite=%zu)", found.c_str(), sz, kMaxColBytes); return; }
-        const auto res = CustomColParse::Parse(buf.data(), buf.size());
-        FLog("[COL] B. %s: %zu bytes, %zu entradas, status=%s (parou em +%u, validos=%u bytes)",
-             found.c_str(), sz, res.entries.size(), CustomColParse::StatusStr(res.status), res.failOffset, res.bytesOk);
-        const size_t maxLog = 60;
-        for (size_t i = 0; i < res.entries.size() && i < maxLog; i++)
-        {
-            const auto& e = res.entries[i];
-            FLog("[COL] B.   #%03zu +%-8u %s size=%-8u modelId=%-5u nome='%s'", i, e.offset, e.ident, e.size, (unsigned)e.modelId, e.name);
-        }
-        if (res.entries.size() > maxLog) FLog("[COL] B.   ... (+%zu entradas nao listadas)", res.entries.size() - maxLog);
-
-        // C. CE_brewery dentro do arquivo?
-        const int idx = CustomColParse::Find(res, kTargetModel);
-        if (idx >= 0)
-        {
-            const auto& e = res.entries[idx];
-            FLog("[COL] C. '%s' ESTA dentro de %s: entrada #%d, +%u, %s, size=%u, modelId(no arquivo)=%u",
-                 kTargetModel, kColFile, idx, e.offset, e.ident, e.size, (unsigned)e.modelId);
-        }
-        else
-            FLog("[COL] C. '%s' NAO esta em %s (%zu entradas lidas) -> confira o nome da entrada no .col", kTargetModel, kColFile, res.entries.size());
-
-        // D. cruzar com o jogo
-        const GameState before = Snapshot();
-        LogState("D. jogo agora", before);
-        if (!before.mi)       FLog("[COL] D. o jogo nao conhece '%s': o IDE/IPL que declara CE_brewery nao foi lido", kTargetModel);
-        else if (!before.col) FLog("[COL] D. '%s' existe no jogo mas SEM CColModel (sem colisao carregada)", kTargetModel);
-
-        // E. nova leitura (opt-in)
-        if (!Marker("col_reload.on"))
-        {
-            FLog("[COL] E. nova leitura desligada (para ligar: crie o arquivo vazio SAMP/col_reload.on)");
-        }
-        else if (res.status != CustomColParse::Status::Ok || idx < 0)
-        {
-            FLog("[COL] E. RECUSADO (nada foi entregue ao jogo): %s",
-                 res.status != CustomColParse::Status::Ok ? CustomColParse::StatusStr(res.status) : "o arquivo e' integro mas nao contem a entrada CE_brewery");
-        }
-        else
-        {
-            // o buffer e' propositalmente "vazado" (nunca liberado): custo = tamanho do .col, uma unica vez,
-            // em troca de nenhum risco de ponteiro pendurado se o loader do jogo guardar referencia ao buffer.
-            auto* keep = new uint8_t[buf.size()];
-            std::memcpy(keep, buf.data(), buf.size());
-            using LoadFn = void (*)(uint8_t*, uint32_t, uint8_t);
-            static LoadFn load = reinterpret_cast<LoadFn>(CHook::getSym("_ZN11CFileLoader17LoadCollisionFileEPhjh"));
-            FLog("[COL] E. entregando %zu bytes ao CFileLoader::LoadCollisionFile (colId=0 = ligacao por nome, como COLFILE do gta.dat)", buf.size());
-            load(keep, (uint32_t)buf.size(), 0);
-            const GameState after = Snapshot();
-            LogState("E. depois", after);
-            FLog("[COL] E. %s", (after.col && after.tris > 0) ? "CE_brewery com colisao carregada apos a nova leitura"
-                                                               : "CE_brewery continua SEM triangulos apos a nova leitura");
-        }
-        FLog("[COL][AUDIT:%s] fim", quando);
+            FLog("[COL] A. %-70s %s", c.c_str(), Exists(c) ? "ENCONTRADO" : "nao existe");
+        { std::lock_guard<std::mutex> lk(g_m); Refresh(true); }
+        const GameState s = Snapshot();
+        LogState("D. jogo agora", s);
+        if (!s.mi) FLog("[COL] D. o jogo nao conhece '%s'", kTargetModel);
+        FLog("[COL][AUDIT:%s] fim (o replace acontece em CColStore::LoadCol, quando o streaming carrega o slot)", quando);
     }
 
     // ---------------------------------------------------------------- CINFO.BIN
@@ -233,6 +269,7 @@ namespace CustomCol
         }
         std::sort(ides.begin(), ides.end());
         for (const auto& p : ides) SigPart(acc, p);
+        acc += std::string("salt=LOADCOL-HOOK-v2|off=") + (Marker("col_off.on") ? "1" : "0") + "\n";
         char hex[32];
         std::snprintf(hex, sizeof(hex), "%016llx", (unsigned long long)Fnv(acc));
         return hex;
@@ -309,10 +346,22 @@ namespace CustomCol
     {
         CinfoGuard();           // antes de o CColAccel abrir/ler o cache
         if (g_origStartCache) g_origStartCache();
+        // valores CRUS das globais do CColAccel depois do startCache (diagnostico; o significado de cada numero
+        // nao foi confirmado - compare 1a execucao x seguintes)
+        static int* st  = reinterpret_cast<int*>(CHook::getSym("_ZN9CColAccel13m_iCacheStateE"));
+        static int* num = reinterpret_cast<int*>(CHook::getSym("_ZN9CColAccel14m_iNumColItemsE"));
+        FLog("[CINFO] depois do startCache: m_iCacheState=%d m_iNumColItems=%d", st ? *st : -1, num ? *num : -1);
     }
 
-    inline void InstallCinfoGuard()
+
+    inline void Install()
     {
+        // 1) replace direto no ponto de carregamento nativo
+        CHook::InlineHook("_ZN9CColStore7LoadColEiPhi", &LoadColHook, &g_origLoadCol);
+        // 2) cache CINFO.BIN invalidado quando as entradas mudam
         CHook::InlineHook("_ZN9CColAccel10startCacheEv", &StartCacheHook, &g_origStartCache);
+        FLog("[COL] hooks instalados: CColStore::LoadCol + CColAccel::startCache");
     }
+    // nome antigo mantido: Streaming.cpp do patch v1 continua compilando sem alteracao
+    inline void InstallCinfoGuard() { Install(); }
 }
