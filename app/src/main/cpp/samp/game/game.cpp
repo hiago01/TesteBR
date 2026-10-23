@@ -16,6 +16,7 @@
 #include "game/Collision/Collision.h"
 #include "sprite2d.h"
 #include "CustomImg.h"
+#include "CustomCol.h"
 
 void ApplySAMPPatchesInGame();
 void InitScripting();
@@ -90,6 +91,9 @@ void CGame::Initialize()
     // diagnostico do touch.img: IDE x diretorio do IMG de cada entrada (roda depois dos IDEs e dos diretorios)
     if (CustomImg::ImgPresent())
         CustomImg::Audit("CGame::Initialize");
+
+    // countrye_10.col / CE_brewery: leitura passo a passo em SAMP/col, SAMP e texdb (somente log; nova leitura so com SAMP/col_reload.on)
+    CustomCol::Audit("CGame::Initialize");
 
     ApplySAMPPatchesInGame();
 	GameResetRadarColors();

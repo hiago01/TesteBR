@@ -15,6 +15,7 @@
 #include "Camera.h"
 #include "Renderer.h"
 #include "CustomImg.h"
+#include "CustomCol.h"
 #include <algorithm>
 #include <functional>
 #include <vector>
@@ -240,6 +241,8 @@ void CStreaming::InjectHooks() {
     CHook::Redirect("_ZN10CStreaming13InitImageListEv", &CStreaming::InitImageList);
     // touch.img: ignora o cache posicional MODELS\MINFO.BIN (ver CustomImg.h) para o diretorio dos IMGs ser ligado pelo NOME
     CustomImg::InstallAcceleratorBypass();
+    // CINFO.BIN (cache de colisao): invalida o cache velho antes do CColAccel::startCache (ver CustomCol.h)
+    CustomCol::InstallCinfoGuard();
     CHook::Redirect("_ZN10CStreaming12MakeSpaceForEi", &CStreaming::MakeSpaceFor);
     //CHook::Redirect("_ZN10CStreaming22LoadAllRequestedModelsEb", &CStreaming::LoadAllRequestedModels);
 }

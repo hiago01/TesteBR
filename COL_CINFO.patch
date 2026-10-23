@@ -1,0 +1,39 @@
+--- a/app/src/main/cpp/samp/game/Streaming.cpp	2026-10-23 19:56:43.043813860 +0000
++++ b/app/src/main/cpp/samp/game/Streaming.cpp	2026-10-23 19:58:51.653225432 +0000
+@@ -15,6 +15,7 @@
+ #include "Camera.h"
+ #include "Renderer.h"
+ #include "CustomImg.h"
++#include "CustomCol.h"
+ #include <algorithm>
+ #include <functional>
+ #include <vector>
+@@ -240,6 +241,8 @@
+     CHook::Redirect("_ZN10CStreaming13InitImageListEv", &CStreaming::InitImageList);
+     // touch.img: ignora o cache posicional MODELS\MINFO.BIN (ver CustomImg.h) para o diretorio dos IMGs ser ligado pelo NOME
+     CustomImg::InstallAcceleratorBypass();
++    // CINFO.BIN (cache de colisao): invalida o cache velho antes do CColAccel::startCache (ver CustomCol.h)
++    CustomCol::InstallCinfoGuard();
+     CHook::Redirect("_ZN10CStreaming12MakeSpaceForEi", &CStreaming::MakeSpaceFor);
+     //CHook::Redirect("_ZN10CStreaming22LoadAllRequestedModelsEb", &CStreaming::LoadAllRequestedModels);
+ }
+--- a/app/src/main/cpp/samp/game/game.cpp	2026-10-23 19:56:43.043852851 +0000
++++ b/app/src/main/cpp/samp/game/game.cpp	2026-10-23 19:58:51.653267575 +0000
+@@ -16,6 +16,7 @@
+ #include "game/Collision/Collision.h"
+ #include "sprite2d.h"
+ #include "CustomImg.h"
++#include "CustomCol.h"
+ 
+ void ApplySAMPPatchesInGame();
+ void InitScripting();
+@@ -91,6 +92,9 @@
+     if (CustomImg::ImgPresent())
+         CustomImg::Audit("CGame::Initialize");
+ 
++    // countrye_10.col / CE_brewery: leitura passo a passo em SAMP/col, SAMP e texdb (somente log; nova leitura so com SAMP/col_reload.on)
++    CustomCol::Audit("CGame::Initialize");
++
+     ApplySAMPPatchesInGame();
+ 	GameResetRadarColors();
+ 
