@@ -16,6 +16,7 @@
 
 #include <cctype>
 #include <cstring>
+#include <vector>
 
 namespace SkinSlots
 {
@@ -135,5 +136,62 @@ namespace SkinSlots
             p = e + 1;
         }
         return false;
+    }
+
+    // ---------------------------------------------------------------------------------------------------
+    // Exclusividade por categoria (/skin7 slot): só UMA variante visível por grupo.
+    // Cada grupo lista slots que existem em kSlots acima (nomes conferidos; slot inexistente é ignorado).
+    // Categorias com um único slot (hat1, necklace1, underwear, skin_*) já são exclusivas por natureza.
+    // Fora dos grupos de propósito: brow*/beard* (ev 0; beard1..5 dividem a mesma pasta), skin_leg (um slot só
+    // para as 10 pernas) e tat_* (cada tatuagem é uma região diferente do corpo).
+    // ---------------------------------------------------------------------------------------------------
+    static const char* const kExclusiveGroups[] = {
+        "backpack1,backpack2,backpack3",
+        "boot1,boot2,boot3,boot4",
+        "clock1,clock2",
+        "ear1,ear2,ear3,ear4",
+        "glasse1,glasse2",
+        "hair1,hair2,hair3,hair4",
+        "head1,head2,head3,head4,head5",
+        "mask1,mask2",
+        "pants1,pants2,pants3,pants4,short1,short2,short3",
+        "slipper1,slipper2,slipper3",
+        "torso1,torso2,torso3,torso4",
+    };
+    static constexpr int kExclusiveGroupCount = (int)(sizeof(kExclusiveGroups) / sizeof(kExclusiveGroups[0]));
+
+    // índice do grupo exclusivo do slot, ou -1 se ele não pertence a nenhum
+    inline int GroupOf(const char* slotName)
+    {
+        for (int g = 0; g < kExclusiveGroupCount; ++g)
+            if (TextureListHas(kExclusiveGroups[g], slotName)) return g;
+        return -1;
+    }
+
+    // Materiais que precisam ser ocultados quando `target` é ativado: os materiais dos OUTROS slots do mesmo
+    // grupo, menos (a) os do próprio target e (b) qualquer material que também pertença a um slot de fora do
+    // grupo (nunca desliga outra categoria por causa de material compartilhado).
+    // matsOf(const Slot&) -> std::vector<int>: materiais do slot no DFF carregado (vazio se o DFF não os tem).
+    template <class MatsFn>
+    inline std::vector<int> ExclusiveVictims(const Slot& target, MatsFn matsOf)
+    {
+        std::vector<int> victims;
+        const int g = GroupOf(target.name);
+        if (g < 0) return victims;
+
+        const std::vector<int> mine = matsOf(target);
+        std::vector<int> outside;                       // materiais de slots de outras categorias
+        for (int k = 0; k < kCount; ++k)
+        {
+            const Slot& s = kSlots[k];
+            if (&s == &target) continue;
+            if (GroupOf(s.name) == g) { const std::vector<int> m = matsOf(s); victims.insert(victims.end(), m.begin(), m.end()); }
+            else                      { const std::vector<int> m = matsOf(s); outside.insert(outside.end(), m.begin(), m.end()); }
+        }
+        auto in = [](const std::vector<int>& v, int x) { for (int y : v) if (y == x) return true; return false; };
+        std::vector<int> r;
+        for (int i : victims)
+            if (!in(mine, i) && !in(outside, i) && !in(r, i)) r.push_back(i);
+        return r;
     }
 }

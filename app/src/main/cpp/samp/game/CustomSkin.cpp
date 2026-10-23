@@ -1191,6 +1191,23 @@ namespace
         SetInfo(msg);
     }
 
+    // Exclusividade por categoria (SkinSlots::kExclusiveGroups): oculta os OUTROS slots do mesmo grupo do slot `sl`,
+    // com a mesma ocultação do "slot <outro> off" (s_hidden + ApplyHiddenToTemplate). Só chamar DEPOIS de o slot novo
+    // estar visível, para uma variante inválida nunca derrubar a peça anterior. Não depende de s_slotVar (que guarda só a
+    // última variante e continua preenchido após um "off"): o estado real é s_hidden. Retorna quantos materiais ocultou.
+    int HideSameCategory(const SkinSlots::Slot& sl, std::string& note)
+    {
+        const std::vector<int> victims = SkinSlots::ExclusiveVictims(sl, [](const SkinSlots::Slot& s) { return SlotMaterials(s); });
+        s_hidden.resize(s_parsed.materialsList.size(), 0);
+        int changed = 0;
+        for (int i : victims)
+            if ((size_t)i < s_hidden.size() && !s_hidden[(size_t)i]) { s_hidden[(size_t)i] = 1; ++changed; }
+        if (!changed) return 0;
+        RecountHidden();
+        ApplyHiddenToTemplate(note);
+        return changed;
+    }
+
     // ---- /skin7 slot <nome> <n | + | - | on | off | pasta/arquivo> ------------------------------
     void DoSlot(const std::string& rest)
     {
@@ -1213,7 +1230,10 @@ namespace
             for (int i : idx) { s_hidden.resize(s_parsed.materialsList.size(), 0); s_hidden[(size_t)i] = (arg == "off") ? 1 : 0; }
             RecountHidden();
             std::string note; ApplyHiddenToTemplate(note);
-            SetInfo(name + (arg == "off" ? " oculto" : " visível") + " (materiais " + JoinList(idx) + ") | " + note);
+            std::string exNote;
+            const int exN = (arg == "on") ? HideSameCategory(*sl, exNote) : 0;   // ativar = oculta o resto da categoria
+            SetInfo(name + (arg == "off" ? " oculto" : " visível") + " (materiais " + JoinList(idx) + ") | " + note +
+                    (exN ? " | categoria: " + std::to_string(exN) + " material(is) de outros slots ocultados" : std::string()));
             return;
         }
 
@@ -1245,7 +1265,10 @@ namespace
         std::string note;
         if (!ApplyPack(idx, rel, note)) { SetInfo(note); return; }
         if (newVar > 0) s_slotVar[sl->name] = newVar;
-        SetInfo(name + " = " + note + (sl->ev == 0 ? " | HIPOTESE de mapeamento: confira no jogo" : ""));
+        std::string exNote;
+        const int exN = HideSameCategory(*sl, exNote);       // só chega aqui se a variante carregou: falha não oculta nada
+        SetInfo(name + " = " + note + (exN ? " | categoria: " + std::to_string(exN) + " material(is) de outros slots ocultados" : std::string()) +
+                (sl->ev == 0 ? " | HIPOTESE de mapeamento: confira no jogo" : ""));
     }
 
     // ---- /skin7 set <lista de materiais> <pasta/arquivo> : teste livre (confirma/refuta hipóteses) -----
