@@ -194,4 +194,34 @@ namespace SkinSlots
             if (!in(mine, i) && !in(outside, i) && !in(r, i)) r.push_back(i);
         return r;
     }
+
+    // ---------------------------------------------------------------------------------------------------
+    // Categorias da interface /provador (gui/samp_widgets/provador.cpp). Só agrupamento visual: a troca de peça
+    // continua sendo "slot <nome> <n|on|off>" e a exclusividade continua em kExclusiveGroups acima.
+    // Slot que não consta em nenhuma lista cai em EXTRAS (último item), então nenhum slot real fica de fora.
+    // ---------------------------------------------------------------------------------------------------
+    struct UiCategory
+    {
+        const char* title;
+        const char* slots;     // "a,b,c"; nullptr = EXTRAS (tudo que não está nas outras)
+    };
+
+    static const UiCategory kUiCategories[] = {
+        { "ROUPAS",    "torso1,torso2,torso3,torso4,pants1,pants2,pants3,pants4,short1,short2,short3,underwear" },
+        { "CABELO",    "hair1,hair2,hair3,hair4" },
+        { "ROSTO",     "head1,head2,head3,head4,head5" },
+        { "ACESSÓRIOS","glasse1,glasse2,ear1,ear2,ear3,ear4,clock1,clock2,mask1,mask2,necklace1,hat1" },
+        { "CALÇADOS",  "boot1,boot2,boot3,boot4,slipper1,slipper2,slipper3" },
+        { "MOCHILA",   "backpack1,backpack2,backpack3" },
+        { "EXTRAS",    nullptr },
+    };
+    static constexpr int kUiCategoryCount = (int)(sizeof(kUiCategories) / sizeof(kUiCategories[0]));
+
+    // categoria da interface do slot (nunca -1 para um nome válido: o que sobra vai para EXTRAS)
+    inline int UiCategoryOf(const char* slotName)
+    {
+        for (int c = 0; c < kUiCategoryCount; ++c)
+            if (kUiCategories[c].slots && TextureListHas(kUiCategories[c].slots, slotName)) return c;
+        return kUiCategoryCount - 1;
+    }
 }

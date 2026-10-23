@@ -939,6 +939,14 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 	}
 	if (InventoryUI::HandleRawTouch(type, num, posX, posY))
 		return;
+	// Provador (/provador): mesmo esquema; consome todos os toques enquanto aberto.
+	if (Provador::ConsumeFlushRequest())
+	{
+		for (int i = 0; i < 3; i++)
+			AND_TouchEvent(1, i, 0, 0);
+	}
+	if (Provador::HandleRawTouch(type, num, posX, posY))
+		return;
 	if (MaximoMenu::ConsumeFlushRequest())
 	{
 		for (int i = 0; i < 3; i++)

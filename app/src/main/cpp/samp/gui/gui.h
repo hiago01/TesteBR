@@ -27,6 +27,7 @@
 #include "samp_widgets/weaponbar.h"
 #include "samp_widgets/hud.h"
 #include "samp_widgets/inventory.h"
+#include "samp_widgets/provador.h"
 #include "samp_widgets/maximomenu.h"
 
 #include "samp_widgets/dialogs/dialog.h"
@@ -105,6 +106,7 @@ private:
 	HudInfo* m_hud = nullptr;
 	MaximoMenu* m_maximoMenu = nullptr;
 	InventoryUI* m_inventory = nullptr;
+	Provador* m_provador = nullptr;
 	Label* label;
     Label* label2;
     Label* label3;

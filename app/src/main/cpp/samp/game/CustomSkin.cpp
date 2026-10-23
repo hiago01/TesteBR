@@ -122,6 +122,29 @@ namespace
     RwTexture*                  s_hiddenTex = nullptr;  // textura transparente (1 ref nossa, permanente)
     std::vector<std::pair<RwTexture*, uint64_t>> s_graveyard;   // texturas a soltar com atraso
 
+    // ---- prévia da interface /provador (só a thread do jogo mexe) ---------------------------------------
+    // Foto do estado ANTES da prévia: ocultos, pasta/arquivo por material, variante por slot e uma ref EXTRA de
+    // cada textura "ligada". A ref extra impede que a troca ao vivo (ApplyPack manda a antiga para o cemitério)
+    // destrua a textura original do DFF; no cancelar a ref passa de volta para s_enabledTex.
+    struct UiBackup
+    {
+        bool                                 active  = false;
+        bool                                 changed = false;   // alguma prévia foi aplicada com sucesso
+        std::vector<uint8_t>                 hidden;
+        std::map<int, std::string>           matPack;
+        std::unordered_map<std::string, int> slotVar;
+        std::vector<RwTexture*>              tex;               // 1 ref extra por material (nullptr = sem textura)
+    } s_bak;
+
+    std::mutex                s_uiMutex;
+    CCustomSkin::UiState      s_uiState;                        // cópia publicada para a UI
+    std::atomic<uint32_t>     s_uiVersion{0};
+    std::atomic<bool>         s_uiWanted{false};                // UI aberta: republica a cada comando
+    std::atomic<uint32_t>     s_uiNextId{0};
+    uint32_t                  s_uiReqId = 0;                    // resultado do pedido da UI em andamento
+    bool                      s_uiReqOk = true;
+    std::string               s_uiReqMsg;
+
     void SetInfo(const std::string& text)
     {
         {
@@ -618,6 +641,13 @@ namespace
         s_hiddenCount = h;
     }
 
+    // Solta o backup da prévia (confirmar, ou o molde foi reinstalado e as texturas do backup deixaram de valer).
+    void DiscardBackup()
+    {
+        for (RwTexture*& t : s_bak.tex) { TexRelease(t); t = nullptr; }
+        s_bak = UiBackup();
+    }
+
     // ---- listas de índices: "all", "5", "3-7", "1,4,9-12" ----------------
     bool ParseIndexList(const std::string& text, int maxN, std::vector<int>& out, std::string& err)
     {
@@ -800,6 +830,7 @@ namespace
         s_installed = fresh;
         s_matPack.clear();                                    // o molde novo volta às texturas do DFF
         s_slotVar.clear();
+        DiscardBackup();                                      // prévia da UI: as texturas guardadas eram do molde antigo
 
         for (RwTexture* t : oldEnabled) TexRelease(t);        // refs do apply anterior (os materiais antigos seguram as deles)
 
@@ -1454,6 +1485,163 @@ namespace
         return ran;
     }
 
+    // ---- interface /provador: prévia, confirmar, cancelar e estado publicado ---------------------------
+    // O resto do /skin7 não muda: "prev" chama o MESMO DoSlot (texturas, exclusividade por categoria, ocultação).
+    // Aqui só entram (a) o backup/restauração e (b) a verificação do resultado no ESTADO REAL, para a UI nunca
+    // mostrar sucesso que não aconteceu.
+    bool BeginBackup()
+    {
+        if (s_bak.active) return true;
+        if (!InstalledOurs() || s_enabledTex.size() != s_parsed.materialsList.size()) return false;
+        s_hidden.resize(s_enabledTex.size(), 0);
+        s_bak = UiBackup();
+        s_bak.active  = true;
+        s_bak.hidden  = s_hidden;
+        s_bak.matPack = s_matPack;
+        s_bak.slotVar = s_slotVar;
+        s_bak.tex     = s_enabledTex;
+        for (RwTexture* t : s_bak.tex) TexAddRef(t);
+        return true;
+    }
+
+    // Desfaz tudo desde o BeginBackup. Mesma ocultação do restante (ApplyHiddenToTemplate/HidePass).
+    bool RestoreBackup(std::string& note)
+    {
+        if (!s_bak.active) { note = "nada a restaurar"; return true; }
+        std::vector<RpMaterial*> mats;
+        if (!InstalledOurs() || !CollectMaterials(TemplateClump(), mats) ||
+            mats.size() != s_enabledTex.size() || s_bak.tex.size() != s_enabledTex.size() || s_bak.hidden.size() != s_enabledTex.size())
+        {
+            DiscardBackup();
+            note = "ERRO: o molde mudou durante a prévia; nada foi restaurado (rode /skin7 apply de novo se algo ficou errado)";
+            return false;
+        }
+        const uint64_t now = NowMs();
+        for (size_t i = 0; i < s_enabledTex.size(); ++i)
+        {
+            RwTexture* cur = s_enabledTex[i];
+            if (cur != s_bak.tex[i])
+            {
+                s_enabledTex[i] = s_bak.tex[i];          // a ref extra do backup vira a ref de s_enabledTex
+                s_bak.tex[i]    = nullptr;
+                if (cur) s_graveyard.emplace_back(cur, now + kGraveyardMs);   // ref da prévia: solta com atraso
+            }
+        }
+        s_hidden  = s_bak.hidden;
+        s_matPack = s_bak.matPack;
+        s_slotVar = s_bak.slotVar;
+        DiscardBackup();                                 // solta as refs extras das texturas que não mudaram
+        RecountHidden();
+        ApplyHiddenToTemplate(note);                     // religa texturas/alfa de cada material conforme s_hidden
+        return true;
+    }
+
+    // O slot ficou como pedido? (confere s_hidden e s_matPack, não o texto da mensagem)
+    bool SlotMatches(const SkinSlots::Slot& sl, const std::vector<int>& idx, const std::string& what)
+    {
+        bool allVisible = true, allHidden = true;
+        for (int i : idx)
+        {
+            const bool h = (size_t)i < s_hidden.size() && s_hidden[(size_t)i];
+            if (h) allVisible = false; else allHidden = false;
+        }
+        if (what == "off") return allHidden;
+        if (what == "on")  return allVisible;
+        if (!allVisible) return false;
+        const auto it = s_matPack.find(idx[0]);
+        return it != s_matPack.end() && it->second == std::string(sl.folder) + "/" + what;
+    }
+
+    void PublishUiState()
+    {
+        CCustomSkin::UiState st;
+        st.skinReady = InstalledOurs();
+        st.pending   = s_bak.active && s_bak.changed;
+        st.reqId     = s_uiReqId;
+        st.reqOk     = s_uiReqOk;
+        st.msg       = s_uiReqMsg;
+        st.slots.resize((size_t)SkinSlots::kCount);
+        for (int k = 0; k < SkinSlots::kCount; ++k)
+        {
+            const SkinSlots::Slot& sl = SkinSlots::kSlots[k];
+            CCustomSkin::UiSlot& u = st.slots[(size_t)k];
+            u.index = k;
+            const std::vector<int> idx = SlotMaterials(sl);
+            u.hasMaterial = !idx.empty();
+            if (idx.empty()) continue;
+            bool vis = true;
+            for (int i : idx) if ((size_t)i < s_hidden.size() && s_hidden[(size_t)i]) vis = false;
+            u.visible  = vis;
+            u.variants = PackVariants(sl.folder);
+            const auto it = s_matPack.find(idx[0]);
+            if (it != s_matPack.end())
+            {
+                const std::string pre = std::string(sl.folder) + "/";
+                if (it->second.size() > pre.size() && it->second.compare(0, pre.size(), pre) == 0)
+                {
+                    const std::string tail = it->second.substr(pre.size());
+                    bool digits = !tail.empty() && tail.size() <= 6;
+                    for (char c : tail) if (!std::isdigit((unsigned char)c)) digits = false;
+                    if (digits) u.variant = std::atoi(tail.c_str());
+                }
+            }
+        }
+        {
+            std::lock_guard<std::mutex> lock(s_uiMutex);
+            s_uiState = std::move(st);
+        }
+        ++s_uiVersion;
+    }
+
+    // "ui <id> <refresh | prev <slot> <n|on|off> | commit | cancel>"  (só chega aqui via CCustomSkin::UiRequest)
+    void DoUi(const std::string& rest)
+    {
+        std::istringstream in(rest);
+        unsigned id = 0;
+        std::string op;
+        in >> id >> op;
+        s_uiReqId = id; s_uiReqOk = true; s_uiReqMsg.clear();
+        auto fail = [&](const std::string& why) { s_uiReqOk = false; s_uiReqMsg = why; };
+
+        if (op == "refresh")
+        {
+            if (!s_loadedOk) DoLoad(false);              // para a lista de slots já refletir o DFF
+        }
+        else if (op == "prev")
+        {
+            std::string name, what;
+            in >> name >> what;
+            const SkinSlots::Slot* sl = SkinSlots::Find(name.c_str());
+            bool numeric = !what.empty();
+            for (char c : what) if (!std::isdigit((unsigned char)c)) numeric = false;
+            if (!sl || (what != "on" && what != "off" && !numeric)) fail("pedido inválido");
+            else if (!s_loadedOk && !DoLoad(false))      fail(LastInfo());
+            else if (!InstalledOurs())                   fail("skin não instalada: use PREPARAR (ou /skin7 apply)");
+            else
+            {
+                const std::vector<int> idx = SlotMaterials(*sl);
+                if (idx.empty())                         fail(std::string("o DFF não tem o material de ") + sl->name);
+                else if (!BeginBackup())                 fail("não consegui guardar o estado atual para a prévia");
+                else
+                {
+                    DoSlot(name + " " + what);           // o mesmo caminho do /skin7 slot (inclui a exclusividade)
+                    if (SlotMatches(*sl, idx, what)) s_bak.changed = true;
+                    else fail(LastInfo());
+                }
+            }
+        }
+        else if (op == "commit")
+        {
+            DiscardBackup();                             // o estado atual passa a ser o definitivo
+        }
+        else if (op == "cancel")
+        {
+            std::string note;
+            if (!RestoreBackup(note)) fail(note);
+        }
+        else fail("pedido desconhecido: " + op);
+    }
+
     // ---- despacho ----------------------------------------------------------
     void Execute(const std::string& cmdline)
     {
@@ -1479,6 +1667,7 @@ namespace
         else if (cmd == "set")    DoSet(rest);
         else if (cmd == "save")   DoSave(rest);
         else if (cmd == "autoexec") RunAutoexec();
+        else if (cmd == "ui")     DoUi(rest);                 // interface /provador (só via CCustomSkin::UiRequest)
         else                      SetInfo("comando desconhecido: " + cmd);
     }
 
@@ -1557,6 +1746,22 @@ void CCustomSkin::RequestUnload()      { PushCmd("unload"); }
 void CCustomSkin::RequestApply()       { PushCmd("apply"); }
 void CCustomSkin::RequestWear(bool on) { PushCmd(on ? "wear" : "unwear"); }
 
+void CCustomSkin::UiSetActive(bool on) { s_uiWanted.store(on); }
+uint32_t CCustomSkin::UiRequest(const std::string& op)
+{
+    const uint32_t id = ++s_uiNextId;
+    PushCmd("ui " + std::to_string(id) + " " + op);
+    return id;
+}
+uint32_t CCustomSkin::UiVersion() { return s_uiVersion.load(); }
+bool CCustomSkin::UiGetState(UiState& out)
+{
+    std::lock_guard<std::mutex> lock(s_uiMutex);
+    if (s_uiState.slots.empty()) return false;
+    out = s_uiState;
+    return true;
+}
+
 void CCustomSkin::Process()
 {
     std::vector<std::string> cmds;
@@ -1565,6 +1770,7 @@ void CCustomSkin::Process()
         cmds.swap(s_cmds);
     }
     for (const std::string& c : cmds) Execute(c);
+    if (!cmds.empty() && s_uiWanted.load()) PublishUiState();   // interface /provador aberta: estado real após cada comando
 
     if (kAutoApply && !s_autoTried)
     {

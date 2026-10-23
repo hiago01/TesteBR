@@ -105,6 +105,14 @@ bool UI::initialize()
 	m_inventory->setPosition(ImVec2(0.0f, 0.0f));
 	m_inventory->setVisible(true);
 
+	// Provador (/provador): personalizacao do /skin7. So desenha quando aberto; os toques sao
+	// capturados em AND_TouchEvent_hook (Provador::HandleRawTouch).
+	m_provador = new Provador();
+	this->addChild(m_provador);
+	m_provador->setFixedSize(size());
+	m_provador->setPosition(ImVec2(0.0f, 0.0f));
+	m_provador->setVisible(true);
+
 	// Menu "Maximo RP" (substitui o menu de pausa nativo). Ultimo filho = desenhado por cima.
 	// So desenha quando aberto (/menu ou botao Voltar); a captura de toque fica em AND_TouchEvent_hook.
 	m_maximoMenu = new MaximoMenu();

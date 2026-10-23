@@ -57,7 +57,9 @@
 // (As notas de como a troca do modelo 7 funciona estão em CustomSkin.cpp.)
 // ---------------------------------------------------------------------------
 
+#include <cstdint>
 #include <string>
+#include <vector>
 
 class CCustomSkin
 {
@@ -74,4 +76,34 @@ public:
 
     static std::string Info();     // última mensagem
     static std::string DebugCommand(const std::string& args);   // "/skin7 ..."
+
+    // ---- API da interface /provador (gui/samp_widgets/provador.cpp) -------------------------------------
+    // Tudo thread-safe: a UI só ENFILEIRA pedidos (UiRequest) e LÊ uma cópia do estado real (UiGetState);
+    // quem mexe nos materiais é sempre a thread do jogo (Process). Os pedidos reaproveitam o "/skin7 slot"
+    // (DoSlot: texturas, exclusividade por categoria) e acrescentam só prévia + confirmar + cancelar:
+    //   UiRequest("prev <slot> <n|on|off>")  aplica ao vivo como PRÉVIA (guarda antes um backup com refs de textura)
+    //   UiRequest("commit")                  confirma a prévia (solta o backup)
+    //   UiRequest("cancel")                  desfaz tudo o que foi feito desde o início da prévia
+    //   UiRequest("refresh")                 só republica o estado
+    struct UiSlot
+    {
+        int              index       = -1;     // posição em SkinSlots::kSlots
+        bool             hasMaterial = false;  // o DFF carregado tem o(s) material(is) do slot
+        bool             visible     = false;  // todos os materiais do slot visíveis (estado real, s_hidden)
+        int              variant     = -1;     // variante do pack aplicada (-1 = textura original do DFF / caminho avulso)
+        std::vector<int> variants;             // variantes existentes em pack/<pasta>/
+    };
+    struct UiState
+    {
+        bool                skinReady = false; // molde instalado (/skin7 apply): sem isso nada é aplicado
+        bool                pending   = false; // há prévia não confirmada
+        uint32_t            reqId     = 0;     // último pedido da UI já processado
+        bool                reqOk     = true;  // ... e se funcionou (verificado no estado real, não pelo texto)
+        std::string         msg;               // motivo quando reqOk == false
+        std::vector<UiSlot> slots;             // um por SkinSlots::kSlots, na mesma ordem
+    };
+    static void     UiSetActive(bool on);               // UI aberta: o estado passa a ser republicado a cada comando
+    static uint32_t UiRequest(const std::string& op);   // devolve o id do pedido (aparece em UiState::reqId)
+    static uint32_t UiVersion();                        // muda a cada republicação (evita copiar sem necessidade)
+    static bool     UiGetState(UiState& out);           // false enquanto nunca foi publicado
 };
