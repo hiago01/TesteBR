@@ -1,0 +1,168 @@
+diff -ruN a/app/src/main/cpp/samp/game/CustomSkin.cpp b/app/src/main/cpp/samp/game/CustomSkin.cpp
+--- a/app/src/main/cpp/samp/game/CustomSkin.cpp	2026-10-23 11:37:41.793646935 +0000
++++ b/app/src/main/cpp/samp/game/CustomSkin.cpp	2026-10-23 11:37:41.795361653 +0000
+@@ -1239,6 +1239,59 @@
+         return changed;
+     }
+ 
++    // Cobertura (SkinSlots::kCoverPieces/kCoverTargets): índices dos materiais do DFF com esse nome de textura.
++    std::vector<int> MaterialsByTexture(const char* tex)
++    {
++        std::vector<int> r;
++        for (size_t i = 0; i < s_parsed.materialsList.size(); ++i)
++            if (SkinSlots::TextureListHas(tex, s_parsed.materialsList[i].texture.c_str())) r.push_back((int)i);
++        return r;
++    }
++
++    // Materiais que HOJE estão totalmente cobertos por uma calça/bermuda visível (pele das pernas e roupa íntima).
++    // Função do estado atual de s_hidden: não guarda nada, então vale também depois de save/autoexec.
++    std::vector<int> CoveredByGarments()
++    {
++        std::vector<int> r;
++        std::vector<const SkinSlots::Box*> worn;
++        for (const SkinSlots::Box& p : SkinSlots::kCoverPieces)
++        {
++            const std::vector<int> idx = MaterialsByTexture(p.name);
++            if (idx.empty()) continue;                            // o DFF carregado não tem essa peça
++            bool vis = true;
++            for (int i : idx) if ((size_t)i < s_hidden.size() && s_hidden[(size_t)i]) vis = false;
++            if (vis) worn.push_back(&p);
++        }
++        if (worn.empty()) return r;
++        for (const SkinSlots::Box& t : SkinSlots::kCoverTargets)
++        {
++            bool covered = false;
++            for (const SkinSlots::Box* p : worn) if (SkinSlots::PieceCovers(*p, t)) { covered = true; break; }
++            if (!covered) continue;
++            for (int i : MaterialsByTexture(t.name)) r.push_back(i);
++        }
++        return r;
++    }
++
++    // Depois de uma troca de roupa: oculta o que passou a ficar coberto e religa o que deixou de estar
++    // (`before` = CoveredByGarments() medido ANTES da troca). Só mexe em materiais da tabela de cobertura.
++    // Mesma ocultação do restante (s_hidden + ApplyHiddenToTemplate). Retorna quantos materiais mudaram.
++    int UpdateCoverage(const std::vector<int>& before)
++    {
++        const std::vector<int> after = CoveredByGarments();
++        s_hidden.resize(s_parsed.materialsList.size(), 0);
++        int changed = 0;
++        for (int i : after)
++            if ((size_t)i < s_hidden.size() && !s_hidden[(size_t)i]) { s_hidden[(size_t)i] = 1; ++changed; }
++        for (int i : before)
++            if ((size_t)i < s_hidden.size() && s_hidden[(size_t)i] && std::find(after.begin(), after.end(), i) == after.end())
++            { s_hidden[(size_t)i] = 0; ++changed; }
++        if (!changed) return 0;
++        RecountHidden();
++        std::string note; ApplyHiddenToTemplate(note);
++        return changed;
++    }
++
+     // ---- /skin7 slot <nome> <n | + | - | on | off | pasta/arquivo> ------------------------------
+     void DoSlot(const std::string& rest)
+     {
+@@ -1255,6 +1308,7 @@
+         if (!sl) { SetInfo("slot desconhecido: '" + name + "' (veja /skin7 slots)"); return; }
+         const std::vector<int> idx = SlotMaterials(*sl);
+         if (idx.empty()) { SetInfo("o DFF carregado não tem o material do slot '" + name + "' (" + sl->texture + ")"); return; }
++        const std::vector<int> covBefore = CoveredByGarments();     // cobertura antes da troca (calça/bermuda x pele/roupa íntima)
+ 
+         if (arg == "on" || arg == "off")
+         {
+@@ -1263,8 +1317,10 @@
+             std::string note; ApplyHiddenToTemplate(note);
+             std::string exNote;
+             const int exN = (arg == "on") ? HideSameCategory(*sl, exNote) : 0;   // ativar = oculta o resto da categoria
++            const int cvN = UpdateCoverage(covBefore);
+             SetInfo(name + (arg == "off" ? " oculto" : " visível") + " (materiais " + JoinList(idx) + ") | " + note +
+-                    (exN ? " | categoria: " + std::to_string(exN) + " material(is) de outros slots ocultados" : std::string()));
++                    (exN ? " | categoria: " + std::to_string(exN) + " material(is) de outros slots ocultados" : std::string()) +
++                    (cvN ? " | cobertura: " + std::to_string(cvN) + " parte(s) do corpo ajustada(s)" : std::string()));
+             return;
+         }
+ 
+@@ -1298,7 +1354,9 @@
+         if (newVar > 0) s_slotVar[sl->name] = newVar;
+         std::string exNote;
+         const int exN = HideSameCategory(*sl, exNote);       // só chega aqui se a variante carregou: falha não oculta nada
++        const int cvN = UpdateCoverage(covBefore);
+         SetInfo(name + " = " + note + (exN ? " | categoria: " + std::to_string(exN) + " material(is) de outros slots ocultados" : std::string()) +
++                (cvN ? " | cobertura: " + std::to_string(cvN) + " parte(s) do corpo ajustada(s)" : std::string()) +
+                 (sl->ev == 0 ? " | HIPOTESE de mapeamento: confira no jogo" : ""));
+     }
+ 
+@@ -1569,9 +1627,10 @@
+             const std::vector<int> idx = SlotMaterials(sl);
+             u.hasMaterial = !idx.empty();
+             if (idx.empty()) continue;
+-            bool vis = true;
+-            for (int i : idx) if ((size_t)i < s_hidden.size() && s_hidden[(size_t)i]) vis = false;
++            bool vis = true, any = false;
++            for (int i : idx) { if ((size_t)i < s_hidden.size() && s_hidden[(size_t)i]) vis = false; else any = true; }
+             u.visible  = vis;
++            u.partial  = any && !vis;
+             u.variants = PackVariants(sl.folder);
+             const auto it = s_matPack.find(idx[0]);
+             if (it != s_matPack.end())
+diff -ruN a/app/src/main/cpp/samp/game/CustomSkin.h b/app/src/main/cpp/samp/game/CustomSkin.h
+--- a/app/src/main/cpp/samp/game/CustomSkin.h	2026-10-23 11:37:41.796807333 +0000
++++ b/app/src/main/cpp/samp/game/CustomSkin.h	2026-10-23 11:37:41.798115468 +0000
+@@ -90,6 +90,7 @@
+         int              index       = -1;     // posição em SkinSlots::kSlots
+         bool             hasMaterial = false;  // o DFF carregado tem o(s) material(is) do slot
+         bool             visible     = false;  // todos os materiais do slot visíveis (estado real, s_hidden)
++        bool             partial     = false;  // só parte dos materiais visível (ex.: pele das pernas sob uma bermuda)
+         int              variant     = -1;     // variante do pack aplicada (-1 = textura original do DFF / caminho avulso)
+         std::vector<int> variants;             // variantes existentes em pack/<pasta>/
+     };
+diff -ruN a/app/src/main/cpp/samp/game/SkinSlots.h b/app/src/main/cpp/samp/game/SkinSlots.h
+--- a/app/src/main/cpp/samp/game/SkinSlots.h	2026-10-23 11:37:41.800052694 +0000
++++ b/app/src/main/cpp/samp/game/SkinSlots.h	2026-10-23 11:37:41.801667614 +0000
+@@ -224,4 +224,36 @@
+             if (kUiCategories[c].slots && TextureListHas(kUiCategories[c].slots, slotName)) return c;
+         return kUiCategoryCount - 1;
+     }
++
++    // ---------------------------------------------------------------------------------------------------
++    // Cobertura: enquanto uma calça/bermuda está VISÍVEL, as partes do corpo que ela cobre por inteiro ficam
++    // ocultas (senão a pele das pernas e a roupa íntima aparecem por baixo do tecido). Cobertura parcial NÃO
++    // oculta (fica com pele). Mesma regra e mesmas caixas do CorpTex.cpp (medidas da geometria do skin.dff):
++    //   xabs = |x| máximo, zmin/zmax = extensão vertical.
++    // ---------------------------------------------------------------------------------------------------
++    struct Box { const char* name; float xabs, zmin, zmax; };      // name = textura/material do DFF
++
++    static const Box kCoverPieces[] = {                            // peças que cobrem (slots pants1-4 e short1-3)
++        { "fantasy_m_pants1", 0.22f, -0.88f, 0.11f },
++        { "fantasy_m_pants2", 0.26f, -0.97f, 0.11f },
++        { "fantasy_m_pants3", 0.22f, -0.61f, 0.11f },
++        { "fantasy_m_pants4", 0.24f, -0.83f, 0.09f },
++        { "fantasy_m_short1", 0.22f, -0.44f, 0.11f },
++        { "fantasy_m_short2", 0.22f, -0.44f, 0.11f },
++        { "fantasy_m_short3", 0.24f, -0.48f, 0.11f },
++    };
++    static const Box kCoverTargets[] = {                           // o que pode ficar escondido por baixo
++        { "body.legleft1",  0.19f, -0.37f, -0.04f }, { "body.legright1", 0.19f, -0.37f, -0.04f },
++        { "body.legleft2",  0.19f, -0.57f, -0.36f }, { "body.legright2", 0.19f, -0.57f, -0.36f },
++        { "body.legleft3",  0.21f, -0.81f, -0.54f }, { "body.legright3", 0.21f, -0.81f, -0.54f },
++        { "body.legleft4",  0.19f, -0.90f, -0.81f }, { "body.legright4", 0.19f, -0.90f, -0.81f },
++        { "body.legleft5",  0.20f, -0.94f, -0.88f }, { "body.legright5", 0.20f, -0.94f, -0.88f },
++        { "fantasy_m_underwear", 0.21f, -0.22f, 0.11f },
++    };
++
++    inline bool PieceCovers(const Box& p, const Box& r)
++    {
++        constexpr float tol = 0.03f;
++        return p.zmin <= r.zmin + tol && p.zmax >= r.zmax - tol && p.xabs >= r.xabs - tol;
++    }
+ }
+diff -ruN a/app/src/main/cpp/samp/gui/samp_widgets/provador.cpp b/app/src/main/cpp/samp/gui/samp_widgets/provador.cpp
+--- a/app/src/main/cpp/samp/gui/samp_widgets/provador.cpp	2026-10-23 11:37:41.803165831 +0000
++++ b/app/src/main/cpp/samp/gui/samp_widgets/provador.cpp	2026-10-23 11:37:41.804335223 +0000
+@@ -608,6 +608,7 @@
+ 		if (!u)           st = "...";
+ 		else if (!avail)  st = "indisponível";
+ 		else if (u->visible) { st = u->variant >= 0 ? "ATIVO " + std::to_string(u->variant) : std::string("ATIVO"); stc = cBlue; }
++		else if (u->partial) st = "parcial";                 // ex.: pele das pernas parcialmente coberta por uma bermuda
+ 		else              st = "desligado";
+ 		const ImVec2 ts = r->calculateTextSize(st, fsS);
+ 		r->drawText(ImVec2(panX + panW - pad - ts.x, ry + (rowH - ts.y) * 0.5f), stc, st, false, fsS);

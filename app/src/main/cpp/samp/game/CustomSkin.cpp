@@ -1239,6 +1239,59 @@ namespace
         return changed;
     }
 
+    // Cobertura (SkinSlots::kCoverPieces/kCoverTargets): índices dos materiais do DFF com esse nome de textura.
+    std::vector<int> MaterialsByTexture(const char* tex)
+    {
+        std::vector<int> r;
+        for (size_t i = 0; i < s_parsed.materialsList.size(); ++i)
+            if (SkinSlots::TextureListHas(tex, s_parsed.materialsList[i].texture.c_str())) r.push_back((int)i);
+        return r;
+    }
+
+    // Materiais que HOJE estão totalmente cobertos por uma calça/bermuda visível (pele das pernas e roupa íntima).
+    // Função do estado atual de s_hidden: não guarda nada, então vale também depois de save/autoexec.
+    std::vector<int> CoveredByGarments()
+    {
+        std::vector<int> r;
+        std::vector<const SkinSlots::Box*> worn;
+        for (const SkinSlots::Box& p : SkinSlots::kCoverPieces)
+        {
+            const std::vector<int> idx = MaterialsByTexture(p.name);
+            if (idx.empty()) continue;                            // o DFF carregado não tem essa peça
+            bool vis = true;
+            for (int i : idx) if ((size_t)i < s_hidden.size() && s_hidden[(size_t)i]) vis = false;
+            if (vis) worn.push_back(&p);
+        }
+        if (worn.empty()) return r;
+        for (const SkinSlots::Box& t : SkinSlots::kCoverTargets)
+        {
+            bool covered = false;
+            for (const SkinSlots::Box* p : worn) if (SkinSlots::PieceCovers(*p, t)) { covered = true; break; }
+            if (!covered) continue;
+            for (int i : MaterialsByTexture(t.name)) r.push_back(i);
+        }
+        return r;
+    }
+
+    // Depois de uma troca de roupa: oculta o que passou a ficar coberto e religa o que deixou de estar
+    // (`before` = CoveredByGarments() medido ANTES da troca). Só mexe em materiais da tabela de cobertura.
+    // Mesma ocultação do restante (s_hidden + ApplyHiddenToTemplate). Retorna quantos materiais mudaram.
+    int UpdateCoverage(const std::vector<int>& before)
+    {
+        const std::vector<int> after = CoveredByGarments();
+        s_hidden.resize(s_parsed.materialsList.size(), 0);
+        int changed = 0;
+        for (int i : after)
+            if ((size_t)i < s_hidden.size() && !s_hidden[(size_t)i]) { s_hidden[(size_t)i] = 1; ++changed; }
+        for (int i : before)
+            if ((size_t)i < s_hidden.size() && s_hidden[(size_t)i] && std::find(after.begin(), after.end(), i) == after.end())
+            { s_hidden[(size_t)i] = 0; ++changed; }
+        if (!changed) return 0;
+        RecountHidden();
+        std::string note; ApplyHiddenToTemplate(note);
+        return changed;
+    }
+
     // ---- /skin7 slot <nome> <n | + | - | on | off | pasta/arquivo> ------------------------------
     void DoSlot(const std::string& rest)
     {
@@ -1255,6 +1308,7 @@ namespace
         if (!sl) { SetInfo("slot desconhecido: '" + name + "' (veja /skin7 slots)"); return; }
         const std::vector<int> idx = SlotMaterials(*sl);
         if (idx.empty()) { SetInfo("o DFF carregado não tem o material do slot '" + name + "' (" + sl->texture + ")"); return; }
+        const std::vector<int> covBefore = CoveredByGarments();     // cobertura antes da troca (calça/bermuda x pele/roupa íntima)
 
         if (arg == "on" || arg == "off")
         {
@@ -1263,8 +1317,10 @@ namespace
             std::string note; ApplyHiddenToTemplate(note);
             std::string exNote;
             const int exN = (arg == "on") ? HideSameCategory(*sl, exNote) : 0;   // ativar = oculta o resto da categoria
+            const int cvN = UpdateCoverage(covBefore);
             SetInfo(name + (arg == "off" ? " oculto" : " visível") + " (materiais " + JoinList(idx) + ") | " + note +
-                    (exN ? " | categoria: " + std::to_string(exN) + " material(is) de outros slots ocultados" : std::string()));
+                    (exN ? " | categoria: " + std::to_string(exN) + " material(is) de outros slots ocultados" : std::string()) +
+                    (cvN ? " | cobertura: " + std::to_string(cvN) + " parte(s) do corpo ajustada(s)" : std::string()));
             return;
         }
 
@@ -1298,7 +1354,9 @@ namespace
         if (newVar > 0) s_slotVar[sl->name] = newVar;
         std::string exNote;
         const int exN = HideSameCategory(*sl, exNote);       // só chega aqui se a variante carregou: falha não oculta nada
+        const int cvN = UpdateCoverage(covBefore);
         SetInfo(name + " = " + note + (exN ? " | categoria: " + std::to_string(exN) + " material(is) de outros slots ocultados" : std::string()) +
+                (cvN ? " | cobertura: " + std::to_string(cvN) + " parte(s) do corpo ajustada(s)" : std::string()) +
                 (sl->ev == 0 ? " | HIPOTESE de mapeamento: confira no jogo" : ""));
     }
 
@@ -1569,9 +1627,10 @@ namespace
             const std::vector<int> idx = SlotMaterials(sl);
             u.hasMaterial = !idx.empty();
             if (idx.empty()) continue;
-            bool vis = true;
-            for (int i : idx) if ((size_t)i < s_hidden.size() && s_hidden[(size_t)i]) vis = false;
+            bool vis = true, any = false;
+            for (int i : idx) { if ((size_t)i < s_hidden.size() && s_hidden[(size_t)i]) vis = false; else any = true; }
             u.visible  = vis;
+            u.partial  = any && !vis;
             u.variants = PackVariants(sl.folder);
             const auto it = s_matPack.find(idx[0]);
             if (it != s_matPack.end())

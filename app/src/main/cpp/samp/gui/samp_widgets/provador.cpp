@@ -608,6 +608,7 @@ void Provador::draw(ImGuiRenderer* r)
 		if (!u)           st = "...";
 		else if (!avail)  st = "indisponível";
 		else if (u->visible) { st = u->variant >= 0 ? "ATIVO " + std::to_string(u->variant) : std::string("ATIVO"); stc = cBlue; }
+		else if (u->partial) st = "parcial";                 // ex.: pele das pernas parcialmente coberta por uma bermuda
 		else              st = "desligado";
 		const ImVec2 ts = r->calculateTextSize(st, fsS);
 		r->drawText(ImVec2(panX + panW - pad - ts.x, ry + (rowH - ts.y) * 0.5f), stc, st, false, fsS);

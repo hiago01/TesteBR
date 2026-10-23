@@ -90,6 +90,7 @@ public:
         int              index       = -1;     // posição em SkinSlots::kSlots
         bool             hasMaterial = false;  // o DFF carregado tem o(s) material(is) do slot
         bool             visible     = false;  // todos os materiais do slot visíveis (estado real, s_hidden)
+        bool             partial     = false;  // só parte dos materiais visível (ex.: pele das pernas sob uma bermuda)
         int              variant     = -1;     // variante do pack aplicada (-1 = textura original do DFF / caminho avulso)
         std::vector<int> variants;             // variantes existentes em pack/<pasta>/
     };

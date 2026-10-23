@@ -224,4 +224,36 @@ namespace SkinSlots
             if (kUiCategories[c].slots && TextureListHas(kUiCategories[c].slots, slotName)) return c;
         return kUiCategoryCount - 1;
     }
+
+    // ---------------------------------------------------------------------------------------------------
+    // Cobertura: enquanto uma calça/bermuda está VISÍVEL, as partes do corpo que ela cobre por inteiro ficam
+    // ocultas (senão a pele das pernas e a roupa íntima aparecem por baixo do tecido). Cobertura parcial NÃO
+    // oculta (fica com pele). Mesma regra e mesmas caixas do CorpTex.cpp (medidas da geometria do skin.dff):
+    //   xabs = |x| máximo, zmin/zmax = extensão vertical.
+    // ---------------------------------------------------------------------------------------------------
+    struct Box { const char* name; float xabs, zmin, zmax; };      // name = textura/material do DFF
+
+    static const Box kCoverPieces[] = {                            // peças que cobrem (slots pants1-4 e short1-3)
+        { "fantasy_m_pants1", 0.22f, -0.88f, 0.11f },
+        { "fantasy_m_pants2", 0.26f, -0.97f, 0.11f },
+        { "fantasy_m_pants3", 0.22f, -0.61f, 0.11f },
+        { "fantasy_m_pants4", 0.24f, -0.83f, 0.09f },
+        { "fantasy_m_short1", 0.22f, -0.44f, 0.11f },
+        { "fantasy_m_short2", 0.22f, -0.44f, 0.11f },
+        { "fantasy_m_short3", 0.24f, -0.48f, 0.11f },
+    };
+    static const Box kCoverTargets[] = {                           // o que pode ficar escondido por baixo
+        { "body.legleft1",  0.19f, -0.37f, -0.04f }, { "body.legright1", 0.19f, -0.37f, -0.04f },
+        { "body.legleft2",  0.19f, -0.57f, -0.36f }, { "body.legright2", 0.19f, -0.57f, -0.36f },
+        { "body.legleft3",  0.21f, -0.81f, -0.54f }, { "body.legright3", 0.21f, -0.81f, -0.54f },
+        { "body.legleft4",  0.19f, -0.90f, -0.81f }, { "body.legright4", 0.19f, -0.90f, -0.81f },
+        { "body.legleft5",  0.20f, -0.94f, -0.88f }, { "body.legright5", 0.20f, -0.94f, -0.88f },
+        { "fantasy_m_underwear", 0.21f, -0.22f, 0.11f },
+    };
+
+    inline bool PieceCovers(const Box& p, const Box& r)
+    {
+        constexpr float tol = 0.03f;
+        return p.zmin <= r.zmin + tol && p.zmax >= r.zmax - tol && p.xabs >= r.xabs - tol;
+    }
 }

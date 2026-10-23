@@ -159,6 +159,56 @@ int main()
     // ---- 9) o /skin7 slot normal continua igual (sem UI) ----
     Run("slot backpack2 2"); CHECK(Vis("backpack2") && !Vis("backpack1"));
 
+
+    // ---- 10) COBERTURA: pele das pernas / roupa intima sob calca e bermuda ----
+    {
+        auto H = [&](const char* tex) { auto v = MaterialsByTexture(tex); CHECK(!v.empty()); return s_hidden[(size_t)v[0]] != 0; };
+        s_hidden.assign(n, 0); DiscardBackup();
+        const char* gar[] = {"pants1","pants2","pants3","pants4","short1","short2","short3"};
+        for (auto g : gar) Run(std::string("slot ") + g + " off");
+        // sem nenhuma peca: nada coberto, tudo visivel
+        CHECK(!H("body.legleft1") && !H("body.legright5") && !H("fantasy_m_underwear"));
+
+        Run("slot short3 2");                                   // bermuda: cobre so a parte de cima da perna
+        CHECK(Vis("short3"));
+        CHECK(H("body.legleft1") && H("body.legright1") && H("fantasy_m_underwear"));
+        CHECK(!H("body.legleft2") && !H("body.legright2"));      // cobertura parcial: fica com pele
+        CHECK(!H("body.legleft3") && !H("body.legleft4") && !H("body.legleft5"));
+        { CCustomSkin::UiState st; PublishUiState(); CCustomSkin::UiGetState(st); int il = -1;
+          for (int k = 0; k < SkinSlots::kCount; ++k) if (!std::strcmp(SkinSlots::kSlots[k].name, "skin_leg")) il = k;
+          CHECK(st.slots[il].partial && !st.slots[il].visible); }
+
+        Run("slot pants2 1");                                   // calca longa: cobre as 5 pernas; bermuda sai (exclusividade)
+        CHECK(Vis("pants2") && !Vis("short3"));
+        for (const char* t : {"body.legleft1","body.legleft2","body.legleft3","body.legleft4","body.legleft5",
+                              "body.legright1","body.legright5","fantasy_m_underwear"}) CHECK(H(t));
+
+        Run("slot pants3 1");                                   // calca curta: cobre pernas 1-2; religa 3-5
+        CHECK(Vis("pants3") && !Vis("pants2"));
+        CHECK(H("body.legleft1") && H("body.legleft2") && H("body.legright2"));
+        CHECK(!H("body.legleft3") && !H("body.legleft4") && !H("body.legleft5") && !H("body.legright3"));
+        CHECK(H("fantasy_m_underwear"));
+
+        Run("slot underwear on");                               // ligar a roupa intima por baixo de uma calca: continua coberta
+        CHECK(H("fantasy_m_underwear"));
+
+        Run("slot pants3 off");                                 // tirou a calca: tudo volta
+        CHECK(!H("body.legleft1") && !H("body.legleft2") && !H("body.legright2") && !H("fantasy_m_underwear"));
+
+        // previa + cancelar restaura tambem o que a cobertura escondeu
+        CHECK(Ui("prev short1 1"));
+        CHECK(H("body.legleft1") && H("fantasy_m_underwear"));
+        CHECK(Ui("cancel"));
+        CHECK(!H("body.legleft1") && !H("body.legright1") && !H("fantasy_m_underwear") && !Vis("short1"));
+
+        // variante invalida nao muda a cobertura
+        CHECK(Ui("prev short2 1")); CHECK(!Ui("prev short1 99"));
+        CHECK(Vis("short2") && H("body.legleft1"));
+        CHECK(Ui("commit"));
+        // slots de outras categorias nao sao tocados
+        const bool hairBefore = Vis("hair3");
+        Run("slot pants4 1"); CHECK(Vis("hair3") == hairBefore);
+    }
     if (fails) { std::printf("RESULTADO: %d FALHA(S)\n", fails); return 1; }
     std::printf("RESULTADO: todos os testes de host passaram\n");
     return 0;
