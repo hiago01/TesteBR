@@ -17,6 +17,7 @@
 #include "sprite2d.h"
 #include "CustomImg.h"
 #include "CustomCol.h"
+#include "CustomSkinStream.h"
 
 void ApplySAMPPatchesInGame();
 void InitScripting();
@@ -94,6 +95,9 @@ void CGame::Initialize()
 
     // countrye_10.col / CE_brewery: leitura passo a passo em SAMP/col, SAMP e texdb (somente log; nova leitura so com SAMP/col_reload.on)
     CustomCol::Audit("CGame::Initialize");
+
+    // texdb/DFF/*.dff: DFF por entrada (ver CustomDff.h) - so log
+    CustomSkinStream::AuditDff("CGame::Initialize");
 
     ApplySAMPPatchesInGame();
 	GameResetRadarColors();

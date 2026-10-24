@@ -7,6 +7,8 @@ namespace DffPreflight { struct Info; }
 namespace CustomSkinStream
 {
     void Install();
+    // texdb/DFF: relatorio no log (chamar em CGame::Initialize, depois dos IDEs/IMGs)
+    void AuditDff(const char* quando);
     // Inventario do DFF do modelo (materiais na ordem do motor). nullptr ate o modelo ser convertido 1x, se nao e um modelo
     // substituido, ou se o preflight reprovou.
     const DffPreflight::Info* GetInfo(int model);

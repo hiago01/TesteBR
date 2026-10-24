@@ -29,6 +29,8 @@
 #include "Streaming.h"
 #include "CustomSkinStream.h"
 #include "DffPreflight.h"
+#include "CustomDff.h"
+#include "game/Models/ModelInfo.h"
 
 namespace
 {
@@ -192,11 +194,63 @@ namespace
         return r;
     }
 
+    // ---- DFF por entrada (texdb/DFF/<nome-do-modelo>.dff, ver CustomDff.h) --------------------------------
+    // Mesma tecnica da skin: o jogo converte um buffer NOSSO, com o tamanho real do arquivo, e o resto do fluxo
+    // (clump, refs de TXD, hit-col...) e' o original. true = o modelo foi tratado aqui (resultado em 'ok').
+    bool ConvertLoose(char* buf, int model, int a3, bool& ok)
+    {
+        if (model < 0 || model >= (int)TOTAL_DFF_MODEL_IDS || !CustomDff::HasAny()) return false;
+        CBaseModelInfo* mi = CModelInfo::GetModelInfo(model);
+        if (!mi) return false;
+
+        std::vector<uint8_t> data; std::string path, why;
+        if (!CustomDff::Find(mi->m_nKey, data, path, why))
+        {
+            if (!why.empty()) FLog("[DFF] modelo %d: %s %s -> usando o modelo original do IMG", model, path.c_str(), why.c_str());
+            return false;
+        }
+
+        CStreamingInfo& info = CStreaming::GetInfo(model);
+        const uint32_t oldSectors = info.m_nCdSize;
+        if (oldSectors == 0)
+        {
+            FLog("[DFF] modelo %d: sem entrada no IMG (m_nCdSize=0), nada a substituir -> ignorado", model);
+            return false;
+        }
+        if (oldSectors > (uint32_t)CStreaming::ms_streamingBufferSize)
+        {
+            FLog("[DFF] modelo %d: o original ('big', %u setores > buffer %d) e' lido em 2 etapas pelo jogo -> nao trocado",
+                 model, oldSectors, (int)CStreaming::ms_streamingBufferSize);
+            return false;
+        }
+
+        const uint32_t sectors = (uint32_t)((data.size() + STREAMING_SECTOR_SIZE - 1) / STREAMING_SECTOR_SIZE);
+        void* mem = nullptr;
+        if (posix_memalign(&mem, 64, (size_t)sectors * STREAMING_SECTOR_SIZE) != 0 || !mem)
+        {
+            FLog("[DFF] modelo %d: sem memoria para %u setores -> usando o original", model, sectors);
+            return false;
+        }
+        std::memset(mem, 0, (size_t)sectors * STREAMING_SECTOR_SIZE);
+        std::memcpy(mem, data.data(), data.size());
+
+        FLog("[DFF] modelo %d: DFF externo %s | %zu bytes = %u setores (original no IMG: %u setores, buffer de streaming: %d)",
+             model, path.c_str(), data.size(), sectors, oldSectors, (int)CStreaming::ms_streamingBufferSize);
+        info.m_nCdSize = sectors;          // o jogo monta o stream de memoria com GetCdSize() * 2048
+        ok = s_convertOrig((char*)mem, model, a3);
+        info.m_nCdSize = oldSectors;       // mantem a contabilidade original do streaming
+        std::free(mem);
+        FLog("[DFF] modelo %d convertido: ok=%d", model, (int)ok);
+        return true;
+    }
+
     bool Convert_hook(char* buf, int model, int a3)
     {
         Skin* sk = FindSkin(model);
         if (!sk || !EnsureFile(*sk))
         {
+            bool looseOk = false;
+            if (ConvertLoose(buf, model, a3, looseOk)) return looseOk;
             CheckRegistered("antes", model);
             return s_convertOrig(buf, model, a3);
         }
@@ -235,6 +289,37 @@ namespace
 namespace CustomSkinStream
 {
     const DffPreflight::Info* GetInfo(int model) { const Skin* k = FindSkin(model); return (k && k->infoOk) ? &k->info : nullptr; }
+
+    // AUDITORIA dos DFFs externos (texdb/DFF): para cada arquivo diz se o IDE declara o nome, quanto o modelo ocupa
+    // no IMG e se o seu arquivo cabe/e' aceito. Chamar depois dos IDEs e dos diretorios dos IMGs (CGame::Initialize).
+    void AuditDff(const char* quando)
+    {
+        if (!CustomDff::HasAny()) { FLog("[DFF][AUDIT:%s] nenhum .dff em texdb/DFF (nem texdb/dff, SAMP/dff)", quando); return; }
+        using Fn = CBaseModelInfo* (*)(const char*, int*);
+        static Fn find = reinterpret_cast<Fn>(CHook::getSym("_ZN10CModelInfo12GetModelInfoEPKcPi"));
+        FLog("[DFF][AUDIT:%s] buffer de streaming=%d setores (%d bytes) | memoria disponivel=%zu usada=%zu",
+             quando, (int)CStreaming::ms_streamingBufferSize, (int)CStreaming::ms_streamingBufferSize * (int)STREAMING_SECTOR_SIZE,
+             (size_t)CStreaming::ms_memoryAvailable, (size_t)CStreaming::ms_memoryUsed);
+        int ok = 0, bad = 0;
+        for (const auto& kv : CustomDff::Index())
+        {
+            const CustomDff::Entry& e = kv.second;
+            int id = -1;
+            CBaseModelInfo* mi = find(e.name.c_str(), &id);
+            if (!mi || id < 0) { ++bad; FLog("[DFF][AUDIT] %-24s SEM MODELO: nenhum IDE declara '%s'", e.name.c_str(), e.name.c_str()); continue; }
+            std::vector<uint8_t> data; std::string path, why;
+            const bool good = CustomDff::Find(mi->m_nKey, data, path, why);
+            const CStreamingInfo& si = CStreaming::GetInfo(id);
+            const uint32_t sec = (uint32_t)((data.size() + STREAMING_SECTOR_SIZE - 1) / STREAMING_SECTOR_SIZE);
+            if (!good) { ++bad; FLog("[DFF][AUDIT] %-24s id=%d REPROVADO: %s", e.name.c_str(), id, why.c_str()); continue; }
+            if (!si.HasCdPosnAndSize()) { ++bad; FLog("[DFF][AUDIT] %-24s id=%d sem entrada no IMG (m_nCdSize=0): nada a substituir", e.name.c_str(), id); continue; }
+            if (si.m_nCdSize > (uint32_t)CStreaming::ms_streamingBufferSize) { ++bad; FLog("[DFF][AUDIT] %-24s id=%d original 'big' (%u setores): nao sera trocado", e.name.c_str(), id, (unsigned)si.m_nCdSize); continue; }
+            ++ok;
+            FLog("[DFF][AUDIT] %-24s id=%d OK | seu arquivo=%zu bytes (%u setores) | original no IMG=%u setores | img=%d",
+                 e.name.c_str(), id, data.size(), sec, (unsigned)si.m_nCdSize, (int)si.m_nImgId);
+        }
+        FLog("[DFF][AUDIT:%s] RESUMO: ok=%d | com problema=%d", quando, ok, bad);
+    }
 
     void Install()
     {
