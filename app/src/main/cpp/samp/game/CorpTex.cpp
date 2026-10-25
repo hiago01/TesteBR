@@ -30,6 +30,7 @@
 //   * Se CPed::Render nao chamar CEntity::Render, o hook nao e atingido; o Process loga um AVISO apos 5 s.
 //   * Ped desenhado pela lista de alfa (fade de distancia) nao passa por CEntity::Render.
 #include "CorpTex.h"
+#include "LookSlots.h"       // visual por slots (RPC 232): parse + plano de materiais + cobertura (puro, testado no host)
 #include "CorpTexMap.h"     // mapa pack/ <-> aparencia (rosto, cabelo, pele, roupa) do corpo male; testado no host
 
 #include <algorithm>
@@ -38,6 +39,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <map>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -66,6 +68,7 @@ extern CNetGame* pNetGame;
 
 namespace CorpTex {
 
+int RPC_CorpSlots = 232;              // maximo_look.inc: snapshot dos slots do /skin7 (servidor -> cliente)
 int RPC_CorpTex = 231;                 // TODO validar (ver .h). AnimSync usa 230, IdCard 202.
 std::atomic<int> g_active{0};
 
@@ -166,55 +169,20 @@ struct Look {
     uint8_t under = 0;                                                                           // roupa intima: 0 padrao (preto), 1..6 cor, 9 nenhuma
     // /cop (teste, so local, nao vai pelo RPC): peca da policia (ex. "vest3") -> "off" | "corp:<nome>" | "cop/<tipo>/<pasta>/<n>.png"
     std::vector<std::pair<std::string, std::string>> ov;
-    bool Active() const { return !corp.empty() || tone || hairStyle || bootSet || pantsSet || shirtSet || !ov.empty(); }
+    std::vector<LookSlots::St> slots;                                                            // RPC 232 (slots do /skin7); guardado separado da base (231)
+    bool Active() const { return !corp.empty() || tone || hairStyle || bootSet || pantsSet || shirtSet || !ov.empty() || !slots.empty(); }
     bool operator==(const Look& o) const {
         return corp == o.corp && tone == o.tone && face == o.face && hairStyle == o.hairStyle && hairColor == o.hairColor &&
                bootSet == o.bootSet && bootVar == o.bootVar && pantsSet == o.pantsSet && pantsVar == o.pantsVar &&
-               shirtSet == o.shirtSet && shirtVar == o.shirtVar && under == o.under && ov == o.ov;
+               shirtSet == o.shirtSet && shirtVar == o.shirtVar && under == o.under && ov == o.ov && slots == o.slots;
     }
 };
 
 // ---- fila RPC/chat -> thread do jogo -------------------------------------------------------
-struct Cmd { enum Kind { Set, Clear, Release, Reload } kind; PLAYERID id; Look look; };
+struct Cmd { enum Kind { Set, Clear, Release, Reload, Slots } kind; PLAYERID id; Look look; };
 std::mutex       s_qMutex;
 std::vector<Cmd> s_q;
 Look             s_localLook;          // espelho do seu proprio visual (protegido por s_qMutex): base dos comandos /rosto, /cabelo...
-
-// ---- sincronizacao com o servidor: a troca de visual vale para TODOS (servidor retransmite pelo RPC 231) ----
-// Todo comando local (/rosto /cabelo /pele /bota /calca /camisa /intima /corp /visual) passa por ApplyLocal, que so
-// marca "sujo"; o Process (1x por frame) manda UM "/lookx base ..." com o estado final, no maximo 1 a cada 300 ms
-// (o servidor descarta pedidos com menos de 200 ms de intervalo e reenviaria o estado antigo).
-std::atomic<bool> s_syncDirty{false};
-uint64_t          s_lastSyncMs = 0;
-
-bool CorpNameOkForServer(const std::string& c)      // mesma regra do Look_CorpValid do servidor
-{
-    if (c.empty() || c.size() > 15 || c == "aparencia") return false;
-    for (char ch : c) {
-        const bool ok = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_' || ch == '-';
-        if (!ok) return false;
-    }
-    return true;
-}
-
-void SendLookToServer()
-{
-    if (!pNetGame) return;
-    Look l;
-    { std::lock_guard<std::mutex> g(s_qMutex); l = s_localLook; }
-    std::string corp = l.corp;
-    for (char& ch : corp) if (ch >= 'A' && ch <= 'Z') ch = (char)(ch + 32);
-    if (!corp.empty() && !CorpNameOkForServer(corp)) {
-        FLog("[CORPTEX] corp '%s' nao e aceita pelo servidor (a-z 0-9 _ -, ate 15): enviando sem corp", corp.c_str());
-        corp.clear();
-    }
-    char buf[160];
-    std::snprintf(buf, sizeof(buf), "/lookx base %d %d %d %d %d %d %d %d %d %d %d %s",
-                  (int)l.tone, (int)l.face, (int)l.hairStyle, (int)l.hairColor,
-                  (int)l.bootSet, (int)l.bootVar, (int)l.pantsSet, (int)l.pantsVar,
-                  (int)l.shirtSet, (int)l.shirtVar, (int)l.under, corp.empty() ? "-" : corp.c_str());
-    pNetGame->SendChatCommand(buf);
-}
 
 std::mutex  s_infoMutex;
 std::string s_info = "nada aplicado (use /corp, /rosto, /cabelo, /pele)";
@@ -472,6 +440,34 @@ RwTexture* GetAppTex(const std::string& rel)
     return t;
 }
 
+// ---- texturas dos SLOTS (RPC 232) ---------------------------------------------------------------
+// variante do pack: pack/<pasta>/<n>.png (mesmo arquivo que o /skin7 slot usa). Falha tambem fica em cache.
+RwTexture* GetSlotPackTex(const std::string& rel)
+{
+    const std::string key = "slot/" + rel;
+    auto it = s_appTex.find(key);
+    if (it != s_appTex.end()) { it->second.lastUse = NowMs(); return it->second.tex; }
+    const std::string path = PackDir() + rel;
+    RwTexture* t = ::access(path.c_str(), F_OK) == 0 ? LoadPng(path, key) : nullptr;
+    if (!t) FLog("[CORPTEX] AVISO: slot: PNG ausente/ilegivel: %s (o slot fica como esta)", path.c_str());
+    s_appTex[key] = AppTex{t, NowMs()};
+    return t;
+}
+
+// estado 1 (textura original): textures/<NomeDaTextura>.png (o mesmo PNG que o /skin7 apply poe no molde). Sem PNG: nao toca.
+RwTexture* GetSlotOrigTex(const std::string& mat)
+{
+    const std::string key = "slotorig/" + mat;
+    auto it = s_appTex.find(key);
+    if (it != s_appTex.end()) { it->second.lastUse = NowMs(); return it->second.tex; }
+    static std::map<std::string, std::string> idx; static bool done = false;
+    if (!done) { done = true; for (const auto& kv : SkinImg::IndexPngDir(TexRoot())) idx[kv.first] = kv.second; }
+    const auto f = idx.find(mat);
+    RwTexture* t = f != idx.end() ? LoadPng(f->second, key) : nullptr;
+    s_appTex[key] = AppTex{t, NowMs()};
+    return t;
+}
+
 // cor lisa para a roupa intima (fantasy_m_underwear: cor lisa, sem PNG)
 RwTexture* GetSolidTex(int idx)
 {
@@ -720,6 +716,22 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
         FLog("[CORPTEX] AVISO: rosto/pele/cabelo exigem o modo indice (contagem de materiais igual ao DFF)");
     }
 
+    // 3) slots do /skin7 (RPC 232): valem POR CIMA da base. Oculto = male01; variante = pack/<pasta>/<n>.png; original = textures/<Nome>.png
+    int nSlot = 0, nSlotMiss = 0;
+    if (!look.slots.empty()) {
+        if (!byIndex) {
+            FLog("[CORPTEX] AVISO: slots do /skin7 exigem o modo indice (contagem de materiais igual ao DFF): ignorados");
+        } else {
+            std::vector<LookSlots::Op> ops;
+            LookSlots::Plan(look.slots, ops);
+            for (const LookSlots::Op& op : ops) {
+                RwTexture* t = op.kind == LookSlots::kHide ? hideTex : op.kind == LookSlots::kPack ? GetSlotPackTex(op.rel) : GetSlotOrigTex(op.mat);
+                if (!t) { if (op.kind != LookSlots::kOrig) ++nSlotMiss; continue; }
+                over[op.mat] = t; ++nSlot;
+            }
+        }
+    }
+
     Entry en{id, e, e->m_pRwClump, look, {}, false, 0};
     for (size_t i = 0; i < mats.size(); ++i) {
         if (keys[i].empty() || !mats[i]) continue;
@@ -731,6 +743,7 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
          (int)id, model, look.corp.c_str(), (int)look.tone, (int)look.face, (int)look.hairStyle, (int)look.hairColor,
          (int)look.bootSet, (int)look.bootVar, (int)look.pantsSet, (int)look.pantsVar, (int)look.shirtSet, (int)look.shirtVar, (int)look.under, en.swaps.size(), mats.size(),
          byIndex ? "indice" : "nome", nCorp, nApp, nHidden);
+    if (!look.slots.empty()) FLog("[CORPTEX] jogador %d: %zu slot(s) do /skin7 -> %d material(is) por slot, %d sem textura", (int)id, look.slots.size(), nSlot, nSlotMiss);
     if (en.swaps.empty()) { SetInfo("nenhum material do ped casou com o visual pedido"); return; }
 
     if (s_entries.empty()) { s_firstEntryMs = NowMs(); s_totalRenders = 0; s_warnedNoHook = false; }
@@ -787,18 +800,27 @@ void ScrCorpTex(RPCParameters* rpcParams)
     Sanitize(l);
 
     CPlayerPool* pool = pNetGame ? pNetGame->GetPlayerPool() : nullptr;
-    if (pool && id == pool->GetLocalPlayerID()) {   // mantem o espelho dos comandos (o /cop e so local: o servidor nao o conhece, nao deixa o eco apagar)
-        std::lock_guard<std::mutex> g(s_qMutex);
-        l.ov = s_localLook.ov;
-        s_localLook = l;
-    }
+    if (pool && id == pool->GetLocalPlayerID()) { std::lock_guard<std::mutex> g(s_qMutex); s_localLook = l; }   // mantem o espelho dos comandos
     PushLook(id, l);
+}
+
+// RPC 232: snapshot dos slots do /skin7 (ver LookSlots.h). O eco do servidor para o proprio dono entra aqui tambem: ele so
+// ADICIONA trocas por render no ped; nunca mexe no molde do /skin7 local nem na base (231).
+void ScrLookSlots(RPCParameters* rpcParams)
+{
+    RakNet::BitStream bs((unsigned char*)rpcParams->input, (rpcParams->numberOfBitsOfData / 8) + 1, false);
+    uint16_t id = 0; std::vector<LookSlots::St> st; std::string err;
+    if (!LookSlots::Parse(bs, id, st, err)) { FLog("[CORPTEX] RPC %d ignorado: %s", RPC_CorpSlots, err.c_str()); return; }
+    if (id >= MAX_PLAYERS) { FLog("[CORPTEX] RPC %d: playerid %d invalido", RPC_CorpSlots, (int)id); return; }
+    FLog("[CORPTEX] RPC %d recebido: jogador %d, %zu slot(s)", RPC_CorpSlots, (int)id, st.size());
+    Look l; l.slots = std::move(st);
+    Push(Cmd::Slots, (PLAYERID)id, l);
 }
 
 } // namespace
 
-void Register(RakClientInterface* rak)   { rak->RegisterAsRemoteProcedureCall(&RPC_CorpTex, ScrCorpTex); }
-void Unregister(RakClientInterface* rak) { rak->UnregisterAsRemoteProcedureCall(&RPC_CorpTex); }
+void Register(RakClientInterface* rak)   { rak->RegisterAsRemoteProcedureCall(&RPC_CorpTex, ScrCorpTex); rak->RegisterAsRemoteProcedureCall(&RPC_CorpSlots, ScrLookSlots); }
+void Unregister(RakClientInterface* rak) { rak->UnregisterAsRemoteProcedureCall(&RPC_CorpTex); rak->UnregisterAsRemoteProcedureCall(&RPC_CorpSlots); }
 
 void ClearAll()
 {
@@ -826,10 +848,19 @@ void Process()
             continue;
         }
         if (c.id >= MAX_PLAYERS) continue;
-        if (c.kind == Cmd::Set) {
+        if (c.kind == Cmd::Set) {                           // base (231): NAO apaga os slots (232) ja recebidos
             if (std::find(s_wantIds.begin(), s_wantIds.end(), c.id) == s_wantIds.end()) s_wantIds.push_back(c.id);
-            s_look[c.id] = c.look; s_tried[c.id].valid = false;
-        } else {                                            // Clear ou Release de um jogador
+            Look nl = c.look; nl.slots = s_look[c.id].slots;
+            s_look[c.id] = std::move(nl); s_tried[c.id].valid = false;
+        } else if (c.kind == Cmd::Slots) {                  // slots (232): NAO apaga a base (231)
+            Look nl = s_look[c.id]; nl.slots = c.look.slots;
+            if (!nl.Active()) { ForgetWant(c.id); continue; }
+            if (std::find(s_wantIds.begin(), s_wantIds.end(), c.id) == s_wantIds.end()) s_wantIds.push_back(c.id);
+            s_look[c.id] = std::move(nl); s_tried[c.id].valid = false;
+        } else if (c.kind == Cmd::Clear && !s_look[c.id].slots.empty()) {   // base zerada (231 vazio): mantem so os slots
+            Look nl; nl.slots = s_look[c.id].slots;
+            s_look[c.id] = std::move(nl); s_tried[c.id].valid = false;
+        } else {                                            // Clear sem slots, ou Release (stream-out/nova conexao): solta tudo
             ForgetWant(c.id);
         }
     }
@@ -837,11 +868,6 @@ void Process()
     for (size_t i = 0; i < s_wantIds.size(); ++i) Reconcile(s_wantIds[i]);   // ped novo, modelo trocado, clump recriado...
 
     const uint64_t now = NowMs();
-    if (s_syncDirty.load() && now - s_lastSyncMs >= 300) {
-        s_syncDirty.store(false);
-        s_lastSyncMs = now;
-        SendLookToServer();
-    }
     for (size_t i = 0; i < s_graveyard.size();) {
         if (now - s_graveyard[i].second >= kGraveyardMs) { RwTextureDestroy(s_graveyard[i].first); s_graveyard.erase(s_graveyard.begin() + (long)i); }
         else ++i;
@@ -930,7 +956,6 @@ template <class F> std::string ApplyLocal(PLAYERID me, F&& edit)
     Sanitize(l);
     { std::lock_guard<std::mutex> g(s_qMutex); s_localLook = l; }
     PushLook(me, l);
-    s_syncDirty.store(true);          // avisa o servidor (Process manda o /lookx base)
     return "[CORPTEX] " + Describe(l);
 }
 

@@ -16,6 +16,8 @@
 //           /bota /calca /camisa <pasta> <variante> | /intima <0-6> | /roupa lista|limpar|recarregar   (so no seu ator)
 //   Rede:   RPC 231 servidor -> cliente: uint16 playerid | uint8 len | char corp[len] | uint8 tom | uint8 rosto | uint8 estilo | uint8 cor |
 //           uint8 botaPasta | botaVar | calcaPasta | calcaVar | camisaPasta | camisaVar | intima
+//   RPC 232 servidor -> cliente (slots do /skin7, ver LookSlots.h): uint16 playerid | uint8 version=1 | uint8 flags(bit0=limpar) | uint8 n |
+//           n x [uint8 slotId | uint8 estado 0/1/2 | se 2: uint16 variante]. 231 e 232 sao guardados separados (um nao apaga o outro).
 //           (len 0 e tudo 0 = limpar). Policial: o servidor manda SetPlayerSkin(271) + RPC 231 com corp="policia" e o MESMO
 //           tom/rosto/estilo/cor do visual civil do jogador.
 //
@@ -31,6 +33,7 @@ class RakClientInterface;
 namespace CorpTex {
 
 extern int RPC_CorpTex;                    // = 231 (TODO: confirme que nao colide com RPC do seu servidor)
+extern int RPC_CorpSlots;                  // = 232: snapshot dos slots do /skin7 (LookSlots.h); guardado SEPARADO da base 231
 extern std::atomic<int> g_active;          // quantos peds estao com corp ativa (fast path do render)
 
 void Register(RakClientInterface* rak);    // RegisterScriptRPCs()
