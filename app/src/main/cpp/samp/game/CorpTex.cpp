@@ -180,6 +180,42 @@ std::mutex       s_qMutex;
 std::vector<Cmd> s_q;
 Look             s_localLook;          // espelho do seu proprio visual (protegido por s_qMutex): base dos comandos /rosto, /cabelo...
 
+// ---- sincronizacao com o servidor: a troca de visual vale para TODOS (servidor retransmite pelo RPC 231) ----
+// Todo comando local (/rosto /cabelo /pele /bota /calca /camisa /intima /corp /visual) passa por ApplyLocal, que so
+// marca "sujo"; o Process (1x por frame) manda UM "/lookx base ..." com o estado final, no maximo 1 a cada 300 ms
+// (o servidor descarta pedidos com menos de 200 ms de intervalo e reenviaria o estado antigo).
+std::atomic<bool> s_syncDirty{false};
+uint64_t          s_lastSyncMs = 0;
+
+bool CorpNameOkForServer(const std::string& c)      // mesma regra do Look_CorpValid do servidor
+{
+    if (c.empty() || c.size() > 15 || c == "aparencia") return false;
+    for (char ch : c) {
+        const bool ok = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_' || ch == '-';
+        if (!ok) return false;
+    }
+    return true;
+}
+
+void SendLookToServer()
+{
+    if (!pNetGame) return;
+    Look l;
+    { std::lock_guard<std::mutex> g(s_qMutex); l = s_localLook; }
+    std::string corp = l.corp;
+    for (char& ch : corp) if (ch >= 'A' && ch <= 'Z') ch = (char)(ch + 32);
+    if (!corp.empty() && !CorpNameOkForServer(corp)) {
+        FLog("[CORPTEX] corp '%s' nao e aceita pelo servidor (a-z 0-9 _ -, ate 15): enviando sem corp", corp.c_str());
+        corp.clear();
+    }
+    char buf[160];
+    std::snprintf(buf, sizeof(buf), "/lookx base %d %d %d %d %d %d %d %d %d %d %d %s",
+                  (int)l.tone, (int)l.face, (int)l.hairStyle, (int)l.hairColor,
+                  (int)l.bootSet, (int)l.bootVar, (int)l.pantsSet, (int)l.pantsVar,
+                  (int)l.shirtSet, (int)l.shirtVar, (int)l.under, corp.empty() ? "-" : corp.c_str());
+    pNetGame->SendChatCommand(buf);
+}
+
 std::mutex  s_infoMutex;
 std::string s_info = "nada aplicado (use /corp, /rosto, /cabelo, /pele)";
 
@@ -751,7 +787,11 @@ void ScrCorpTex(RPCParameters* rpcParams)
     Sanitize(l);
 
     CPlayerPool* pool = pNetGame ? pNetGame->GetPlayerPool() : nullptr;
-    if (pool && id == pool->GetLocalPlayerID()) { std::lock_guard<std::mutex> g(s_qMutex); s_localLook = l; }   // mantem o espelho dos comandos
+    if (pool && id == pool->GetLocalPlayerID()) {   // mantem o espelho dos comandos (o /cop e so local: o servidor nao o conhece, nao deixa o eco apagar)
+        std::lock_guard<std::mutex> g(s_qMutex);
+        l.ov = s_localLook.ov;
+        s_localLook = l;
+    }
     PushLook(id, l);
 }
 
@@ -797,6 +837,11 @@ void Process()
     for (size_t i = 0; i < s_wantIds.size(); ++i) Reconcile(s_wantIds[i]);   // ped novo, modelo trocado, clump recriado...
 
     const uint64_t now = NowMs();
+    if (s_syncDirty.load() && now - s_lastSyncMs >= 300) {
+        s_syncDirty.store(false);
+        s_lastSyncMs = now;
+        SendLookToServer();
+    }
     for (size_t i = 0; i < s_graveyard.size();) {
         if (now - s_graveyard[i].second >= kGraveyardMs) { RwTextureDestroy(s_graveyard[i].first); s_graveyard.erase(s_graveyard.begin() + (long)i); }
         else ++i;
@@ -885,6 +930,7 @@ template <class F> std::string ApplyLocal(PLAYERID me, F&& edit)
     Sanitize(l);
     { std::lock_guard<std::mutex> g(s_qMutex); s_localLook = l; }
     PushLook(me, l);
+    s_syncDirty.store(true);          // avisa o servidor (Process manda o /lookx base)
     return "[CORPTEX] " + Describe(l);
 }
 
