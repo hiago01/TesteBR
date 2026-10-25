@@ -115,6 +115,19 @@ namespace
     DffPreflight::Info          s_parsed;               // inventário do último load válido
     std::vector<uint8_t>        s_hidden;               // 1 = material oculto (índice global)
     std::unordered_map<std::string, int> s_slotVar;     // slot -> última variante numérica aplicada (/skin7 slot)
+
+    // [LOOKX-STATE-BEGIN] ---- sincronização com o servidor (/lookx set|reset) -----------------------------
+    // Só a thread do jogo mexe. O envio acontece em LookFlush (1x por frame, no máx. 1 comando a cada 300 ms).
+    struct LookOp { int slotId; int est; int var; };       // est: 0 oculto | 1 textura original | 2 variante do pack
+    std::vector<LookOp>       s_lookQ;                     // a enviar (1 por slot: o pedido mais recente vence)
+    std::vector<LookOp>       s_lookPrevQ;                 // prévia do /provador: só vai ao servidor no "commit"
+    bool                      s_lookResetQ   = false;      // enviar "/lookx reset"
+    bool                      s_lookInPrev   = false;      // DoSlot chamado por "ui prev"
+    bool                      s_lookSuppress = false;      // autoexec: restaura o estado LOCAL sem sobrescrever o do servidor
+    uint64_t                  s_lookLastSendMs = 0;
+    constexpr uint64_t        kLookDebounceMs = 300;       // o servidor descarta pedidos com menos de 200 ms (LOOK_OP_COOLDOWN)
+    constexpr int             kLookMaxVar     = 1023;      // LOOK_MAXVAR_DEFAULT do servidor
+    // [LOOKX-STATE-END]
     std::map<int, std::string>  s_matPack;              // material -> pasta/arquivo do pack aplicado (usado por /skin7 save)
     RpClump*                    s_installed = nullptr;  // clump-molde instalado por nós
     std::vector<RwTexture*>     s_enabledTex;           // 1 ref nossa por material (textura "ligada")
@@ -646,6 +659,7 @@ namespace
     {
         for (RwTexture*& t : s_bak.tex) { TexRelease(t); t = nullptr; }
         s_bak = UiBackup();
+        s_lookPrevQ.clear();                                  // cancelar / molde novo: a prévia nunca chegou ao servidor
     }
 
     // ---- listas de índices: "all", "5", "3-7", "1,4,9-12" ----------------
@@ -768,6 +782,7 @@ namespace
         s_bytes.shrink_to_fit();
         s_bytesSize = 0;
         s_loadedOk = false;
+        if (!s_lookSuppress) { s_lookQ.clear(); s_lookPrevQ.clear(); s_lookResetQ = true; }   // servidor volta ao visual base (/lookx reset)
         SetInfo(s_applied ? "arquivo descarregado da memória; o modelo 7 CONTINUA com o skin.dff (reinicie o jogo para voltar ao original)"
                           : "descarregado");
     }
@@ -1292,6 +1307,91 @@ namespace
         return changed;
     }
 
+    // [LOOKX-FUNCS-BEGIN] ---- fila de pedidos /lookx --------------------------------------------------------
+    void LookQueue(const LookOp& op)
+    {
+        for (LookOp& q : s_lookQ) if (q.slotId == op.slotId) { q = op; return; }     // mesmo slot: o último vence
+        s_lookQ.push_back(op);
+    }
+
+    // Registra o que o jogador PEDIU para o slot (depois de o /skin7 slot ter dado certo localmente).
+    //   off  -> estado 0 | variante numérica da pasta do próprio slot (pack/<pasta>/<n>) -> estado 2 + n | senão estado 1.
+    // Caminho avulso (ex.: versace/tshirts/2_1) não cabe no protocolo (só variante numérica): NÃO é enviado.
+    // Cobertura (pele escondida sob roupa) e exclusividade de grupo NÃO são enviadas: o servidor e o cliente as derivam.
+    std::string LookNoteSlot(const SkinSlots::Slot& sl, const std::vector<int>& idx, bool off)
+    {
+        if (s_lookSuppress) return {};
+        const int slotId = (int)(&sl - SkinSlots::kSlots) + 1;               // mesmo id estável de gLookSlotName no servidor
+        if (slotId < 1 || slotId > SkinSlots::kCount || idx.empty()) return {};
+
+        LookOp op{ slotId, off ? 0 : 1, 0 };
+        if (!off)
+        {
+            const auto it = s_matPack.find(idx[0]);
+            if (it != s_matPack.end())
+            {
+                const std::string pre = std::string(sl.folder) + "/";
+                const std::string& v = it->second;
+                std::string tail = (v.size() > pre.size() && v.compare(0, pre.size(), pre) == 0) ? v.substr(pre.size()) : std::string();
+                bool digits = !tail.empty() && tail.size() <= 4;
+                for (char c : tail) if (!std::isdigit((unsigned char)c)) digits = false;
+                const int n = digits ? std::atoi(tail.c_str()) : -1;
+                if (n < 0 || n > kLookMaxVar)
+                {
+                    FLog("[SKIN7] lookx: slot %s usa '%s' (fora do pack do slot): NAO sincronizado", sl.name, v.c_str());
+                    return " | lookx: caminho avulso, não sincronizado";
+                }
+                op.est = 2; op.var = n;
+            }
+        }
+        if (s_lookInPrev)
+        {
+            for (LookOp& q : s_lookPrevQ) if (q.slotId == op.slotId) { q = op; return " | lookx: prévia (envia ao confirmar)"; }
+            s_lookPrevQ.push_back(op);
+            return " | lookx: prévia (envia ao confirmar)";
+        }
+        LookQueue(op);
+        return " | lookx: na fila (slot " + std::to_string(slotId) + " estado " + std::to_string(op.est) +
+               (op.est == 2 ? " var " + std::to_string(op.var) : std::string()) + ")";
+    }
+
+    void LookCommitPrev()                       // "ui commit": a prévia confirmada passa para a fila de envio
+    {
+        for (const LookOp& op : s_lookPrevQ) LookQueue(op);
+        s_lookPrevQ.clear();
+    }
+
+    // 1x por frame (thread do jogo). No máximo 1 comando a cada kLookDebounceMs; offline: descarta tudo.
+    void LookFlush()
+    {
+        if (s_lookQ.empty() && !s_lookResetQ) return;
+        if (!pNetGame || pNetGame->GetGameState() != GAMESTATE_CONNECTED)
+        {
+            s_lookQ.clear(); s_lookPrevQ.clear(); s_lookResetQ = false;      // nunca vaza pedido para outra sessão
+            return;
+        }
+        const uint64_t now = NowMs();
+        if (s_lookLastSendMs && now - s_lookLastSendMs < kLookDebounceMs) return;
+
+        char buf[64];
+        if (s_lookResetQ)
+        {
+            s_lookResetQ = false;
+            std::snprintf(buf, sizeof(buf), "/lookx reset");
+        }
+        else
+        {
+            const LookOp op = s_lookQ.front();
+            s_lookQ.erase(s_lookQ.begin());
+            if (op.est == 2) std::snprintf(buf, sizeof(buf), "/lookx set %d 2 %d", op.slotId, op.var);
+            else             std::snprintf(buf, sizeof(buf), "/lookx set %d %d", op.slotId, op.est);
+        }
+        pNetGame->SendChatCommand(buf);
+        s_lookLastSendMs = now;
+        FLog("[SKIN7] lookx -> %s (restam %zu na fila)", buf, s_lookQ.size() + (s_lookResetQ ? 1u : 0u));
+    }
+    // [LOOKX-FUNCS-END]
+
     // ---- /skin7 slot <nome> <n | + | - | on | off | pasta/arquivo> ------------------------------
     void DoSlot(const std::string& rest)
     {
@@ -1318,7 +1418,8 @@ namespace
             std::string exNote;
             const int exN = (arg == "on") ? HideSameCategory(*sl, exNote) : 0;   // ativar = oculta o resto da categoria
             const int cvN = UpdateCoverage(covBefore);
-            SetInfo(name + (arg == "off" ? " oculto" : " visível") + " (materiais " + JoinList(idx) + ") | " + note +
+            const std::string lk = LookNoteSlot(*sl, idx, arg == "off");
+            SetInfo(name + (arg == "off" ? " oculto" : " visível") + " (materiais " + JoinList(idx) + ") | " + note + lk +
                     (exN ? " | categoria: " + std::to_string(exN) + " material(is) de outros slots ocultados" : std::string()) +
                     (cvN ? " | cobertura: " + std::to_string(cvN) + " parte(s) do corpo ajustada(s)" : std::string()));
             return;
@@ -1355,7 +1456,8 @@ namespace
         std::string exNote;
         const int exN = HideSameCategory(*sl, exNote);       // só chega aqui se a variante carregou: falha não oculta nada
         const int cvN = UpdateCoverage(covBefore);
-        SetInfo(name + " = " + note + (exN ? " | categoria: " + std::to_string(exN) + " material(is) de outros slots ocultados" : std::string()) +
+        const std::string lk = LookNoteSlot(*sl, idx, false);
+        SetInfo(name + " = " + note + lk + (exN ? " | categoria: " + std::to_string(exN) + " material(is) de outros slots ocultados" : std::string()) +
                 (cvN ? " | cobertura: " + std::to_string(cvN) + " parte(s) do corpo ajustada(s)" : std::string()) +
                 (sl->ev == 0 ? " | HIPOTESE de mapeamento: confira no jogo" : ""));
     }
@@ -1515,6 +1617,7 @@ namespace
         std::istringstream in(text);
         std::string line, firstErr;
         int ran = 0, errs = 0, lines = 0;
+        s_lookSuppress = true;                              // restaura o estado local; não sobrescreve o visual gravado no servidor
         while (std::getline(in, line) && lines++ < 400)
         {
             while (!line.empty() && (line.back() == '\r' || line.back() == ' ' || line.back() == '\t')) line.pop_back();
@@ -1537,6 +1640,7 @@ namespace
                 if (firstErr.empty()) firstErr = "'" + line + "' -> " + r;
             }
         }
+        s_lookSuppress = false;
         FLog("[SKIN7] autoexec: %d comando(s) executado(s), %d erro(s)", ran, errs);
         SetInfo("autoexec: " + std::to_string(ran) + " comando(s), " + std::to_string(errs) + " erro(s)" +
                 (errs ? " | 1º erro: " + firstErr : std::string()) + " (detalhes [SKIN7] no log)");
@@ -1683,7 +1787,9 @@ namespace
                 else if (!BeginBackup())                 fail("não consegui guardar o estado atual para a prévia");
                 else
                 {
+                    s_lookInPrev = true;                 // prévia: só vai ao servidor no commit
                     DoSlot(name + " " + what);           // o mesmo caminho do /skin7 slot (inclui a exclusividade)
+                    s_lookInPrev = false;
                     if (SlotMatches(*sl, idx, what)) s_bak.changed = true;
                     else fail(LastInfo());
                 }
@@ -1691,6 +1797,7 @@ namespace
         }
         else if (op == "commit")
         {
+            LookCommitPrev();                            // /lookx do que foi confirmado
             DiscardBackup();                             // o estado atual passa a ser o definitivo
         }
         else if (op == "cancel")
@@ -1830,6 +1937,7 @@ void CCustomSkin::Process()
     }
     for (const std::string& c : cmds) Execute(c);
     if (!cmds.empty() && s_uiWanted.load()) PublishUiState();   // interface /provador aberta: estado real após cada comando
+    LookFlush();                                                // /lookx set|reset ao servidor (debounce 300 ms)
 
     if (kAutoApply && !s_autoTried)
     {
