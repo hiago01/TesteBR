@@ -162,7 +162,7 @@ public class MainActivity extends AppCompatActivity {
     public boolean getServersInfo()
     {
         final boolean[] z = {false};
-        Volley.newRequestQueue(getApplicationContext()).add(new StringRequest("http://127.0.0.1:8080/servers.json", new Response.Listener<String>() {
+        Volley.newRequestQueue(getApplicationContext()).add(new StringRequest("http://192.168.1.83:8080/servers.json", new Response.Listener<String>() {
 
             @Override
             public void onResponse(String response) {
