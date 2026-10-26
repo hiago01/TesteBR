@@ -74,7 +74,12 @@ void OnPlayerStreamIn(PLAYERID id) { if (id < MAX_PLAYERS && s_state[id].active)
 
 void OnPlayerStreamOut(PLAYERID id) {
     if (id >= MAX_PLAYERS) return;
-    if (CPlayerPed* ped = GetPed(id)) if (ped->m_pPed) CustomAnim::StopAll(ped->m_pPed, 100.0f);   // chamar ANTES de destruir o ped
+    // So mexe no ped se ha anim customizada aplicada a ele. Sem isso (caso normal) nao ha nada a parar, e o ped
+    // vai ser destruido de qualquer jeito. CustomAnim::StopAll usa RpAnimBlendClumpGetFirstAssociation(clump),
+    // que e um trecho de 32 bits (int/ClumpOffset nao inicializado) e quebra em arm64: crash ao sair da visao.
+    if (s_state[id].active) {
+        if (CPlayerPed* ped = GetPed(id)) if (ped->m_pPed) CustomAnim::StopAll(ped->m_pPed, 100.0f);   // ANTES de destruir o ped
+    }
     s_state[id] = State{};
 }
 
