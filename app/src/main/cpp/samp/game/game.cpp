@@ -414,8 +414,12 @@ bool CGame::RemovePlayer(CPlayerPed* pPed)
 {
 	if (!pPed) return false;
 
+	// ler o slot ANTES do delete (antes lia memoria ja liberada)
+	const uint8_t byteSlot = pPed->m_bytePlayerNumber;
+	FLog("[RM] RemovePlayer slot=%d antes do delete", (int)byteSlot);
 	delete pPed;
-	bUsedPlayerSlots[pPed->m_bytePlayerNumber] = false;
+	FLog("[RM] RemovePlayer slot=%d delete ok", (int)byteSlot);
+	bUsedPlayerSlots[byteSlot] = false;
 	return true;
 }
 // 0.3.7

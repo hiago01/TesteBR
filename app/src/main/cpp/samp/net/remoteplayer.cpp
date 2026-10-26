@@ -567,10 +567,15 @@ void CRemotePlayer::Remove()
 {
 	if (m_pPlayerPed)
 	{
+		FLog("[RM] Remove(%d) inicio ped=%p", (int)m_PlayerID, (void*)m_pPlayerPed);
 		CustomAnimSync::OnPlayerStreamOut(m_PlayerID);   // ANTES de destruir o ped
+		FLog("[RM] Remove(%d) anim ok", (int)m_PlayerID);
 		CorpTex::OnPlayerStreamOut(m_PlayerID);
+		FLog("[RM] Remove(%d) corptex ok", (int)m_PlayerID);
 		ResetAllSyncAttributes();
+		FLog("[RM] Remove(%d) reset ok", (int)m_PlayerID);
 		pGame->RemovePlayer(m_pPlayerPed);
+		FLog("[RM] Remove(%d) RemovePlayer ok", (int)m_PlayerID);
 		m_pPlayerPed = nullptr;
 	}
 

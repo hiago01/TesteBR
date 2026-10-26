@@ -132,8 +132,8 @@ CPlayerPed::CPlayerPed(int iNum, int iSkin, float fX, float fY, float fZ, float 
 
 CPlayerPed::~CPlayerPed()
 {
-    auto modelId = m_pPed->m_nModelIndex;
-	FLog("Destroying PlayerPed(%d)", m_bytePlayerNumber);
+    const int modelId = m_pPed ? (int)m_pPed->m_nModelIndex : -1;   // m_pPed pode ser nulo
+	FLog("Destroying PlayerPed(%d) modelo=%d ped=%p", m_bytePlayerNumber, modelId, (void*)m_pPed);
 
 	memset(&RemotePlayerKeys[m_bytePlayerNumber], 0, sizeof(PAD_KEYS));
 	// GameResetPlayerKeys
@@ -148,7 +148,9 @@ CPlayerPed::~CPlayerPed()
 			m_dwParachuteObject = 0;
 		}
 
+        FLog("[RM] ~CPlayerPed(%d) FlushAttach", m_bytePlayerNumber);
         FlushAttach();
+        FLog("[RM] ~CPlayerPed(%d) FlushAttach ok", m_bytePlayerNumber);
 
 		// if(field_2C1)
 
@@ -157,13 +159,15 @@ CPlayerPed::~CPlayerPed()
 		}
 
 		uintptr_t dwPedPtr = (uintptr_t)m_pPed;
-        m_pPed->m_pPlayerData->m_nPlayerGroup = 0;
+        if (m_pPed->m_pPlayerData) m_pPed->m_pPlayerData->m_nPlayerGroup = 0;
+        FLog("[RM] ~CPlayerPed(%d) antes de CPopulation::RemovePed", m_bytePlayerNumber);
 		// CPlayerPed::Destructor
 		//((void (*)(CPedGTA*))(*(void**)(m_pPed->entity.vtable + 0x4)))(m_pPed);
 
 		// CPopulation::RemovePed
         ((void (*)(uintptr_t))(g_libGTASA + 0x5CDC64))((uintptr_t)m_pPed);
 
+		FLog("[RM] ~CPlayerPed(%d) RemovePed ok", m_bytePlayerNumber);
 		m_pPed = nullptr;
 	}
 	else
@@ -173,7 +177,9 @@ CPlayerPed::~CPlayerPed()
 
 	}
 
-    CStreaming::RemoveModelIfNoRefs(modelId);
+    FLog("[RM] ~CPlayerPed antes de RemoveModelIfNoRefs(%d)", modelId);
+    if (modelId >= 0) CStreaming::RemoveModelIfNoRefs(modelId);
+    FLog("[RM] ~CPlayerPed fim");
 }
 
 
