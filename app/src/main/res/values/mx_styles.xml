@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="mx_tab_text" parent="@android:style/TextAppearance.Widget.TabWidget">
+        <item name="android:fontFamily">@font/montserrat_bold</item>
+        <item name="android:textSize">10sp</item>
+        <item name="textAllCaps">false</item>
+    </style>
+    <style name="mx_label" parent="">
+        <item name="android:fontFamily">@font/montserrat_bold</item>
+        <item name="android:textColor">@color/mx_text</item>
+        <item name="android:textSize">10sp</item>
+    </style>
+    <style name="mx_label_dim" parent="">
+        <item name="android:fontFamily">@font/montserrat_medium</item>
+        <item name="android:textColor">@color/mx_text_dim</item>
+        <item name="android:textSize">9sp</item>
+    </style>
+</resources>

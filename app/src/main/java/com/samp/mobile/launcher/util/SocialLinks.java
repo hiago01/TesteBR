@@ -8,36 +8,55 @@ import android.widget.Toast;
 
 import com.samp.mobile.R;
 
-/**
- * Links sociais do launcher. Os valores vem de res/values/social_links.xml (fonte unica).
- * Link vazio ou que nao seja http/https e tratado como "nao configurado": nada e inventado.
- */
-public final class SocialLinks {
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 
+/** Links sociais configurados em res/values/maximo_links.xml. Vazio = oculto; nada e inventado. */
+public final class SocialLinks {
     private SocialLinks() {}
 
-    public static String discord(Context c)   { return clean(c.getString(R.string.social_discord_url)); }
-    public static String youtube(Context c)   { return clean(c.getString(R.string.social_youtube_url)); }
-    public static String instagram(Context c) { return clean(c.getString(R.string.social_instagram_url)); }
-    public static String site(Context c)      { return clean(c.getString(R.string.social_site_url)); }
+    public static final class Link {
+        public final String name;
+        public final String url;
+        public final int iconRes;
 
-    private static String clean(String raw) {
-        if (raw == null) return "";
-        String v = raw.trim();
-        String lower = v.toLowerCase();
-        return (lower.startsWith("https://") || lower.startsWith("http://")) ? v : "";
+        Link(String name, String url, int iconRes) {
+            this.name = name;
+            this.url = url;
+            this.iconRes = iconRes;
+        }
     }
 
-    /** Abre o link no navegador/app padrao; avisa se nao estiver configurado. */
+    public static List<Link> configured(Context c) {
+        List<Link> out = new ArrayList<>();
+        add(out, "Discord", c.getString(R.string.mx_link_discord), R.drawable.mx_ic_discord);
+        add(out, "Instagram", c.getString(R.string.mx_link_instagram), R.drawable.mx_ic_instagram);
+        add(out, "YouTube", c.getString(R.string.mx_link_youtube), R.drawable.mx_ic_youtube);
+        add(out, "TikTok", c.getString(R.string.mx_link_tiktok), R.drawable.mx_ic_tiktok);
+        add(out, "Site oficial", c.getString(R.string.mx_link_site), R.drawable.mx_ic_link);
+        return out;
+    }
+
+    private static void add(List<Link> out, String name, String url, int icon) {
+        if (isSafeUrl(url)) out.add(new Link(name, url.trim(), icon));
+    }
+
+    /** Apenas http/https. */
+    public static boolean isSafeUrl(String url) {
+        if (url == null) return false;
+        String u = url.trim().toLowerCase(Locale.ROOT);
+        return u.startsWith("https://") || u.startsWith("http://");
+    }
+
     public static void open(Context c, String url) {
-        if (url == null || url.isEmpty()) {
-            Toast.makeText(c, R.string.mx_link_not_configured, Toast.LENGTH_SHORT).show();
-            return;
-        }
+        if (!isSafeUrl(url)) return;
         try {
-            c.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+            Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url.trim()));
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            c.startActivity(i);
         } catch (ActivityNotFoundException e) {
-            Toast.makeText(c, R.string.mx_link_not_configured, Toast.LENGTH_SHORT).show();
+            Toast.makeText(c, "Nenhum aplicativo para abrir o link.", Toast.LENGTH_SHORT).show();
         }
     }
 }

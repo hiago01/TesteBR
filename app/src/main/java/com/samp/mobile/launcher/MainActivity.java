@@ -1,11 +1,28 @@
 package com.samp.mobile.launcher;
 
+import android.Manifest;
 import android.app.Activity;
-import android.content.Context;
 import android.content.pm.PackageManager;
-import android.graphics.PorterDuff;
-import android.os.AsyncTask;
+import android.content.res.ColorStateList;
 import android.os.Build;
+import android.widget.LinearLayout;
+import android.widget.SeekBar;
+import android.widget.TextView;
+import android.widget.ImageButton;
+import androidx.appcompat.app.AlertDialog;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+import androidx.core.widget.ImageViewCompat;
+import com.samp.mobile.launcher.adapters.ServerInformationFragment;
+import com.samp.mobile.launcher.fragments.CommunityFragment;
+import com.samp.mobile.launcher.fragments.NewsFragment;
+import com.samp.mobile.launcher.util.LauncherUi;
+import com.samp.mobile.launcher.util.MaximoMusic;
+import com.samp.mobile.launcher.util.NotificationHelper;
+import com.samp.mobile.launcher.util.SocialLinks;
+import java.util.concurrent.CopyOnWriteArrayList;
+import android.content.Context;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -16,20 +33,12 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
-import android.widget.Button;
-import android.widget.ImageButton;
 import android.widget.ImageView;
-import android.widget.SeekBar;
-import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.view.DisplayCutoutCompat;
-import androidx.core.view.OnApplyWindowInsetsListener;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
 import androidx.fragment.app.FragmentPagerAdapter;
@@ -44,24 +53,20 @@ import com.android.volley.VolleyError;
 import com.android.volley.toolbox.HttpHeaderParser;
 import com.android.volley.toolbox.StringRequest;
 import com.android.volley.toolbox.Volley;
-import com.google.android.material.tabs.TabLayout;
 import com.joom.paranoid.Obfuscate;
 import com.samp.mobile.R;
 import com.samp.mobile.launcher.config.AppEndpoints;
 import com.samp.mobile.launcher.config.Config;
 import com.samp.mobile.launcher.data.FavoritesInfo;
 import com.samp.mobile.launcher.fragments.HomeFragment;
-import com.samp.mobile.launcher.fragments.NewsFragment;
 import com.samp.mobile.launcher.fragments.ServerPagesItemFragment;
 import com.samp.mobile.launcher.fragments.ServersFragment;
 import com.samp.mobile.launcher.fragments.SettingsFragment;
 import com.samp.mobile.launcher.util.ConfigValidator;
 import com.samp.mobile.launcher.util.SAMPServerInfo;
-import com.samp.mobile.launcher.util.MusicController;
 import com.samp.mobile.launcher.util.SampQueryAPI;
 import com.samp.mobile.launcher.util.ServerConfigParser;
 import com.samp.mobile.launcher.util.SignatureChecker;
-import com.samp.mobile.launcher.util.SocialLinks;
 import com.samp.mobile.launcher.util.ViewPagerWithoutSwipe;
 
 import java.io.File;
@@ -82,17 +87,21 @@ public class MainActivity extends AppCompatActivity {
     /** Intervalo minimo entre recargas automaticas (ao abrir a aba Servers). */
     private static final long AUTO_RELOAD_MIN_MS = 5000;
 
-    /** Paginas do ViewPager (mesma ordem de antes; Noticias foi acrescentada ao final). */
     public static final int PAGE_HOME = 0;
     public static final int PAGE_SERVERS = 1;
-    public static final int PAGE_SETTINGS = 2;
-    public static final int PAGE_NEWS = 3;
-    /** Se ficar em LOADING alem disso, o botao Atualizar destrava (evita ficar preso). */
-    private static final long REFRESH_LOCK_MAX_MS = 15000;
+    public static final int PAGE_NEWS = 2;
+    public static final int PAGE_SETTINGS = 3;
+    public static final int PAGE_COMMUNITY = 4;
+    private static final int REQ_NOTIFICATIONS = 4101;
 
-    public String[] tabTitles = { "Servers", "Info", "Settings" };
-    public int[] tabImages = { R.drawable.ic_mainmenu, R.drawable.ic_server, R.drawable.ic_settingsmenu};
-    public int[] tabSelectedImages = { R.drawable.ic_mainmenu_on, R.drawable.ic_serveron, R.drawable.ic_settingsmenu_on};
+    private static final int[] MENU_ICONS = { R.drawable.mx_ic_home, R.drawable.mx_ic_servers, R.drawable.mx_ic_news,
+            R.drawable.mx_ic_settings, R.drawable.mx_ic_community, R.drawable.mx_ic_exit };
+    private static final int[] MENU_TEXTS = { R.string.mx_menu_home, R.string.mx_menu_servers, R.string.mx_menu_news,
+            R.string.mx_menu_settings, R.string.mx_menu_community, R.string.mx_menu_exit };
+    private static final int MENU_EXIT = 5;
+
+    /** Notificado quando a lista, a selecao ou o estado de algum servidor muda. */
+    public interface ServerStateListener { void onServerStateChanged(); }
 
     /**
      * Lista da aba "Hosted". Contem SEMPRE no maximo 1 item: o servidor do JSON, ou uma linha de
@@ -113,23 +122,23 @@ public class MainActivity extends AppCompatActivity {
     private long mLastAttemptMs = 0;
 
     private ViewPagerWithoutSwipe mPager;
-    private int mCurrentPage = PAGE_SERVERS;
-    private View[] mMenuItems;
-    private Button mBtnRefresh;
-    private TextView mTvTitle;
-    private TextView mTvServerState;
-    private View mDotServerState;
-    private TextView mTvMusic;
-    private ImageButton mBtnMusic;
-    private MusicController mMusic;
-    private final Runnable mUnlockRefresh = new Runnable() {
-        @Override public void run() { updateServerStateUi(); }
+    private final View[] mMenuViews = new View[MENU_TEXTS.length];
+    private final CopyOnWriteArrayList<ServerStateListener> mStateListeners = new CopyOnWriteArrayList<>();
+    private String mSelectedKey;
+    private boolean mUiStarted = false;
+
+    private final MaximoMusic.Listener mMusicListener = new MaximoMusic.Listener() {
+        @Override
+        public void onMusicStateChanged(boolean playing, int volumePercent) { updatePlayerUi(playing, volumePercent); }
     };
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        LauncherUi.prepareWindow(this);
         setContentView(R.layout.activity_main);
+        LauncherUi.applyImmersive(this);
+        LauncherUi.applySafePadding(findViewById(R.id.mx_safe_area));
 
         Config.currentContext = this;
 
@@ -152,28 +161,49 @@ public class MainActivity extends AppCompatActivity {
             file.delete();
         }
 
-        FragmentManager fm = getSupportFragmentManager();
-        ViewPagerAdapter sa = new ViewPagerAdapter(fm);
-        mPager = findViewById(R.id.fragment_place);
-        mPager.setAdapter(sa);
+        NotificationHelper.ensureChannels(this);
 
-        setupImmersiveAndInsets();
-        setupMenu();
-        setupFooter();
-        showPage(PAGE_SERVERS);
+        mPager = findViewById(R.id.fragment_place);
+        mPager.setOffscreenPageLimit(1);
+        mPager.setAdapter(new ViewPagerAdapter(getSupportFragmentManager()));
+        buildSidebar();
+        bindFooter();
+        openPage(PAGE_SERVERS);
 
         getServersInfo();
         getFavoriteServersInfo();
-        updateServerStateUi();
+        requestNotificationPermissionOnce();
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        MaximoMusic music = MaximoMusic.get(this);
+        music.addListener(mMusicListener);
+        music.attach();
+        mUiStarted = true;
+        updateFooterStatus();
+    }
+
+    @Override
+    protected void onStop() {
+        MaximoMusic music = MaximoMusic.get(this);
+        music.removeListener(mMusicListener);
+        music.detach();
+        mUiStarted = false;
+        super.onStop();
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) LauncherUi.applyImmersive(this);
     }
 
     @Override
     protected void onDestroy() {
         mDestroyed = true;
         mMain.removeCallbacksAndMessages(null);
-        if (mMusic != null) {
-            mMusic.release();
-        }
         if (mQueue != null) {
             mQueue.cancelAll(REQUEST_TAG);
             mQueue.stop();
@@ -182,6 +212,227 @@ public class MainActivity extends AppCompatActivity {
             mQueryExecutor.shutdownNow();
         }
         super.onDestroy();
+    }
+
+    // ------------------------------------------------------------------------------------
+    // Menu lateral, navegacao e rodape
+    // ------------------------------------------------------------------------------------
+
+    private void buildSidebar() {
+        LinearLayout sidebar = findViewById(R.id.mx_sidebar);
+        LayoutInflater inflater = LayoutInflater.from(this);
+        for (int i = 0; i < MENU_TEXTS.length; i++) {
+            final int index = i;
+            View item = inflater.inflate(R.layout.mx_menu_item, sidebar, false);
+            ((ImageView) item.findViewById(R.id.mx_menu_icon)).setImageResource(MENU_ICONS[i]);
+            ((TextView) item.findViewById(R.id.mx_menu_text)).setText(MENU_TEXTS[i]);
+            item.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    if (index == MENU_EXIT) confirmExit(); else openPage(index);
+                }
+            });
+            sidebar.addView(item);
+            mMenuViews[i] = item;
+        }
+    }
+
+    /** Abre uma das paginas (PAGE_*), reutilizando os Fragments existentes. */
+    public void openPage(int page) {
+        if (mPager == null) return;
+        hideKeyboard(this);
+        mPager.setCurrentItem(page, false);
+        for (int i = 0; i < mMenuViews.length; i++) {
+            if (mMenuViews[i] != null) mMenuViews[i].setSelected(i == page);
+        }
+    }
+
+    private void confirmExit() {
+        if (isFinishing()) return;
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.mx_exit_title)
+                .setMessage(R.string.mx_exit_msg)
+                .setNegativeButton(R.string.mx_cancel, null)
+                .setPositiveButton(R.string.mx_exit_yes, new android.content.DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(android.content.DialogInterface d, int w) {
+                        MaximoMusic.get(MainActivity.this).release();
+                        finishAffinity();
+                    }
+                }).show();
+    }
+
+    private void bindFooter() {
+        final MaximoMusic music = MaximoMusic.get(this);
+        findViewById(R.id.mx_btn_play).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                music.toggle();
+                if (music.hasFailed()) Toast.makeText(MainActivity.this, R.string.mx_music_error, Toast.LENGTH_SHORT).show();
+            }
+        });
+        findViewById(R.id.mx_btn_prev).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { music.previous(); }
+        });
+        findViewById(R.id.mx_btn_next).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { music.next(); }
+        });
+        findViewById(R.id.mx_btn_volume).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                // mudo/volume anterior
+                music.setVolumePercent(music.getVolumePercent() == 0 ? 55 : 0);
+            }
+        });
+        SeekBar seek = findViewById(R.id.mx_volume_seek);
+        seek.setProgress(music.getVolumePercent());
+        seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) {
+                if (fromUser) music.setVolumePercent(progress);
+            }
+            @Override public void onStartTrackingTouch(SeekBar sb) { }
+            @Override public void onStopTrackingTouch(SeekBar sb) { }
+        });
+
+        // versao real do cliente
+        updateFooterStatus();
+
+        // redes sociais: somente as configuradas
+        LinearLayout social = findViewById(R.id.mx_social_container);
+        java.util.List<SocialLinks.Link> links = SocialLinks.configured(this);
+        findViewById(R.id.mx_footer_social).setVisibility(links.isEmpty() ? View.GONE : View.VISIBLE);
+        findViewById(R.id.mx_footer_social_divider).setVisibility(links.isEmpty() ? View.GONE : View.VISIBLE);
+        int size = (int) (22 * getResources().getDisplayMetrics().density);
+        int gap = (int) (8 * getResources().getDisplayMetrics().density);
+        for (final SocialLinks.Link link : links) {
+            ImageButton b = new ImageButton(this);
+            b.setImageResource(link.iconRes);
+            b.setBackground(null);
+            b.setContentDescription(link.name);
+            b.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            ImageViewCompat.setImageTintList(b, ColorStateList.valueOf(0xFFFFFFFF));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(size, size);
+            lp.setMarginEnd(gap);
+            b.setLayoutParams(lp);
+            b.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { SocialLinks.open(MainActivity.this, link.url); }
+            });
+            social.addView(b);
+        }
+        updatePlayerUi(music.isPlaying(), music.getVolumePercent());
+    }
+
+    private void updatePlayerUi(boolean playing, int volumePercent) {
+        ImageButton play = findViewById(R.id.mx_btn_play);
+        ImageButton vol = findViewById(R.id.mx_btn_volume);
+        SeekBar seek = findViewById(R.id.mx_volume_seek);
+        if (play == null || vol == null || seek == null) return;
+        play.setImageResource(playing ? R.drawable.mx_ic_pause : R.drawable.mx_ic_play);
+        vol.setImageResource(volumePercent == 0 ? R.drawable.mx_ic_volume_off : R.drawable.mx_ic_volume);
+        if (seek.getProgress() != volumePercent) seek.setProgress(volumePercent);
+    }
+
+    /** Rodape: versao do cliente e estado REAL do servidor oficial. */
+    private void updateFooterStatus() {
+        TextView client = findViewById(R.id.mx_footer_client_value);
+        TextView server = findViewById(R.id.mx_footer_server_value);
+        ImageView icon = findViewById(R.id.mx_footer_server_icon);
+        if (client == null || server == null || icon == null) return;
+        String version = "";
+        try {
+            version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (PackageManager.NameNotFoundException ignored) { }
+        client.setText(getString(Config.clientUpToDate ? R.string.mx_footer_client_updated : R.string.mx_footer_client_unknown, version));
+
+        int text; int color;
+        SAMPServerInfo.Status st = mServersList.isEmpty() ? SAMPServerInfo.Status.LOADING : mServersList.get(0).getServerStatus();
+        switch (st) {
+            case ONLINE:  text = R.string.mx_status_online;   color = R.color.mx_online;   break;
+            case OFFLINE: text = R.string.mx_status_offline;  color = R.color.mx_offline;  break;
+            case ERROR:   text = R.string.mx_status_error;    color = R.color.mx_warning;  break;
+            default:      text = R.string.mx_status_checking; color = R.color.mx_checking; break;
+        }
+        int c = ContextCompat.getColor(this, color);
+        server.setText(text);
+        server.setTextColor(c);
+        ImageViewCompat.setImageTintList(icon, ColorStateList.valueOf(c));
+    }
+
+    private void requestNotificationPermissionOnce() {
+        if (Build.VERSION.SDK_INT < 33) return;
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return;
+        android.content.SharedPreferences p = getSharedPreferences("mx_launcher", MODE_PRIVATE);
+        if (p.getBoolean("notif_asked", false)) return;
+        p.edit().putBoolean("notif_asked", true).apply();
+        ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIFICATIONS);
+    }
+
+    // ------------------------------------------------------------------------------------
+    // Selecao de servidor e botao CONECTAR
+    // ------------------------------------------------------------------------------------
+
+    public void addServerStateListener(ServerStateListener l) { if (l != null && !mStateListeners.contains(l)) mStateListeners.add(l); }
+    public void removeServerStateListener(ServerStateListener l) { mStateListeners.remove(l); }
+
+    private void fireServerStateChanged() {
+        updateFooterStatus();
+        for (ServerStateListener l : mStateListeners) l.onServerStateChanged();
+    }
+
+    /** Linha de estado (carregando sem servidor / erro): nao e um servidor real. */
+    public static boolean isPlaceholder(SAMPServerInfo i) {
+        return i == null || i.getServerStatus() == SAMPServerInfo.Status.ERROR || i.getPort() == 0;
+    }
+
+    private static String keyOf(SAMPServerInfo i) { return i.getAddress() + ":" + i.getPort(); }
+
+    public boolean isSelected(SAMPServerInfo i) {
+        return i != null && mSelectedKey != null && !isPlaceholder(i) && mSelectedKey.equals(keyOf(i));
+    }
+
+    public void selectServer(SAMPServerInfo i) {
+        if (isPlaceholder(i)) return;
+        mSelectedKey = keyOf(i);
+        notifyServerPage(0);
+        notifyServerPage(1);
+        fireServerStateChanged();
+    }
+
+    public SAMPServerInfo getSelectedServer() {
+        if (mSelectedKey == null) return null;
+        for (SAMPServerInfo i : mServersList) if (!isPlaceholder(i) && mSelectedKey.equals(keyOf(i))) return i;
+        for (SAMPServerInfo i : mFavoriteServersList) if (!isPlaceholder(i) && mSelectedKey.equals(keyOf(i))) return i;
+        return null;
+    }
+
+    /** Botao ATUALIZAR: nova consulta real do servidor oficial e dos favoritos, sem duplicar registros. */
+    public void refreshAll() {
+        getServersInfo();
+        reloadFavoriteServers();
+    }
+
+    /** Botao CONECTAR: mesmo fluxo do dialogo original (settings.ini + checagem de arquivos + SAMP). */
+    public void connectSelected() {
+        final SAMPServerInfo s = getSelectedServer();
+        if (s == null) {
+            Toast.makeText(this, R.string.mx_connect_select_first, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (s.getServerStatus() == SAMPServerInfo.Status.LOADING) {
+            Toast.makeText(this, R.string.mx_connect_wait, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (s.getServerStatus() == SAMPServerInfo.Status.OFFLINE) {
+            new AlertDialog.Builder(this)
+                    .setTitle(R.string.mx_connect_offline_title)
+                    .setMessage(R.string.mx_connect_offline_msg)
+                    .setNegativeButton(R.string.mx_cancel, null)
+                    .setPositiveButton(R.string.mx_connect_anyway, new android.content.DialogInterface.OnClickListener() {
+                        @Override public void onClick(android.content.DialogInterface d, int w) {
+                            ServerInformationFragment.launchGame(MainActivity.this, s);
+                        }
+                    }).show();
+            return;
+        }
+        ServerInformationFragment.launchGame(this, s);
     }
 
     public final ArrayList<SAMPServerInfo> getServerList() {
@@ -211,9 +462,7 @@ public class MainActivity extends AppCompatActivity {
         mLastAttemptMs = SystemClock.elapsedRealtime();
         mQueue.cancelAll(REQUEST_TAG);
 
-        setPlaceholder(SAMPServerInfo.Status.LOADING, getString(R.string.mx_loading_server), "");
-        mMain.removeCallbacks(mUnlockRefresh);
-        mMain.postDelayed(mUnlockRefresh, REFRESH_LOCK_MAX_MS + 500);
+        setPlaceholder(SAMPServerInfo.Status.LOADING, "Loading server...", "");
 
         StringRequest request = new StringRequest(Request.Method.GET, AppEndpoints.serversUrl(this), new Response.Listener<String>() {
             @Override
@@ -235,7 +484,7 @@ public class MainActivity extends AppCompatActivity {
                     startStatusQuery(info, gen);
                 } catch (ServerConfigParser.ConfigException e) {
                     Log.w(TAG, "Invalid servers.json: " + e.getMessage());
-                    setPlaceholder(SAMPServerInfo.Status.ERROR, getString(R.string.mx_err_invalid_config, e.getMessage()), "");
+                    setPlaceholder(SAMPServerInfo.Status.ERROR, e.getMessage(), "Tap to retry");
                 }
             }
         }, new Response.ErrorListener() {
@@ -243,7 +492,7 @@ public class MainActivity extends AppCompatActivity {
             public void onErrorResponse(VolleyError error) {
                 if (mDestroyed || gen != mLoadGeneration) return;
                 Log.w(TAG, "servers.json request failed: " + error);
-                setPlaceholder(SAMPServerInfo.Status.ERROR, getString(R.string.mx_err_load_list, describe(error)), "");
+                setPlaceholder(SAMPServerInfo.Status.ERROR, "Could not load server list (" + describe(error) + ")", "Tap to retry");
             }
         }) {
             @Override
@@ -293,6 +542,7 @@ public class MainActivity extends AppCompatActivity {
     private void replaceServer(SAMPServerInfo info) {
         mServersList.clear();
         mServersList.add(info);
+        if (mSelectedKey == null && !isPlaceholder(info)) mSelectedKey = keyOf(info); // pre-seleciona o oficial
         refreshServerListUi();
     }
 
@@ -382,7 +632,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         notifyServerPage(1);
-        updateServerStateUi();
+        fireServerStateChanged();
     }
 
     private void notifyServerPage(int page) {
@@ -413,11 +663,18 @@ public class MainActivity extends AppCompatActivity {
             SAMPServerInfo serverInfo = new SAMPServerInfo(i, i, "Loading...", FavoritesInfo.getServerList(this).get(i).ip, FavoritesInfo.getServerList(this).get(i).port, 0, 0, 0, 0, 0, "English");
             serverInfo.setFavorite(true);
             serverInfo.setQueried(false);
+            serverInfo.setServerStatus(SAMPServerInfo.Status.LOADING);
             getFavoriteServerList().add(serverInfo);
             new ProcessInfo().execute(i);
         }
 
         refreshFavoriteServers();
+    }
+
+    /** Recarrega os favoritos do zero (limpa a mesma lista) para nao duplicar registros. */
+    public void reloadFavoriteServers() {
+        mFavoriteServersList.clear();
+        getFavoriteServersInfo();
     }
 
     /** Consulta em segundo plano; aplica o resultado na thread principal (onPostExecute). */
@@ -445,7 +702,10 @@ public class MainActivity extends AppCompatActivity {
                 }
                 String[] info = sampQuery.mo7164b();
                 if (info == null) return null;
-                return new SAMPServerInfo(index, index, info[3], address, port, Integer.parseInt(info[1]), Integer.parseInt(info[2]), Integer.parseInt(info[0]), 0, 0, info[5]);
+                SAMPServerInfo r = new SAMPServerInfo(index, index, info[3], address, port, Integer.parseInt(info[1]), Integer.parseInt(info[2]), Integer.parseInt(info[0]), 1, 0, info[5]);
+                r.setServerMode(info[4]);
+                r.setPing(-1); // ping real desconhecido nos favoritos
+                return r;
             } catch (Exception e) {
                 Log.w(TAG, "favorite query failed: " + e);
                 return null;
@@ -461,8 +721,17 @@ public class MainActivity extends AppCompatActivity {
 
         public void onPostExecute(SAMPServerInfo result) {
             super.onPostExecute(result);
-            if (result == null || mDestroyed) return;
+            if (mDestroyed) return;
             ArrayList<SAMPServerInfo> list = getFavoriteServerList();
+            if (result == null) {
+                // sem resposta valida: Offline (so se ainda estava "verificando")
+                if (index < list.size() && !list.get(index).getQueried()
+                        && list.get(index).getServerStatus() == SAMPServerInfo.Status.LOADING) {
+                    list.get(index).setServerStatus(SAMPServerInfo.Status.OFFLINE);
+                    refreshFavoriteServers();
+                }
+                return;
+            }
             if (index < list.size()
                     && list.get(index).getAddress().equals(result.getAddress())
                     && list.get(index).getPort() == result.getPort()) {
@@ -481,232 +750,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         notifyServerPage(0);
-    }
-
-    // ------------------------------------------------------------------------------------
-    // Interface do launcher (menu lateral, cabecalho, rodape)
-    // ------------------------------------------------------------------------------------
-
-    /** Modo imersivo + recuo lateral para notch/recorte da tela (landscape). */
-    private void setupImmersiveAndInsets() {
-        hideSystemUi();
-        if (Build.VERSION.SDK_INT >= 28) {
-            WindowManager.LayoutParams lp = getWindow().getAttributes();
-            lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
-            getWindow().setAttributes(lp);
-        }
-        final View safe = findViewById(R.id.mx_safe_area);
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main_layout), new OnApplyWindowInsetsListener() {
-            @Override
-            public WindowInsetsCompat onApplyWindowInsets(View v, WindowInsetsCompat insets) {
-                int left = insets.getSystemWindowInsetLeft();
-                int right = insets.getSystemWindowInsetRight();
-                DisplayCutoutCompat cutout = insets.getDisplayCutout();
-                if (cutout != null) {
-                    left = Math.max(left, cutout.getSafeInsetLeft());
-                    right = Math.max(right, cutout.getSafeInsetRight());
-                }
-                safe.setPadding(left, 0, right, 0);
-                return insets;
-            }
-        });
-    }
-
-    private void hideSystemUi() {
-        getWindow().getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
-    }
-
-    @Override
-    public void onWindowFocusChanged(boolean hasFocus) {
-        super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) hideSystemUi();
-    }
-
-    private void setupMenu() {
-        mTvTitle = findViewById(R.id.tv_page_title);
-        mBtnRefresh = findViewById(R.id.btn_refresh);
-        // Ordem = indice da pagina: Inicio, Servidores, Configuracoes, Noticias.
-        mMenuItems = new View[4];
-        mMenuItems[PAGE_HOME] = findViewById(R.id.menu_home);
-        mMenuItems[PAGE_SERVERS] = findViewById(R.id.menu_servers);
-        mMenuItems[PAGE_SETTINGS] = findViewById(R.id.menu_settings);
-        mMenuItems[PAGE_NEWS] = findViewById(R.id.menu_news);
-
-        for (int i = 0; i < mMenuItems.length; i++) {
-            final int page = i;
-            mMenuItems[i].setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) { showPage(page); }
-            });
-        }
-
-        // Comunidade: abre o Discord configurado (ou o site, se so ele estiver configurado).
-        findViewById(R.id.menu_community).setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                String url = SocialLinks.discord(MainActivity.this);
-                if (url.isEmpty()) url = SocialLinks.site(MainActivity.this);
-                SocialLinks.open(MainActivity.this, url);
-            }
-        });
-
-        findViewById(R.id.menu_exit).setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { finishAffinity(); }
-        });
-
-        mBtnRefresh.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { refreshAll(); }
-        });
-    }
-
-    /** Mostra uma pagina do ViewPager e atualiza menu, titulo e botao Atualizar. */
-    public void showPage(int page) {
-        if (mPager == null || page < 0 || page >= mMenuItems.length) return;
-        mCurrentPage = page;
-        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
-        hideKeyboard(this);
-        mPager.setCurrentItem(page, false);
-        for (int i = 0; i < mMenuItems.length; i++) mMenuItems[i].setSelected(i == page);
-        int title;
-        switch (page) {
-            case PAGE_HOME:     title = R.string.mx_title_home; break;
-            case PAGE_SETTINGS: title = R.string.mx_title_settings; break;
-            case PAGE_NEWS:     title = R.string.mx_title_news; break;
-            default:            title = R.string.mx_title_servers; break;
-        }
-        mTvTitle.setText(title);
-        mBtnRefresh.setVisibility(page == PAGE_SERVERS ? View.VISIBLE : View.GONE);
-    }
-
-    private void setupFooter() {
-        mTvServerState = findViewById(R.id.tv_server_state);
-        mDotServerState = findViewById(R.id.dot_server_state);
-        mTvMusic = findViewById(R.id.tv_music_status);
-        mBtnMusic = findViewById(R.id.btn_music_toggle);
-
-        // Versao do cliente (versionName do APK instalado).
-        String version = "?";
-        try {
-            version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
-        } catch (PackageManager.NameNotFoundException ignored) { }
-        ((TextView) findViewById(R.id.tv_client_version)).setText(getString(R.string.mx_footer_version, version));
-
-        // Links sociais: so aparecem os que estao configurados em social_links.xml.
-        bindSocial(R.id.btn_social_discord, SocialLinks.discord(this));
-        bindSocial(R.id.btn_social_youtube, SocialLinks.youtube(this));
-        bindSocial(R.id.btn_social_instagram, SocialLinks.instagram(this));
-        bindSocial(R.id.btn_social_site, SocialLinks.site(this));
-
-        // Musica local (res/raw/launcher_music.*). Sem a faixa, os controles ficam desabilitados.
-        mMusic = new MusicController(this);
-        SeekBar seek = findViewById(R.id.seek_music_volume);
-        seek.setProgress(mMusic.getVolumePercent());
-        seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
-                if (fromUser) mMusic.setVolumePercent(progress);
-            }
-            @Override public void onStartTrackingTouch(SeekBar bar) { }
-            @Override public void onStopTrackingTouch(SeekBar bar) { }
-        });
-        mBtnMusic.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { mMusic.toggle(); }
-        });
-        mMusic.setListener(new MusicController.Listener() {
-            @Override public void onMusicStateChanged() { updateMusicUi(); }
-        });
-        boolean has = mMusic.hasTrack();
-        seek.setEnabled(has);
-        mBtnMusic.setEnabled(has);
-        seek.setAlpha(has ? 1f : 0.4f);
-        mBtnMusic.setAlpha(has ? 1f : 0.4f);
-        updateMusicUi();
-    }
-
-    private void bindSocial(int viewId, final String url) {
-        View v = findViewById(viewId);
-        if (url == null || url.isEmpty()) {
-            v.setVisibility(View.GONE);
-            return;
-        }
-        v.setVisibility(View.VISIBLE);
-        v.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View view) { SocialLinks.open(MainActivity.this, url); }
-        });
-    }
-
-    private void updateMusicUi() {
-        if (mMusic == null) return;
-        if (!mMusic.hasTrack()) {
-            mTvMusic.setText(R.string.mx_music_none);
-            mBtnMusic.setImageResource(R.drawable.mx_ic_play);
-            return;
-        }
-        boolean playing = mMusic.isPlaying();
-        String name = getString(R.string.mx_music_track_name);
-        mTvMusic.setText(getString(playing ? R.string.mx_music_playing : R.string.mx_music_paused, name));
-        mBtnMusic.setImageResource(playing ? R.drawable.mx_ic_pause : R.drawable.mx_ic_play);
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-        if (mMusic != null) mMusic.onHostPause();
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        if (mMusic != null) mMusic.onHostResume();
-        updateMusicUi();
-    }
-
-    /** True enquanto uma consulta esta em andamento (evita disparar varias ao mesmo tempo). */
-    private boolean isRefreshLocked() {
-        if (mServersList.isEmpty()) return false;
-        return mServersList.get(0).getServerStatus() == SAMPServerInfo.Status.LOADING
-                && SystemClock.elapsedRealtime() - mLastAttemptMs < REFRESH_LOCK_MAX_MS;
-    }
-
-    /**
-     * Botao Atualizar: baixa o servers.json de novo e refaz a consulta UDP real. A lista principal
-     * e SUBSTITUIDA (replaceServer) e a de favoritos e limpa antes de recarregar: nunca duplica.
-     */
-    public void refreshAll() {
-        if (mDestroyed || isRefreshLocked()) return;
-        getServersInfo();
-        reloadFavoriteServers();
-        updateServerStateUi();
-    }
-
-    /** Recarrega os favoritos limpando a lista no proprio lugar (os adapters guardam a referencia). */
-    public void reloadFavoriteServers() {
-        if (mDestroyed) return;
-        mFavoriteServersList.clear();
-        getFavoriteServersInfo();
-    }
-
-    /** Rodape (estado do servidor) e botao Atualizar, sempre refletindo o ultimo resultado REAL. */
-    private void updateServerStateUi() {
-        if (mDestroyed || mTvServerState == null) return;
-        SAMPServerInfo.Status st = mServersList.isEmpty()
-                ? SAMPServerInfo.Status.LOADING : mServersList.get(0).getServerStatus();
-        int text, color;
-        switch (st) {
-            case ONLINE:  text = R.string.mx_status_online;  color = R.color.mx_online;  break;
-            case OFFLINE: text = R.string.mx_status_offline; color = R.color.mx_offline; break;
-            case ERROR:   text = R.string.mx_status_error;   color = R.color.mx_error;   break;
-            default:      text = R.string.mx_status_checking; color = R.color.mx_loading; break;
-        }
-        mTvServerState.setText(text);
-        mDotServerState.getBackground().mutate().setColorFilter(getResources().getColor(color), PorterDuff.Mode.SRC_IN);
-
-        boolean locked = isRefreshLocked();
-        mBtnRefresh.setEnabled(!locked);
-        mBtnRefresh.setText(locked ? R.string.mx_refreshing : R.string.mx_refresh);
+        fireServerStateChanged();
     }
 
     public static void hideKeyboard(Activity activity) {
@@ -729,25 +773,27 @@ public class MainActivity extends AppCompatActivity {
         @NonNull
         @Override
         public Fragment getItem(int position) {
-            if(position == 1)
-                return new ServersFragment();
-            else if(position == 0)
-                return new HomeFragment();
-            else if(position == 2)
-                return new SettingsFragment();
-            else if(position == 3)
-                return new NewsFragment();
-            return new HomeFragment();
+            switch (position) {
+                case PAGE_SERVERS: return new ServersFragment();
+                case PAGE_NEWS: return new NewsFragment();
+                case PAGE_SETTINGS: return new SettingsFragment();
+                case PAGE_COMMUNITY: return new CommunityFragment();
+                default: return new HomeFragment();
+            }
         }
 
         @Override
         public int getCount() {
-            return 4;
+            return 5;
         }
     }
 
     @Override
     public void onBackPressed() {
-        super.onBackPressed();
+        if (mPager != null && mPager.getCurrentItem() != PAGE_HOME) {
+            openPage(PAGE_HOME);
+        } else {
+            confirmExit();
+        }
     }
 }

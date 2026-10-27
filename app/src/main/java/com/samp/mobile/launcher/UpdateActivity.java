@@ -19,6 +19,11 @@ import android.os.RemoteException;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.WindowManager;
+import android.view.View;
+import android.widget.ImageButton;
+import com.samp.mobile.launcher.util.LauncherUi;
+import com.samp.mobile.launcher.util.MaximoMusic;
+import com.samp.mobile.launcher.util.NotificationHelper;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -87,39 +92,16 @@ public class UpdateActivity extends AppCompatActivity{
         public void handleMessage(Message msg) {
             if (msg.what == 4) {
                 UpdateActivity.UpdateStatus valueOf = UpdateActivity.UpdateStatus.valueOf(msg.getData().getString("status", ""));
+                long j = msg.getData().getLong("total");
+                long j2 = msg.getData().getLong("current");
+                String fname = msg.getData().getString("filename");
                 if (valueOf == UpdateStatus.DownloadGameData) {
-                    ((TextView)findViewById(R.id.installation_text)).setText("Updating game data...");
-                    Log.d("x1y2z", "statusname = " + valueOf);
-                    long j = msg.getData().getLong("total");
-                    long j2 = msg.getData().getLong("current");
-                    ((TextView) findViewById(R.id.fileName)).setText(msg.getData().getString("filename"));
-                    ((TextView) findViewById(R.id.fileCount)).setText(j2/1048576 + "MB/" + j/1048576+"MB");
-                    ProgressBar progressBar = findViewById(R.id.download_progress);
-                    progressBar.setIndeterminate(false);
-                    Log.d("UpdateActivity", (int) (j/1048576) + "/" + (int) (j2/1048576));
-                    progressBar.setMax((int) (j/1048576));
-                    progressBar.setProgress((int) (j2/1048576));
-
-                    ((TextView) findViewById(R.id.fileProgressPercent)).setText(j2*100/(j+1) + "%");
+                    showProgress(R.string.mx_update_title_data, j, j2, fname, (j2 / 1048576) + "MB / " + (j / 1048576) + "MB");
                 } else if (valueOf == UpdateActivity.UpdateStatus.CheckUpdate) {
-                    Log.d("x1y2z", "statusname = " + valueOf);
-                    long j = msg.getData().getLong("total");
-                    long j2 = msg.getData().getLong("current");
-                    ((TextView) findViewById(R.id.fileName)).setText(msg.getData().getString("filename"));
-                    ProgressBar progressBar = (ProgressBar) UpdateActivity.this.findViewById(R.id.download_progress);
-                    progressBar.setMax((int) (j)/1048576);
-                    progressBar.setProgress((int) (j2)/1048576);
+                    showProgress(R.string.mx_update_title_check, j, j2, fname, null);
                 } else if (valueOf == UpdateStatus.DownloadGame) {
-                    ((TextView)findViewById(R.id.installation_text)).setText("Updating game...");
-                    Log.d("x1y2z", "statusname = " + valueOf);
-                    long j = msg.getData().getLong("total");
-                    long j2 = msg.getData().getLong("current");
-                    ((TextView) findViewById(R.id.fileName)).setText(msg.getData().getString("filename"));
-                    ((TextView) findViewById(R.id.fileCount)).setText(msg.getData().getLong("currentfile") + "/" + msg.getData().getLong("totalfiles"));
-                    ProgressBar progressBar = (ProgressBar) UpdateActivity.this.findViewById(R.id.download_progress);
-                    progressBar.setIndeterminate(false);
-                    progressBar.setMax((int) (j)/1048576);
-                    progressBar.setProgress((int) (j2)/1048576);
+                    showProgress(R.string.mx_update_title_game, j, j2, fname,
+                            msg.getData().getLong("currentfile") + "/" + msg.getData().getLong("totalfiles"));
                 }else if (!mIsStartingUpdate) {
                     Message obtain2 = Message.obtain((Handler) null, 1);
                     obtain2.replyTo = UpdateActivity.this.mMessenger;
@@ -156,12 +138,46 @@ public class UpdateActivity extends AppCompatActivity{
             }
             else if (msg.what == 1) {
                 Log.i("UpdateActivity", "UpdateService.UPDATE_GAME");
-                ((TextView)findViewById(R.id.installation_text)).setText("Installation...");
+                ((TextView)findViewById(R.id.installation_text)).setText(R.string.mx_update_title_install);
                 ProgressBar progressBar = (ProgressBar) UpdateActivity.this.findViewById(R.id.download_progress);
                 progressBar.setIndeterminate(true);
+                Config.clientUpToDate = true;
+                mFinishedOk = true;
+                NotificationHelper.showDownloadDone(UpdateActivity.this);
                 startActivity(new Intent(UpdateActivity.this, MainActivity.class));
                 finish();
             }
+        }
+    }
+
+    private boolean mFinishedOk = false;
+    private int mLastNotifPercent = -2;
+
+    /**
+     * Atualiza titulo, arquivo, contador e o ANEL redondo. Escala interna 0..1000 (evita o
+     * truncamento em MB que travava o progresso em 0 para arquivos pequenos).
+     * Quando o tamanho total ainda e desconhecido (total <= 0) o anel gira (indeterminado).
+     */
+    private void showProgress(int titleRes, long total, long current, String fileName, String countText) {
+        ((TextView) findViewById(R.id.installation_text)).setText(titleRes);
+        ((TextView) findViewById(R.id.fileName)).setText(fileName == null ? "" : fileName);
+        ((TextView) findViewById(R.id.fileCount)).setText(countText == null ? "" : countText);
+        ProgressBar ring = findViewById(R.id.download_progress);
+        TextView percentView = (TextView) findViewById(R.id.fileProgressPercent);
+        if (total <= 0) {
+            if (!ring.isIndeterminate()) ring.setIndeterminate(true);
+            percentView.setText("");
+            return;
+        }
+        if (ring.isIndeterminate()) ring.setIndeterminate(false);
+        int permille = (int) Math.max(0, Math.min(1000, current * 1000L / total));
+        ring.setMax(1000);
+        ring.setProgress(permille);
+        percentView.setText((permille / 10) + "%");
+        int pct = permille / 10;
+        if (pct != mLastNotifPercent) {
+            mLastNotifPercent = pct;
+            NotificationHelper.showDownloadProgress(this, pct, ((TextView) findViewById(R.id.installation_text)).getText().toString());
         }
     }
 
@@ -263,7 +279,12 @@ public class UpdateActivity extends AppCompatActivity{
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        LauncherUi.prepareWindow(this);
         setContentView(R.layout.activity_update);
+        LauncherUi.applyImmersive(this);
+        LauncherUi.applySafePadding(findViewById(R.id.mx_safe_area));
+        NotificationHelper.ensureChannels(this);
+        setupMusicToggle();
 
         if(!SignatureChecker.isSignatureValid(this, getPackageName()))
         {
@@ -372,9 +393,52 @@ public class UpdateActivity extends AppCompatActivity{
         }
     };
 
+    private final MaximoMusic.Listener mMusicListener = new MaximoMusic.Listener() {
+        @Override
+        public void onMusicStateChanged(boolean playing, int volumePercent) { updateMusicIcon(playing); }
+    };
+
+    private void setupMusicToggle() {
+        ImageButton toggle = findViewById(R.id.mx_update_music_toggle);
+        toggle.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { MaximoMusic.get(UpdateActivity.this).toggle(); }
+        });
+        updateMusicIcon(MaximoMusic.get(this).isPlaying());
+    }
+
+    private void updateMusicIcon(boolean playing) {
+        ImageButton toggle = findViewById(R.id.mx_update_music_toggle);
+        if (toggle == null) return;
+        toggle.setImageResource(playing ? R.drawable.mx_ic_volume : R.drawable.mx_ic_volume_off);
+        toggle.setContentDescription(getString(playing ? R.string.mx_update_music_on : R.string.mx_update_music_off));
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        MaximoMusic m = MaximoMusic.get(this);
+        m.addListener(mMusicListener);
+        m.attach();
+    }
+
+    @Override
+    protected void onStop() {
+        MaximoMusic m = MaximoMusic.get(this);
+        m.removeListener(mMusicListener);
+        m.detach();
+        super.onStop();
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) LauncherUi.applyImmersive(this);
+    }
+
     @Override
     public void onDestroy() {
         super.onDestroy();
+        if (!mFinishedOk) NotificationHelper.cancelDownload(this);
         if(mIsBind) {
             unbindService(serviceConnection);
             mIsBind = false;

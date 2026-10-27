@@ -27,7 +27,6 @@ import com.samp.mobile.game.SAMP;
 import com.samp.mobile.launcher.MainActivity;
 import com.samp.mobile.launcher.util.ButtonAnimator;
 import com.samp.mobile.launcher.util.SAMPServerInfo;
-import com.samp.mobile.launcher.util.ServerConnector;
 import com.samp.mobile.launcher.util.SharedPreferenceCore;
 
 import org.ini4j.Wini;
@@ -94,8 +93,7 @@ public class ServerInformationFragment extends Dialog {
         mConnect.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                // Mesmo fluxo de antes, agora compartilhado com o botao Conectar do cartao.
-                ServerConnector.connect(activity, sampServerInfo);
+                launchGame(activity, sampServerInfo);
                 dismiss();
             }
         });
@@ -108,6 +106,35 @@ public class ServerInformationFragment extends Dialog {
                 dismiss();
             }
         });
+    }
+
+    /**
+     * Fluxo ORIGINAL de conexao: grava host/porta em SAMP/settings.ini, confere os arquivos do jogo
+     * e abre a SAMP activity. Usado pelo dialogo de detalhes e pelo botao CONECTAR do painel.
+     */
+    public static void launchGame(Activity activity, SAMPServerInfo info) {
+        File file = new File(activity.getExternalFilesDir(null) + "/SAMP/settings.ini");
+        if (file.exists()) {
+            try {
+                Wini wini = new Wini(file);
+                wini.put("client", "host", info.getAddress());
+                wini.put("client", "port", info.getPort());
+                wini.store();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+        File dxt = new File(activity.getExternalFilesDir(null) + "/Text/american.dxt");
+        File font = new File(activity.getExternalFilesDir(null) + "/Textures/fonts/RussianFont.png");
+        if (!dxt.exists() && !font.exists()) {
+            Toast.makeText(activity, "Some important files in your modified data are missing, such as \"Text\" and \"Textures\". " +
+                    "Please, fix it and after try again.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        com.samp.mobile.launcher.util.MaximoMusic.get(activity).release();
+        activity.startActivity(new Intent(activity, SAMP.class));
+        activity.finish();
     }
 
 }

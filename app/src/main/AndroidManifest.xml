@@ -12,6 +12,7 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.ACCESS_ALL_DOWNLOADS" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -78,7 +79,6 @@
 
         <activity
             android:name=".launcher.MainActivity"
-            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
             android:screenOrientation="sensorLandscape"
             android:theme="@style/Theme.AppCompat.NoActionBar"
             android:windowSoftInputMode="adjustNothing">
@@ -86,7 +86,7 @@
 
         <activity
             android:name=".launcher.SplashActivity"
-            android:screenOrientation="portrait"
+            android:screenOrientation="sensorLandscape"
             android:exported="true"
             android:theme="@style/Theme.AppCompat.NoActionBar">
 
@@ -98,7 +98,7 @@
 
         <activity
             android:name=".launcher.UpdateActivity"
-            android:screenOrientation="portrait"
+            android:screenOrientation="sensorLandscape"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar">
         </activity>
 

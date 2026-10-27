@@ -2,33 +2,196 @@
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@drawable/mx_bg_panel">
+
+    <ImageView
+        android:id="@+id/mx_servers_icon"
+        android:layout_width="26dp"
+        android:layout_height="26dp"
+        android:layout_marginStart="14dp"
+        android:layout_marginTop="10dp"
+        android:importantForAccessibility="no"
+        android:src="@drawable/mx_ic_servers"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:tint="@color/mx_accent" />
+
+    <TextView
+        android:id="@+id/mx_servers_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:fontFamily="@font/montserrat_bold"
+        android:text="@string/mx_servers_title"
+        android:textColor="@color/mx_text"
+        android:textSize="13sp"
+        app:layout_constraintStart_toEndOf="@+id/mx_servers_icon"
+        app:layout_constraintTop_toTopOf="@+id/mx_servers_icon" />
+
+    <TextView
+        android:id="@+id/mx_servers_subtitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="@font/montserrat_medium"
+        android:text="@string/mx_servers_subtitle"
+        android:textColor="@color/mx_text_dim"
+        android:textSize="9sp"
+        app:layout_constraintStart_toStartOf="@+id/mx_servers_title"
+        app:layout_constraintTop_toBottomOf="@+id/mx_servers_title" />
+
+    <LinearLayout
+        android:id="@+id/mx_btn_refresh"
+        android:layout_width="wrap_content"
+        android:layout_height="30dp"
+        android:layout_marginTop="10dp"
+        android:layout_marginEnd="14dp"
+        android:background="@drawable/mx_bg_btn_ghost"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <ImageView
+            android:id="@+id/mx_refresh_icon"
+            android:layout_width="14dp"
+            android:layout_height="14dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/mx_ic_refresh"
+            app:tint="@color/mx_accent" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:fontFamily="@font/montserrat_bold"
+            android:text="@string/mx_refresh"
+            android:textColor="@color/mx_accent"
+            android:textSize="9sp" />
+    </LinearLayout>
 
     <com.google.android.material.tabs.TabLayout
         android:id="@+id/tabLayout_servers"
-        android:layout_width="0dp"
-        android:layout_height="@dimen/_32sdp"
+        android:layout_width="wrap_content"
+        android:layout_height="30dp"
+        android:layout_marginTop="10dp"
+        android:layout_marginEnd="8dp"
         android:background="@android:color/transparent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toStartOf="@+id/mx_btn_refresh"
         app:layout_constraintTop_toTopOf="parent"
         app:tabBackground="@android:color/transparent"
-        app:tabGravity="start"
-        app:tabIndicatorColor="@color/mx_cyan"
+        app:tabGravity="center"
+        app:tabIndicatorColor="@color/mx_accent"
         app:tabIndicatorGravity="bottom"
-        app:tabIndicatorHeight="@dimen/_3sdp"
-        app:tabMode="auto"
+        app:tabIndicatorHeight="2dp"
+        app:tabMinWidth="0dp"
+        app:tabMode="fixed"
+        app:tabPaddingEnd="10dp"
+        app:tabPaddingStart="10dp"
         app:tabRippleColor="@null"
-        app:tabSelectedTextColor="@color/mx_cyan"
-        app:tabTextAppearance="@style/tab_layout_title"
+        app:tabSelectedTextColor="@color/mx_text"
+        app:tabTextAppearance="@style/mx_tab_text"
         app:tabTextColor="@color/mx_text_dim" />
+
+    <View
+        android:id="@+id/mx_servers_divider"
+        android:layout_width="0dp"
+        android:layout_height="1dp"
+        android:layout_marginStart="10dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="10dp"
+        android:background="#332B6BFF"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/mx_servers_subtitle" />
 
     <com.samp.mobile.launcher.util.ViewPagerWithoutSwipe
         android:id="@+id/viewPager_servers"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:layout_constraintBottom_toBottomOf="parent"
+        android:layout_marginTop="4dp"
+        app:layout_constraintBottom_toTopOf="@+id/mx_connect_bar"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/tabLayout_servers" />
+        app:layout_constraintTop_toBottomOf="@+id/mx_servers_divider" />
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/mx_connect_bar"
+        android:layout_width="0dp"
+        android:layout_height="46dp"
+        android:layout_marginStart="10dp"
+        android:layout_marginEnd="10dp"
+        android:layout_marginBottom="8dp"
+        android:background="@drawable/mx_bg_btn_ghost"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <ImageView
+            android:id="@+id/mx_hint_icon"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:layout_marginStart="12dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/mx_ic_info"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:tint="@color/mx_accent" />
+
+        <TextView
+            android:id="@+id/mx_connect_hint"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="8dp"
+            android:ellipsize="end"
+            android:fontFamily="@font/montserrat_medium"
+            android:maxLines="2"
+            android:text="@string/mx_hint_default"
+            android:textColor="@color/mx_text_dim"
+            android:textSize="9sp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@+id/mx_btn_connect"
+            app:layout_constraintStart_toEndOf="@+id/mx_hint_icon"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <LinearLayout
+            android:id="@+id/mx_btn_connect"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/mx_bg_btn_connect"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:minWidth="110dp"
+            android:orientation="horizontal"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <ImageView
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/mx_ic_play"
+                app:tint="@color/mx_text" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:fontFamily="@font/montserrat_bold"
+                android:text="@string/mx_connect"
+                android:textColor="@color/mx_text"
+                android:textSize="11sp" />
+        </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>

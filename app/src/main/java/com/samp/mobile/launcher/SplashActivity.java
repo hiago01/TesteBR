@@ -272,6 +272,8 @@ public class SplashActivity extends AppCompatActivity {
                     finish();
                 }
                 else {
+                    // Updated: nenhuma atualizacao pendente (so este caminho marca "Atualizado")
+                    Config.clientUpToDate = (valueOf2 == UpdateActivity.GameStatus.Updated);
                     startActivity(new Intent(SplashActivity.this, MainActivity.class));
                     finish();
                 }

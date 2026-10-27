@@ -16,6 +16,7 @@ import com.joom.paranoid.Obfuscate;
 import com.samp.mobile.R;
 import com.samp.mobile.launcher.MainActivity;
 import com.samp.mobile.launcher.util.ButtonAnimator;
+import com.samp.mobile.launcher.util.SAMPServerInfo;
 @Obfuscate
 public class FavouriteServerAdapter extends RecyclerView.Adapter<FavouriteServerAdapter.ViewHolder>{
 
@@ -36,27 +37,27 @@ public class FavouriteServerAdapter extends RecyclerView.Adapter<FavouriteServer
     }
 
     @Override
-    public void onBindViewHolder(ViewHolder holder, int position) {
-        Log.d("AXL", "" + holder.getAdapterPosition());
-        this.position = holder.getAdapterPosition();
-        if (!((MainActivity) mActivity).getFavoriteServerList().get(holder.getAdapterPosition()).getHasPassword())
-            holder.mPassword.setImageResource(R.drawable.ic_password_off);
-        else
-            holder.mPassword.setImageResource(R.drawable.ic_password_on);
+    public void onBindViewHolder(final ViewHolder holder, int position) {
+        final MainActivity main = (MainActivity) mActivity;
+        final int pos = holder.getAdapterPosition();
+        if (pos < 0 || pos >= main.getFavoriteServerList().size()) return;
+        final SAMPServerInfo info = main.getFavoriteServerList().get(pos);
 
-        holder.mServerNameText.setText(((MainActivity) mActivity).getFavoriteServerList().get(holder.getAdapterPosition()).getServerName());
-
-        holder.mOnlineText.setText(((MainActivity) mActivity).getFavoriteServerList().get(holder.getAdapterPosition()).getCurrentPlayerCount() + "/" + ((MainActivity) mActivity).getFavoriteServerList().get(holder.getAdapterPosition()).getMaxPlayerCount());
-        holder.mServerIP.setText("Address: " + ((MainActivity) mActivity).getFavoriteServerList().get(holder.getAdapterPosition()).getAddress());
-        holder.mMode.setText("Mode: " + ((MainActivity) mActivity).getFavoriteServerList().get(holder.getAdapterPosition()).getServerMode());
+        ServerCardBinder.bind(holder.card, info, main.isSelected(info), true);
 
         holder.mLayout.setOnTouchListener(new ButtonAnimator(mActivity, holder.mLayout));
         holder.mLayout.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                FavouriteServerInformationFragment newInstance = new FavouriteServerInformationFragment((Activity) mActivity, FavouriteServerAdapter.this, holder.getAdapterPosition(), ((MainActivity) mActivity).getFavoriteServerList().get(holder.getAdapterPosition()));
-                newInstance.show();
-
+                main.selectServer(info);
+            }
+        });
+        holder.card.chevron.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                int p = holder.getAdapterPosition();
+                if (p < 0 || p >= main.getFavoriteServerList().size()) return;
+                new FavouriteServerInformationFragment((Activity) mActivity, FavouriteServerAdapter.this, p, main.getFavoriteServerList().get(p)).show();
             }
         });
     }
@@ -75,6 +76,7 @@ public class FavouriteServerAdapter extends RecyclerView.Adapter<FavouriteServer
         public TextView mOnlineText;
         public TextView mMode;
         public ConstraintLayout mLayout;
+        final ServerCardBinder.Views card;
 
         public ViewHolder(View view) {
             super(view);
@@ -85,6 +87,7 @@ public class FavouriteServerAdapter extends RecyclerView.Adapter<FavouriteServer
             mServerNameText = view.findViewById(R.id.textView6);
             mOnlineText = view.findViewById(R.id.online_text);
             mMode = view.findViewById(R.id.textView18);
+            card = new ServerCardBinder.Views(view);
         }
 
         public View getView() {

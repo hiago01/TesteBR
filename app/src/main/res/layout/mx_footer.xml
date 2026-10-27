@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/mx_bg_footer"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="18dp"
+    android:paddingEnd="18dp">
+
+    <!-- Player de musica -->
+    <LinearLayout
+        android:id="@+id/mx_player"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="5"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:id="@+id/mx_player_cover"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:contentDescription="@null"
+            android:scaleType="centerCrop"
+            android:src="@drawable/maximo_cover" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/mx_player_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="@font/montserrat_bold"
+                android:singleLine="true"
+                android:text="@string/mx_music_title"
+                android:textColor="@color/mx_text"
+                android:textSize="9sp" />
+
+            <TextView
+                android:id="@+id/mx_player_subtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="@font/montserrat_medium"
+                android:singleLine="true"
+                android:text="@string/mx_music_subtitle"
+                android:textColor="@color/mx_text_dim"
+                android:textSize="8sp" />
+        </LinearLayout>
+
+        <ImageButton
+            android:id="@+id/mx_btn_prev"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Faixa anterior"
+            android:padding="6dp"
+            android:src="@drawable/mx_ic_prev"
+            app:tint="@color/mx_text" />
+
+        <ImageButton
+            android:id="@+id/mx_btn_play"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:background="@drawable/mx_bg_circle_btn"
+            android:contentDescription="Reproduzir ou pausar"
+            android:padding="7dp"
+            android:src="@drawable/mx_ic_pause"
+            app:tint="@color/mx_text" />
+
+        <ImageButton
+            android:id="@+id/mx_btn_next"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Próxima faixa"
+            android:padding="6dp"
+            android:src="@drawable/mx_ic_next"
+            app:tint="@color/mx_text" />
+
+        <ImageButton
+            android:id="@+id/mx_btn_volume"
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:layout_marginStart="4dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Mudo"
+            android:padding="5dp"
+            android:src="@drawable/mx_ic_volume"
+            app:tint="@color/mx_text" />
+
+        <SeekBar
+            android:id="@+id/mx_volume_seek"
+            android:layout_width="64dp"
+            android:layout_height="24dp"
+            android:max="100"
+            android:maxHeight="3dp"
+            android:minHeight="3dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:progressDrawable="@drawable/mx_seek_progress"
+            android:thumb="@drawable/mx_seek_thumb" />
+    </LinearLayout>
+
+    <View android:layout_width="1dp" android:layout_height="30dp" android:layout_marginStart="8dp" android:layout_marginEnd="8dp" android:background="#33FFFFFF" />
+
+    <!-- Estado do cliente -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="2"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/mx_ic_cloud"
+            app:tint="@color/mx_accent" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/montserrat_bold"
+                android:singleLine="true"
+                android:text="@string/mx_footer_client"
+                android:textColor="@color/mx_accent"
+                android:textSize="8sp" />
+
+            <TextView
+                android:id="@+id/mx_footer_client_value"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="@font/montserrat_medium"
+                android:singleLine="true"
+                android:textColor="@color/mx_text_dim"
+                android:textSize="8sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <View android:layout_width="1dp" android:layout_height="30dp" android:layout_marginStart="8dp" android:layout_marginEnd="8dp" android:background="#33FFFFFF" />
+
+    <!-- Estado do servidor -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="2"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:id="@+id/mx_footer_server_icon"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/mx_ic_servers"
+            app:tint="@color/mx_accent" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/montserrat_bold"
+                android:singleLine="true"
+                android:text="@string/mx_footer_server"
+                android:textColor="@color/mx_accent"
+                android:textSize="8sp" />
+
+            <TextView
+                android:id="@+id/mx_footer_server_value"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="@font/montserrat_bold"
+                android:singleLine="true"
+                android:textColor="@color/mx_text_dim"
+                android:textSize="8sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <View android:id="@+id/mx_footer_social_divider" android:layout_width="1dp" android:layout_height="30dp" android:layout_marginStart="8dp" android:layout_marginEnd="8dp" android:background="#33FFFFFF" />
+
+    <!-- Redes sociais (somente as configuradas em maximo_links.xml) -->
+    <LinearLayout
+        android:id="@+id/mx_footer_social"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/montserrat_bold"
+            android:text="@string/mx_footer_follow"
+            android:textColor="@color/mx_text_dim"
+            android:textSize="8sp" />
+
+        <LinearLayout
+            android:id="@+id/mx_social_container"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:orientation="horizontal" />
+    </LinearLayout>
+</LinearLayout>

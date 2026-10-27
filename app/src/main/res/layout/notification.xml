@@ -1,39 +1,49 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
-    android:orientation="horizontal" android:layout_width="match_parent"
-    android:layout_height="wrap_content">
+<!-- Notificacao recolhida (Maximo RP). IDs antigos title/message/icon preservados. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/mx_bg_notif"
+    android:gravity="center_vertical"
+    android:minHeight="52dp"
+    android:orientation="horizontal"
+    android:padding="8dp">
+
+    <ImageView
+        android:id="@+id/icon"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:background="@drawable/mx_bg_notif_icon"
+        android:padding="7dp"
+        android:src="@drawable/mx_ic_bell" />
+
     <LinearLayout
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content">
-        <ImageView
-            android:padding="5dp"
-            android:id="@+id/icon"
-            android:src="@mipmap/ic_launcher"
-            android:layout_width="50dp"
-            android:layout_height="60dp"/>
-    </LinearLayout>
-    <LinearLayout
-        android:layout_weight="1"
-        android:padding="10dp"
         android:layout_width="0dp"
-        android:orientation="vertical"
-        android:layout_height="wrap_content">
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
         <TextView
             android:id="@+id/title"
-            android:text="Title"
-            android:textColor="#000"
-            android:textStyle="bold"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"/>
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="Máximo RP"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
         <TextView
             android:id="@+id/message"
-            android:text="Message"
-            android:textSize="15sp"
-            android:textColor="@android:color/darker_gray"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"/>
-
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:text=""
+            android:textColor="#B8C7E0"
+            android:textSize="12sp" />
     </LinearLayout>
-
 </LinearLayout>

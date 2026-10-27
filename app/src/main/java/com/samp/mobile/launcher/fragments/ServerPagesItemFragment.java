@@ -82,24 +82,7 @@ public class ServerPagesItemFragment extends Fragment {
                 }
             }
 
-            view.findViewById(R.id.buttonCustomServer).setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View view) {
-                    Log.d("gor", "clicked add server button");
-                    builder.setMessage("Write me to add here your server (25$ per month)!\nTelegram: @gorgrigoryan18\n" +
-                                    "Discord: x1y2z")
-                            .setCancelable(false)
-                            .setPositiveButton("Ok", new DialogInterface.OnClickListener() {
-                                public void onClick(DialogInterface dialog, int id) {
-                                    dialog.dismiss();
-                                }
-                            })
-                            .setNegativeButton("", null);
-                    AlertDialog alert = builder.create();
-                    alert.setTitle("Update");
-                    alert.show();
-                }
-            });
+            // O botao "ADD SERVER" da lista oficial (anuncio de venda de vaga do desenvolvedor original) foi removido.
         } else {
             view = inflater.inflate(R.layout.fragment_favorite, container, false);
 

@@ -5,8 +5,21 @@
     android:id="@+id/main_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    tools:context=".launcher.MainActivity"
-    android:background="@color/colorPrimary">
+    android:background="@color/mx_bg"
+    tools:context=".launcher.UpdateActivity">
+
+    <com.samp.mobile.launcher.util.HeroImageView
+        android:id="@+id/mx_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@null"
+        android:importantForAccessibility="no"
+        android:src="@drawable/maximo_bg_hero" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#B3030816" />
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/gpu"
@@ -15,114 +28,140 @@
         android:visibility="invisible"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"/>
+        app:layout_constraintTop_toTopOf="parent" />
 
-    <ImageView
-        android:id="@+id/imageView"
-        android:layout_width="@dimen/_100sdp"
-        android:layout_height="@dimen/_100sdp"
-        android:background="@drawable/logo"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.119" />
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/mx_safe_area"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
 
+        <ImageView
+            android:id="@+id/imageView"
+            android:layout_width="120dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="28dp"
+            android:adjustViewBounds="true"
+            android:contentDescription="Máximo RP"
+            android:src="@drawable/maximo_logo"
+            app:layout_constraintBottom_toTopOf="@+id/installation_text"
+            app:layout_constraintEnd_toStartOf="@+id/mx_ring_box"
+            app:layout_constraintHorizontal_chainStyle="spread_inside"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintVertical_chainStyle="packed" />
 
-    <TextView
-        android:id="@+id/installation_text"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:fontFamily="@font/montserrat_bold"
-        android:gravity="center"
-        android:text="Updating game data..."
-        android:textColor="@color/white"
-        android:textSize="@dimen/_11sdp"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.497"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/imageView"
-        app:layout_constraintVertical_bias="0.128" />
+        <TextView
+            android:id="@+id/installation_text"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="28dp"
+            android:layout_marginTop="14dp"
+            android:fontFamily="@font/montserrat_bold"
+            android:text="@string/mx_update_title_check"
+            android:textColor="@color/mx_text"
+            android:textSize="15sp"
+            app:layout_constraintBottom_toTopOf="@+id/fileName"
+            app:layout_constraintEnd_toStartOf="@+id/mx_ring_box"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/imageView" />
 
-    <View
-        android:layout_width="@dimen/_200sdp"
-        android:layout_height="@dimen/_3sdp"
-        android:background="#FF0037"
-        app:layout_constraintBottom_toTopOf="@+id/fileProgressPercent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.496"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/installation_text"
-        app:layout_constraintVertical_bias="0.173" />
+        <TextView
+            android:id="@+id/fileName"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="28dp"
+            android:layout_marginTop="6dp"
+            android:ellipsize="middle"
+            android:fontFamily="@font/montserrat_medium"
+            android:singleLine="true"
+            android:text=""
+            android:textColor="@color/mx_text_dim"
+            android:textSize="10sp"
+            app:layout_constraintBottom_toTopOf="@+id/fileCount"
+            app:layout_constraintEnd_toStartOf="@+id/mx_ring_box"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/installation_text" />
 
-    <ProgressBar
-        android:id="@+id/download_progress"
-        style="@style/Widget.AppCompat.ProgressBar.Horizontal"
-        android:layout_width="@dimen/_220sdp"
-        android:layout_height="@dimen/_11sdp"
-        android:progressDrawable="@drawable/download_progress"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.496"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.538" />
+        <TextView
+            android:id="@+id/fileCount"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="28dp"
+            android:layout_marginTop="2dp"
+            android:fontFamily="@font/montserrat_bold"
+            android:text=""
+            android:textColor="@color/mx_accent"
+            android:textSize="10sp"
+            app:layout_constraintBottom_toTopOf="@+id/mx_update_hint"
+            app:layout_constraintEnd_toStartOf="@+id/mx_ring_box"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/fileName" />
 
-    <TextView
-        android:id="@+id/fileName"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:fontFamily="@font/montserrat_bold"
-        android:text="cust.img"
-        android:textColor="@android:color/darker_gray"
-        android:textSize="@dimen/_10sdp"
-        app:layout_constraintBottom_toTopOf="@+id/download_progress"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.178"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.97" />
+        <TextView
+            android:id="@+id/mx_update_hint"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="28dp"
+            android:layout_marginTop="12dp"
+            android:fontFamily="@font/montserrat_medium"
+            android:text="@string/mx_update_hint"
+            android:textColor="#6F86AD"
+            android:textSize="9sp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@+id/mx_ring_box"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/fileCount" />
 
-    <TextView
-        android:id="@+id/fileProgressPercent"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:fontFamily="@font/montserrat_bold"
-        android:text="100%"
-        android:textColor="#FFFFFF"
-        android:textSize="@dimen/_15sdp"
-        app:layout_constraintBottom_toTopOf="@+id/download_progress"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/imageView"
-        app:layout_constraintVertical_bias="0.93" />
+        <!-- Anel de progresso -->
+        <FrameLayout
+            android:id="@+id/mx_ring_box"
+            android:layout_width="170dp"
+            android:layout_height="170dp"
+            android:layout_marginEnd="48dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
 
-    <TextView
-        android:id="@+id/fileCount"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:fontFamily="@font/montserrat_bold"
-        android:text="5/10"
-        android:textColor="@android:color/darker_gray"
-        android:textSize="@dimen/_10sdp"
-        app:layout_constraintBottom_toTopOf="@+id/download_progress"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.814"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.98" />
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/mx_ring_glow" />
 
-    <TextView
-        android:id="@+id/textView14"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="16dp"
-        android:fontFamily="@font/montserrat_regular"
-        android:text="Copyright x1y2z"
-        android:textColor="#AEAEAE"
-        android:textSize="@dimen/_15sdp"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
+            <ProgressBar
+                android:id="@+id/download_progress"
+                style="@style/Widget.AppCompat.ProgressBar"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:indeterminate="true"
+                android:indeterminateDrawable="@drawable/mx_ring_indeterminate"
+                android:indeterminateOnly="false"
+                android:max="1000"
+                android:progress="0"
+                android:progressDrawable="@drawable/mx_ring_progress" />
+
+            <TextView
+                android:id="@+id/fileProgressPercent"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:fontFamily="@font/montserrat_bold"
+                android:text="0%"
+                android:textColor="@color/mx_text"
+                android:textSize="26sp" />
+        </FrameLayout>
+
+        <ImageButton
+            android:id="@+id/mx_update_music_toggle"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginEnd="18dp"
+            android:layout_marginBottom="14dp"
+            android:background="@drawable/mx_bg_circle_btn"
+            android:contentDescription="@string/mx_update_music_on"
+            android:padding="8dp"
+            android:src="@drawable/mx_ic_volume"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:tint="@color/mx_text" />
+    </androidx.constraintlayout.widget.ConstraintLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>

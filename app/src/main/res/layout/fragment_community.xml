@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/mx_bg_panel">
+    <ImageView
+        android:id="@+id/mx_page_icon"
+        android:layout_width="26dp"
+        android:layout_height="26dp"
+        android:layout_marginStart="14dp"
+        android:layout_marginTop="10dp"
+        android:importantForAccessibility="no"
+        android:src="@drawable/mx_ic_community"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:tint="@color/mx_accent" />
+
+    <TextView
+        android:id="@+id/mx_page_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:fontFamily="@font/montserrat_bold"
+        android:text="@string/mx_community_title"
+        android:textColor="@color/mx_text"
+        android:textSize="13sp"
+        app:layout_constraintStart_toEndOf="@+id/mx_page_icon"
+        app:layout_constraintTop_toTopOf="@+id/mx_page_icon" />
+
+    <TextView
+        android:id="@+id/mx_page_subtitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="@font/montserrat_medium"
+        android:text="@string/mx_community_subtitle"
+        android:textColor="@color/mx_text_dim"
+        android:textSize="9sp"
+        app:layout_constraintStart_toStartOf="@+id/mx_page_title"
+        app:layout_constraintTop_toBottomOf="@+id/mx_page_title" />
+
+    <View
+        android:id="@+id/mx_page_divider"
+        android:layout_width="0dp"
+        android:layout_height="1dp"
+        android:layout_marginStart="10dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="10dp"
+        android:background="#332B6BFF"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/mx_page_subtitle" />
+
+    <ScrollView
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="6dp"
+        android:fillViewport="true"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/mx_page_divider">
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="10dp">
+
+            <LinearLayout
+                android:id="@+id/mx_community_list"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <TextView
+                android:id="@+id/mx_community_empty"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="30dp"
+                android:fontFamily="@font/montserrat_medium"
+                android:gravity="center"
+                android:text="@string/mx_community_empty"
+                android:textColor="@color/mx_text_dim"
+                android:textSize="10sp"
+                android:visibility="gone" />
+        </FrameLayout>
+    </ScrollView>
+</androidx.constraintlayout.widget.ConstraintLayout>

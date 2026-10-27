@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Anel determinado: trilho + arco que cresce (useLevel). Comece em 12h via rotate de 270 graus. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@android:id/background">
+        <shape android:shape="ring" android:innerRadiusRatio="2.35" android:thicknessRatio="14" android:useLevel="false">
+            <solid android:color="#26FFFFFF"/>
+        </shape>
+    </item>
+    <item android:id="@android:id/progress">
+        <rotate android:fromDegrees="270" android:toDegrees="270" android:pivotX="50%" android:pivotY="50%">
+            <shape android:shape="ring" android:innerRadiusRatio="2.35" android:thicknessRatio="14" android:useLevel="true">
+                <gradient android:type="sweep" android:startColor="#FF0B5BFF" android:centerColor="#FF1E90FF" android:endColor="#FF56D6FF"/>
+            </shape>
+        </rotate>
+    </item>
+</layer-list>

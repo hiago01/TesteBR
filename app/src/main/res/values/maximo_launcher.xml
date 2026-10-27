@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Recursos do novo launcher Maximo RP (landscape). Textos em portugues. -->
+<resources>
+    <color name="mx_bg">#040A18</color>
+    <color name="mx_panel">#EB081327</color>
+    <color name="mx_panel_stroke">#662B6BFF</color>
+    <color name="mx_card">#F20C1A33</color>
+    <color name="mx_card_selected">#F2103466</color>
+    <color name="mx_accent">#1E90FF</color>
+    <color name="mx_accent_dark">#0B5BFF</color>
+    <color name="mx_text">#FFFFFFFF</color>
+    <color name="mx_text_dim">#9FB3D1</color>
+    <color name="mx_menu_idle">#7FB2FF</color>
+    <color name="mx_online">#19E68C</color>
+    <color name="mx_offline">#FF5C6C</color>
+    <color name="mx_warning">#FFB547</color>
+    <color name="mx_checking">#6AA8FF</color>
+    <color name="mx_footer">#F2060E1F</color>
+    <color name="mx_notif_bg">#FF0B1426</color>
+
+    <!-- Textos -->
+    <string name="mx_tagline_top">ROLEPLAY</string>
+    <string name="mx_tagline_bottom">SUA HISTÓRIA\nCOMEÇA AQUI</string>
+    <string name="mx_menu_home">INÍCIO</string>
+    <string name="mx_menu_servers">SERVIDORES</string>
+    <string name="mx_menu_news">NOTÍCIAS</string>
+    <string name="mx_menu_settings">CONFIGURAÇÕES</string>
+    <string name="mx_menu_community">COMUNIDADE</string>
+    <string name="mx_menu_exit">SAIR</string>
+    <string name="mx_servers_title">SERVIDORES</string>
+    <string name="mx_servers_subtitle">Escolha um servidor para jogar</string>
+    <string name="mx_refresh">ATUALIZAR</string>
+    <string name="mx_connect">CONECTAR</string>
+    <string name="mx_tab_official">Oficial</string>
+    <string name="mx_tab_favorites">Favoritos</string>
+    <string name="mx_add_server">ADICIONAR SERVIDOR</string>
+    <string name="mx_hint_default">Toque em um servidor para selecioná-lo e depois em CONECTAR.</string>
+    <string name="mx_hint_selected">Servidor selecionado: %1$s</string>
+    <string name="mx_hint_loading">Consultando o servidor…</string>
+    <string name="mx_hint_error">Não foi possível obter a lista de servidores. Toque em ATUALIZAR.</string>
+    <string name="mx_status_online">ONLINE</string>
+    <string name="mx_status_offline">OFFLINE</string>
+    <string name="mx_status_error">ERRO DE CONEXÃO</string>
+    <string name="mx_status_checking">VERIFICANDO</string>
+    <string name="mx_footer_client">CLIENTE</string>
+    <string name="mx_footer_client_updated">Atualizado • %1$s</string>
+    <string name="mx_footer_client_unknown">Versão %1$s</string>
+    <string name="mx_footer_server">SERVIDOR</string>
+    <string name="mx_footer_follow">NOS SIGA</string>
+    <string name="mx_music_title">Máximo RP - Tema Oficial</string>
+    <string name="mx_music_subtitle">Roleplay é aqui!</string>
+    <string name="mx_music_error">Não foi possível reproduzir a música.</string>
+    <string name="mx_connect_select_first">Selecione um servidor válido antes de conectar.</string>
+    <string name="mx_connect_wait">Aguarde a consulta terminar ou toque em ATUALIZAR.</string>
+    <string name="mx_connect_offline_title">Servidor sem resposta</string>
+    <string name="mx_connect_offline_msg">O servidor não respondeu à consulta. Deseja tentar conectar mesmo assim?</string>
+    <string name="mx_connect_anyway">Conectar</string>
+    <string name="mx_cancel">Cancelar</string>
+    <string name="mx_exit_title">Sair do launcher</string>
+    <string name="mx_exit_msg">Deseja fechar o Máximo RP?</string>
+    <string name="mx_exit_yes">Sair</string>
+    <string name="mx_home_welcome">Bem-vindo ao Máximo RP</string>
+    <string name="mx_home_text">Escolha seu servidor, ajuste suas configurações e entre na cidade.</string>
+    <string name="mx_home_go_servers">VER SERVIDORES</string>
+    <string name="mx_community_title">COMUNIDADE</string>
+    <string name="mx_community_subtitle">Canais oficiais do Máximo RP</string>
+    <string name="mx_community_empty">Nenhum canal configurado ainda.\nPreencha os links em res/values/maximo_links.xml.</string>
+    <string name="mx_news_title">NOTÍCIAS</string>
+    <string name="mx_news_subtitle">Avisos e novidades recebidos</string>
+    <string name="mx_news_empty">Nenhuma notícia recebida ainda.</string>
+    <string name="mx_news_clear">LIMPAR</string>
+    <string name="mx_settings_title">CONFIGURAÇÕES</string>
+    <string name="mx_settings_subtitle">Ajustes do jogo e do launcher</string>
+
+    <!-- Atualizacao / download -->
+    <string name="mx_update_title_data">Baixando dados do jogo</string>
+    <string name="mx_update_title_game">Atualizando o jogo</string>
+    <string name="mx_update_title_install">Instalando…</string>
+    <string name="mx_update_title_check">Verificando atualizações…</string>
+    <string name="mx_update_music_on">Música ligada</string>
+    <string name="mx_update_music_off">Música desligada</string>
+    <string name="mx_update_hint">Mantenha o aplicativo aberto durante o download.</string>
+
+    <!-- Notificacoes -->
+    <string name="mx_channel_news">Notícias</string>
+    <string name="mx_channel_news_desc">Avisos e novidades do Máximo RP</string>
+    <string name="mx_channel_updates">Atualizações</string>
+    <string name="mx_channel_updates_desc">Novas versões do launcher e do jogo</string>
+    <string name="mx_channel_events">Eventos</string>
+    <string name="mx_channel_events_desc">Eventos e convites do servidor</string>
+    <string name="mx_channel_download">Downloads</string>
+    <string name="mx_channel_download_desc">Progresso de download e instalação</string>
+    <string name="mx_notif_open">Abrir</string>
+    <string name="mx_notif_open_launcher">Abrir launcher</string>
+    <string name="mx_notif_download_title">Baixando atualização</string>
+    <string name="mx_notif_download_done_title">Atualização concluída</string>
+    <string name="mx_notif_download_done_text">O Máximo RP está pronto para jogar.</string>
+    <string name="mx_notif_default_title">Máximo RP</string>
+</resources>

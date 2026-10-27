@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Links sociais OFICIAIS do Maximo RP. Deixe vazio ("") para ocultar o icone/botao.
+  Somente URLs http:// ou https:// sao abertas. Nenhum valor foi inventado: preencha com os seus.
+-->
+<resources>
+    <string name="mx_link_discord" translatable="false"></string>
+    <string name="mx_link_instagram" translatable="false"></string>
+    <string name="mx_link_youtube" translatable="false"></string>
+    <string name="mx_link_tiktok" translatable="false"></string>
+    <string name="mx_link_site" translatable="false"></string>
+</resources>

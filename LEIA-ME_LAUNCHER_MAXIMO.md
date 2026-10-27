@@ -1,69 +1,54 @@
-# Launcher Máximo RP — nova tela de Servidores (landscape)
+# Launcher Máximo RP — tela de Servidores (landscape), música, download redondo e notificações
 
 ## O que mudou
-**Tela principal (`activity_main.xml`)**: cabeçalho com a logo + título da página + botão ATUALIZAR; menu lateral
-(Início, Servidores, Notícias, Configurações, Comunidade, Sair); painel central (o mesmo `ViewPager`
-`fragment_place`); rodapé com música, volume, versão do cliente, estado do servidor e redes sociais.
-Tudo é componente Android (`Button`, `TextView`, `SeekBar`, `RecyclerView`...). As imagens (`mx_bg_launcher`,
-`mx_bg_character`, `mx_logo`) são só decoração.
+**Orientação**: MainActivity, SplashActivity e UpdateActivity agora são `sensorLandscape` (o jogo SAMP já era landscape).
+Tela cheia imersiva, recortes (notch) respeitados via `LauncherUi`.
 
-**Reaproveitado**: `MainActivity` (mesma lógica de `servers.json` + consulta UDP), `ServersFragment`,
-`ServerPagesItemFragment`, `ServerAdapter`, `ServerInformationFragment`, `FavouriteServerAdapter`,
-`HomeFragment`, `SettingsFragment` e os IDs existentes (`fragment_place`, `server_recycler`, `server_item_layout`...).
-
-| Arquivo | Alteração |
+**Tela principal (`activity_main.xml`)** – componentes separados, nada de imagem de UI achatada:
+| Componente | Arquivo |
 |---|---|
-| `AndroidManifest.xml` | `MainActivity` agora `sensorLandscape` (antes `portrait`) |
-| `MainActivity.java` | menu lateral, rodapé, `showPage()`, `refreshAll()`, imersivo + recuo de notch |
-| `ServerAdapter.java` | usa o cartão novo `server_card.xml` |
-| `ServerInformationFragment.java` | Connect passou a chamar `ServerConnector` (lógica idêntica) |
-| `HomeFragment.java` | botão que abre Servidores (links sociais foram para o rodapé) |
-| novos | `ServerConnector`, `MusicController`, `SocialLinks`, `NewsFragment` |
-| layouts | `activity_main`, `fragment_servers`, `fragment_internet`, `fragment_home`, `fragment_news`, `fragment_settings` (agora em `ScrollView`), novo `server_card` |
+| Fundo cinematográfico (personagem + cidade, ancorado topo-direita) | `util/HeroImageView`, `drawable-nodpi/maximo_bg_hero.webp` |
+| Cabeçalho + logo | `layout/mx_header.xml`, `drawable-nodpi/maximo_logo.png` |
+| Menu lateral (Início, Servidores, Notícias, Configurações, Comunidade, Sair) | `layout/mx_menu_item.xml` + `MainActivity.buildSidebar()` |
+| Painel de Servidores (abas Oficial/Favoritos, ATUALIZAR, barra CONECTAR) | `layout/fragment_servers.xml`, `fragments/ServersFragment` |
+| Cartão do servidor | `layout/server_item.xml`, `adapters/ServerCardBinder` (usado por `ServerAdapter` e `FavouriteServerAdapter`) |
+| Rodapé: player, volume, versão do cliente, estado do servidor, redes | `layout/mx_footer.xml` |
+| Notícias / Comunidade / Início / Configurações | `NewsFragment`, `CommunityFragment`, `HomeFragment`, `fragment_settings.xml` (mesmos IDs) |
 
-Os originais substituídos estão em `backup_originais/launcher_ui_antes/`.
+**Regras atendidas**
+- Reaproveitados: Activities, `ViewPagerAdapter`, `ServersFragment`, `ServerPagesItemFragment`, adaptadores, IDs antigos (`textView6`, `online_text`, `password`, `tabLayout_servers`, `viewPager_servers`, `fragment_place`…).
+- **Atualizar**: refaz a consulta real (`servers.json` + query UDP SA‑MP) e recarrega favoritos **limpando a lista antes** (sem duplicar).
+- **Conectar**: chama `ServerInformationFragment.launchGame()` — o mesmo fluxo original (grava `settings.ini`, confere `Text/` e `Textures/`, abre `SAMP`). Se o servidor estiver OFFLINE pede confirmação; se ainda verificando, avisa.
+- **Nada inventado**: jogadores, ping, modalidade, idioma e senha só aparecem quando a consulta respondeu (senão `--`). Status: ONLINE / OFFLINE / ERRO DE CONEXÃO / VERIFICANDO conforme o resultado real. Endereço e porta vêm do `servers.json`.
+- Cliente: mostra a `versionName` real; "Atualizado" só se o Splash concluiu sem atualização pendente (`Config.clientUpToDate`).
+- Redes sociais: só aparecem as preenchidas em `res/values/maximo_links.xml` (vêm **vazias**). Os links antigos hardcoded do desenvolvedor original (bit.ly/discord/samp-mobile.shop) e o botão "ADD SERVER" (anúncio de venda de vaga) foram removidos.
 
-## Comportamento (regras do pedido)
-- **Atualizar** baixa o `servers.json` e refaz a consulta UDP real. A lista principal é *substituída* e a de
-  favoritos é limpa antes de recarregar: não duplica. O botão fica bloqueado enquanto consulta (destrava sozinho em 15 s).
-- **Estado exibido** = resultado real: `ONLINE`, `OFFLINE` (consultou e não respondeu), `ERRO DE CONEXÃO`
-  (não conseguiu obter o `servers.json`) ou `VERIFICANDO...`.
-- **Jogadores, ping e modalidade** só aparecem quando a consulta devolveu; caso contrário mostra `—`.
-- **Conectar** usa `ServerConnector`, cópia fiel do fluxo antigo: grava host/porta em `SAMP/settings.ini`, confere
-  os arquivos do jogo e abre `SAMP.class`. Fica desabilitado enquanto não há servidor real (carregando/erro).
-  Tocar no cartão abre o diálogo de detalhes original.
-- A etapa de **atualização do cliente** continua na `SplashActivity`/`UpdateActivity`, antes de chegar aqui.
+## Música
+`util/MaximoMusic` (singleton): reproduz/pausa, anterior/próxima, volume (SeekBar) e mudo; persiste volume e liga/desliga; foco de áudio; continua entre Splash → Download → Launcher; pausa em segundo plano; **é liberada antes de abrir o jogo** (`launchGame` e diálogo de favoritos).
+> A faixa `res/raw/maximo_theme.ogg` é um **placeholder sintetizado por mim** (loop ~44 s). Troque pelo seu tema oficial mantendo o nome `maximo_theme.ogg`. O título exibido está em `mx_music_title`.
+
+## Download/atualização com anel redondo
+`activity_update.xml` + `UpdateActivity`: anel de progresso (`mx_ring_progress.xml`, escala 0–1000, porcentagem no centro), anel girando quando o total é desconhecido, música com botão liga/desliga, nome do arquivo e contador. Mantidos os IDs usados pelo código (`download_progress`, `fileProgressPercent`, `fileName`, `fileCount`, `installation_text`, `gpu`). O Splash também usa o anel girando.
+
+## Notificações novas
+`NotificationHelper` / `FirebaseMessageReceiver` / `NotificationStore`:
+- Canais: Notícias, Atualizações, Eventos, Downloads (o canal antigo `web_app_channel` é removido).
+- Visual próprio (RemoteViews escuros `notification.xml` / `notification_big.xml`, ícone `mx_ic_stat`, banner opcional), ação **Abrir** (URL http/https) e **Abrir launcher**.
+- `PendingIntent` com `FLAG_IMMUTABLE` (o código antigo usava só `FLAG_ONE_SHOT` e quebra no Android 12+).
+- Permissão `POST_NOTIFICATIONS` pedida uma vez no Android 13+.
+- Notificação de progresso do download e de "atualização concluída".
+- Histórico real na aba **Notícias**.
+
+Payload FCM recomendado (somente `data`, funciona com o app fechado):
+`{"title":"…","message":"…","image":"https://…","type":"news|update|event","url":"https://…"}`
 
 ## Compilar
-1. Android Studio (Hedgehog ou mais novo) com **JDK 17**; abra a pasta `2.10-OpenSource`. O projeto usa Gradle 8.9 e AGP 8.2.1.
-2. *Sync Project with Gradle Files*.
-3. Linha de comando: `./gradlew assembleDebug` (ou `assembleRelease`). O APK sai em `app/build/outputs/apk/`.
-4. **Assine com o keystore do projeto** (já configurado em `app/build.gradle`). O `SignatureChecker` recusa
-   APK assinado com outra chave ("Use original launcher!").
-5. Instale no aparelho e abra. A tela entra direto em **Servidores**.
+```
+cd 2.10-OpenSource
+./gradlew assembleDebug        # ou: ./gradlew assembleRelease  (arm64-v8a conforme seu build.gradle)
+```
+Requer Android SDK/JDK do projeto original. Para os links sociais, edite `app/src/main/res/values/maximo_links.xml`.
 
-## O que você precisa configurar (nada disso foi inventado)
-- **Links sociais**: `res/values/social_links.xml` (Discord, YouTube, Instagram, site). Vazio = ícone oculto.
-  O menu *Comunidade* abre o Discord (ou o site, se for o único configurado).
-- **Servidor/endereço**: `res/values/endpoints.xml` ainda aponta para IP de LAN de desenvolvimento
-  (`http://192.168.1.83:8080`). Crie `app/src/release/res/values/endpoints.xml` com a URL real (de preferência HTTPS).
-- **Música**: coloque a faixa em `res/raw/launcher_music.mp3` (ou .ogg). Sem o arquivo, play/volume ficam
-  desabilitados e o rodapé mostra "Sem faixa de música". Não toca sozinha; pausa ao sair do primeiro plano.
-- **Notícias**: a aba mostra estado vazio até existir uma fonte real.
-- **Personagem**: `res/drawable-nodpi/mx_bg_character.webp` é uma silhueta provisória. Troque pela arte final
-  (PNG/WebP com fundo transparente, mesmo nome, ~1000 px de altura).
-- **Logo**: `mx_logo.webp` foi extraída da arte de divulgação. Se tiver o arquivo original em alta, substitua.
-
-## Testar
-- Tamanhos: 16:9, 18:9, 20:9 e um aparelho com notch, sempre em landscape.
-- Servidor online → chip verde, jogadores/ping reais. Servidor desligado → `OFFLINE`.
-  `servers.json` inacessível → `ERRO DE CONEXÃO` e dica para atualizar.
-- Toque em ATUALIZAR várias vezes: continua um único cartão.
-- Conectar: o jogo (GTA SA + SA-MP) abre e o launcher fecha, como antes.
-
-## Observações
-- O botão "ADD SERVER" da aba Servidores era um anúncio do autor original (contato de terceiros); ficou oculto
-  (o id foi mantido porque o código o referencia).
-- Não foi possível compilar aqui (sem Android SDK/Gradle). Foram verificados: XML bem-formado, sintaxe Java,
-  existência de todos os recursos referenciados e os testes de unidade existentes do launcher (12/12).
-  A primeira compilação no seu ambiente é a validação final.
+## ⚠ Estado da validação
+Neste ambiente **não há Android SDK nem rede**, então **não compilei o APK nem testei em aparelho**. Foi feito: XML 100% bem-formado, checagem cruzada de todos os recursos (`@drawable/@string/@id/R.*`) e balanço de chaves em todos os `.java` alterados. Faça o primeiro build e me envie qualquer erro. Pontos a conferir em aparelho: diálogos `alertdialog_server`/`addserver` (dimensões em sdp pensadas para retrato), altura do menu em telas de 360 dp, tema do `SettingsFragment`.
+O fundo/logo/banner foram **extraídos da sua imagem** (fundo recomposto só com as áreas sem UI; banner do servidor tem resolução baixa, 224×98 px da referência).
