@@ -63,45 +63,57 @@ public class ServerAdapter extends RecyclerView.Adapter<ServerAdapter.ViewHolder
     @Override
     public void onBindViewHolder(ViewHolder holder, int position) {
 
-        this.position = holder.getAdapterPosition();
+        this.position = position;
+        final ArrayList<SAMPServerInfo> list = ((MainActivity)mContext).getServerList();
+        if (position < 0 || position >= list.size()) return;
+        final SAMPServerInfo info = list.get(position);
 
-        /*new Thread(new Runnable() {
-                public void run() {
-                    new ProcessInfo().execute(Integer.valueOf(holder.getAdapterPosition()));
+        // Linha de estado (sem servidor real): carregando ou erro recuperavel.
+        final boolean placeholder = info.getServerStatus() == SAMPServerInfo.Status.ERROR
+                || (info.getServerStatus() == SAMPServerInfo.Status.LOADING && info.getPort() == 0);
+        if (placeholder) {
+            holder.mPassword.setImageResource(R.drawable.ic_password_off);
+            holder.mServerNameText.setText(info.getServerName());
+            holder.mOnlineText.setText(info.getServerStatus() == SAMPServerInfo.Status.ERROR ? "Error" : "Loading...");
+            holder.mServerIP.setText(info.getAddress());
+            holder.mMode.setText("");
+            holder.mLayout.setOnTouchListener(new ButtonAnimator(mContext, holder.mLayout));
+            holder.mLayout.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                    if (info.getServerStatus() == SAMPServerInfo.Status.ERROR) {
+                        ((MainActivity) mContext).getServersInfo(); // tentar novamente
+                    }
                 }
-            }).start();*/
+            });
+            return;
+        }
 
-        if (!mServersInfo.get(holder.getAdapterPosition()).getHasPassword())
+        if (!info.getHasPassword())
             holder.mPassword.setImageResource(R.drawable.ic_password_off);
         else
             holder.mPassword.setImageResource(R.drawable.ic_password_on);
 
-        holder.mServerNameText.setText(mServersInfo.get(holder.getAdapterPosition()).getServerName());
+        holder.mServerNameText.setText(info.getServerName());
 
-        holder.mOnlineText.setText(mServersInfo.get(holder.getAdapterPosition()).getCurrentPlayerCount() + "/" + mServersInfo.get(holder.getAdapterPosition()).getMaxPlayerCount());
-        holder.mServerIP.setText("Adress: " + mServersInfo.get(holder.getAdapterPosition()).getAddress());
-        holder.mMode.setText("Mode: " + mServersInfo.get(holder.getAdapterPosition()).getServerMode());
+        holder.mOnlineText.setText(info.getStatusText());
+        holder.mServerIP.setText("Adress: " + info.getAddress() + ":" + info.getPort());
+        holder.mMode.setText("Mode: " + info.getServerMode());
 
         holder.mLayout.setOnTouchListener(new ButtonAnimator(mContext, holder.mLayout));
         holder.mLayout.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                ServerInformationFragment newInstance = new ServerInformationFragment((Activity) mContext, ServerAdapter.this, holder.getAdapterPosition(), mServersInfo.get(holder.getAdapterPosition()));
-        /*newInstance.setEnterTransition(new Fade());
-        if (holder.itemView.getContext() != null) {
-            ((MainActivity) holder.itemView.getContext()).getSupportFragmentManager().beginTransaction().replace(R.id.main_layout, newInstance).addToBackStack(null).commit();
-        }*/
-                //StartAppAd.showAd(mContext);
+                ServerInformationFragment newInstance = new ServerInformationFragment((Activity) mContext, ServerAdapter.this, holder.getAdapterPosition(), info);
                 newInstance.show();
-
             }
         });
 
-        holderPosition.put(Integer.valueOf(holder.getAdapterPosition()), new Pair<>(mServersInfo.get(holder.getAdapterPosition()).getAddress(), Integer.valueOf(mServersInfo.get(holder.getAdapterPosition()).getPort())));
+        holderPosition.put(Integer.valueOf(position), new Pair<>(info.getAddress(), Integer.valueOf(info.getPort())));
     }
 
     public void refreshServers() {
-        mServersInfo.clear();
+        // mServersInfo pode apontar para a lista compartilhada: nunca limpar aqui.
         getLocalServers();
         notifyDataSetChanged();
     }
@@ -112,7 +124,6 @@ public class ServerAdapter extends RecyclerView.Adapter<ServerAdapter.ViewHolder
 
     @Override
     public int getItemCount() {
-        Log.d("AXL" , "size: " + ((MainActivity)mContext).getServerList().size());
         return ((MainActivity)mContext).getServerList().size();
     }
 

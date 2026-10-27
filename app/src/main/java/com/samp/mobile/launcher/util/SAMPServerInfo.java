@@ -27,9 +27,32 @@ public final class SAMPServerInfo implements Parcelable {
         CUSTOM
     }
 
+    /** OFFLINE/ONLINE mantem os ordinais originais; LOADING/ERROR foram acrescentados ao final. */
     public enum Status {
         OFFLINE,
-        ONLINE
+        ONLINE,
+        LOADING,
+        ERROR
+    }
+
+    /**
+     * Texto de status para a lista "Hosted". So mostra contagem de jogadores quando o servidor
+     * foi realmente consultado (ONLINE) e a consulta devolveu os numeros (>= 0).
+     */
+    public final String getStatusText() {
+        switch (serverStatus) {
+            case ONLINE:
+                if (currentPlayerCount >= 0 && maxPlayerCount >= 0) {
+                    return currentPlayerCount + "/" + maxPlayerCount;
+                }
+                return "Online";
+            case LOADING:
+                return "Checking...";
+            case ERROR:
+                return "Error";
+            default:
+                return "Offline";
+        }
     }
 
     public int describeContents() {

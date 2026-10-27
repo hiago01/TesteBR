@@ -33,6 +33,9 @@ public final class SampQueryAPI {
     /* renamed from: f */
     public boolean f7282f = true;
 
+    /** RTT real (ms) do ultimo "ping" bem-sucedido em mo7166d(); -1 se nao medido. */
+    public int lastPingMs = -1;
+
     public SampQueryAPI(String str, int i) {
         try {
             InetAddress byName = InetAddress.getByName(str);
@@ -53,6 +56,9 @@ public final class SampQueryAPI {
 
     /* renamed from: a */
     public static String m5851a(int i, ByteBuffer byteBuffer) throws UnsupportedEncodingException {
+        if (i < 0 || i > byteBuffer.remaining()) {
+            throw new IllegalArgumentException("invalid string length in query reply");
+        }
         byte[] bArr = new byte[i];
         for (int i2 = 0; i2 < i; i2++) {
             try {
@@ -84,6 +90,7 @@ public final class SampQueryAPI {
                 try {
                     datagramSocket.receive(datagramPacket);
                 } catch (IOException unused2) {
+                    return null; // timeout/erro: nao interpretar buffer vazio como resposta
                 }
                 bArr = datagramPacket.getData();
             }
@@ -139,7 +146,9 @@ public final class SampQueryAPI {
         bArr[2] = (byte) (bArr[2] % Byte.MIN_VALUE);
         bArr[3] = (byte) ((bArr[3] % 50) & 255);
         byte[] bArr2 = null;
+        lastPingMs = -1;
         try {
+            long startNs = System.nanoTime();
             DatagramPacket c = mo7165c("p".concat(new String(bArr, "windows-1251")));
             if (datagramSocket != null) {
                 try {
@@ -154,12 +163,17 @@ public final class SampQueryAPI {
                 try {
                     datagramSocket.receive(datagramPacket);
                 } catch (IOException unused2) {
+                    return false; // sem resposta dentro do timeout
                 }
                 data = datagramPacket.getData();
             }
             bArr2 = data;
+            lastPingMs = (int) ((System.nanoTime() - startNs) / 1000000L);
         } catch (UnsupportedEncodingException e) {
             e.printStackTrace();
+        }
+        if (bArr2 == null) {
+            return false;
         }
         if (bArr2[10] == 112 && bArr2[11] == bArr[0] && bArr2[12] == bArr[1] && bArr2[13] == bArr[2] && bArr2[14] == bArr[3]) {
             return true;

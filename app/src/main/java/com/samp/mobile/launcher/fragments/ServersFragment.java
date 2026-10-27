@@ -74,5 +74,8 @@ public class ServersFragment extends Fragment {
             viewPager2.setAdapter(sa);
             tabLayout.setupWithViewPager(viewPager2);
         }
+        if (getActivity() instanceof MainActivity) {
+            ((MainActivity) getActivity()).reloadServersIfNeeded();
+        }
     }
 }

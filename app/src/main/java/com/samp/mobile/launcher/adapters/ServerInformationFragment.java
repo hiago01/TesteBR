@@ -83,7 +83,7 @@ public class ServerInformationFragment extends Dialog {
 
         mIP.setText(sampServerInfo.getAddress());
         mPort.setText(String.valueOf(sampServerInfo.getPort()));
-        mOnlineServer.setText(sampServerInfo.getCurrentPlayerCount() + "/" + sampServerInfo.getMaxPlayerCount());
+        mOnlineServer.setText(sampServerInfo.getStatusText());
         mMode.setText(sampServerInfo.getServerMode());
 
         mLanguage.setText(sampServerInfo.getLanguage());

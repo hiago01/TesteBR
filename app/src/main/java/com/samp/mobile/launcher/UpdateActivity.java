@@ -2,6 +2,7 @@ package com.samp.mobile.launcher;
 
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.net.Uri;
@@ -15,6 +16,7 @@ import android.os.IBinder;
 import android.os.Message;
 import android.os.Messenger;
 import android.os.RemoteException;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.WindowManager;
 import android.widget.ProgressBar;
@@ -22,6 +24,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.content.FileProvider;
@@ -48,6 +51,9 @@ public class UpdateActivity extends AppCompatActivity{
     boolean mIsStartingUpdate = false;
 
     private boolean mIsBind;
+
+    private static final int REQ_UNKNOWN_SOURCES = 2;
+    private boolean mErrorDialogShowing = false;
 
     public enum UpdateMode {
         Undefined,
@@ -145,6 +151,9 @@ public class UpdateActivity extends AppCompatActivity{
                     }
                 }
             }
+            else if (msg.what == 6) {
+                showUpdateError(msg.getData().getString("error", "Update failed"));
+            }
             else if (msg.what == 1) {
                 Log.i("UpdateActivity", "UpdateService.UPDATE_GAME");
                 ((TextView)findViewById(R.id.installation_text)).setText("Installation...");
@@ -156,34 +165,73 @@ public class UpdateActivity extends AppCompatActivity{
         }
     }
 
+    /** Erro recuperavel vindo do servico: tentar de novo (nova verificacao) ou seguir para o launcher. */
+    void showUpdateError(String text)
+    {
+        if (isFinishing() || isDestroyed() || mErrorDialogShowing) return;
+        mErrorDialogShowing = true;
+        new AlertDialog.Builder(this)
+                .setMessage(text + "\nCheck your connection and try again.")
+                .setCancelable(false)
+                .setPositiveButton("Retry", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        mErrorDialogShowing = false;
+                        mIsStartingUpdate = false; // permite que o novo ciclo dispare a mensagem 1
+                        ProgressBar progressBar = findViewById(R.id.download_progress);
+                        if (progressBar != null) progressBar.setIndeterminate(true);
+                        if (mService != null) {
+                            Message obtain = Message.obtain((Handler) null, mUpdateMode == UpdateMode.GameUpdate ? 2 : 7);
+                            obtain.getData().putInt("gputype", mGpuType);
+                            obtain.replyTo = mMessenger;
+                            try {
+                                mService.send(obtain);
+                            } catch (RemoteException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                    }
+                })
+                .setNegativeButton("Continue", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        mErrorDialogShowing = false;
+                        startActivity(new Intent(UpdateActivity.this, MainActivity.class));
+                        finish();
+                    }
+                })
+                .show();
+    }
+
     void requestInstallGame()
     {
         Log.d("x1y2z", "request install game");
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        // Android 8+: instalar APK exige "Instalar apps desconhecidos" para este app.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !getPackageManager().canRequestPackageInstalls()) {
+            Toast.makeText(this, "Allow \"Install unknown apps\" for this app to finish the update.", Toast.LENGTH_LONG).show();
+            Intent settings = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()));
+            try {
+                startActivityForResult(settings, REQ_UNKNOWN_SOURCES); // ao voltar: onActivityResult
+            } catch (RuntimeException e) {
+                Log.e("x1y2z", "cannot open unknown-sources settings", e);
+                startActivity(new Intent(this, MainActivity.class));
+                finish();
+            }
+            return;
+        }
+
+        try {
             Uri uri = FileProvider.getUriForFile(getApplicationContext(),
-                    getApplicationContext().getApplicationContext().getPackageName() + ".provider", mGameApk);
+                    getApplicationContext().getPackageName() + ".provider", mGameApk);
             Intent intent = new Intent(Intent.ACTION_VIEW);
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             intent.setDataAndType(uri, "application/vnd.android.package-archive");
             startActivity(intent);
-
-        } else if(Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-            Uri apkUri = Uri.fromFile(mGameApk);
-            Intent intent = new Intent(Intent.ACTION_VIEW);
-            intent.setDataAndType(apkUri,
-                    "application/vnd.android.package-archive");
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(intent);
-        }
-        else {
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    Toast.makeText(UpdateActivity.this, "Error, while installing apk. Reenter to the launcher.", Toast.LENGTH_LONG).show();
-                }
-            });
+        } catch (RuntimeException e) {
+            Log.e("x1y2z", "install intent failed", e);
+            Toast.makeText(UpdateActivity.this, "Error, while installing apk. Reenter to the launcher.", Toast.LENGTH_LONG).show();
         }
     }
 
@@ -191,6 +239,17 @@ public class UpdateActivity extends AppCompatActivity{
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         Log.i("UpdateActivity", "onActivityResult -> code quest: " + resultCode + ", resultCode: " + data);
+        if (requestCode == REQ_UNKNOWN_SOURCES) {
+            // Retorno das configuracoes do Android: tenta instalar de novo se agora esta permitido.
+            if (getPackageManager().canRequestPackageInstalls() && mGameApk != null && mGameApk.exists()) {
+                requestInstallGame();
+            } else {
+                Toast.makeText(this, "Update not installed: permission was not granted.", Toast.LENGTH_LONG).show();
+                startActivity(new Intent(this, MainActivity.class));
+                finish();
+            }
+            return;
+        }
         if (requestCode == 0) {
             if (mGameApk != null && mGameApk.exists()) {
                 mGameApk.delete();
@@ -221,7 +280,7 @@ public class UpdateActivity extends AppCompatActivity{
             public void onSurfaceCreated(GL10 gl10, EGLConfig eglConfig) {
                 eGPUType egputype;
                 String glGetString = gl10.glGetString(GL10.GL_EXTENSIONS);
-                String glGetString2 = gl10.glGetString(GL10.GL_EXTENSIONS);
+                String glGetString2 = glGetString == null ? "" : glGetString;
                 if (glGetString2.contains("GL_IMG_texture_compression_pvrtc")) {
                     egputype = eGPUType.PVR;
                     mGpuType = 3;
@@ -235,7 +294,14 @@ public class UpdateActivity extends AppCompatActivity{
                 Log.e("x1y2z", "GPU name: " + glGetString);
                 Log.e("x1y2z", "GPU type: " + egputype.name());
 
-                mUpdateMode = UpdateMode.valueOf(getIntent().getStringExtra("mode"));
+                try {
+                    mUpdateMode = UpdateMode.valueOf(getIntent().getStringExtra("mode"));
+                } catch (IllegalArgumentException | NullPointerException e) {
+                    Log.e("x1y2z", "UpdateActivity started without a valid mode");
+                    startActivity(new Intent(UpdateActivity.this, MainActivity.class));
+                    finish();
+                    return;
+                }
 
                 if (mService == null) {
                     Intent intent = new Intent(UpdateActivity.this, UpdateService.class);

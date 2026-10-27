@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Endpoints do launcher (fonte unica). NAO espalhe URLs pelas classes: use AppEndpoints.java.
+
+  Valores abaixo = AMBIENTE DE DESENVOLVIMENTO (IP privado de LAN, HTTP, porta 8080),
+  exatamente os que estavam fixos no codigo original. Para PRODUCAO crie
+  app/src/release/res/values/endpoints.xml com os mesmos nomes e URLs reais (de preferencia HTTPS).
+  Veja LEIA-ME_LAUNCHER_FIX.md.
+-->
+<resources>
+    <!-- Base do servidor HTTP do launcher, sem barra final. -->
+    <string name="endpoint_base_url" translatable="false">http://192.168.1.83:8080</string>
+    <!-- JSON com o servidor exibido (estrutura documentada em docs/servers.example.json). -->
+    <string name="endpoint_servers_path" translatable="false">/servers.json</string>
+    <!-- JSON do atualizador (client_config) com version_code, url_launcher, url_cache_files. -->
+    <string name="endpoint_client_config_path" translatable="false">/client_config.json</string>
+    <!-- Prefixo de download dos arquivos do jogo; recebe o "path" de cada item de url_cache_files. -->
+    <string name="endpoint_files_path" translatable="false">/files/</string>
+</resources>

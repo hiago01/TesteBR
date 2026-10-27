@@ -1,10 +1,17 @@
 package com.samp.mobile.game;
 
+import android.Manifest;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Toast;
+
+import androidx.annotation.NonNull;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 import com.google.firebase.crashlytics.FirebaseCrashlytics;
 import com.joom.paranoid.Obfuscate;
@@ -210,6 +217,38 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
             Log.e(TAG, e5.getMessage());
         }
 
+        requestMicrophoneIfNeeded();
+    }
+
+    private static final int REQ_RECORD_AUDIO = 77;
+
+    /**
+     * RECORD_AUDIO so e usada pelo chat de voz, portanto e pedida aqui (ao entrar no jogo) e nunca
+     * no launcher. E opcional: se negada o jogo segue normalmente, apenas sem voz. Depois de uma
+     * negacao com "nao perguntar novamente" nao insiste (evita dialogo repetido).
+     */
+    public void requestMicrophoneIfNeeded() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        SharedPreferences sp = getSharedPreferences("com.samp.mobile", MODE_PRIVATE);
+        boolean askedBefore = sp.getBoolean("mic_asked", false);
+        if (askedBefore && !ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.RECORD_AUDIO)) {
+            return; // negada permanentemente: so o usuario pode mudar nas configuracoes
+        }
+        sp.edit().putBoolean("mic_asked", true).apply();
+        ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.RECORD_AUDIO}, REQ_RECORD_AUDIO);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQ_RECORD_AUDIO) {
+            boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            if (!granted) {
+                Toast.makeText(this, "Microphone denied: voice chat is disabled.", Toast.LENGTH_LONG).show();
+            }
+        }
     }
 
     private native void initializeSAMP();
