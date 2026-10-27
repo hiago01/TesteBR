@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="mx_menu_home">Início</string>
+    <string name="mx_menu_servers">Servidores</string>
+    <string name="mx_menu_news">Notícias</string>
+    <string name="mx_menu_settings">Configurações</string>
+    <string name="mx_menu_community">Comunidade</string>
+    <string name="mx_menu_exit">Sair</string>
+
+    <string name="mx_title_home">INÍCIO</string>
+    <string name="mx_title_servers">SERVIDORES</string>
+    <string name="mx_title_news">NOTÍCIAS</string>
+    <string name="mx_title_settings">CONFIGURAÇÕES</string>
+
+    <string name="mx_refresh">ATUALIZAR</string>
+    <string name="mx_refreshing">ATUALIZANDO...</string>
+    <string name="mx_connect">CONECTAR</string>
+
+    <string name="mx_status_online">ONLINE</string>
+    <string name="mx_status_offline">OFFLINE</string>
+    <string name="mx_status_error">ERRO DE CONEXÃO</string>
+    <string name="mx_status_checking">VERIFICANDO...</string>
+
+    <string name="mx_label_mode">Modalidade</string>
+    <string name="mx_label_address">Endereço</string>
+    <string name="mx_label_port">Porta</string>
+    <string name="mx_label_players">Jogadores</string>
+    <string name="mx_label_ping">Ping</string>
+    <string name="mx_unknown">—</string>
+    <string name="mx_tap_to_retry">Toque em ATUALIZAR para tentar novamente.</string>
+
+    <string name="mx_footer_server">SERVIDOR</string>
+    <string name="mx_footer_version">Cliente v%1$s</string>
+    <string name="mx_music_none">Sem faixa de música</string>
+    <string name="mx_music_playing">Tocando: %1$s</string>
+    <string name="mx_music_paused">Pausado: %1$s</string>
+    <string name="mx_music_track_name">Trilha do launcher</string>
+
+    <string name="mx_news_empty_title">Nenhuma notícia disponível</string>
+    <string name="mx_news_empty_text">As novidades do servidor aparecerão aqui quando houver uma fonte de notícias configurada.</string>
+
+    <string name="mx_home_welcome">O seu mundo, seu roleplay!</string>
+    <string name="mx_home_sub">Escolha Servidores no menu para jogar.</string>
+    <string name="mx_link_not_configured">Link não configurado.</string>
+    <string name="mx_cd_music_toggle">Reproduzir ou pausar a música</string>
+    <string name="mx_cd_volume">Volume da música</string>
+
+    <string name="mx_loading_server">Carregando servidor...</string>
+    <string name="mx_err_load_list">Não foi possível carregar a lista de servidores (%1$s)</string>
+    <string name="mx_err_invalid_config">Configuração de servidor inválida: %1$s</string>
+    <string name="mx_toast_exit_hint">Sair do launcher</string>
+</resources>

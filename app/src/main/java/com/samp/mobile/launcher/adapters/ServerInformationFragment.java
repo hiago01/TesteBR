@@ -27,6 +27,7 @@ import com.samp.mobile.game.SAMP;
 import com.samp.mobile.launcher.MainActivity;
 import com.samp.mobile.launcher.util.ButtonAnimator;
 import com.samp.mobile.launcher.util.SAMPServerInfo;
+import com.samp.mobile.launcher.util.ServerConnector;
 import com.samp.mobile.launcher.util.SharedPreferenceCore;
 
 import org.ini4j.Wini;
@@ -93,72 +94,9 @@ public class ServerInformationFragment extends Dialog {
         mConnect.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                File file = new File(activity.getExternalFilesDir(null) + "/SAMP/settings.ini");
-                if(file.exists()) {
-                    try {
-                        Wini wini = new Wini(file);
-                        wini.put("client", "host", sampServerInfo.getAddress());
-                        wini.put("client", "port", sampServerInfo.getPort());
-                        wini.store();
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                }
-
-                /*if(new SharedPreferenceCore().getBoolean(getContext(), "MLOADER"))
-                {
-                    File file4 = new File(activity.getExternalMediaDirs() + "/monetloader/compat/profile.json");
-                    Log.d("AXL", activity.getExternalMediaDirs() + "/monetloader/compat/profile.json");
-                    if(file4.isDirectory())
-                    {
-                        file4.delete();
-                    }
-                    else if(!file4.exists())
-                    {
-                        file4.mkdir();
-                        try {
-                            FileWriter writer = new FileWriter(file4);
-                            writer.append("{\n" +
-                                    "  \"gtasa_name\": \"libGTASA.so\",\n" +
-                                    "  \"profile_name\": \"SA-MP 0.3.7\",\n" +
-                                    "  \"compat_scripts\": [],\n" +
-                                    "  \"samp_name\": \"libsamp.so\",\n" +
-                                    "  \"receiveignorerpc_pattern\": \"F0B503AF2DE900????B004460068C16A20468847\",\n" +
-                                    "  \"cnetgame_ctor_pattern\": \"F0B503AF2DE9000788B00D46????9146????0446002079447A44\",\n" +
-                                    "  \"rakclientinterface_netgame_offset\": 528,\n" +
-                                    "  \"use_samp_touch_workaround\": true,\n" +
-                                    "  \"nveventinsertnewest_offset\": 2606320\n" +
-                                    "}");
-                            writer.flush();
-                            writer.close();
-                        } catch (Exception e){
-                            e.printStackTrace();
-                        }
-                    }
-                }*/
-
-                File file1 = new File(activity.getExternalFilesDir(null) + "/Text/american.dxt");
-                if(!file1.exists())
-                {
-                    File file2 = new File(activity.getExternalFilesDir(null) + "/Textures/fonts/RussianFont.png");
-                    if(!file2.exists())
-                    {
-                        Toast.makeText(activity, "Some important files in your modified data are missing, such as \"Text\" and \"Textures\"" +
-                                "Please, fix it and after try again. ( You can get that files in my discord channel )", Toast.LENGTH_LONG).show();
-
-                        dismiss();
-                    }
-                    else {
-                        activity.startActivity(new Intent(activity, SAMP.class));
-                        activity.finish();
-                        dismiss();
-                    }
-                }
-                else {
-                    activity.startActivity(new Intent(activity, SAMP.class));
-                    activity.finish();
-                    dismiss();
-                }
+                // Mesmo fluxo de antes, agora compartilhado com o botao Conectar do cartao.
+                ServerConnector.connect(activity, sampServerInfo);
+                dismiss();
             }
         });
 

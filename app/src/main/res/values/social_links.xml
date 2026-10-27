@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Links sociais do launcher (fonte unica). Preencha com os links REAIS do Maximo RP.
+  Link vazio = o icone correspondente fica oculto no rodape e o botao do menu avisa
+  "Link nao configurado". Nenhum link e inventado aqui.
+-->
+<resources>
+    <string name="social_discord_url" translatable="false"></string>
+    <string name="social_youtube_url" translatable="false"></string>
+    <string name="social_instagram_url" translatable="false"></string>
+    <string name="social_site_url" translatable="false"></string>
+</resources>

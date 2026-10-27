@@ -2,7 +2,10 @@ package com.samp.mobile.launcher;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.pm.PackageManager;
+import android.graphics.PorterDuff;
 import android.os.AsyncTask;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -13,12 +16,20 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.Button;
+import android.widget.ImageButton;
 import android.widget.ImageView;
+import android.widget.SeekBar;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.view.DisplayCutoutCompat;
+import androidx.core.view.OnApplyWindowInsetsListener;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
 import androidx.fragment.app.FragmentPagerAdapter;
@@ -40,14 +51,17 @@ import com.samp.mobile.launcher.config.AppEndpoints;
 import com.samp.mobile.launcher.config.Config;
 import com.samp.mobile.launcher.data.FavoritesInfo;
 import com.samp.mobile.launcher.fragments.HomeFragment;
+import com.samp.mobile.launcher.fragments.NewsFragment;
 import com.samp.mobile.launcher.fragments.ServerPagesItemFragment;
 import com.samp.mobile.launcher.fragments.ServersFragment;
 import com.samp.mobile.launcher.fragments.SettingsFragment;
 import com.samp.mobile.launcher.util.ConfigValidator;
 import com.samp.mobile.launcher.util.SAMPServerInfo;
+import com.samp.mobile.launcher.util.MusicController;
 import com.samp.mobile.launcher.util.SampQueryAPI;
 import com.samp.mobile.launcher.util.ServerConfigParser;
 import com.samp.mobile.launcher.util.SignatureChecker;
+import com.samp.mobile.launcher.util.SocialLinks;
 import com.samp.mobile.launcher.util.ViewPagerWithoutSwipe;
 
 import java.io.File;
@@ -67,6 +81,14 @@ public class MainActivity extends AppCompatActivity {
     private static final int QUERY_ATTEMPTS = 2;
     /** Intervalo minimo entre recargas automaticas (ao abrir a aba Servers). */
     private static final long AUTO_RELOAD_MIN_MS = 5000;
+
+    /** Paginas do ViewPager (mesma ordem de antes; Noticias foi acrescentada ao final). */
+    public static final int PAGE_HOME = 0;
+    public static final int PAGE_SERVERS = 1;
+    public static final int PAGE_SETTINGS = 2;
+    public static final int PAGE_NEWS = 3;
+    /** Se ficar em LOADING alem disso, o botao Atualizar destrava (evita ficar preso). */
+    private static final long REFRESH_LOCK_MAX_MS = 15000;
 
     public String[] tabTitles = { "Servers", "Info", "Settings" };
     public int[] tabImages = { R.drawable.ic_mainmenu, R.drawable.ic_server, R.drawable.ic_settingsmenu};
@@ -89,6 +111,20 @@ public class MainActivity extends AppCompatActivity {
     /** Incrementado a cada (re)carga; respostas de cargas antigas sao descartadas. */
     private int mLoadGeneration = 0;
     private long mLastAttemptMs = 0;
+
+    private ViewPagerWithoutSwipe mPager;
+    private int mCurrentPage = PAGE_SERVERS;
+    private View[] mMenuItems;
+    private Button mBtnRefresh;
+    private TextView mTvTitle;
+    private TextView mTvServerState;
+    private View mDotServerState;
+    private TextView mTvMusic;
+    private ImageButton mBtnMusic;
+    private MusicController mMusic;
+    private final Runnable mUnlockRefresh = new Runnable() {
+        @Override public void run() { updateServerStateUi(); }
+    };
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -118,53 +154,26 @@ public class MainActivity extends AppCompatActivity {
 
         FragmentManager fm = getSupportFragmentManager();
         ViewPagerAdapter sa = new ViewPagerAdapter(fm);
-        ViewPagerWithoutSwipe pa = findViewById(R.id.fragment_place);
-        pa.setAdapter(sa);
+        mPager = findViewById(R.id.fragment_place);
+        mPager.setAdapter(sa);
 
-        TabLayout tabLayout = findViewById(R.id.constraintLayout);
-
-        tabLayout.setupWithViewPager(pa);
-
-        for(int  i = 0; i < tabLayout.getTabCount(); i++)
-        {
-            View inflate = LayoutInflater.from(this).inflate(R.layout.tablayout_item, (ViewGroup) tabLayout, false);
-
-            ImageView image = inflate.findViewById(R.id.imageView2);
-            image.setBackgroundResource(tabImages[i]);
-
-            Objects.requireNonNull(tabLayout.getTabAt(i)).setCustomView(inflate);
-
-            tabLayout.clearOnTabSelectedListeners();
-            tabLayout.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
-                @Override
-                public void onTabSelected(TabLayout.Tab tab) {
-                    getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
-                    pa.setCurrentItem(tab.getPosition(), true);
-                    ((ImageView)tab.getCustomView().findViewById(R.id.imageView2)).setBackgroundResource(tabSelectedImages[tab.getPosition()]);
-                }
-
-                @Override
-                public void onTabUnselected(TabLayout.Tab tab) {
-                    ((ImageView)tab.getCustomView().findViewById(R.id.imageView2)).setBackgroundResource(tabImages[tab.getPosition()]);
-                }
-
-                @Override
-                public void onTabReselected(TabLayout.Tab tab) {
-
-                }
-            });
-
-        }
-        ((ImageView)tabLayout.getTabAt(0).getCustomView().findViewById(R.id.imageView2)).setBackgroundResource(tabSelectedImages[0]);
+        setupImmersiveAndInsets();
+        setupMenu();
+        setupFooter();
+        showPage(PAGE_SERVERS);
 
         getServersInfo();
         getFavoriteServersInfo();
+        updateServerStateUi();
     }
 
     @Override
     protected void onDestroy() {
         mDestroyed = true;
         mMain.removeCallbacksAndMessages(null);
+        if (mMusic != null) {
+            mMusic.release();
+        }
         if (mQueue != null) {
             mQueue.cancelAll(REQUEST_TAG);
             mQueue.stop();
@@ -202,7 +211,9 @@ public class MainActivity extends AppCompatActivity {
         mLastAttemptMs = SystemClock.elapsedRealtime();
         mQueue.cancelAll(REQUEST_TAG);
 
-        setPlaceholder(SAMPServerInfo.Status.LOADING, "Loading server...", "");
+        setPlaceholder(SAMPServerInfo.Status.LOADING, getString(R.string.mx_loading_server), "");
+        mMain.removeCallbacks(mUnlockRefresh);
+        mMain.postDelayed(mUnlockRefresh, REFRESH_LOCK_MAX_MS + 500);
 
         StringRequest request = new StringRequest(Request.Method.GET, AppEndpoints.serversUrl(this), new Response.Listener<String>() {
             @Override
@@ -224,7 +235,7 @@ public class MainActivity extends AppCompatActivity {
                     startStatusQuery(info, gen);
                 } catch (ServerConfigParser.ConfigException e) {
                     Log.w(TAG, "Invalid servers.json: " + e.getMessage());
-                    setPlaceholder(SAMPServerInfo.Status.ERROR, e.getMessage(), "Tap to retry");
+                    setPlaceholder(SAMPServerInfo.Status.ERROR, getString(R.string.mx_err_invalid_config, e.getMessage()), "");
                 }
             }
         }, new Response.ErrorListener() {
@@ -232,7 +243,7 @@ public class MainActivity extends AppCompatActivity {
             public void onErrorResponse(VolleyError error) {
                 if (mDestroyed || gen != mLoadGeneration) return;
                 Log.w(TAG, "servers.json request failed: " + error);
-                setPlaceholder(SAMPServerInfo.Status.ERROR, "Could not load server list (" + describe(error) + ")", "Tap to retry");
+                setPlaceholder(SAMPServerInfo.Status.ERROR, getString(R.string.mx_err_load_list, describe(error)), "");
             }
         }) {
             @Override
@@ -371,6 +382,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         notifyServerPage(1);
+        updateServerStateUi();
     }
 
     private void notifyServerPage(int page) {
@@ -471,6 +483,232 @@ public class MainActivity extends AppCompatActivity {
         notifyServerPage(0);
     }
 
+    // ------------------------------------------------------------------------------------
+    // Interface do launcher (menu lateral, cabecalho, rodape)
+    // ------------------------------------------------------------------------------------
+
+    /** Modo imersivo + recuo lateral para notch/recorte da tela (landscape). */
+    private void setupImmersiveAndInsets() {
+        hideSystemUi();
+        if (Build.VERSION.SDK_INT >= 28) {
+            WindowManager.LayoutParams lp = getWindow().getAttributes();
+            lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            getWindow().setAttributes(lp);
+        }
+        final View safe = findViewById(R.id.mx_safe_area);
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main_layout), new OnApplyWindowInsetsListener() {
+            @Override
+            public WindowInsetsCompat onApplyWindowInsets(View v, WindowInsetsCompat insets) {
+                int left = insets.getSystemWindowInsetLeft();
+                int right = insets.getSystemWindowInsetRight();
+                DisplayCutoutCompat cutout = insets.getDisplayCutout();
+                if (cutout != null) {
+                    left = Math.max(left, cutout.getSafeInsetLeft());
+                    right = Math.max(right, cutout.getSafeInsetRight());
+                }
+                safe.setPadding(left, 0, right, 0);
+                return insets;
+            }
+        });
+    }
+
+    private void hideSystemUi() {
+        getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) hideSystemUi();
+    }
+
+    private void setupMenu() {
+        mTvTitle = findViewById(R.id.tv_page_title);
+        mBtnRefresh = findViewById(R.id.btn_refresh);
+        // Ordem = indice da pagina: Inicio, Servidores, Configuracoes, Noticias.
+        mMenuItems = new View[4];
+        mMenuItems[PAGE_HOME] = findViewById(R.id.menu_home);
+        mMenuItems[PAGE_SERVERS] = findViewById(R.id.menu_servers);
+        mMenuItems[PAGE_SETTINGS] = findViewById(R.id.menu_settings);
+        mMenuItems[PAGE_NEWS] = findViewById(R.id.menu_news);
+
+        for (int i = 0; i < mMenuItems.length; i++) {
+            final int page = i;
+            mMenuItems[i].setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { showPage(page); }
+            });
+        }
+
+        // Comunidade: abre o Discord configurado (ou o site, se so ele estiver configurado).
+        findViewById(R.id.menu_community).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                String url = SocialLinks.discord(MainActivity.this);
+                if (url.isEmpty()) url = SocialLinks.site(MainActivity.this);
+                SocialLinks.open(MainActivity.this, url);
+            }
+        });
+
+        findViewById(R.id.menu_exit).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { finishAffinity(); }
+        });
+
+        mBtnRefresh.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { refreshAll(); }
+        });
+    }
+
+    /** Mostra uma pagina do ViewPager e atualiza menu, titulo e botao Atualizar. */
+    public void showPage(int page) {
+        if (mPager == null || page < 0 || page >= mMenuItems.length) return;
+        mCurrentPage = page;
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+        hideKeyboard(this);
+        mPager.setCurrentItem(page, false);
+        for (int i = 0; i < mMenuItems.length; i++) mMenuItems[i].setSelected(i == page);
+        int title;
+        switch (page) {
+            case PAGE_HOME:     title = R.string.mx_title_home; break;
+            case PAGE_SETTINGS: title = R.string.mx_title_settings; break;
+            case PAGE_NEWS:     title = R.string.mx_title_news; break;
+            default:            title = R.string.mx_title_servers; break;
+        }
+        mTvTitle.setText(title);
+        mBtnRefresh.setVisibility(page == PAGE_SERVERS ? View.VISIBLE : View.GONE);
+    }
+
+    private void setupFooter() {
+        mTvServerState = findViewById(R.id.tv_server_state);
+        mDotServerState = findViewById(R.id.dot_server_state);
+        mTvMusic = findViewById(R.id.tv_music_status);
+        mBtnMusic = findViewById(R.id.btn_music_toggle);
+
+        // Versao do cliente (versionName do APK instalado).
+        String version = "?";
+        try {
+            version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (PackageManager.NameNotFoundException ignored) { }
+        ((TextView) findViewById(R.id.tv_client_version)).setText(getString(R.string.mx_footer_version, version));
+
+        // Links sociais: so aparecem os que estao configurados em social_links.xml.
+        bindSocial(R.id.btn_social_discord, SocialLinks.discord(this));
+        bindSocial(R.id.btn_social_youtube, SocialLinks.youtube(this));
+        bindSocial(R.id.btn_social_instagram, SocialLinks.instagram(this));
+        bindSocial(R.id.btn_social_site, SocialLinks.site(this));
+
+        // Musica local (res/raw/launcher_music.*). Sem a faixa, os controles ficam desabilitados.
+        mMusic = new MusicController(this);
+        SeekBar seek = findViewById(R.id.seek_music_volume);
+        seek.setProgress(mMusic.getVolumePercent());
+        seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+                if (fromUser) mMusic.setVolumePercent(progress);
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) { }
+            @Override public void onStopTrackingTouch(SeekBar bar) { }
+        });
+        mBtnMusic.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { mMusic.toggle(); }
+        });
+        mMusic.setListener(new MusicController.Listener() {
+            @Override public void onMusicStateChanged() { updateMusicUi(); }
+        });
+        boolean has = mMusic.hasTrack();
+        seek.setEnabled(has);
+        mBtnMusic.setEnabled(has);
+        seek.setAlpha(has ? 1f : 0.4f);
+        mBtnMusic.setAlpha(has ? 1f : 0.4f);
+        updateMusicUi();
+    }
+
+    private void bindSocial(int viewId, final String url) {
+        View v = findViewById(viewId);
+        if (url == null || url.isEmpty()) {
+            v.setVisibility(View.GONE);
+            return;
+        }
+        v.setVisibility(View.VISIBLE);
+        v.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View view) { SocialLinks.open(MainActivity.this, url); }
+        });
+    }
+
+    private void updateMusicUi() {
+        if (mMusic == null) return;
+        if (!mMusic.hasTrack()) {
+            mTvMusic.setText(R.string.mx_music_none);
+            mBtnMusic.setImageResource(R.drawable.mx_ic_play);
+            return;
+        }
+        boolean playing = mMusic.isPlaying();
+        String name = getString(R.string.mx_music_track_name);
+        mTvMusic.setText(getString(playing ? R.string.mx_music_playing : R.string.mx_music_paused, name));
+        mBtnMusic.setImageResource(playing ? R.drawable.mx_ic_pause : R.drawable.mx_ic_play);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (mMusic != null) mMusic.onHostPause();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (mMusic != null) mMusic.onHostResume();
+        updateMusicUi();
+    }
+
+    /** True enquanto uma consulta esta em andamento (evita disparar varias ao mesmo tempo). */
+    private boolean isRefreshLocked() {
+        if (mServersList.isEmpty()) return false;
+        return mServersList.get(0).getServerStatus() == SAMPServerInfo.Status.LOADING
+                && SystemClock.elapsedRealtime() - mLastAttemptMs < REFRESH_LOCK_MAX_MS;
+    }
+
+    /**
+     * Botao Atualizar: baixa o servers.json de novo e refaz a consulta UDP real. A lista principal
+     * e SUBSTITUIDA (replaceServer) e a de favoritos e limpa antes de recarregar: nunca duplica.
+     */
+    public void refreshAll() {
+        if (mDestroyed || isRefreshLocked()) return;
+        getServersInfo();
+        reloadFavoriteServers();
+        updateServerStateUi();
+    }
+
+    /** Recarrega os favoritos limpando a lista no proprio lugar (os adapters guardam a referencia). */
+    public void reloadFavoriteServers() {
+        if (mDestroyed) return;
+        mFavoriteServersList.clear();
+        getFavoriteServersInfo();
+    }
+
+    /** Rodape (estado do servidor) e botao Atualizar, sempre refletindo o ultimo resultado REAL. */
+    private void updateServerStateUi() {
+        if (mDestroyed || mTvServerState == null) return;
+        SAMPServerInfo.Status st = mServersList.isEmpty()
+                ? SAMPServerInfo.Status.LOADING : mServersList.get(0).getServerStatus();
+        int text, color;
+        switch (st) {
+            case ONLINE:  text = R.string.mx_status_online;  color = R.color.mx_online;  break;
+            case OFFLINE: text = R.string.mx_status_offline; color = R.color.mx_offline; break;
+            case ERROR:   text = R.string.mx_status_error;   color = R.color.mx_error;   break;
+            default:      text = R.string.mx_status_checking; color = R.color.mx_loading; break;
+        }
+        mTvServerState.setText(text);
+        mDotServerState.getBackground().mutate().setColorFilter(getResources().getColor(color), PorterDuff.Mode.SRC_IN);
+
+        boolean locked = isRefreshLocked();
+        mBtnRefresh.setEnabled(!locked);
+        mBtnRefresh.setText(locked ? R.string.mx_refreshing : R.string.mx_refresh);
+    }
+
     public static void hideKeyboard(Activity activity) {
         InputMethodManager inputManager = (InputMethodManager) activity
                 .getSystemService(Context.INPUT_METHOD_SERVICE);
@@ -497,12 +735,14 @@ public class MainActivity extends AppCompatActivity {
                 return new HomeFragment();
             else if(position == 2)
                 return new SettingsFragment();
+            else if(position == 3)
+                return new NewsFragment();
             return new HomeFragment();
         }
 
         @Override
         public int getCount() {
-            return 3;
+            return 4;
         }
     }
 

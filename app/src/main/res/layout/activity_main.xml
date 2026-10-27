@@ -1,42 +1,512 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Launcher Maximo RP - tela principal (landscape). Todos os controles sao componentes Android;
+     as imagens (fundo, silhueta, logo) sao apenas decoracao e podem ser trocadas sem tocar no codigo. -->
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/main_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:layout_gravity="center"
-    android:background="@color/colorPrimary"
+    android:background="@color/mx_bg_dark"
     android:keepScreenOn="true">
 
-    <com.samp.mobile.launcher.util.ViewPagerWithoutSwipe
-        android:id="@+id/fragment_place"
+    <ImageView
+        android:id="@+id/mx_bg"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:layout_constraintBottom_toTopOf="@+id/constraintLayout"
+        android:importantForAccessibility="no"
+        android:scaleType="centerCrop"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:srcCompat="@drawable/mx_bg_launcher" />
+
+    <!-- Personagem decorativo (substitua mx_bg_character.webp pela arte final, mesmo nome). -->
+    <ImageView
+        android:id="@+id/mx_bg_character"
+        android:layout_width="wrap_content"
+        android:layout_height="0dp"
+        android:layout_marginEnd="@dimen/_14sdp"
+        android:adjustViewBounds="true"
+        android:alpha="0.55"
+        android:importantForAccessibility="no"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHeight_percent="0.82"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="1.0"
+        app:srcCompat="@drawable/mx_bg_character" />
+
+    <View
+        android:id="@+id/mx_scrim"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@drawable/mx_scrim"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <com.google.android.material.tabs.TabLayout
-        android:id="@+id/constraintLayout"
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/_60sdp"
-        app:tabGravity="fill"
-        app:tabIndicatorGravity="top"
-        app:tabIndicatorHeight="@dimen/_5sdp"
-        android:background="@color/colorPrimary"
-        app:tabBackground="@android:color/transparent"
-        app:tabIndicatorColor="#FF0037"
-        app:tabSelectedTextColor="#FF0037"
-        app:tabTextAppearance="@style/tab_layout_title"
-        app:tabTextColor="#AAA9A9"
-        app:tabMode="fixed"
-        app:tabRippleColor="@null"
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/mx_safe_area"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"/>
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
 
+        <!-- CABECALHO: logo + titulo da pagina + Atualizar -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/mx_header"
+            android:layout_width="0dp"
+            android:layout_height="@dimen/_48sdp"
+            android:background="@drawable/mx_header_bg"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <ImageView
+                android:id="@+id/mx_logo"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/_38sdp"
+                android:layout_marginStart="@dimen/_12sdp"
+                android:adjustViewBounds="true"
+                android:contentDescription="Maximo RP"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:srcCompat="@drawable/mx_logo" />
+
+            <TextView
+                android:id="@+id/tv_page_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/_20sdp"
+                android:layout_marginEnd="@dimen/_8sdp"
+                android:ellipsize="end"
+                android:fontFamily="@font/montserrat_black"
+                android:maxLines="1"
+                android:text="@string/mx_title_servers"
+                android:textColor="@color/mx_text"
+                android:textSize="@dimen/_14sdp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toStartOf="@+id/btn_refresh"
+                app:layout_constraintStart_toEndOf="@+id/mx_logo"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <Button
+                android:id="@+id/btn_refresh"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/_30sdp"
+                android:layout_marginEnd="@dimen/_12sdp"
+                android:background="@drawable/mx_btn_primary"
+                android:drawableStart="@drawable/mx_ic_refresh"
+                android:drawablePadding="@dimen/_6sdp"
+                android:drawableTint="@color/mx_text"
+                android:fontFamily="@font/montserrat_bold"
+                android:minWidth="@dimen/_90sdp"
+                android:minHeight="0dp"
+                android:paddingStart="@dimen/_10sdp"
+                android:paddingEnd="@dimen/_12sdp"
+                android:text="@string/mx_refresh"
+                android:textColor="@color/mx_text"
+                android:textSize="@dimen/_9sdp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <!-- MENU LATERAL -->
+        <LinearLayout
+            android:id="@+id/mx_sidebar"
+            android:layout_width="@dimen/_110sdp"
+            android:layout_height="0dp"
+            android:layout_marginStart="@dimen/_12sdp"
+            android:layout_marginTop="@dimen/_6sdp"
+            android:layout_marginBottom="@dimen/_6sdp"
+            android:background="@drawable/mx_sidebar_bg"
+            android:orientation="vertical"
+            android:padding="@dimen/_6sdp"
+            app:layout_constraintBottom_toTopOf="@+id/mx_footer"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/mx_header">
+
+        <LinearLayout
+            android:id="@+id/menu_home"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="@dimen/_2sdp"
+            android:layout_marginBottom="@dimen/_2sdp"
+            android:layout_weight="1"
+            android:background="@drawable/mx_menu_item_bg"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="@dimen/_10sdp"
+            android:paddingEnd="@dimen/_6sdp">
+
+            <ImageView
+                android:layout_width="@dimen/_15sdp"
+                android:layout_height="@dimen/_15sdp"
+                android:importantForAccessibility="no"
+                android:tint="@color/mx_cyan"
+                app:srcCompat="@drawable/mx_ic_home" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/_8sdp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:fontFamily="@font/montserrat_bold"
+                android:maxLines="1"
+                android:text="@string/mx_menu_home"
+                android:textColor="@color/mx_text"
+                android:textSize="@dimen/_9sdp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/menu_servers"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="@dimen/_2sdp"
+            android:layout_marginBottom="@dimen/_2sdp"
+            android:layout_weight="1"
+            android:background="@drawable/mx_menu_item_bg"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="@dimen/_10sdp"
+            android:paddingEnd="@dimen/_6sdp">
+
+            <ImageView
+                android:layout_width="@dimen/_15sdp"
+                android:layout_height="@dimen/_15sdp"
+                android:importantForAccessibility="no"
+                android:tint="@color/mx_cyan"
+                app:srcCompat="@drawable/mx_ic_servers" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/_8sdp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:fontFamily="@font/montserrat_bold"
+                android:maxLines="1"
+                android:text="@string/mx_menu_servers"
+                android:textColor="@color/mx_text"
+                android:textSize="@dimen/_9sdp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/menu_news"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="@dimen/_2sdp"
+            android:layout_marginBottom="@dimen/_2sdp"
+            android:layout_weight="1"
+            android:background="@drawable/mx_menu_item_bg"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="@dimen/_10sdp"
+            android:paddingEnd="@dimen/_6sdp">
+
+            <ImageView
+                android:layout_width="@dimen/_15sdp"
+                android:layout_height="@dimen/_15sdp"
+                android:importantForAccessibility="no"
+                android:tint="@color/mx_cyan"
+                app:srcCompat="@drawable/mx_ic_news" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/_8sdp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:fontFamily="@font/montserrat_bold"
+                android:maxLines="1"
+                android:text="@string/mx_menu_news"
+                android:textColor="@color/mx_text"
+                android:textSize="@dimen/_9sdp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/menu_settings"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="@dimen/_2sdp"
+            android:layout_marginBottom="@dimen/_2sdp"
+            android:layout_weight="1"
+            android:background="@drawable/mx_menu_item_bg"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="@dimen/_10sdp"
+            android:paddingEnd="@dimen/_6sdp">
+
+            <ImageView
+                android:layout_width="@dimen/_15sdp"
+                android:layout_height="@dimen/_15sdp"
+                android:importantForAccessibility="no"
+                android:tint="@color/mx_cyan"
+                app:srcCompat="@drawable/mx_ic_settings" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/_8sdp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:fontFamily="@font/montserrat_bold"
+                android:maxLines="1"
+                android:text="@string/mx_menu_settings"
+                android:textColor="@color/mx_text"
+                android:textSize="@dimen/_9sdp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/menu_community"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="@dimen/_2sdp"
+            android:layout_marginBottom="@dimen/_2sdp"
+            android:layout_weight="1"
+            android:background="@drawable/mx_menu_item_bg"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="@dimen/_10sdp"
+            android:paddingEnd="@dimen/_6sdp">
+
+            <ImageView
+                android:layout_width="@dimen/_15sdp"
+                android:layout_height="@dimen/_15sdp"
+                android:importantForAccessibility="no"
+                android:tint="@color/mx_cyan"
+                app:srcCompat="@drawable/mx_ic_community" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/_8sdp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:fontFamily="@font/montserrat_bold"
+                android:maxLines="1"
+                android:text="@string/mx_menu_community"
+                android:textColor="@color/mx_text"
+                android:textSize="@dimen/_9sdp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/menu_exit"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="@dimen/_2sdp"
+            android:layout_marginBottom="@dimen/_2sdp"
+            android:layout_weight="1"
+            android:background="@drawable/mx_menu_item_bg"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="@dimen/_10sdp"
+            android:paddingEnd="@dimen/_6sdp">
+
+            <ImageView
+                android:layout_width="@dimen/_15sdp"
+                android:layout_height="@dimen/_15sdp"
+                android:importantForAccessibility="no"
+                android:tint="@color/mx_cyan"
+                app:srcCompat="@drawable/mx_ic_exit" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/_8sdp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:fontFamily="@font/montserrat_bold"
+                android:maxLines="1"
+                android:text="@string/mx_menu_exit"
+                android:textColor="@color/mx_text"
+                android:textSize="@dimen/_9sdp" />
+        </LinearLayout>
+        </LinearLayout>
+
+        <!-- PAINEL CENTRAL: hospeda Inicio / Servidores / Configuracoes / Noticias (mesmo ViewPager de antes) -->
+        <com.samp.mobile.launcher.util.ViewPagerWithoutSwipe
+            android:id="@+id/fragment_place"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_marginStart="@dimen/_8sdp"
+            android:layout_marginTop="@dimen/_6sdp"
+            android:layout_marginEnd="@dimen/_12sdp"
+            android:layout_marginBottom="@dimen/_6sdp"
+            android:background="@drawable/mx_panel_bg"
+            android:padding="@dimen/_4sdp"
+            app:layout_constraintBottom_toTopOf="@+id/mx_footer"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@+id/mx_sidebar"
+            app:layout_constraintTop_toBottomOf="@+id/mx_header" />
+
+        <!-- RODAPE: musica, volume, versao, estado do servidor, redes sociais -->
+        <LinearLayout
+            android:id="@+id/mx_footer"
+            android:layout_width="0dp"
+            android:layout_height="@dimen/_36sdp"
+            android:background="@drawable/mx_footer_bg"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="@dimen/_12sdp"
+            android:paddingEnd="@dimen/_12sdp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent">
+
+            <ImageButton
+                android:id="@+id/btn_music_toggle"
+                android:layout_width="@dimen/_28sdp"
+                android:layout_height="@dimen/_28sdp"
+                android:background="@drawable/mx_btn_secondary"
+                android:contentDescription="@string/mx_cd_music_toggle"
+                android:padding="@dimen/_6sdp"
+                android:scaleType="fitCenter"
+                android:tint="@color/mx_cyan"
+                app:srcCompat="@drawable/mx_ic_play" />
+
+            <ImageView
+                android:layout_width="@dimen/_13sdp"
+                android:layout_height="@dimen/_13sdp"
+                android:layout_marginStart="@dimen/_8sdp"
+                android:importantForAccessibility="no"
+                android:tint="@color/mx_text_dim"
+                app:srcCompat="@drawable/mx_ic_volume" />
+
+            <SeekBar
+                android:id="@+id/seek_music_volume"
+                android:layout_width="@dimen/_70sdp"
+                android:layout_height="wrap_content"
+                android:contentDescription="@string/mx_cd_volume"
+                android:max="100"
+                android:progress="60"
+                android:progressDrawable="@drawable/mx_seekbar_progress"
+                android:thumb="@drawable/mx_seekbar_thumb" />
+
+            <TextView
+                android:id="@+id/tv_music_status"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/_4sdp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:fontFamily="@font/montserrat_medium"
+                android:maxLines="1"
+                android:text="@string/mx_music_none"
+                android:textColor="@color/mx_text_dim"
+                android:textSize="@dimen/_8sdp" />
+
+            <TextView
+                android:id="@+id/tv_client_version"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/_8sdp"
+                android:fontFamily="@font/montserrat_medium"
+                android:maxLines="1"
+                android:text="@string/mx_footer_version"
+                android:textColor="@color/mx_text_dim"
+                android:textSize="@dimen/_8sdp" />
+
+            <View
+                android:layout_width="@dimen/_1sdp"
+                android:layout_height="@dimen/_16sdp"
+                android:layout_marginStart="@dimen/_8sdp"
+                android:layout_marginEnd="@dimen/_8sdp"
+                android:background="#334A7BC8" />
+
+            <View
+                android:id="@+id/dot_server_state"
+                android:layout_width="@dimen/_7sdp"
+                android:layout_height="@dimen/_7sdp"
+                android:background="@drawable/mx_dot" />
+
+            <TextView
+                android:id="@+id/tv_server_state"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/_5sdp"
+                android:fontFamily="@font/montserrat_bold"
+                android:maxLines="1"
+                android:text="@string/mx_status_checking"
+                android:textColor="@color/mx_text"
+                android:textSize="@dimen/_8sdp" />
+
+            <View
+                android:layout_width="@dimen/_1sdp"
+                android:layout_height="@dimen/_16sdp"
+                android:layout_marginStart="@dimen/_8sdp"
+                android:layout_marginEnd="@dimen/_6sdp"
+                android:background="#334A7BC8" />
+
+            <ImageButton
+                android:id="@+id/btn_social_discord"
+                android:layout_width="@dimen/_26sdp"
+                android:layout_height="@dimen/_26sdp"
+                android:background="@drawable/mx_btn_secondary"
+                android:contentDescription="Discord"
+                android:padding="@dimen/_6sdp"
+                android:scaleType="fitCenter"
+                android:tint="@color/mx_text"
+                android:visibility="gone"
+                app:srcCompat="@drawable/mx_ic_discord" />
+
+            <ImageButton
+                android:id="@+id/btn_social_youtube"
+                android:layout_width="@dimen/_26sdp"
+                android:layout_height="@dimen/_26sdp"
+                android:layout_marginStart="@dimen/_4sdp"
+                android:background="@drawable/mx_btn_secondary"
+                android:contentDescription="YouTube"
+                android:padding="@dimen/_6sdp"
+                android:scaleType="fitCenter"
+                android:tint="@color/mx_text"
+                android:visibility="gone"
+                app:srcCompat="@drawable/mx_ic_youtube" />
+
+            <ImageButton
+                android:id="@+id/btn_social_instagram"
+                android:layout_width="@dimen/_26sdp"
+                android:layout_height="@dimen/_26sdp"
+                android:layout_marginStart="@dimen/_4sdp"
+                android:background="@drawable/mx_btn_secondary"
+                android:contentDescription="Instagram"
+                android:padding="@dimen/_6sdp"
+                android:scaleType="fitCenter"
+                android:tint="@color/mx_text"
+                android:visibility="gone"
+                app:srcCompat="@drawable/mx_ic_instagram" />
+
+            <ImageButton
+                android:id="@+id/btn_social_site"
+                android:layout_width="@dimen/_26sdp"
+                android:layout_height="@dimen/_26sdp"
+                android:layout_marginStart="@dimen/_4sdp"
+                android:background="@drawable/mx_btn_secondary"
+                android:contentDescription="Site"
+                android:padding="@dimen/_6sdp"
+                android:scaleType="fitCenter"
+                android:tint="@color/mx_text"
+                android:visibility="gone"
+                app:srcCompat="@drawable/mx_ic_globe" />
+        </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>
