@@ -16,6 +16,7 @@
 #include "Renderer.h"
 #include "CustomImg.h"
 #include "CustomCol.h"
+#include "CustomIpl.h"
 #include <algorithm>
 #include <functional>
 #include <vector>
@@ -243,6 +244,8 @@ void CStreaming::InjectHooks() {
     CustomImg::InstallAcceleratorBypass();
     // CINFO.BIN (cache de colisao): invalida o cache velho antes do CColAccel::startCache (ver CustomCol.h)
     CustomCol::InstallCinfoGuard();
+    // IPL por instancia (texdb/ipl/*.ipl): mistura no CIplStore::LoadIpl (ver CustomIpl.h / LEIA-ME_IPL.md)
+    CustomIpl::Install();
     CHook::Redirect("_ZN10CStreaming12MakeSpaceForEi", &CStreaming::MakeSpaceFor);
     //CHook::Redirect("_ZN10CStreaming22LoadAllRequestedModelsEb", &CStreaming::LoadAllRequestedModels);
 }

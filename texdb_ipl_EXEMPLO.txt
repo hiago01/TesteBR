@@ -1,0 +1,12 @@
+# EXEMPLO (nao e' lido pelo jogo: o arquivo real deve se chamar <nome_do_ipl>.ipl dentro de texdb/ipl/)
+# Troca a instancia 12 (id original 1234), remove a 40 (id 5678) e acrescenta duas instancias novas.
+replace
+12, 1234, 1234, nome_do_modelo, 0, 100.0, 200.0, 10.5, 0, 0, 0, 1, -1
+end
+remove
+40, 5678
+end
+inst
+3456, outro_modelo, 0, 105.0, 210.0, 10.5, 0, 0, 0.7071, 0.7071, -1
+3456, outro_modelo, 0, 108.0, 210.0, 10.5, 0, 0, 0, 1, -1
+end
