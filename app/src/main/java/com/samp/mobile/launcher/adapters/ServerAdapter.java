@@ -18,6 +18,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.joom.paranoid.Obfuscate;
 import com.samp.mobile.R;
 import com.samp.mobile.launcher.MainActivity;
+import com.samp.mobile.launcher.fragments.ServerPagesItemFragment;
 import com.samp.mobile.launcher.util.ButtonAnimator;
 import com.samp.mobile.launcher.util.SAMPServerInfo;
 import com.samp.mobile.launcher.util.SampQueryAPI;
@@ -53,6 +54,43 @@ public class ServerAdapter extends RecyclerView.Adapter<ServerAdapter.ViewHolder
         return pagePosition;
     }
 
+    private boolean isFavoritesPage() {
+        return pagePosition == ServerPagesItemFragment.PAGE_OFFICIAL_FAVORITES;
+    }
+
+    /** Lista exibida: a oficial completa, ou somente os favoritos oficiais (filtro da mesma lista). */
+    private ArrayList<SAMPServerInfo> visibleList() {
+        MainActivity main = (MainActivity) mContext;
+        return isFavoritesPage() ? main.getOfficialFavoriteList() : main.getServerList();
+    }
+
+    private TextView emptyView;
+
+    /** Mostra/oculta a mensagem de "sem favoritos" (somente a pagina de favoritos oficiais). */
+    public void attachEmptyView(TextView v) {
+        emptyView = v;
+        updateEmptyView();
+    }
+
+    private void updateEmptyView() {
+        if (emptyView == null) return;
+        if (!isFavoritesPage() || getItemCount() > 0) {
+            emptyView.setVisibility(View.GONE);
+            return;
+        }
+        MainActivity main = (MainActivity) mContext;
+        emptyView.setText(main.getSavedOfficialFavoriteCount() > 0 ? R.string.mx_fav_unavailable : R.string.mx_fav_empty);
+        emptyView.setVisibility(View.VISIBLE);
+    }
+
+    @Override
+    public void onAttachedToRecyclerView(RecyclerView recyclerView) {
+        super.onAttachedToRecyclerView(recyclerView);
+        registerAdapterDataObserver(new RecyclerView.AdapterDataObserver() {
+            @Override public void onChanged() { updateEmptyView(); }
+        });
+    }
+
     @Override
     public ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
         View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.server_item, parent, false);
@@ -63,11 +101,18 @@ public class ServerAdapter extends RecyclerView.Adapter<ServerAdapter.ViewHolder
     @Override
     public void onBindViewHolder(final ViewHolder holder, int position) {
         final MainActivity main = (MainActivity) mContext;
-        final ArrayList<SAMPServerInfo> list = main.getServerList();
+        final ArrayList<SAMPServerInfo> list = visibleList();
         if (position < 0 || position >= list.size()) return;
         final SAMPServerInfo info = list.get(position);
 
-        ServerCardBinder.bind(holder.card, info, main.isSelected(info), false);
+        // Servidores oficiais: IP/porta NUNCA aparecem; estrela de favorito visivel.
+        ServerCardBinder.bindOfficial(holder.card, info, main.isSelected(info), main.isOfficialFavorite(info));
+        holder.card.star.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                main.toggleOfficialFavorite(info);
+            }
+        });
 
         holder.mLayout.setOnTouchListener(new ButtonAnimator(mContext, holder.mLayout));
         holder.mLayout.setOnClickListener(new View.OnClickListener() {
@@ -87,6 +132,7 @@ public class ServerAdapter extends RecyclerView.Adapter<ServerAdapter.ViewHolder
                 new ServerInformationFragment((Activity) mContext, ServerAdapter.this, holder.getAdapterPosition(), info).show();
             }
         });
+        // Uso interno apenas (nunca exibido): ultima conexao real associada a cada posicao.
         holderPosition.put(Integer.valueOf(position), new Pair<>(info.getAddress(), Integer.valueOf(info.getPort())));
     }
 
@@ -102,7 +148,7 @@ public class ServerAdapter extends RecyclerView.Adapter<ServerAdapter.ViewHolder
 
     @Override
     public int getItemCount() {
-        return ((MainActivity)mContext).getServerList().size();
+        return visibleList().size();
     }
 
     public class ViewHolder extends RecyclerView.ViewHolder

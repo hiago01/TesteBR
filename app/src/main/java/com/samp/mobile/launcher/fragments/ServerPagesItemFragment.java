@@ -29,6 +29,11 @@ import java.util.Objects;
 @Obfuscate
 public class ServerPagesItemFragment extends Fragment {
 
+    /** Identificadores de pagina (independentes da posicao da aba). */
+    public static final int PAGE_LEGACY_FAVORITES = 0;   // favoritos ANTIGOS (IP/porta manual) - desativado na UI
+    public static final int PAGE_OFFICIAL = 1;           // lista oficial
+    public static final int PAGE_OFFICIAL_FAVORITES = 2; // NOVO: favoritos dos servidores oficiais
+
     private int pagePosition;
     AlertDialog.Builder builder;
 
@@ -65,9 +70,22 @@ public class ServerPagesItemFragment extends Fragment {
 
         ((MainActivity)getActivity()).hideKeyboard(getActivity());
 
+        if (pagePosition == PAGE_OFFICIAL_FAVORITES) {
+            view = inflater.inflate(R.layout.fragment_official_favorites, container, false);
+            recyclerView = view.findViewById(R.id.server_recycler);
+            ServerAdapter favAdapter = new ServerAdapter(view.getContext(), this.pagePosition);
+            if (recyclerView.getItemAnimator() != null) {
+                ((SimpleItemAnimator) recyclerView.getItemAnimator()).setSupportsChangeAnimations(false);
+            }
+            recyclerView.setLayoutManager(new LinearLayoutManager(view.getContext()));
+            recyclerView.setAdapter(favAdapter);
+            favAdapter.attachEmptyView(view.findViewById(R.id.mx_fav_empty));
+            return view;
+        }
+
         view = inflater.inflate(R.layout.fragment_favorite, container, false);
 
-        if(pagePosition == 1) {
+        if(pagePosition == PAGE_OFFICIAL) {
             view = inflater.inflate(R.layout.fragment_internet, container, false);
             ServerAdapter adapter = new ServerAdapter(view.getContext(), this.pagePosition);
 

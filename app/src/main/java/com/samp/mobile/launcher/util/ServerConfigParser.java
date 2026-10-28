@@ -61,7 +61,7 @@ public final class ServerConfigParser {
         if (name.length() > MAX_NAME) name = name.substring(0, MAX_NAME);
 
         String ip = requireString(o, "ip").trim();
-        if (!isValidAddress(ip)) throw new ConfigException("servers.json: invalid \"ip\" (" + shorten(ip) + ")");
+        if (!isValidAddress(ip)) throw new ConfigException("servers.json: invalid \"ip\"");
 
         int port = requireInt(o, "port");
         if (port < 1 || port > 65535) throw new ConfigException("servers.json: \"port\" must be 1-65535");

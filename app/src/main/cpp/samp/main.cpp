@@ -3,6 +3,7 @@
 #include <syscall.h>
 
 #include "main.h"
+#include "java/loadingstage.h"
 #include "game/game.h"
 #include "net/netgame.h"
 #include "gui/gui.h"
@@ -205,6 +206,11 @@ void handler3(int signum, siginfo_t *info, void* contextPtr)
 	return;
 }
 
+static void ReportLoadingStage(int stage)
+{
+	if (pJavaWrapper) pJavaWrapper->SetLoadingStage(stage);
+}
+
 void DoInitStuff()
 {
 	if (bGameInited == false)
@@ -248,6 +254,7 @@ void DoInitStuff()
 		}
 
 		bGameInited = true;
+		ReportLoadingStage(LOADING_STAGE_GAME_INIT);
 	}
 
 	if (!bNetworkInited && !bDebug)
@@ -256,6 +263,7 @@ void DoInitStuff()
 
 		pNetGame = new CNetGame(pSettings->Get().szHost, pSettings->Get().iPort, pSettings->Get().szNickName, pSettings->Get().szPassword/*g_pass*/);/*cryptor::create("H0ND4").decrypt()*//*""*/
 		bNetworkInited = true;
+		ReportLoadingStage(LOADING_STAGE_NET_CREATED);
 
         FLog("DoInitStuff end");
 	}
@@ -311,6 +319,14 @@ extern "C" {
 void MainLoop()
 {
 	if (pGame->bIsGameExiting) return;
+
+	// Etapa real: o motor do GTA ja subiu e o loop principal esta rodando pela 1a vez.
+	static bool s_engineReported = false;
+	if (!s_engineReported)
+	{
+		s_engineReported = true;
+		ReportLoadingStage(LOADING_STAGE_ENGINE_RUNNING);
+	}
 
 	DoInitStuff();
 

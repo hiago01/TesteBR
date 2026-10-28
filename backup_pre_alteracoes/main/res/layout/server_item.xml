@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/server_item_layout"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginStart="2dp"
+    android:layout_marginTop="4dp"
+    android:layout_marginEnd="2dp"
+    android:layout_marginBottom="4dp"
+    android:background="@drawable/mx_bg_card"
+    android:minHeight="64dp"
+    android:padding="6dp">
+
+    <ImageView
+        android:id="@+id/mx_banner"
+        android:layout_width="104dp"
+        android:layout_height="0dp"
+        android:contentDescription="@null"
+        android:scaleType="centerCrop"
+        android:src="@drawable/maximo_server_banner"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintDimensionRatio="H,16:7"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/textView6"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:layout_marginEnd="6dp"
+        android:ellipsize="end"
+        android:fontFamily="@font/montserrat_bold"
+        android:singleLine="true"
+        android:text="Loading..."
+        android:textColor="@color/mx_text"
+        android:textSize="12sp"
+        app:layout_constraintEnd_toStartOf="@+id/mx_status_chip"
+        app:layout_constraintStart_toEndOf="@+id/mx_banner"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/textView18"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:layout_marginEnd="6dp"
+        android:ellipsize="end"
+        android:fontFamily="@font/montserrat_medium"
+        android:singleLine="true"
+        android:textColor="@color/mx_text_dim"
+        android:textSize="9sp"
+        app:layout_constraintEnd_toStartOf="@+id/mx_status_chip"
+        app:layout_constraintStart_toEndOf="@+id/mx_banner"
+        app:layout_constraintTop_toBottomOf="@+id/textView6" />
+
+    <TextView
+        android:id="@+id/textView16"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:layout_marginEnd="6dp"
+        android:ellipsize="end"
+        android:fontFamily="@font/montserrat_medium"
+        android:singleLine="true"
+        android:textColor="#6F86AD"
+        android:textSize="8sp"
+        app:layout_constraintEnd_toStartOf="@+id/mx_chevron"
+        app:layout_constraintStart_toEndOf="@+id/mx_banner"
+        app:layout_constraintTop_toBottomOf="@+id/textView18" />
+
+    <TextView
+        android:id="@+id/mx_status_chip"
+        android:layout_width="wrap_content"
+        android:layout_height="20dp"
+        android:background="@drawable/mx_chip_checking"
+        android:fontFamily="@font/montserrat_bold"
+        android:gravity="center"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp"
+        android:text="@string/mx_status_checking"
+        android:textColor="@color/mx_checking"
+        android:textSize="8sp"
+        app:layout_constraintEnd_toStartOf="@+id/mx_chevron"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <ImageView
+        android:id="@+id/mx_chevron"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Detalhes do servidor"
+        android:padding="2dp"
+        android:src="@drawable/mx_ic_chevron"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:tint="@color/mx_text_dim" />
+
+    <LinearLayout
+        android:id="@+id/mx_stats_row"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:layout_marginTop="3dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@+id/mx_banner"
+        app:layout_constraintTop_toBottomOf="@+id/textView16">
+
+        <ImageView
+            android:layout_width="12dp"
+            android:layout_height="12dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/mx_ic_person"
+            app:tint="@color/mx_text_dim" />
+
+        <TextView
+            android:id="@+id/online_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:fontFamily="@font/montserrat_bold"
+            android:text="--"
+            android:textColor="@color/mx_text"
+            android:textSize="9sp" />
+
+        <ImageView
+            android:id="@+id/mx_signal_icon"
+            android:layout_width="12dp"
+            android:layout_height="12dp"
+            android:layout_marginStart="14dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/mx_ic_signal"
+            app:tint="@color/mx_text_dim" />
+
+        <TextView
+            android:id="@+id/mx_ping_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:fontFamily="@font/montserrat_bold"
+            android:text="--"
+            android:textColor="@color/mx_text_dim"
+            android:textSize="9sp" />
+
+        <ImageView
+            android:id="@+id/password"
+            android:layout_width="12dp"
+            android:layout_height="12dp"
+            android:layout_marginStart="14dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/mx_ic_lock"
+            app:tint="@color/mx_text_dim" />
+
+        <TextView
+            android:id="@+id/mx_password_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:fontFamily="@font/montserrat_bold"
+            android:text="Não"
+            android:textColor="@color/mx_text_dim"
+            android:textSize="9sp" />
+    </LinearLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

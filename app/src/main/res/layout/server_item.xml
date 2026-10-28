@@ -82,8 +82,23 @@
         android:text="@string/mx_status_checking"
         android:textColor="@color/mx_checking"
         android:textSize="8sp"
-        app:layout_constraintEnd_toStartOf="@+id/mx_chevron"
+        app:layout_constraintEnd_toStartOf="@+id/mx_star"
         app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- Estrela de favorito (somente servidores oficiais). GONE nos favoritos antigos: nao reserva espaco. -->
+    <ImageView
+        android:id="@+id/mx_star"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/mx_fav_add_cd"
+        android:padding="2dp"
+        android:src="@drawable/mx_ic_star"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toStartOf="@+id/mx_chevron"
+        app:layout_constraintTop_toTopOf="parent"
+        app:tint="@color/mx_text_dim" />
 
     <ImageView
         android:id="@+id/mx_chevron"

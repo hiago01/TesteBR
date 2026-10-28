@@ -20,6 +20,7 @@ public:
     void SetPauseState(bool pause);
     void ShowLoadingScreen();
     void HideLoadingScreen();
+    void SetLoadingStage(int stage);
     void ShowTab();
     void HideTab();
     void SetTab(int id, char* names, int score, int pings);
@@ -50,6 +51,7 @@ public:
     jmethodID s_setPauseState;
     jmethodID s_showLoadingScreen;
     jmethodID s_hideLoadingScreen;
+    jmethodID s_setLoadingStage;
     jmethodID s_ShowDialog;
     jmethodID s_showTab;
     jmethodID s_setTab;

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Recursos usados por drawables/layouts herdados (server_card.xml, mx_chip_*, mx_menu_item_bg,
+  mx_btn_secondary, mx_seekbar_*). Nomes que NAO existem em maximo_launcher.xml,
+  portanto nao duplicam nada.
+-->
+<resources>
+    <color name="mx_cyan">#22B8FF</color>
+    <color name="mx_error">#FF5C6C</color>
+    <color name="mx_loading">#6AA8FF</color>
+    <color name="mx_menu_selected">#33103466</color>
+
+    <string name="mx_label_mode">MODO</string>
+    <string name="mx_label_address">ENDEREÇO</string>
+    <string name="mx_label_port">PORTA</string>
+    <string name="mx_label_players">JOGADORES</string>
+    <string name="mx_label_ping">PING</string>
+    <string name="mx_unknown">—</string>
+    <string name="mx_tap_to_retry">Toque para tentar novamente</string>
+</resources>

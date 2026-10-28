@@ -17,4 +17,32 @@
     <string name="mx_label_ping">PING</string>
     <string name="mx_unknown">—</string>
     <string name="mx_tap_to_retry">Toque para tentar novamente</string>
+
+    <!-- Favoritos dos servidores oficiais -->
+    <color name="mx_star_on">#FFC83D</color>
+    <string name="mx_fav_added">Servidor adicionado aos favoritos</string>
+    <string name="mx_fav_removed">Servidor removido dos favoritos</string>
+    <string name="mx_fav_add_cd">Adicionar aos favoritos</string>
+    <string name="mx_fav_remove_cd">Remover dos favoritos</string>
+    <string name="mx_fav_empty">Você ainda não tem favoritos.\nToque na estrela de um servidor oficial para adicioná-lo.</string>
+    <string name="mx_fav_unavailable">Seus favoritos continuam salvos, mas a lista oficial está indisponível no momento. Toque em ATUALIZAR.</string>
+    <string name="mx_tab_legacy_favorites">Manuais</string>
+
+    <!-- Tela de loading do jogo (progresso real por etapas) -->
+    <string name="mx_loading_title">Carregando o jogo...</string>
+    <string name="mx_loading_title_pct">Carregando o jogo... %1$d%%</string>
+    <string name="mx_loading_done">Conectado! %1$d%%</string>
+    <string name="mx_loading_step_start">Preparando o jogo...</string>
+    <string name="mx_loading_step_native">Inicializando o SA-MP...</string>
+    <string name="mx_loading_step_engine">Carregando o motor do jogo...</string>
+    <string name="mx_loading_step_samp">Carregando os recursos do SA-MP...</string>
+    <string name="mx_loading_step_prepare">Preparando a conexão...</string>
+    <string name="mx_loading_step_connect">Conectando ao servidor...</string>
+    <string name="mx_loading_step_wait">Aguardando resposta do servidor...</string>
+    <string name="mx_loading_step_retry">O servidor não respondeu. Tentando novamente...</string>
+    <string name="mx_loading_step_full">O servidor está cheio. Tentando novamente...</string>
+    <string name="mx_loading_step_refused">Conexão recusada pelo servidor.</string>
+    <string name="mx_loading_step_reconnect">Conexão perdida. Reconectando...</string>
+    <string name="mx_loading_step_connected">Entrando no servidor...</string>
+    <string name="mx_loading_step_error">Não foi possível iniciar o SA-MP. Feche e abra o jogo novamente.</string>
 </resources>

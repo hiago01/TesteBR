@@ -81,8 +81,21 @@ public class ServerInformationFragment extends Dialog {
 
         mHostName.setText(sampServerInfo.getServerName());
 
-        mIP.setText(sampServerInfo.getAddress());
-        mPort.setText(String.valueOf(sampServerInfo.getPort()));
+        // Servidor OFICIAL: IP e porta nao sao exibidos (rotulos e valores ocultos, sem reservar espaco).
+        // Os valores reais continuam em sampServerInfo e sao usados por launchGame().
+        mIP.setText("");
+        mPort.setText("");
+        mIP.setVisibility(View.GONE);
+        mPort.setVisibility(View.GONE);
+        View ipLabel = findViewById(R.id.textView);
+        View portLabel = findViewById(R.id.textView2);
+        if (ipLabel != null) ipLabel.setVisibility(View.GONE);
+        if (portLabel != null) portLabel.setVisibility(View.GONE);
+        // As linhas do layout sao posicionadas por "bias" vertical; sobe as restantes para ocupar o
+        // lugar de IP/Porta e nao deixar um buraco no dialogo.
+        moveRow(R.id.textView3, R.id.server_online, 0.30f);
+        moveRow(R.id.textView4, R.id.server_mode, 0.42f);
+        moveRow(R.id.textView5, R.id.server_language, 0.53f);
         mOnlineServer.setText(sampServerInfo.getStatusText());
         mMode.setText(sampServerInfo.getServerMode());
 
@@ -106,6 +119,19 @@ public class ServerInformationFragment extends Dialog {
                 dismiss();
             }
         });
+    }
+
+    private void moveRow(int labelId, int valueId, float bias) {
+        int[] ids = { labelId, valueId };
+        for (int id : ids) {
+            View v = findViewById(id);
+            if (v != null && v.getLayoutParams() instanceof androidx.constraintlayout.widget.ConstraintLayout.LayoutParams) {
+                androidx.constraintlayout.widget.ConstraintLayout.LayoutParams lp =
+                        (androidx.constraintlayout.widget.ConstraintLayout.LayoutParams) v.getLayoutParams();
+                lp.verticalBias = bias;
+                v.setLayoutParams(lp);
+            }
+        }
     }
 
     /**

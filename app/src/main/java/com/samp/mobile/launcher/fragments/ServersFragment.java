@@ -17,15 +17,31 @@ import com.google.android.material.tabs.TabLayout;
 import com.joom.paranoid.Obfuscate;
 import com.samp.mobile.R;
 import com.samp.mobile.launcher.MainActivity;
+import com.samp.mobile.launcher.config.Config;
 import com.samp.mobile.launcher.util.SAMPServerInfo;
 import com.samp.mobile.launcher.util.ViewPagerWithoutSwipe;
 
-/** Painel central "Servidores": abas Favoritos/Oficial, botao Atualizar e barra Conectar. */
+/**
+ * Painel central "Servidores": abas Oficial/Favoritos (favoritos dos servidores oficiais), botao
+ * Atualizar e barra Conectar. A aba antiga de favoritos manuais (IP/porta) fica fora da navegacao
+ * enquanto {@link Config#SHOW_LEGACY_FAVORITES} for false; sua implementacao continua no projeto.
+ */
 @Obfuscate
 public class ServersFragment extends Fragment implements MainActivity.ServerStateListener {
 
-    /** Ultima aba aberta (0 = Favoritos, 1 = Oficial). */
-    private static int sLastPage = 1;
+    /** Paginas exibidas, na ordem das abas (ids de ServerPagesItemFragment.PAGE_*). */
+    private static int[] pages() {
+        java.util.ArrayList<Integer> l = new java.util.ArrayList<>();
+        if (Config.SHOW_LEGACY_FAVORITES) l.add(ServerPagesItemFragment.PAGE_LEGACY_FAVORITES);
+        l.add(ServerPagesItemFragment.PAGE_OFFICIAL);
+        if (Config.SHOW_OFFICIAL_FAVORITES) l.add(ServerPagesItemFragment.PAGE_OFFICIAL_FAVORITES);
+        int[] out = new int[l.size()];
+        for (int i = 0; i < out.length; i++) out[i] = l.get(i);
+        return out;
+    }
+
+    /** Ultima pagina aberta (id de pagina, nao posicao da aba). */
+    private static int sLastPageId = ServerPagesItemFragment.PAGE_OFFICIAL;
 
     public final class PagerAdapter extends FragmentPagerAdapter {
         private int pageCount;
@@ -37,7 +53,7 @@ public class ServersFragment extends Fragment implements MainActivity.ServerStat
 
         @Override
         public Fragment getItem(int position) {
-            return ServerPagesItemFragment.newInstance(position);
+            return ServerPagesItemFragment.newInstance(pages()[position]);
         }
 
         @Override
@@ -47,9 +63,12 @@ public class ServersFragment extends Fragment implements MainActivity.ServerStat
 
         @Override
         public CharSequence getPageTitle(int position) {
-            if (position == 0) return getString(R.string.mx_tab_favorites);
-            if (position == 1) return getString(R.string.mx_tab_official);
-            return "";
+            switch (pages()[position]) {
+                case ServerPagesItemFragment.PAGE_LEGACY_FAVORITES:   return getString(R.string.mx_tab_legacy_favorites);
+                case ServerPagesItemFragment.PAGE_OFFICIAL:           return getString(R.string.mx_tab_official);
+                case ServerPagesItemFragment.PAGE_OFFICIAL_FAVORITES: return getString(R.string.mx_tab_favorites);
+                default: return "";
+            }
         }
     }
 
@@ -90,11 +109,17 @@ public class ServersFragment extends Fragment implements MainActivity.ServerStat
             TabLayout tabLayout = view.findViewById(R.id.tabLayout_servers);
             ViewPagerWithoutSwipe viewPager = view.findViewById(R.id.viewPager_servers);
             if (viewPager.getAdapter() == null) {
-                viewPager.setAdapter(new PagerAdapter(getChildFragmentManager(), 2));
+                final int[] pg = pages();
+                viewPager.setAdapter(new PagerAdapter(getChildFragmentManager(), pg.length));
                 tabLayout.setupWithViewPager(viewPager);
-                viewPager.setCurrentItem(sLastPage, false);
+                int start = 0;
+                for (int i = 0; i < pg.length; i++) if (pg[i] == sLastPageId) start = i;
+                viewPager.setCurrentItem(start, false);
                 tabLayout.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
-                    @Override public void onTabSelected(TabLayout.Tab tab) { sLastPage = tab.getPosition(); }
+                    @Override public void onTabSelected(TabLayout.Tab tab) {
+                        int p = tab.getPosition();
+                        if (p >= 0 && p < pg.length) sLastPageId = pg[p];
+                    }
                     @Override public void onTabUnselected(TabLayout.Tab tab) { }
                     @Override public void onTabReselected(TabLayout.Tab tab) { }
                 });

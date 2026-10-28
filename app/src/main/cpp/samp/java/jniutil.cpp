@@ -20,6 +20,8 @@ CJavaWrapper::CJavaWrapper(JNIEnv *env, jobject activity)
 
     s_showLoadingScreen = env->GetMethodID(clas, "showLoadingScreen", "()V");
     s_hideLoadingScreen = env->GetMethodID(clas, "hideLoadingScreen", "()V");
+    s_setLoadingStage = env->GetMethodID(clas, "setLoadingStage", "(I)V");
+    if (env->ExceptionCheck()) env->ExceptionClear(); // loading e opcional: nunca derruba a inicializacao
 
     s_setPauseState = env->GetMethodID(clas, "setPauseState", "(Z)V");
     
@@ -68,6 +70,17 @@ void CJavaWrapper::HideLoadingScreen()
     JNIEnv* p;
     javaVM->GetEnv((void**)&p, JNI_VERSION_1_6);
     p->CallVoidMethod(activity, s_hideLoadingScreen);
+    EXCEPTION_CHECK(p);
+}
+
+/** Informa uma etapa real da inicializacao a tela de loading (ver loadingstage.h). */
+void CJavaWrapper::SetLoadingStage(int stage)
+{
+    if (!s_setLoadingStage) return;
+    JNIEnv* p = nullptr;
+    javaVM->GetEnv((void**)&p, JNI_VERSION_1_6);
+    if (!p) return;
+    p->CallVoidMethod(activity, s_setLoadingStage, (jint)stage);
     EXCEPTION_CHECK(p);
 }
 

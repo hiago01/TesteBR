@@ -15,6 +15,7 @@ import androidx.core.content.ContextCompat;
 
 import com.google.firebase.crashlytics.FirebaseCrashlytics;
 import com.joom.paranoid.Obfuscate;
+import com.samp.mobile.R;
 import com.samp.mobile.game.ui.AttachEdit;
 import com.samp.mobile.game.ui.ClothesUI;
 import com.samp.mobile.game.ui.CustomKeyboard;
@@ -64,17 +65,38 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
 
     }
 
+    /** Chamado pelo nativo (CJavaWrapper::ShowLoadingScreen): reexibe a tela ao reconectar. */
     private void showLoadingScreen()
     {
-
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (mLoadingScreen != null) mLoadingScreen.showReconnecting();
+            }
+        });
     }
 
+    /** Chamado pelo nativo quando a conexao e aceita: completa a barra em 100% e encerra a tela. */
     private void hideLoadingScreen()
     {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                mLoadingScreen.hide();
+                if (mLoadingScreen != null) mLoadingScreen.hide();
+            }
+        });
+    }
+
+    /**
+     * Chamado pelo nativo (CJavaWrapper::SetLoadingStage) a cada etapa REAL concluida da
+     * inicializacao (ver LoadingScreen.STAGE_*). Pode vir de qualquer thread.
+     */
+    private void setLoadingStage(final int stage)
+    {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (mLoadingScreen != null) mLoadingScreen.setStage(stage);
             }
         });
     }
@@ -213,8 +235,11 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
 
         try {
             initializeSAMP();
+            // etapa real: ponte JNI com o SA-MP criada
+            mLoadingScreen.setStage(LoadingScreen.STAGE_NATIVE_READY);
         } catch (UnsatisfiedLinkError e5) {
-            Log.e(TAG, e5.getMessage());
+            Log.e(TAG, String.valueOf(e5.getMessage()));
+            mLoadingScreen.showError(R.string.mx_loading_step_error);
         }
 
         requestMicrophoneIfNeeded();
@@ -318,6 +343,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
     @Override
     public void onDestroy() {
         Log.i(TAG, "**** onDestroy");
+        if (mLoadingScreen != null) mLoadingScreen.release();
         super.onDestroy();
     }
 

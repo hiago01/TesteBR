@@ -58,6 +58,7 @@ import com.samp.mobile.R;
 import com.samp.mobile.launcher.config.AppEndpoints;
 import com.samp.mobile.launcher.config.Config;
 import com.samp.mobile.launcher.data.FavoritesInfo;
+import com.samp.mobile.launcher.data.OfficialFavorites;
 import com.samp.mobile.launcher.fragments.HomeFragment;
 import com.samp.mobile.launcher.fragments.ServerPagesItemFragment;
 import com.samp.mobile.launcher.fragments.ServersFragment;
@@ -391,8 +392,9 @@ public class MainActivity extends AppCompatActivity {
     public void selectServer(SAMPServerInfo i) {
         if (isPlaceholder(i)) return;
         mSelectedKey = keyOf(i);
-        notifyServerPage(0);
-        notifyServerPage(1);
+        notifyServerPage(ServerPagesItemFragment.PAGE_LEGACY_FAVORITES);
+        notifyServerPage(ServerPagesItemFragment.PAGE_OFFICIAL);
+        notifyServerPage(ServerPagesItemFragment.PAGE_OFFICIAL_FAVORITES);
         fireServerStateChanged();
     }
 
@@ -433,6 +435,44 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         ServerInformationFragment.launchGame(this, s);
+    }
+
+
+    // ------------------------------------------------------------------------------------
+    // Favoritos dos servidores OFICIAIS (independentes dos favoritos antigos)
+    // ------------------------------------------------------------------------------------
+
+    /** true se este servidor oficial (host+porta normalizados) esta marcado como favorito. */
+    public boolean isOfficialFavorite(SAMPServerInfo i) {
+        return i != null && !isPlaceholder(i) && OfficialFavorites.isFavorite(this, i.getAddress(), i.getPort());
+    }
+
+    /** Marca/desmarca o servidor oficial e atualiza as duas listas. Placeholders nao entram. */
+    public void toggleOfficialFavorite(SAMPServerInfo i) {
+        if (i == null || isPlaceholder(i)) return;
+        boolean now = OfficialFavorites.toggle(this, i.getAddress(), i.getPort());
+        Toast.makeText(this, now ? R.string.mx_fav_added : R.string.mx_fav_removed, Toast.LENGTH_SHORT).show();
+        notifyServerPage(ServerPagesItemFragment.PAGE_OFFICIAL);
+        notifyServerPage(ServerPagesItemFragment.PAGE_OFFICIAL_FAVORITES);
+        fireServerStateChanged();
+    }
+
+    /**
+     * Servidores da lista oficial ATUAL que estao marcados. E um filtro da propria lista oficial
+     * (mesmas instancias/endereco/porta reais): nada e inventado e nada e removido do armazenamento
+     * quando um servidor some da lista ou fica offline.
+     */
+    public ArrayList<SAMPServerInfo> getOfficialFavoriteList() {
+        ArrayList<SAMPServerInfo> out = new ArrayList<>();
+        for (SAMPServerInfo i : mServersList) {
+            if (isOfficialFavorite(i)) out.add(i);
+        }
+        return out;
+    }
+
+    /** Quantidade de favoritos salvos (inclui os que nao estao na lista oficial agora). */
+    public int getSavedOfficialFavoriteCount() {
+        return OfficialFavorites.list(this).size();
     }
 
     public final ArrayList<SAMPServerInfo> getServerList() {
@@ -631,7 +671,8 @@ public class MainActivity extends AppCompatActivity {
             mMain.post(new Runnable() { @Override public void run() { refreshServerListUi(); } });
             return;
         }
-        notifyServerPage(1);
+        notifyServerPage(ServerPagesItemFragment.PAGE_OFFICIAL);
+        notifyServerPage(ServerPagesItemFragment.PAGE_OFFICIAL_FAVORITES);
         fireServerStateChanged();
     }
 
@@ -658,6 +699,9 @@ public class MainActivity extends AppCompatActivity {
 
     public void getFavoriteServersInfo()
     {
+        // Categoria antiga desativada na interface: nao consulta (nem carrega) os servidores manuais.
+        // Os dados em SAMP/favorites.json continuam intactos e voltam a funcionar com a flag ligada.
+        if (!Config.SHOW_LEGACY_FAVORITES) return;
         for(int i = 0; i< FavoritesInfo.getServerList(this).size(); i++)
         {
             SAMPServerInfo serverInfo = new SAMPServerInfo(i, i, "Loading...", FavoritesInfo.getServerList(this).get(i).ip, FavoritesInfo.getServerList(this).get(i).port, 0, 0, 0, 0, 0, "English");
@@ -749,7 +793,7 @@ public class MainActivity extends AppCompatActivity {
             mMain.post(new Runnable() { @Override public void run() { refreshFavoriteServers(); } });
             return;
         }
-        notifyServerPage(0);
+        notifyServerPage(ServerPagesItemFragment.PAGE_LEGACY_FAVORITES);
         fireServerStateChanged();
     }
 

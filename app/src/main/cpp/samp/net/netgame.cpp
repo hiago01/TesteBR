@@ -9,6 +9,7 @@
 #include "../voice_new/SpeakerList.h"
 #include "../voice_new/Network.h"
 #include "java/jniutil.h"
+#include "java/loadingstage.h"
 
 //#define AUTH_BS "39FB2DEEDB49ACFB8D4EECE6953D2507988CCCF4410"//main
 #define AUTH_BS "E02262CF28BC542486C558D4BE9EFB716592AFAF8B"
@@ -506,6 +507,7 @@ void CNetGame::ProcessConnecting()
 
 		m_dwLastConnectAttempt = GetTickCount();
 		SetGameState(GAMESTATE_CONNECTING);
+		if (pJavaWrapper) pJavaWrapper->SetLoadingStage(LOADING_STAGE_CONNECTING); // etapa real: tentativa enviada
 	}
 }
 // 0.3.7
@@ -537,6 +539,7 @@ void CNetGame::Packet_AuthKey(Packet *pkt)
 void CNetGame::Packet_ConnectAttemptFailed(Packet *pkt)
 {
 	if (pUI) pUI->chat()->addDebugMessage("O servidor não respondeu. Tentando novamente...");
+	if (pJavaWrapper) pJavaWrapper->SetLoadingStage(LOADING_STAGE_RETRY_NO_RESPONSE);
 	if (pAudioStream) { //add new
 		pAudioStream->Stop(true);
 	}
@@ -551,6 +554,7 @@ void CNetGame::Packet_ConnectAttemptFailed(Packet *pkt)
 void CNetGame::Packet_NoFreeIncomingConnections(Packet *pkt)
 {
 	if(pUI) pUI->chat()->addDebugMessage("O servidor está cheio. Tentando novamente...");
+	if (pJavaWrapper) pJavaWrapper->SetLoadingStage(LOADING_STAGE_RETRY_FULL);
 	SpeakerList::Hide(); //addnew
 	MicroIcon::Hide();
 	SetGameState(GAMESTATE_WAIT_CONNECT);
@@ -630,11 +634,13 @@ void CNetGame::Packet_FailedInitializeEncription(Packet *pkt)
 void CNetGame::Packet_ConnectionBanned(Packet *pkt)
 {
 //	if (pUI) pUI->chat()->addDebugMessage("Você está banido deste servidor.");
+	if (pJavaWrapper) pJavaWrapper->SetLoadingStage(LOADING_STAGE_REFUSED);
 }
 // 0.3.7
 void CNetGame::Packet_InvalidPassword(Packet *pkt)
 {
 //	if (pUI) pUI->chat()->addDebugMessage("Senha do servidor incorreta.");
+	if (pJavaWrapper) pJavaWrapper->SetLoadingStage(LOADING_STAGE_REFUSED);
 	m_pRakClient->Disconnect(0);
 }
 // 0.3.7
@@ -645,6 +651,7 @@ void CNetGame::Packet_ConnectionLost(Packet *pkt)
 	}
 
 //	if (pUI) pUI->chat()->addDebugMessage("Conexão com o servidor perdida. Reconectando...");
+	if (pJavaWrapper) pJavaWrapper->ShowLoadingScreen(); // tela de loading volta ate a reconexao ser aceita
 	ShutdownForGameModeRestart();
 
 	CPlayerPool *pPlayerPool = GetPlayerPool();
