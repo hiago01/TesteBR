@@ -4,7 +4,7 @@
   Somente URLs http:// ou https:// sao abertas. Nenhum valor foi inventado: preencha com os seus.
 -->
 <resources>
-    <string name="mx_link_discord" translatable="false"></string>
+    <string name="mx_link_discord" translatable="true">https://discord.gg/Hs3c3sUTEB</string>
     <string name="mx_link_instagram" translatable="false"></string>
     <string name="mx_link_youtube" translatable="false"></string>
     <string name="mx_link_tiktok" translatable="false"></string>
