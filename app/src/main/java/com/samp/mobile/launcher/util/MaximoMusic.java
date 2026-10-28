@@ -49,10 +49,13 @@ public final class MaximoMusic {
     private int startedActivities = 0;
     private boolean pausedByFocus = false;
     private boolean failed = false;
+    /** true depois que o jogo foi aberto: a musica segue tocando (uma vez, sem loop) ate acabar ou ate o X. */
+    private boolean gameMode = false;
+    private boolean pausedByGameBackground = false;
 
     private final Runnable pauseWhenBackground = new Runnable() {
         @Override public void run() {
-            if (startedActivities <= 0) pausePlayer();
+            if (startedActivities <= 0 && !gameMode) pausePlayer();
         }
     };
 
@@ -63,7 +66,7 @@ public final class MaximoMusic {
                 pausePlayer();
             }
         } else if (change == AudioManager.AUDIOFOCUS_GAIN) {
-            if (pausedByFocus && isEnabled() && startedActivities > 0) {
+            if (pausedByFocus && isEnabled() && (startedActivities > 0 || gameMode)) {
                 pausedByFocus = false;
                 startPlayer();
             }
@@ -88,6 +91,7 @@ public final class MaximoMusic {
 
     // ---- ciclo de vida das telas do launcher ----
     public void attach() {
+        if (gameMode) return; // dentro do jogo o player nao e recriado nem reiniciado
         startedActivities++;
         main.removeCallbacks(pauseWhenBackground);
         if (isEnabled()) startPlayer();
@@ -95,6 +99,7 @@ public final class MaximoMusic {
     }
 
     public void detach() {
+        if (gameMode) return;
         startedActivities = Math.max(0, startedActivities - 1);
         if (startedActivities == 0) main.postDelayed(pauseWhenBackground, 700);
     }
@@ -135,9 +140,79 @@ public final class MaximoMusic {
     /** Libera tudo (usar antes de abrir o jogo). A proxima tela do launcher recria o player. */
     public void release() {
         main.removeCallbacks(pauseWhenBackground);
+        gameMode = false;
+        pausedByGameBackground = false;
         destroyPlayer();
         abandonFocus();
         notifyListeners();
+    }
+
+    // ---- modo jogo: a musica continua dentro do jogo ----
+
+    /** true se existe uma musica ativa (tocando ou pausada pelo jogador) que o jogo deve continuar mostrando. */
+    public boolean hasGameSession() { return gameMode && player != null; }
+    public boolean isGameMode() { return gameMode; }
+
+    /**
+     * Chamar ao abrir o jogo (no lugar de release()). Se a musica estiver tocando, ela continua: deixa
+     * de repetir (toca ate o fim) e o foco de audio e mantido. Se estava pausada/desligada, nada e
+     * iniciado e o jogo nao mostra o player.
+     */
+    public void enterGameMode() {
+        main.removeCallbacks(pauseWhenBackground);
+        if (player != null && isPlaying()) {
+            gameMode = true;
+            try {
+                player.setLooping(false);
+                player.setOnCompletionListener(mp -> finishTrack());
+            } catch (IllegalStateException e) {
+                release();
+                return;
+            }
+            notifyListeners();
+        } else {
+            release();
+        }
+    }
+
+    /** O jogo foi para segundo plano: pausa (retoma em resumeFromGameBackground). */
+    public void pauseForGameBackground() {
+        if (!gameMode || player == null) return;
+        if (isPlaying()) {
+            pausedByGameBackground = true;
+            pausePlayer();
+        }
+    }
+
+    public void resumeFromGameBackground() {
+        if (!gameMode || player == null || !pausedByGameBackground) return;
+        pausedByGameBackground = false;
+        if (isEnabled() && requestFocus()) {
+            try { player.start(); } catch (IllegalStateException ignored) { }
+        }
+        notifyListeners();
+    }
+
+    /** X do player dentro do jogo: para a musica de vez e libera tudo. */
+    public void closeGamePlayer() {
+        release();
+    }
+
+    /** A musica chegou ao fim dentro do jogo: libera o player (o card some). */
+    private void finishTrack() {
+        release();
+    }
+
+    public int getPositionMs() {
+        try { return player != null ? player.getCurrentPosition() : 0; } catch (IllegalStateException e) { return 0; }
+    }
+
+    public int getDurationMs() {
+        try { return player != null ? Math.max(0, player.getDuration()) : 0; } catch (IllegalStateException e) { return 0; }
+    }
+
+    public void seekToMs(int ms) {
+        try { if (player != null) player.seekTo(Math.max(0, ms)); } catch (IllegalStateException ignored) { }
     }
 
     // ---- internos ----

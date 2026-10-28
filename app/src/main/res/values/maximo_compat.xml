@@ -29,10 +29,9 @@
     <string name="mx_tab_legacy_favorites">Manuais</string>
 
     <!-- Tela de loading do jogo (progresso real por etapas) -->
-    <string name="mx_loading_title">Carregando o jogo...</string>
-    <string name="mx_loading_title_pct">Carregando o jogo... %1$d%%</string>
-    <string name="mx_loading_done">Conectado! %1$d%%</string>
-    <string name="mx_loading_step_start">Preparando o jogo...</string>
+    <string name="mx_loading_title">CARREGANDO O CLIENTE...</string>
+    <string name="mx_loading_done">CONECTADO!</string>
+    <string name="mx_loading_step_start">Aguarde, estamos preparando sua experiência...</string>
     <string name="mx_loading_step_native">Inicializando o SA-MP...</string>
     <string name="mx_loading_step_engine">Carregando o motor do jogo...</string>
     <string name="mx_loading_step_samp">Carregando os recursos do SA-MP...</string>
@@ -45,4 +44,12 @@
     <string name="mx_loading_step_reconnect">Conexão perdida. Reconectando...</string>
     <string name="mx_loading_step_connected">Entrando no servidor...</string>
     <string name="mx_loading_step_error">Não foi possível iniciar o SA-MP. Feche e abra o jogo novamente.</string>
+
+    <!-- Player "Tocando agora" (loading/jogo) -->
+    <string name="mx_gm_now_playing">♫ TOCANDO AGORA</string>
+    <string name="mx_gm_close_cd">Fechar player</string>
+    <string name="mx_gm_prev_cd">Reiniciar música</string>
+    <string name="mx_gm_play_cd">Tocar ou pausar</string>
+    <string name="mx_gm_next_cd">Reiniciar música</string>
+    <string name="mx_gm_volume_cd">Silenciar ou ativar o som</string>
 </resources>

@@ -184,14 +184,14 @@ public class FavouriteServerInformationFragment extends Dialog {
                         dismiss();
                     }
                     else {
-                        com.samp.mobile.launcher.util.MaximoMusic.get(act).release();
+                        com.samp.mobile.launcher.util.MaximoMusic.get(act).enterGameMode();
                         act.startActivity(new Intent(act, SAMP.class));
                         act.finish();
                         dismiss();
                     }
                 }
                 else {
-                    com.samp.mobile.launcher.util.MaximoMusic.get(act).release();
+                    com.samp.mobile.launcher.util.MaximoMusic.get(act).enterGameMode();
                         act.startActivity(new Intent(act, SAMP.class));
                     act.finish();
                     dismiss();

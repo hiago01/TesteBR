@@ -158,7 +158,7 @@ public class ServerInformationFragment extends Dialog {
                     "Please, fix it and after try again.", Toast.LENGTH_LONG).show();
             return;
         }
-        com.samp.mobile.launcher.util.MaximoMusic.get(activity).release();
+        com.samp.mobile.launcher.util.MaximoMusic.get(activity).enterGameMode();
         activity.startActivity(new Intent(activity, SAMP.class));
         activity.finish();
     }

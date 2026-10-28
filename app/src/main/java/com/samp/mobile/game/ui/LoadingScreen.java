@@ -53,6 +53,12 @@ public class LoadingScreen {
     private final LoadingBarView bar;
     private final TextView title;
     private final TextView step;
+    private final TextView pctView;
+
+    /** Avisos para quem precisa reagir a tela aparecer/sumir (ex.: card de musica). */
+    public interface Callback { void onLoadingShown(); void onLoadingHidden(); }
+    private Callback callback;
+    public void setCallback(Callback c) { callback = c; }
 
     private float displayed = 0f;     // 0..1 exibido
     private float target = 0f;        // 0..1 da ultima etapa concluida
@@ -68,6 +74,7 @@ public class LoadingScreen {
         bar = mainLayout.findViewById(R.id.progressBar2);
         title = mainLayout.findViewById(R.id.mx_loading_text);
         step = mainLayout.findViewById(R.id.mx_loading_step);
+        pctView = mainLayout.findViewById(R.id.mx_loading_pct);
         activity.addContentView(mainLayout, new ConstraintLayout.LayoutParams(-1, -1));
         resetVisual();
     }
@@ -84,6 +91,7 @@ public class LoadingScreen {
         bar.setFraction(0f);
         bar.setActive(true);
         title.setTextColor(0xFFFFFFFF);
+        pctView.setTextColor(0xFFFFFFFF);
         render(0f);
         step.setText(R.string.mx_loading_step_start);
     }
@@ -128,6 +136,7 @@ public class LoadingScreen {
         resetVisual();
         step.setText(R.string.mx_loading_step_reconnect);
         mainLayout.bringToFront();
+        if (callback != null) callback.onLoadingShown();
         target = PERCENT[STAGE_NET_CREATED] / 100f;
         displayed = target;
         bar.setFraction(displayed);
@@ -141,6 +150,7 @@ public class LoadingScreen {
         bar.setActive(false);
         bar.setError(true);
         title.setTextColor(0xFFFF5C6C);
+        pctView.setTextColor(0xFFFF5C6C);
         title.setText(R.string.mx_loading_title);
         step.setText(messageRes);
         mainLayout.setVisibility(View.VISIBLE);
@@ -199,6 +209,7 @@ public class LoadingScreen {
                                     mainLayout.setVisibility(View.INVISIBLE);
                                     mainLayout.setAlpha(1f);
                                     finishing = false;
+                                    if (callback != null) callback.onLoadingHidden();
                                 }
                             }).start();
                 }
@@ -216,6 +227,7 @@ public class LoadingScreen {
 
     private void render(float f) {
         int pct = Math.round(f * 100f);
-        title.setText(activity.getString(f >= 1f ? R.string.mx_loading_done : R.string.mx_loading_title_pct, pct));
+        pctView.setText(pct + "%");
+        title.setText(f >= 1f ? R.string.mx_loading_done : R.string.mx_loading_title);
     }
 }

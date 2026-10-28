@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Overlay do player "Tocando agora" (durante o loading e dentro do jogo). O fundo e transparente e
+     nao consome toques: so o card responde. Posicionado por porcentagem, como na arte do loading. -->
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/mx_gm_overlay"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:clickable="false"
+    android:focusable="false">
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/mx_gm_g_left"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintGuide_percent="0.628" />
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/mx_gm_g_right"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintGuide_percent="0.954" />
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/mx_gm_g_top"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:layout_constraintGuide_percent="0.34" />
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/mx_gm_g_bottom"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:layout_constraintGuide_percent="0.71" />
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/mx_gm_card"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@drawable/mx_music_card_bg"
+        android:clickable="true"
+        android:focusable="true"
+        android:padding="@dimen/_8sdp"
+        app:layout_constraintBottom_toBottomOf="@+id/mx_gm_g_bottom"
+        app:layout_constraintEnd_toEndOf="@+id/mx_gm_g_right"
+        app:layout_constraintStart_toStartOf="@+id/mx_gm_g_left"
+        app:layout_constraintTop_toTopOf="@+id/mx_gm_g_top">
+
+        <ImageView
+            android:id="@+id/mx_gm_cover"
+            android:layout_width="@dimen/_44sdp"
+            android:layout_height="@dimen/_44sdp"
+            android:contentDescription="@null"
+            android:scaleType="centerCrop"
+            android:src="@drawable/maximo_cover"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <TextView
+            android:id="@+id/mx_gm_now"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/_8sdp"
+            android:fontFamily="@font/montserrat_bold"
+            android:singleLine="true"
+            android:text="@string/mx_gm_now_playing"
+            android:textColor="#FF2F9BFF"
+            android:textSize="@dimen/_6sdp"
+            app:layout_constraintEnd_toStartOf="@+id/mx_gm_close"
+            app:layout_constraintStart_toEndOf="@+id/mx_gm_cover"
+            app:layout_constraintTop_toTopOf="@+id/mx_gm_cover" />
+
+        <TextView
+            android:id="@+id/mx_gm_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/_8sdp"
+            android:fontFamily="@font/montserrat_bold"
+            android:singleLine="true"
+            android:text="@string/mx_music_title"
+            android:textColor="#FFFFFFFF"
+            android:textSize="@dimen/_9sdp"
+            app:layout_constraintEnd_toStartOf="@+id/mx_gm_close"
+            app:layout_constraintStart_toEndOf="@+id/mx_gm_cover"
+            app:layout_constraintTop_toBottomOf="@+id/mx_gm_now" />
+
+        <TextView
+            android:id="@+id/mx_gm_subtitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/_8sdp"
+            android:fontFamily="@font/montserrat_regular"
+            android:singleLine="true"
+            android:text="@string/mx_music_subtitle"
+            android:textColor="#FF9FB0CC"
+            android:textSize="@dimen/_7sdp"
+            app:layout_constraintEnd_toStartOf="@+id/mx_gm_close"
+            app:layout_constraintStart_toEndOf="@+id/mx_gm_cover"
+            app:layout_constraintTop_toBottomOf="@+id/mx_gm_title" />
+
+        <ImageView
+            android:id="@+id/mx_gm_close"
+            android:layout_width="@dimen/_22sdp"
+            android:layout_height="@dimen/_22sdp"
+            android:background="@drawable/mx_music_close_bg"
+            android:contentDescription="@string/mx_gm_close_cd"
+            android:padding="@dimen/_5sdp"
+            android:src="@drawable/ic_close"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:tint="#FFFFFFFF" />
+
+        <SeekBar
+            android:id="@+id/mx_gm_seek"
+            android:layout_width="0dp"
+            android:layout_height="@dimen/_14sdp"
+            android:layout_marginTop="@dimen/_6sdp"
+            android:max="1000"
+            android:maxHeight="@dimen/_3sdp"
+            android:minHeight="@dimen/_3sdp"
+            android:paddingStart="@dimen/_3sdp"
+            android:paddingEnd="@dimen/_3sdp"
+            android:progressDrawable="@drawable/mx_seek_progress"
+            android:thumb="@drawable/mx_seek_thumb"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/mx_gm_cover" />
+
+        <TextView
+            android:id="@+id/mx_gm_time_cur"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/montserrat_regular"
+            android:text="00:00"
+            android:textColor="#FF9FB0CC"
+            android:textSize="@dimen/_6sdp"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/mx_gm_seek" />
+
+        <TextView
+            android:id="@+id/mx_gm_time_total"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/montserrat_regular"
+            android:text="00:00"
+            android:textColor="#FF9FB0CC"
+            android:textSize="@dimen/_6sdp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/mx_gm_seek" />
+
+        <LinearLayout
+            android:id="@+id/mx_gm_controls"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/mx_gm_time_cur">
+
+            <ImageView
+                android:id="@+id/mx_gm_prev"
+                android:layout_width="@dimen/_24sdp"
+                android:layout_height="@dimen/_24sdp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/mx_gm_prev_cd"
+                android:padding="@dimen/_5sdp"
+                android:src="@drawable/mx_ic_prev"
+                app:tint="#FFFFFFFF" />
+
+            <ImageView
+                android:id="@+id/mx_gm_play"
+                android:layout_width="@dimen/_34sdp"
+                android:layout_height="@dimen/_34sdp"
+                android:layout_marginStart="@dimen/_10sdp"
+                android:layout_marginEnd="@dimen/_10sdp"
+                android:background="@drawable/mx_music_ring"
+                android:contentDescription="@string/mx_gm_play_cd"
+                android:padding="@dimen/_8sdp"
+                android:src="@drawable/mx_ic_pause"
+                app:tint="#FFFFFFFF" />
+
+            <ImageView
+                android:id="@+id/mx_gm_next"
+                android:layout_width="@dimen/_24sdp"
+                android:layout_height="@dimen/_24sdp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/mx_gm_next_cd"
+                android:padding="@dimen/_5sdp"
+                android:src="@drawable/mx_ic_next"
+                app:tint="#FFFFFFFF" />
+
+            <ImageView
+                android:id="@+id/mx_gm_volume"
+                android:layout_width="@dimen/_24sdp"
+                android:layout_height="@dimen/_24sdp"
+                android:layout_marginStart="@dimen/_8sdp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/mx_gm_volume_cd"
+                android:padding="@dimen/_5sdp"
+                android:src="@drawable/mx_ic_volume"
+                app:tint="#FFFFFFFF" />
+        </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

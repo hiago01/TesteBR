@@ -41,3 +41,10 @@ C++: jniutil.h/.cpp, loadingstage.h (novo), main.cpp, netgame.cpp.
 - O parser continua lendo só o 1º servidor do `servers.json` (fonte não alterada); a lógica de favoritos já suporta vários.
 - Se o IP oficial mudar no servers.json, o favorito antigo fica salvo mas não aparece (chave diferente).
 - IPs continuam visíveis por inspeção do app/tráfego.
+
+## 5. Loading com a arte nova + música contínua (atualização)
+- `loadingscreen.xml` refeito como a arte enviada: fundo `drawable-nodpi/mx_loading_bg.jpg` (a arte com a barra/texto/player embutidos foi **limpa** por inpainting; a área do card ficou como uma névoa escura, coberta pelo card real), título "CARREGANDO O CLIENTE...", barra azul com a porcentagem real à direita e a etapa atual abaixo. Mesmo progresso por etapas reais da seção 4.
+- `GameMusicCard` + `game_music_card.xml`: card "TOCANDO AGORA" (capa, título, barra de tempo com seek, anterior/próxima = reinicia, play/pause, volume e X). Mesmo `MaximoMusic` do launcher (nenhum 2º MediaPlayer).
+- `MaximoMusic.enterGameMode()` (chamado ao abrir o jogo no lugar de `release()`): a música continua, **toca uma vez até o fim** (sem loop) e o card só some quando a música **acaba** ou no **X**. Se estava pausada ao abrir o jogo, o card não aparece. Pausa se o jogo for para segundo plano e retoma ao voltar. `SAMP.onDestroy` libera o player.
+- Após o loading o card encolhe (60%) para o canto superior direito para não cobrir os botões do jogo; ao reconectar volta ao tamanho do loading.
+- Não testado em aparelho: posição/proporção do card sobre a arte foi calculada para telas 20:9 (a arte é 1870x841).

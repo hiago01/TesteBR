@@ -19,7 +19,9 @@ import com.samp.mobile.R;
 import com.samp.mobile.game.ui.AttachEdit;
 import com.samp.mobile.game.ui.ClothesUI;
 import com.samp.mobile.game.ui.CustomKeyboard;
+import com.samp.mobile.game.ui.GameMusicCard;
 import com.samp.mobile.game.ui.LoadingScreen;
+import com.samp.mobile.launcher.util.MaximoMusic;
 import com.samp.mobile.game.ui.dialog.DialogManager;
 import com.samp.mobile.launcher.util.SharedPreferenceCore;
 import com.samp.mobile.launcher.util.SignatureChecker;
@@ -38,6 +40,8 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
     private AttachEdit mAttachEdit;
     private ClothesUI mClothes;
     private LoadingScreen mLoadingScreen;
+    /** Player "Tocando agora": continua durante o loading e o jogo ate a musica acabar ou o X. */
+    private GameMusicCard mMusicCard;
 
     public native void sendDialogResponse(int i, int i2, int i3, byte[] str);
 
@@ -230,6 +234,16 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         mClothes = new ClothesUI(this);
 
         mLoadingScreen = new LoadingScreen(this);
+        // Card de musica criado DEPOIS do loading para ficar por cima dele (e do jogo).
+        mMusicCard = new GameMusicCard(this);
+        mLoadingScreen.setCallback(new LoadingScreen.Callback() {
+            @Override public void onLoadingShown() {
+                if (mMusicCard != null) { mMusicCard.bringToFront(); mMusicCard.expand(); }
+            }
+            @Override public void onLoadingHidden() {
+                if (mMusicCard != null) mMusicCard.compact();
+            }
+        });
 
         instance = this;
 
@@ -296,6 +310,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
     public void onResume() {
         Log.i(TAG, "**** onResume");
         super.onResume();
+        MaximoMusic.get(this).resumeFromGameBackground();
         //mHeightProvider.init(view);
     }
 
@@ -331,6 +346,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
     @Override
     public void onPause() {
         Log.i(TAG, "**** onPause");
+        MaximoMusic.get(this).pauseForGameBackground();
         super.onPause();
     }
 
@@ -344,6 +360,8 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
     public void onDestroy() {
         Log.i(TAG, "**** onDestroy");
         if (mLoadingScreen != null) mLoadingScreen.release();
+        if (mMusicCard != null) mMusicCard.dismiss();
+        MaximoMusic.get(this).release(); // a Activity do jogo acabou: libera o MediaPlayer
         super.onDestroy();
     }
 

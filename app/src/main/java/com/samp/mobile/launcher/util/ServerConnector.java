@@ -44,6 +44,7 @@ public final class ServerConnector {
                 return false;
             }
         }
+        MaximoMusic.get(activity).enterGameMode();
         activity.startActivity(new Intent(activity, SAMP.class));
         activity.finish();
         return true;

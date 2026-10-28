@@ -15,7 +15,7 @@
 | 6 | `MainActivity.java:192-198` e `272-278` | `while(!fragment.isAdded()) Thread.sleep(1000)` dentro de callback do Volley (**thread principal**) e dentro de `AsyncTask` (trava a fila serial dos favoritos). |
 | 7 | `MainActivity.java:216` | `onErrorResponse` chamava `getServersInfo()` de novo: **loop infinito de requisições** sem limite, e cada chamada criava um `RequestQueue` novo (5 threads vazadas por tentativa). |
 | 8 | `MainActivity.java:170-185` | Adicionava **todos** os itens de `query`, marcava `ONLINE` e `ping=12` fixos, jogadores vindos do JSON (dados fictícios). `throw new RuntimeException` em JSON inválido → crash. |
-| 9 | `UpdateService.java:140` (+`MainActivity:165`, `UpdateService:382`) | URLs `http://SEU.IP:PORTA/...` espalhadas no código. |
+| 9 | `UpdateService.java:140` (+`MainActivity:165`, `UpdateService:382`) | URLs `http://192.168.1.83:8080/...` espalhadas no código. |
 | 10 | `UpdateService.java:154,233-244` | `getFilesInfo` fazia `while(true) sleep(30)` esperando `Util.responseFilesInt` **na thread principal** (callback do Volley). Conexão sem timeout; só pegava `IOException`; qualquer outra exceção na thread deixava o valor em 0 → **laço eterno / ANR**. |
 | 11 | `Util.java:40-41` | `responseFilesInt` global nunca voltava a 0: 2ª verificação lia valor velho. Falha na lista (`=2`) era tratada como "Updated" (silenciosa). |
 | 12 | `UpdateService.java:363-433` | Download em laço com `do{sleep}while(mDownloadingStatus)` sem timeout; callback que não chega = espera eterna. |

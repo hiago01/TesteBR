@@ -9,7 +9,7 @@
 -->
 <resources>
     <!-- Base do servidor HTTP do launcher, sem barra final. -->
-    <string name="endpoint_base_url" translatable="false">http://127.0.0.1:8080</string>
+    <string name="endpoint_base_url" translatable="false">http://192.168.1.83:8080</string>
     <!-- JSON com o servidor exibido (estrutura documentada em docs/servers.example.json). -->
     <string name="endpoint_servers_path" translatable="false">/servers.json</string>
     <!-- JSON do atualizador (client_config) com version_code, url_launcher, url_cache_files. -->
