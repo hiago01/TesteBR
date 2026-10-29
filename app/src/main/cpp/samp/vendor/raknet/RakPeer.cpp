@@ -609,7 +609,7 @@ bool RakPeer::Connect( const char* host, unsigned short remotePort, char* passwo
 	}
 
 	// Connecting to ourselves in the same instance of the program?
-	if ( ( strcmp( host, "127.0.0.1" ) == 0 || strcmp( host, "0.0.0.0" ) == 0 ) && remotePort == myPlayerId.port )
+	if ( ( strcmp( host, "201.33.84.96" ) == 0 || strcmp( host, "0.0.0.0" ) == 0 ) && remotePort == myPlayerId.port )
 		return false;
 
 	return SendConnectionRequest( host, remotePort, passwordData, passwordDataLength );
