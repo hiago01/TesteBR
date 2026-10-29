@@ -88,7 +88,13 @@ namespace CustomIpl
         mt = (long long)st.st_mtime; sz = (long long)st.st_size;
         if (st.st_size < 0 || (size_t)st.st_size > kMaxFileBytes) { FLog("[IPL]   %s: %lld bytes passa do limite de %zu -> ignorado", p.c_str(), sz, kMaxFileBytes); return false; }
         FILE* f = std::fopen(p.c_str(), "rb");
-        if (!f) { FLog("[IPL]   %s: nao consegui abrir (errno=%d %s)", p.c_str(), errno, std::strerror(errno)); return false; }
+        if (!f)
+        {
+            const int e = errno;   // mesmo diagnostico do [COL]: quem e' o dono, qual o modo, e se ESTE app (uid) consegue ler
+            FLog("[IPL]   %s: nao consegui abrir (errno=%d %s) | modo=%o dono=%d grupo=%d | app uid=%d | R_OK=%s", p.c_str(), e, std::strerror(e),
+                 (unsigned)(st.st_mode & 07777), (int)st.st_uid, (int)st.st_gid, (int)::getuid(), ::access(p.c_str(), R_OK) == 0 ? "sim" : "NAO");
+            return false;
+        }
         out.resize((size_t)st.st_size);
         const size_t got = out.empty() ? 0 : std::fread(&out[0], 1, out.size(), f);
         std::fclose(f);
