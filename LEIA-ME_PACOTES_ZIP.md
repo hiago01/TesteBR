@@ -84,3 +84,25 @@ gerados pelo jogo, para nao sobrescrever as configuracoes do jogador a cada aber
 Le direto de dentro do .zip (nada e extraido em disco; testa o CRC do zip antes), remove a pasta raiz unica se houver (`--no-strip` desliga)
 e, por padrao, NAO deixa nada de fora. `--seguro` deixa de fora lixo de SO, lista.txt e os caches do aparelho. O `verify_install.py zip`
 tambem aceita o .zip em `--src`. O fluxo antigo (atualizacao) continua sem baixar/sobrescrever arquivos gerados pelo jogo.
+
+## Pasta SAMP/ completa (--overlay)
+`python build_packs.py --src C:\cache-server\files.zip --overlay C:\cache-server\SAMP.zip --out C:\cache-server\packs --base-url http://201.33.84.96:8080/packs --version 1`
+O `SAMP.zip` passa a ser a verdade para toda a pasta `SAMP/`: o que existia so no `files.zip` (obsoleto) some e tudo do `SAMP.zip` entra,
+inclusive arquivos recriados pelo jogo (cinfo.sig, col_index.txt, favorites.json, svlog.txt, settings.ini, svconfig.ini) e as
+pastas com espaco/parenteses (`SAMP/dff/New Folder`, `countrye_stream4(edit.txt`). O `files.json` e gerado do MESMO conjunto.
+
+## Pasta SAMP/ pelo PRDownloader (cache-server/SAMP + samp.json)
+Fluxo: **1)** pacotes ZIP (tudo menos SAMP/) -> extrai e confere -> **apaga** `.downloads` (zips), `.staging` e `.backup` do aparelho;
+**2)** a pasta SAMP/ e baixada arquivo a arquivo pelo PRDownloader, com tamanho e SHA-256 conferidos, nada ignorado.
+Nas aberturas seguintes (atualizacao/verificacao) a SAMP/ continua sendo conferida pelo samp.json.
+
+Servidor (C:\cache-server):
+```
+SAMP\           <- a pasta, na raiz do servidor HTTP (arquivos em http://IP:8080/SAMP/...)
+samp.json       <- py gerar_samp_json.py --src C:\cache-server\SAMP --out C:\cache-server\samp.json
+packs\*.zip     <- py build_packs.py --src C:\cache-server\files.zip --excluir-pasta SAMP --out C:\cache-server\packs --base-url http://IP:8080/packs --version 1
+```
+Sem `samp.json` no servidor o launcher cai para o fluxo antigo (SAMP/ pelo files.json). Endpoint novo: `endpoint_samp_json_path` (endpoints.xml / AppEndpoints.sampJsonUrl / sampFileUrl).
+**Arquivos que o jogo regrava** (settings.ini, favorites.json, svlog.txt, cinfo.sig, col_index.txt, sampvoice/svconfig.ini): entram no samp.json e sao
+baixados SEMPRE que estiverem ausentes; se ja existirem NAO sao sobrescritos (senao toda abertura apagaria configuracoes e favoritos do jogador).
+Para rebaixar sempre, `SampList.restoreVolatileOnlyIfMissing = false` (pack/SampList.java).

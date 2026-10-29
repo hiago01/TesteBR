@@ -21,6 +21,8 @@ Regras (devem bater com GameFilePolicy.java do app):
     --com-excecoes = modo antigo (ignora tambem as configuracoes do jogador; lista abaixo).
   * core = tudo que nao e de GPU; gpu_dxt/gpu_etc/gpu_pvr = ".dxt." / ".etc." / ".pvr." no caminho,
     EXCETO caminhos com "samp", "player" ou "menu" (sempre core, sem diferenciar caixa) - mesma regra do app.
+  * --overlay PASTA_OU_ZIP (repetivel): sobrepoe pastas inteiras. Ex.: --overlay C:\\cache-server\\SAMP.zip faz a pasta SAMP/
+    do SAMP.zip substituir TODA a SAMP/ do --src (some o que ficou obsoleto, entra tudo o que e novo).
   * Cada zip tem no maximo --max-mb (padrao 900 MiB) de dados: pacotes maiores sao divididos em
     core, core_2, core_3... (sem Zip64; o app aceita varios pacotes com gpu 0).
   * ZIP_STORED para .img .dat .png .jpeg .jpg .tmb .toc (ja comprimidos/grandes); DEFLATED para o resto.
@@ -55,6 +57,9 @@ INTERNAL_DIRS = (".staging/", ".backup/", ".downloads/")
 # Modos: "seguro" (padrao) = tudo, menos lixo de SO e CACHES gerados no aparelho; "tudo" = sem nenhuma excecao;
 #        "antigo" = lista completa de ignorados (inclui settings.ini, favorites.json etc.).
 MODE = "tudo"
+# Pastas de topo do cliente: se a unica pasta raiz de um .zip tiver um destes nomes, ela e PARTE do jogo (ex.: SAMP.zip
+# contendo SAMP/...) e NAO e removida; qualquer outro nome unico (ex.: files/) e tratado como pasta embrulho e removido.
+GAME_TOP_DIRS = {"samp", "data", "texdb", "models", "audio", "anim", "fonts", "text", "textures"}
 INCLUDE_ALL = True   # "seguro" e "tudo" emitem include_all:true
 # Caches que o JOGO gera no celular e valida por mtime/tamanho/assinatura (CustomCol/CustomImg): trazer a copia do PC
 # pode deixar cache que nao confere com os arquivos instalados.
@@ -154,7 +159,7 @@ def scan_zip(zpath, strip=True):
     prefix = ""
     if strip:
         firsts = {n.split("/", 1)[0] for n, _ in entries if "/" in n}
-        if len(firsts) == 1 and all("/" in n for n, _ in entries):
+        if len(firsts) == 1 and all("/" in n for n, _ in entries) and next(iter(firsts)).lower() not in GAME_TOP_DIRS:
             prefix = firsts.pop() + "/"
             print("pasta raiz '%s' dentro do .zip removida dos caminhos (use --no-strip para manter)" % prefix.rstrip("/"))
     items, seen_lower, zero = [], {}, []
@@ -214,6 +219,20 @@ def scan(src, strip=True):
     return items, zero
 
 
+def apply_overlay(items, overlay_items):
+    """A sobreposicao (ex.: SAMP.zip) e a VERDADE para as pastas de topo que ela contem: remove tudo da base nessas pastas
+    (ex.: SAMP/ obsoleto como SAMP2.ide) e coloca o conteudo da sobreposicao. Arquivos soltos na raiz substituem/adicionam."""
+    tops = {rel.split("/", 1)[0].lower() for rel, _, _ in overlay_items if "/" in rel}
+    exact = {rel.lower() for rel, _, _ in overlay_items if "/" not in rel}
+    kept = [it for it in items if not ("/" in it[0] and it[0].split("/", 1)[0].lower() in tops) and it[0].lower() not in exact]
+    removed = len(items) - len(kept)
+    out = kept + list(overlay_items)
+    out.sort(key=lambda t: t[0])
+    print("sobreposicao: pastas %s substituidas (%d arquivos da base removidos, %d da sobreposicao adicionados)"
+          % (sorted(tops), removed, len(overlay_items)))
+    return out
+
+
 def split_groups(items, max_bytes):
     groups, cur, cur_sz = [], [], 0
     for it in items:
@@ -260,6 +279,11 @@ def main():
     ap = argparse.ArgumentParser(description="Gera pacotes ZIP do cliente + trecho do client_config.json")
     ap.add_argument("--src", default=r"C:\cache-server\files",
                     help="pasta com os arquivos do jogo OU o .zip do cliente completo, ex.: C:\\cache-server\\files.zip (somente leitura)")
+    ap.add_argument("--overlay", action="append", default=[],
+                    help="pasta ou .zip que SUBSTITUI as pastas de topo que contem (ex.: --overlay C:\\cache-server\\SAMP.zip troca TODA a pasta SAMP/ do --src). Pode repetir.")
+    ap.add_argument("--excluir-pasta", action="append", default=[],
+                    help="pasta de topo que NAO vai nos pacotes nem no files.json (ex.: --excluir-pasta SAMP: ela e baixada pelo "
+                         "launcher via samp.json). Pode repetir.")
     ap.add_argument("--no-strip", action="store_true", help="com --src .zip: nao remove a pasta raiz unica de dentro do .zip")
     ap.add_argument("--out", default=r"C:\cache-server\packs", help="pasta onde os zips e o manifest serao escritos")
     ap.add_argument("--base-url", required=True, help="URL publica da pasta dos zips, ex.: http://IP:8080/packs")
@@ -290,6 +314,27 @@ def main():
     os.makedirs(out, exist_ok=True)
 
     items, zero = scan(src, not a.no_strip)
+    for ov in a.overlay:
+        ovp = os.path.abspath(ov)
+        if not os.path.exists(ovp):
+            sys.exit("ERRO: --overlay nao existe: " + ovp)
+        oitems, ozero = scan(ovp, not a.no_strip)
+        if not oitems:
+            sys.exit("ERRO: --overlay vazio: " + ovp)
+        items = apply_overlay(items, oitems)
+        zero = sorted(set(zero) | set(ozero))
+    if a.excluir_pasta:
+        ex = {x.strip("/").lower() for x in a.excluir_pasta}
+        before = len(items)
+        items = [it for it in items if it[0].split("/", 1)[0].lower() not in ex or "/" not in it[0]]
+        print("pastas fora dos pacotes: %s (%d arquivos removidos da lista)" % (sorted(ex), before - len(items)))
+        if not items:
+            sys.exit("ERRO: nada sobrou depois de --excluir-pasta")
+    low_seen = {}
+    for it in items:
+        if it[0].lower() in low_seen and low_seen[it[0].lower()] != it[0]:
+            sys.exit("ERRO: dois caminhos diferem so pela caixa (Android e case-sensitive):\n  %s\n  %s" % (low_seen[it[0].lower()], it[0]))
+        low_seen[it[0].lower()] = it[0]
     if not items:
         sys.exit("ERRO: nenhum arquivo encontrado em " + src)
     if zero:

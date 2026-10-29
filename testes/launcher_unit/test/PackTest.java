@@ -427,6 +427,50 @@ public class PackTest {
                     new String(read(new File(base, "data/perdido.txt"))).equals("ORIGINAL") && new String(read(new File(base, "data/existe.txt"))).equals("ATUAL"), "");
         }
 
+        // ---------------- SampList (pasta SAMP/ baixada pelo PRDownloader) ----------------
+        {
+            String shaA = sha("AAAA".getBytes());
+            String ok = "{\"files\":[{\"name\":\"a.txt\",\"path\":\"SAMP/a.txt\",\"size\":4,\"sha256\":\"" + shaA + "\"},"
+                    + "{\"name\":\"x.dff\",\"path\":\"SAMP/dff/New Folder/x(1).dff\",\"size\":0},"
+                    + "{\"name\":\"settings.ini\",\"path\":\"SAMP/settings.ini\",\"size\":3}]}";
+            SampList sl = null;
+            try { sl = SampList.parse(ok); } catch (PackException e) { r("samp.json valido (espaco, parenteses, 0 bytes)", false, e.getMessage()); }
+            if (sl != null) {
+                r("samp.json valido (espaco, parenteses, 0 bytes)", sl.files.size() == 3 && sl.files.get(1).path.equals("SAMP/dff/New Folder/x(1).dff"), "");
+                File d = tmp();
+                // ausente
+                r("SAMP: arquivo ausente -> precisa baixar", SampList.whyNeeded(d, sl.files.get(0), false) != null, "");
+                write(new File(d, "SAMP/a.txt"), "AAAA".getBytes());
+                r("SAMP: tamanho e sha certos -> ok", SampList.whyNeeded(d, sl.files.get(0), true) == null, "");
+                write(new File(d, "SAMP/a.txt"), "BBBB".getBytes());
+                r("SAMP: mesmo tamanho, conteudo errado: so a verificacao profunda pega",
+                        SampList.whyNeeded(d, sl.files.get(0), false) == null && SampList.whyNeeded(d, sl.files.get(0), true) != null, "");
+                write(new File(d, "SAMP/a.txt"), "AA".getBytes());
+                r("SAMP: tamanho errado -> precisa baixar", SampList.whyNeeded(d, sl.files.get(0), false) != null, "");
+                // volatil (regravado pelo jogo)
+                r("SAMP: settings.ini ausente -> baixa (nada e ignorado)", SampList.whyNeeded(d, sl.files.get(2), true) != null, "");
+                write(new File(d, "SAMP/settings.ini"), "MEU-INI-MAIOR".getBytes());
+                r("SAMP: settings.ini existente e alterado pelo jogador NAO e sobrescrito (padrao)", SampList.whyNeeded(d, sl.files.get(2), true) == null, "");
+                SampList.restoreVolatileOnlyIfMissing = false;
+                try {
+                    r("SAMP: com restoreVolatileOnlyIfMissing=false, rebaixa tambem os recriados", SampList.whyNeeded(d, sl.files.get(2), false) != null, "");
+                } finally { SampList.restoreVolatileOnlyIfMissing = true; }
+            }
+            String[] badSamp = {
+                "{\"files\":[{\"path\":\"data/x\",\"size\":1}]}",
+                "{\"files\":[{\"path\":\"SAMP/../x\",\"size\":1}]}",
+                "{\"files\":[{\"path\":\"SAMP/a\",\"size\":1},{\"path\":\"SAMP/A\",\"size\":1}]}",
+                "{\"files\":[{\"path\":\"SAMP/a\",\"size\":1},{\"path\":\"SAMP/a\",\"size\":1}]}",
+                "{\"files\":[{\"path\":\"SAMP/a\",\"size\":-1}]}",
+                "{\"files\":[{\"path\":\"SAMP/a\",\"size\":1,\"sha256\":\"zz\"}]}",
+                "{\"nada\":1}", "<html>erro</html>" };
+            int rej = 0;
+            for (String b : badSamp) { try { SampList.parse(b); } catch (PackException e) { rej++; } catch (RuntimeException e) { rej++; } }
+            r("samp.json invalido e rejeitado (fora de SAMP/, .., caixa, duplicado, tamanho, sha, html)", rej == badSamp.length, "rej=" + rej);
+            r("SAMP: isSampPath nao diferencia caixa; isVolatile conhece a lista", SampList.isSampPath("samp/x") && SampList.isSampPath("SAMP/x")
+                    && !SampList.isSampPath("data/SAMP/x") && SampList.isVolatile("SAMP/Favorites.json") && !SampList.isVolatile("SAMP/vehicles.ide"), "");
+        }
+
         // ---------------- installed.json ----------------
         {
             File base = tmp();

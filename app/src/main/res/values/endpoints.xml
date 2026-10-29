@@ -16,4 +16,7 @@
     <string name="endpoint_client_config_path" translatable="false">/client_config.json</string>
     <!-- Prefixo de download dos arquivos do jogo; recebe o "path" de cada item de url_cache_files. -->
     <string name="endpoint_files_path" translatable="false">/files/</string>
+    <!-- JSON da pasta SAMP/ (gerado por gerar_samp_json.py a partir de C:\cache-server\SAMP). Os arquivos dela sao baixados em
+         <base>/<path>, ex.: http://IP:8080/SAMP/dff/x.dff (a pasta cache-server/SAMP fica na raiz do servidor). -->
+    <string name="endpoint_samp_json_path" translatable="false">/samp.json</string>
 </resources>

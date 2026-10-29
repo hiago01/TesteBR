@@ -38,6 +38,7 @@ import com.samp.mobile.launcher.pack.PackConfig;
 import com.samp.mobile.launcher.pack.PackException;
 import com.samp.mobile.launcher.pack.PackInstaller;
 import com.samp.mobile.launcher.pack.PackSpec;
+import com.samp.mobile.launcher.pack.SampList;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -115,6 +116,9 @@ public class UpdateService extends Service {
     /** true = esta rodada de dados do jogo e a PRIMEIRA instalacao e sera feita por pacotes ZIP. */
     private boolean mUsePacks = false;
     private int mListTotalFiles = 0;
+    /** Lista da pasta SAMP/ (samp.json). null = servidor sem samp.json -> a SAMP/ segue pelo files.json (fluxo antigo). */
+    private SampList mSampList = null;
+    private static final String PACKS_MARKER = "(packs)";
     private ExecutorService mPackWorker;
     private CancelToken mPackCancel;
     /** Arquivos que ficam pendentes se a instalacao por pacotes falhar (a proxima verificacao refaz). */
@@ -263,6 +267,11 @@ public class UpdateService extends Service {
     }
 
     private StringRequest newRequest(String url, final int session, final Response.Listener<String> ok, final String what) {
+        return newRequest(url, session, ok, what, null);
+    }
+
+    /** onFail != null: em erro de rede/resposta invalida chama onFail (na HandlerThread) em vez de abortar a verificacao. */
+    private StringRequest newRequest(String url, final int session, final Response.Listener<String> ok, final String what, final Runnable onFail) {
         StringRequest r = new StringRequest(url, new Response.Listener<String>() {
             @Override
             public void onResponse(final String response) {
@@ -274,7 +283,7 @@ public class UpdateService extends Service {
                             ok.onResponse(response);
                         } catch (RuntimeException e) {
                             Log.e(TAG, what + ": processing failed", e);
-                            failCheck(what + ": invalid response");
+                            if (onFail != null) onFail.run(); else failCheck(what + ": invalid response");
                         }
                     }
                 });
@@ -287,7 +296,7 @@ public class UpdateService extends Service {
                     @Override
                     public void run() {
                         if (session != mSession) return;
-                        failCheck("Could not reach the update server (" + what + ")");
+                        if (onFail != null) onFail.run(); else failCheck("Could not reach the update server (" + what + ")");
                     }
                 });
             }
@@ -313,6 +322,7 @@ public class UpdateService extends Service {
         mUsePacks = false;
         mPackConfig = null;
         mPackSelection = null;
+        mSampList = null;
         mListTotalFiles = 0;
         mUpdateGameDataSize = 0;          // original acumulava entre verificacoes
         mUpdateGameDataSizeUpdated = 0;
@@ -352,7 +362,13 @@ public class UpdateService extends Service {
                             failCheck("client_config: invalid url_cache_files");
                             return;
                         }
-                        getFilesInfo(string, session, onSuccess);
+                        final String filesUrl = string;
+                        loadSamp(session, new Runnable() {
+                            @Override
+                            public void run() {
+                                getFilesInfo(filesUrl, session, onSuccess);
+                            }
+                        });
                     } else {
                         onSuccess.run();
                     }
@@ -362,6 +378,53 @@ public class UpdateService extends Service {
                 }
             }
         }, "client_config"));
+    }
+
+    /**
+     * Baixa samp.json (lista da pasta SAMP/) e acrescenta a mUpdateFiles o que falta/esta diferente. Erro ou arquivo
+     * ausente no servidor NAO aborta: mSampList fica null e a SAMP/ segue pelo files.json como antes.
+     */
+    private void loadSamp(final int session, final Runnable next) {
+        final Runnable fallback = new Runnable() {
+            @Override
+            public void run() {
+                Log.w(TAG, "samp.json indisponivel -> SAMP/ pelo files.json");
+                mSampList = null;
+                next.run();
+            }
+        };
+        mQueue.add(newRequest(AppEndpoints.sampJsonUrl(this), session, new Response.Listener<String>() {
+            @Override
+            public void onResponse(String body) {
+                File base = getExternalFilesDir(null);
+                if (base == null) { fallback.run(); return; }
+                SampList list;
+                try {
+                    list = SampList.parse(body);
+                } catch (PackException e) {
+                    Log.e(TAG, "samp.json invalido: " + e.getMessage());
+                    fallback.run();
+                    return;
+                }
+                mSampList = list;
+                // verificacao profunda (SHA-256) so quando a instalacao ainda nao foi verificada por pacotes
+                boolean deep = InstalledState.read(base) == null;
+                int pending = 0;
+                for (SampList.Entry e : list.files) {
+                    String why = SampList.whyNeeded(base, e, deep);
+                    if (why == null) continue;
+                    Log.d(TAG, "SAMP pendente: " + e.path + " (" + why + ")");
+                    mUpdateFiles.add(e.path);
+                    mUpdateFilesName.add(e.path.substring(e.path.lastIndexOf('/') + 1));
+                    mUpdateFilesSize.add(e.size);
+                    mUpdateFilesSha.add(e.sha256);
+                    mUpdateGameDataSize += e.size;
+                    pending++;
+                }
+                Log.d(TAG, "SAMP: " + list.files.size() + " arquivos na lista, " + pending + " pendentes");
+                next.run();
+            }
+        }, "samp.json", fallback));
     }
 
     /** Baixa e interpreta a lista de arquivos; sem espera ativa, sem variaveis globais compartilhadas. */
@@ -420,6 +483,10 @@ public class UpdateService extends Service {
                     || name.equals("settings.ini") || GameFilePolicy.isInternal(path) || GameFilePolicy.isGenerated(path)) {
                 continue;
             }
+            // A pasta SAMP/ vem do samp.json (nada dela e ignorado); o files.json so e usado para ela se nao houver samp.json.
+            if (mSampList != null && SampList.isSampPath(path)) {
+                continue;
+            }
             // Filtro por GPU SEM diferenciar caixa (o original usava contains("samp") e falhava com "SAMP/").
             if (!GameFilePolicy.wantedForDevice(path, mGpuType)) {
                 continue;
@@ -457,15 +524,32 @@ public class UpdateService extends Service {
         // Marcador unico: a Activity so pede a instalacao (msg 1) se houver algo "pendente".
         long total = 0;
         for (PackSpec p : mPackSelection) total += p.size;
+        // Mantem so as entradas da pasta SAMP/ (baixadas depois, pelo PRDownloader); o resto vira o marcador dos pacotes.
+        ArrayList<String> sf = new ArrayList<>(), sn = new ArrayList<>(), sh = new ArrayList<>();
+        ArrayList<Long> sz = new ArrayList<>();
+        long sampBytes = 0;
+        if (mSampList != null) {
+            for (int i = 0; i < mUpdateFiles.size(); i++) {
+                if (SampList.isSampPath(mUpdateFiles.get(i))) {
+                    sf.add(mUpdateFiles.get(i)); sn.add(mUpdateFilesName.get(i));
+                    sz.add(mUpdateFilesSize.get(i)); sh.add(mUpdateFilesSha.get(i));
+                    sampBytes += mUpdateFilesSize.get(i);
+                }
+            }
+        }
         mUpdateFiles.clear();
         mUpdateFilesName.clear();
         mUpdateFilesSize.clear();
         mUpdateFilesSha.clear();
-        mUpdateFiles.add("(packs)");
-        mUpdateFilesName.add("(packs)");
+        mUpdateFiles.add(PACKS_MARKER);
+        mUpdateFilesName.add(PACKS_MARKER);
         mUpdateFilesSize.add(total);
         mUpdateFilesSha.add("");
-        mUpdateGameDataSize = total;
+        mUpdateFiles.addAll(sf);
+        mUpdateFilesName.addAll(sn);
+        mUpdateFilesSize.addAll(sz);
+        mUpdateFilesSha.addAll(sh);
+        mUpdateGameDataSize = total + sampBytes;
         Log.d(TAG, "instalacao por pacotes: " + mPackSelection.size() + " pacotes, " + total + " bytes");
     }
 
@@ -668,6 +752,53 @@ public class UpdateService extends Service {
     // Primeira instalacao: pacotes ZIP verificados + extracao atomica (ver pacote pack/)
     // ------------------------------------------------------------------------------------
 
+    /** Devolve a lista de pendentes (com tamanho e sha, mantendo as listas paralelas coerentes) para uma nova tentativa. */
+    private void restorePending(List<String> paths) {
+        for (String p : paths) {
+            int i = mDlFiles.indexOf(p);
+            mUpdateFiles.add(p);
+            mUpdateFilesName.add(p.substring(p.lastIndexOf('/') + 1));
+            mUpdateFilesSize.add(i >= 0 && i < mDlSizes.size() ? mDlSizes.get(i) : 0L);
+            mUpdateFilesSha.add(i >= 0 && i < mDlShas.size() ? mDlShas.get(i) : "");
+        }
+    }
+
+    /** Apaga .downloads (zips/.part) e qualquer sobra do instalador; so chamado depois de extrair e confirmar. */
+    private void deletePackDownloads() {
+        File base = getExternalFilesDir(null);
+        if (base == null) return;
+        try {
+            AtomicInstaller.deleteTree(new File(base, GameFilePolicy.DIR_DOWNLOADS));
+            AtomicInstaller.deleteTree(new File(base, GameFilePolicy.DIR_STAGING));
+            AtomicInstaller.deleteTree(new File(base, GameFilePolicy.DIR_BACKUP));
+        } catch (RuntimeException e) {
+            Log.w(TAG, "cleanup after packs failed: " + e);
+        }
+    }
+
+    /** Depois dos pacotes: baixa a pasta SAMP/ (PRDownloader, arquivo a arquivo) ou conclui. */
+    private void afterPacks(int session) {
+        // tira o marcador dos pacotes, sobram so as entradas da SAMP/
+        if (!mDlFiles.isEmpty() && PACKS_MARKER.equals(mDlFiles.get(0))) {
+            mDlFiles.remove(0);
+            mDlSizes.remove(0);
+            mDlShas.remove(0);
+        }
+        mUsePacks = false;
+        if (mDlFiles.isEmpty()) {
+            notifyGameDataDone();
+            return;
+        }
+        long total = 0;
+        for (Long l : mDlSizes) total += l;
+        mUpdateGameDataSize = total;
+        mDlFailed = new ArrayList<>();
+        mDlIndex = 0;
+        mDlDoneBytes = 0;
+        mDlConsecutiveFailures = 0;
+        downloadNextFile(session, 1);
+    }
+
     private void stopPackWorker() {
         if (mPackCancel != null) mPackCancel.cancel();
         if (mPackWorker != null) {
@@ -681,7 +812,7 @@ public class UpdateService extends Service {
         stopPackWorker();
         final File base = getExternalFilesDir(null);
         if (base == null || !base.isDirectory()) {
-            mUpdateFiles.addAll(mDlFiles);
+            restorePending(mDlFiles);
             reportError("Storage is not available", false);
             return;
         }
@@ -767,10 +898,11 @@ public class UpdateService extends Service {
                         if (fail == null) {
                             Log.d(TAG, "pack install done");
                             mPackPendingFiles.clear();
-                            notifyGameDataDone();
+                            deletePackDownloads(); // pacotes ja extraidos e conferidos: nao ficam no armazenamento do aparelho
+                            afterPacks(session);
                         } else {
                             Log.e(TAG, "pack install failed: " + fail.getMessage(), fail);
-                            mUpdateFiles.addAll(mPackPendingFiles); // continua pendente: a proxima verificacao tenta de novo
+                            restorePending(mPackPendingFiles); // continua pendente: a proxima verificacao tenta de novo
                             mPackPendingFiles.clear();
                             reportError("Game data install failed: " + fail.getMessage(), false);
                         }
@@ -828,7 +960,7 @@ public class UpdateService extends Service {
         mDownloadingStatus = true;
         final String fileName = target.getName();
         final long[] last = { System.currentTimeMillis() };
-        mDownloadId = PRDownloader.download(AppEndpoints.fileUrl(this, Uri.encode(rel, "/")), parent.getAbsolutePath(), fileName).build().setOnStartOrResumeListener(null).setOnPauseListener(null).setOnCancelListener(null).setOnProgressListener(new OnProgressListener() {
+        mDownloadId = PRDownloader.download(urlFor(rel), parent.getAbsolutePath(), fileName).build().setOnStartOrResumeListener(null).setOnPauseListener(null).setOnCancelListener(null).setOnProgressListener(new OnProgressListener() {
             @Override
             public void onProgress(final Progress progress) {
                 if(System.currentTimeMillis() - last[0] > 100) {
@@ -912,6 +1044,13 @@ public class UpdateService extends Service {
         });
     }
 
+    /** SAMP/ (quando ha samp.json) vem de <base>/SAMP/...; o resto de <base>/files/... */
+    private String urlFor(String rel) {
+        String enc = Uri.encode(rel, "/");
+        if (mSampList != null && SampList.isSampPath(rel)) return AppEndpoints.sampFileUrl(this, enc);
+        return AppEndpoints.fileUrl(this, enc);
+    }
+
     private File parentOf(String rel) {
         File base = getExternalFilesDir(null);
         File f = new File(base, rel);
@@ -958,7 +1097,7 @@ public class UpdateService extends Service {
     private void finishDataUpdating() {
         mDownloadingStatus = false;
         if (!mDlFailed.isEmpty()) {
-            mUpdateFiles.addAll(mDlFailed); // continuam pendentes para a proxima verificacao
+            restorePending(mDlFailed); // continuam pendentes para a proxima verificacao
             int n = mDlFailed.size();
             reportError(n + " game file(s) could not be downloaded.", false);
             return;

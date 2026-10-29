@@ -50,4 +50,15 @@ public final class AppEndpoints {
         if (u.startsWith("/")) return base(c) + u;
         return null;
     }
+
+    /** samp.json: lista (path/size/sha256) da pasta SAMP/. */
+    public static String sampJsonUrl(Context c) {
+        return base(c) + c.getString(R.string.endpoint_samp_json_path).trim();
+    }
+
+    /** URL de um arquivo da pasta SAMP/; relativePath e o "path" do samp.json (comeca com "SAMP/"), ja codificado. */
+    public static String sampFileUrl(Context c, String relativePath) {
+        String rel = relativePath.startsWith("/") ? relativePath.substring(1) : relativePath;
+        return base(c) + "/" + rel;
+    }
 }
