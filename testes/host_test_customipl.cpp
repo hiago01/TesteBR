@@ -209,6 +209,36 @@ int main()
         CHECK(h.rem.size() == 1 && h.hide.size() == 1 && h.linesBad == 0);   // remove + hide no mesmo arquivo
     }
 
+    // --- 8. remove e hide SO POR ID (formas novas) + compatibilidade com (indice, id)
+    {
+        std::vector<Inst> v = { MkInst(10,0,0,0,350), MkInst(11,1,0,0,-1), MkInst(11,500,0,0,-1), MkInst(12,2,0,0,-1), MkInst(13,3,0,0,-1) };
+        auto bin = MakeBin(v, 0);
+        auto run = [&](const char* txt, std::vector<Inst>& res, MergeReport& rep) {
+            OverrideFile f = Parse(txt); std::vector<uint8_t> out; std::string why;
+            const bool ok = Merge(bin.data(), bin.size(), { &f }, Ok, out, rep, &why); if (ok) res = ReadInsts(out); return ok; };
+        std::vector<Inst> r; MergeReport rep;
+        // 1 token: remove TODAS as instancias do id (o id 11 aparece 2x) e avisa
+        CHECK(run("remove\n 11\nend\n", r, rep) && r.size() == 3 && rep.removed == 2 && r[0].id == 10 && r[1].id == 12 && r[2].id == 13);
+        bool avisou = false; for (auto& n : rep.notes) if (n.find("casou com 2") != std::string::npos) avisou = true; CHECK(avisou);
+        CHECK(r[0].lod == 350);                                           // lod continua intacto
+        // id + posicao: so a de perto
+        CHECK(run("remove\n 11, 1, 0, 0, 5\nend\n", r, rep) && r.size() == 4 && rep.removed == 1 && r[1].id == 11 && r[1].pos[0] == 500.f);
+        // id inexistente => ignorado, sem mudanca
+        MergeReport rep2; std::vector<Inst> r2; CHECK(!run("remove\n 999\nend\n", r2, rep2) && rep2.skipped == 1);
+        // forma antiga continua valendo, e pode misturar com a nova
+        CHECK(run("remove\n 3, 12\n 13\nend\n", r, rep) && r.size() == 3 && rep.removed == 2);
+        // hide so por id: casa em qualquer posicao; hide com posicao continua exigindo o raio
+        OverrideFile h = Parse("hide\n 13292\n 13293, 1, 2, 3, 10\nend\n");
+        CHECK(h.hide.size() == 2 && h.linesBad == 0 && h.hide[0].anyPos && !h.hide[1].anyPos);
+        const float far3[3] = { 900.f, 900.f, 9.f }, near3[3] = { 1.f, 2.f, 3.f };
+        CHECK(HideMatch(h.hide, 13292, far3) && HideMatch(h.hide, 13292, near3));
+        CHECK(!HideMatch(h.hide, 13293, far3) && HideMatch(h.hide, 13293, near3));
+        CHECK(!HideMatch(h.hide, 12938, near3));
+        // entradas invalidas
+        OverrideFile bad1 = Parse("remove\n 70000\n 1, 2, 3\n 5, x, 1, 1, 5\nend\nhide\n 99999\n -3\nend\n");
+        CHECK(bad1.rem.empty() && bad1.hide.empty() && bad1.linesBad == 5);
+    }
+
     std::cout << "ok=" << g_ok << " falhou=" << g_fail << "\n";
     return g_fail ? 1 : 0;
 }

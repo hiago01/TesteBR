@@ -99,3 +99,21 @@ end
 - Para voltar ao normal: apague a seção/arquivo (o jogo relê em ~2 s; o LOD só volta ao recarregar o IPL principal, isto é, reiniciando o jogo).
 
 Observação: se `texdb/ipl/` der `errno=13 Permission denied`, o arquivo foi copiado com outro dono; use `SAMP/ipl/` (funcionou).
+
+
+## V3 - remove e hide só por ID
+
+```
+remove
+12938                       # id: remove TODAS as instancias desse id neste IPL
+5403, 100.5, 200.1, 30, 15  # id, x, y, z, raio: so as que estiverem dentro do raio
+209, 12938                  # forma antiga (indice, id) continua valendo
+end
+hide
+13292                       # id: esconde em QUALQUER posicao (use para ids de LOD, unicos)
+13293, 201.09, -106.58, 4.45, 60   # id + posicao: so perto do ponto
+end
+```
+- `remove` por id: o log avisa `AVISO remove linha N: id X casou com K instancias` quando K > 1; id que nao existe no IPL => `ignorado`.
+- `hide` por id e' GLOBAL (vale para o mundo todo): use so para ids de LOD/objeto unico. Se casar com mais de 5 instancias o log avisa uma vez.
+- Para ids comuns (cerca, arvore...) use a forma com posicao.

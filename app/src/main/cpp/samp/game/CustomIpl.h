@@ -79,6 +79,7 @@ namespace CustomIpl
     inline std::chrono::steady_clock::time_point g_lastCheck{};
     inline std::set<std::string> g_seenNames;                     // diagnostico: nomes de IPL ja vistos
     inline std::vector<CustomIplParse::HideOp> g_hide;           // secao 'hide' de todos os arquivos (global)
+    inline std::map<int, int> g_hideCount;                       // quantas vezes cada id foi escondido (limita o log)
     inline std::set<std::string> g_loggedKey;                     // loga a mistura de cada IPL so na 1a vez
 
     inline bool ReadFile(const std::string& p, std::string& out, long long& mt, long long& sz)
@@ -135,7 +136,7 @@ namespace CustomIpl
 
     inline void Rescan(const std::vector<std::string>& files, const std::string& sig)
     {
-        g_src.clear(); g_byIpl.clear(); g_hide.clear(); g_loggedKey.clear(); g_sig = sig; g_scanned = true;
+        g_src.clear(); g_byIpl.clear(); g_hide.clear(); g_hideCount.clear(); g_loggedKey.clear(); g_sig = sig; g_scanned = true;
         if (files.empty()) { FLog("[IPL] nenhum .ipl em texdb/ipl nem SAMP/ipl -> mistura inativa (jogo usa so os IPLs do IMG)"); return; }
         FLog("[IPL] %zu arquivo(s) de ajuste:", files.size());
         for (auto& p : files)
@@ -270,7 +271,9 @@ namespace CustomIpl
             static bool said = false; if (!said) { said = true; FLog("[IPL] hide: modelo invisivel %d NAO existe neste cliente -> hide ignorado (nada foi escondido)", kInvisibleModel); }
             return modelId;
         }
-        FLog("[IPL] hide: instancia do IPL principal escondida: id=%d pos=(%.2f, %.2f, %.2f) -> modelo %d", modelId, pos[0], pos[1], pos[2], kInvisibleModel);
+        const int n = ++g_hideCount[modelId];
+        if (n <= 5) FLog("[IPL] hide: instancia escondida: id=%d pos=(%.2f, %.2f, %.2f) -> modelo %d", modelId, pos[0], pos[1], pos[2], kInvisibleModel);
+        else if (n == 6) FLog("[IPL] hide: id=%d casou com mais de 5 instancias (so id, sem posicao?) - confira se e' isso mesmo; log omitido", modelId);
         return kInvisibleModel;
     }
 

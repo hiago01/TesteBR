@@ -130,10 +130,12 @@ namespace CustomIplParse
         int      lod = -1;
     };
     struct ReplaceOp { int index; int origId; InstText t; int line; };
-    struct RemoveOp  { int index; int origId; int line; };
+    // remove: index >= 0 -> (indice, idOriginal) exato; index == -1 -> POR ID: remove TODAS as instancias desse id neste IPL
+    //         (com hasPos: so as que estiverem a menos de 'radius' unidades do ponto).
+    struct RemoveOp  { int index; int origId; int line; bool hasPos = false; float pos[3] = {}; float radius = 0.f; };
     struct AddOp     { InstText t; int line; };
     // hide: esconde uma instancia do IPL PRINCIPAL (texto, data/maps) sem apagar a linha => o indice das demais (LODs) nao muda.
-    struct HideOp    { int id; float pos[3]; float radius; int line; };
+    struct HideOp    { int id; float pos[3]; float radius; int line; bool anyPos = false; };   // anyPos: so o id (qualquer posicao)
 
     struct OverrideFile
     {
@@ -222,17 +224,31 @@ namespace CustomIplParse
             long long idx, oid;
             if (sec == Remove)
             {
+                // formas: "id"  |  "id, x, y, z, raio"  |  "indice, idOriginal" (a antiga, continua valendo)
+                if (tk.size() == 1 && ToInt(tk[0], oid) && oid >= 0 && oid <= 65535)
+                { RemoveOp r{ -1, (int)oid, lineNo }; out.rem.push_back(r); out.linesOk++; continue; }
+                if (tk.size() == 5)
+                {
+                    float f[4]; long long rid;
+                    if (!ToInt(tk[0], rid) || rid < 0 || rid > 65535 || !ToFloat(tk[1], f[0]) || !ToFloat(tk[2], f[1]) || !ToFloat(tk[3], f[2]) || !ToFloat(tk[4], f[3])
+                        || !std::isfinite(f[0]) || !std::isfinite(f[1]) || !std::isfinite(f[2]) || !std::isfinite(f[3]) || f[3] <= 0.f || f[3] > 500.f)
+                    { bad("remove com posicao espera: id, x, y, z, raio (0 < raio <= 500)"); continue; }
+                    RemoveOp r{ -1, (int)rid, lineNo }; r.hasPos = true; r.pos[0] = f[0]; r.pos[1] = f[1]; r.pos[2] = f[2]; r.radius = f[3];
+                    out.rem.push_back(r); out.linesOk++; continue;
+                }
                 if (tk.size() != 2 || !ToInt(tk[0], idx) || !ToInt(tk[1], oid) || idx < 0 || idx > (long long)kMaxInstances || oid < 0 || oid > 65535)
-                { bad("remove espera: indice, idOriginal"); continue; }
+                { bad("remove espera: id  |  id, x, y, z, raio  |  indice, idOriginal"); continue; }
                 out.rem.push_back({ (int)idx, (int)oid, lineNo }); out.linesOk++;
             }
             else if (sec == Hide)
             {
                 // id, x, y, z, raio   (raio em unidades; 0 < raio <= 500)
                 HideOp hd{}; long long hid; float f[4];
+                if (tk.size() == 1 && ToInt(tk[0], hid) && hid >= 0 && hid <= 65535)      // so o id: esconde em QUALQUER posicao
+                { hd.id = (int)hid; hd.anyPos = true; hd.line = lineNo; out.hide.push_back(hd); out.linesOk++; continue; }
                 if (tk.size() != 5 || !ToInt(tk[0], hid) || hid < 0 || hid > 65535 || !ToFloat(tk[1], f[0]) || !ToFloat(tk[2], f[1]) || !ToFloat(tk[3], f[2]) || !ToFloat(tk[4], f[3])
                     || !std::isfinite(f[0]) || !std::isfinite(f[1]) || !std::isfinite(f[2]) || !std::isfinite(f[3]) || f[3] <= 0.f || f[3] > 500.f)
-                { bad("hide espera: id, x, y, z, raio (0 < raio <= 500)"); continue; }
+                { bad("hide espera: id  |  id, x, y, z, raio (0 < raio <= 500)"); continue; }
                 hd.id = (int)hid; hd.pos[0] = f[0]; hd.pos[1] = f[1]; hd.pos[2] = f[2]; hd.radius = f[3]; hd.line = lineNo;
                 out.hide.push_back(hd); out.linesOk++;
             }
@@ -262,6 +278,7 @@ namespace CustomIplParse
         for (const auto& h : v)
         {
             if (h.id != id) continue;
+            if (h.anyPos) return true;
             const float dx = p[0] - h.pos[0], dy = p[1] - h.pos[1], dz = p[2] - h.pos[2];
             if (dx * dx + dy * dy + dz * dz <= h.radius * h.radius) return true;
         }
@@ -324,6 +341,23 @@ namespace CustomIplParse
             if (!f) continue;
             for (const RemoveOp& r : f->rem)
             {
+                if (r.index == -1)   // POR ID: todas as instancias com esse id (e, se houver, dentro do raio)
+                {
+                    size_t hit = 0;
+                    for (size_t k = 0; k < N; k++)
+                    {
+                        if (orig[k].id != r.origId) continue;
+                        if (r.hasPos)
+                        {
+                            const float dx = orig[k].pos[0] - r.pos[0], dy = orig[k].pos[1] - r.pos[1], dz = orig[k].pos[2] - r.pos[2];
+                            if (dx * dx + dy * dy + dz * dz > r.radius * r.radius) continue;
+                        }
+                        act[k] = Act::Remove; hit++;
+                    }
+                    if (hit == 0) { rep.skipped++; note("remove linha " + std::to_string(r.line) + ": nenhuma instancia com id " + std::to_string(r.origId) + (r.hasPos ? " dentro do raio" : "") + " neste IPL -> ignorado"); }
+                    else if (hit > 1) note("AVISO remove linha " + std::to_string(r.line) + ": id " + std::to_string(r.origId) + " casou com " + std::to_string(hit) + " instancias (todas removidas)");
+                    continue;
+                }
                 if (r.index < 0 || (size_t)r.index >= N) { rep.skipped++; note("remove linha " + std::to_string(r.line) + ": indice " + std::to_string(r.index) + " fora do IPL (" + std::to_string(N) + " instancias)"); continue; }
                 if (orig[r.index].id != r.origId) { rep.skipped++; note("remove linha " + std::to_string(r.line) + ": indice " + std::to_string(r.index) + " tem id " + std::to_string(orig[r.index].id) + ", arquivo diz " + std::to_string(r.origId) + " -> ignorado"); continue; }
                 act[r.index] = Act::Remove;
