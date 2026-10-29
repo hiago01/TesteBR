@@ -92,7 +92,7 @@ end
 ```
 - Só esconde se o **id for igual** e a instância estiver a **menos de `raio` unidades** do ponto (0 < raio <= 500). Outro id, ou o mesmo id longe, não é tocado.
 - Vale em qualquer arquivo `.ipl` de `SAMP/ipl/` ou `texdb/ipl/` (pode estar junto com `remove`). Regras de todos os arquivos somam.
-- Ponto de ligação: `CFileLoader::LoadObjectInstance(const char*)` (a única chamada de `LoadScene` 0x553dbc para linhas `inst`).
+- Ponto de ligação: hook em `CFileLoader::LoadObjectInstance(CFileObjectInstance*, const char*)` (0x4d20fc), instalado por `CustomIpl::Install()` (nada a mudar no `FileLoader.cpp`). É o funil de toda instância: a versão texto (0x4d206c) faz sscanf e chama este com `bl`, e `LoadIpl` binário também. Layout lido do desassembly: +0x00 x,y,z; +0x1C modelId. O `//CFileLoader::InjectHooks()` do `hooks.cpp` continua comentado e não é necessário.
 - Se o modelo 19300 não existir no cliente, **nada é escondido** e o log avisa (`hide: modelo invisivel 19300 NAO existe`).
 - Log ao esconder: `[IPL] hide: instancia do IPL principal escondida: id=... pos=(...) -> modelo 19300`.
 - `SAMP/ipl_off.on` desliga também o hide.

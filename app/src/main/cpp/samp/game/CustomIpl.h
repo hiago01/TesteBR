@@ -274,10 +274,28 @@ namespace CustomIpl
         return kInvisibleModel;
     }
 
+    // Funil de TODA instancia criada pelo jogo: CFileLoader::LoadObjectInstance(CFileObjectInstance*, const char*) (0x4d20fc).
+    // Confirmado no desassembly: a versao texto (0x4d206c) faz sscanf e chama este (bl 0x4d20fc); LoadIpl binario chama este via PLT.
+    // Layout (lido do desassembly): +0x00 x, +0x04 y, +0x08 z (floats), +0x1C modelId (int32). Nao depende do FileLoader.cpp.
+    inline void* (*g_origLoadObjInst)(void*, const char*) = nullptr;
+    inline void* LoadObjInstHook(void* inst, const char* name)
+    {
+        if (inst)
+        {
+            auto* b = static_cast<unsigned char*>(inst);
+            float pos[3]; int32_t id;
+            std::memcpy(pos, b, sizeof(pos)); std::memcpy(&id, b + 0x1C, sizeof(id));
+            const int nid = HideModelFor(id, pos);
+            if (nid != id) { const int32_t v = nid; std::memcpy(b + 0x1C, &v, sizeof(v)); }
+        }
+        return g_origLoadObjInst ? g_origLoadObjInst(inst, name) : nullptr;
+    }
+
     inline void Install()
     {
         static bool done = false; if (done) return; done = true;
         CHook::InlineHook("_ZN9CIplStore7LoadIplEiPhi", &LoadIplHook, &g_origLoadIpl);
-        FLog("[IPL] hook instalado: CIplStore::LoadIpl (mistura por instancia; texdb/ipl e SAMP/ipl)");
+        CHook::InlineHook("_ZN11CFileLoader18LoadObjectInstanceEP19CFileObjectInstancePKc", &LoadObjInstHook, &g_origLoadObjInst);
+        FLog("[IPL] hook instalado: CIplStore::LoadIpl (mistura por instancia) + CFileLoader::LoadObjectInstance (hide); texdb/ipl e SAMP/ipl");
     }
 }
