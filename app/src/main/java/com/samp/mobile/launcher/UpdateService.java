@@ -12,6 +12,7 @@ import android.os.Looper;
 import android.os.Message;
 import android.os.Messenger;
 import android.os.RemoteException;
+import android.os.StatFs;
 import android.util.Log;
 
 import com.android.volley.DefaultRetryPolicy;
@@ -29,6 +30,14 @@ import com.downloader.Progress;
 import com.joom.paranoid.Obfuscate;
 import com.samp.mobile.launcher.config.AppEndpoints;
 import com.samp.mobile.launcher.data.FilesData;
+import com.samp.mobile.launcher.pack.AtomicInstaller;
+import com.samp.mobile.launcher.pack.CancelToken;
+import com.samp.mobile.launcher.pack.GameFilePolicy;
+import com.samp.mobile.launcher.pack.InstalledState;
+import com.samp.mobile.launcher.pack.PackConfig;
+import com.samp.mobile.launcher.pack.PackException;
+import com.samp.mobile.launcher.pack.PackInstaller;
+import com.samp.mobile.launcher.pack.PackSpec;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -37,6 +46,10 @@ import org.json.JSONObject;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 
 /**
  * Servico de atualizacao. Contrato de mensagens com Splash/UpdateActivity preservado:
@@ -92,6 +105,20 @@ public class UpdateService extends Service {
     private int mDlConsecutiveFailures = 0;
     private long mDlDoneBytes = 0;
 
+    // ---- primeira instalacao por pacotes ZIP (somente na HandlerThread; o trabalho pesado roda em mPackWorker)
+    /** Pacotes (core + GPU do aparelho) vindos do client_config; null = servidor sem "packs" (fluxo antigo). */
+    private PackConfig mPackConfig = null;
+    private List<PackSpec> mPackSelection = null;
+    /** true = esta rodada de dados do jogo e a PRIMEIRA instalacao e sera feita por pacotes ZIP. */
+    private boolean mUsePacks = false;
+    private int mListTotalFiles = 0;
+    private ExecutorService mPackWorker;
+    private CancelToken mPackCancel;
+    /** Arquivos que ficam pendentes se a instalacao por pacotes falhar (a proxima verificacao refaz). */
+    private ArrayList<String> mPackPendingFiles = new ArrayList<>();
+    /** Primeira instalacao: ao menos isto de arquivos faltando E nenhum installed.json => usa pacotes. */
+    private static final int PACK_MIN_MISSING_FILES = 50;
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -105,6 +132,20 @@ public class UpdateService extends Service {
         mQueue = Volley.newRequestQueue(getApplicationContext());
         mInHandler = new IncomingHandler(mHandlerThread.getLooper());
         mMessenger = new Messenger(mInHandler);
+        // Recuperacao no inicio: apaga .staging/.downloads incompletos e restaura .backup (na HandlerThread, nao na principal).
+        mInHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                File base = getExternalFilesDir(null);
+                if (base != null && base.isDirectory()) {
+                    try {
+                        AtomicInstaller.recoverOnStartup(base);
+                    } catch (RuntimeException e) {
+                        Log.w(TAG, "recoverOnStartup failed: " + e);
+                    }
+                }
+            }
+        });
     }
 
     @Override
@@ -116,6 +157,7 @@ public class UpdateService extends Service {
     public void onDestroy() {
         // Ninguem esta mais ligado: cancela rede/downloads e encerra a thread (sem threads vazadas).
         mSession++;
+        stopPackWorker();
         if (mQueue != null) {
             mQueue.cancelAll(REQUEST_TAG);
             mQueue.stop();
@@ -266,6 +308,10 @@ public class UpdateService extends Service {
         mUpdateFiles = new ArrayList<>();
         mUpdateFilesName = new ArrayList<>();
         mUpdateFilesSize = new ArrayList<>();
+        mUsePacks = false;
+        mPackConfig = null;
+        mPackSelection = null;
+        mListTotalFiles = 0;
         mUpdateGameDataSize = 0;          // original acumulava entre verificacoes
         mUpdateGameDataSizeUpdated = 0;
         mGameStatus = UpdateActivity.GameStatus.Unknown;
@@ -298,6 +344,7 @@ public class UpdateService extends Service {
                     mUpdateVersion = jSONObject.getInt("version_code");
                     mUpdateGameURL = jSONObject.getString("url_launcher");
                     if (withFiles) {
+                        parsePackConfig(response);
                         String string = jSONObject.getString("url_cache_files");
                         if (!isHttpUrl(string)) {
                             failCheck("client_config: invalid url_cache_files");
@@ -335,40 +382,78 @@ public class UpdateService extends Service {
         }, "file list"));
     }
 
+    /** Le "version"/"packs" do client_config. Invalido ou ausente => fluxo antigo (arquivo a arquivo), nunca quebra a verificacao. */
+    private void parsePackConfig(String response) {
+        mPackConfig = null;
+        mPackSelection = null;
+        try {
+            PackConfig pc = PackConfig.parse(response);
+            if (pc.packs.isEmpty()) return;
+            List<PackSpec> sel = pc.selectFor(mGpuType);
+            if (sel == null) {
+                Log.w(TAG, "client_config tem packs, mas nenhum serve a GPU " + mGpuType + " -> fluxo antigo");
+                return;
+            }
+            mPackConfig = pc;
+            mPackSelection = sel;
+        } catch (PackException e) {
+            Log.w(TAG, "client_config: packs ignorados (" + e.getMessage() + ") -> fluxo antigo");
+        }
+    }
+
     private void parseFilesInfo(String body) throws JSONException {
         File base = getExternalFilesDir(null);
         if (base == null) throw new IllegalStateException("Storage is not available");
         JSONArray jsonArray = new JSONObject(body).getJSONArray("files");
         Log.d("x1y2z", "Length: " + jsonArray.length());
+        int considered = 0;
         for(int i = 0; i<jsonArray.length(); i++) {
             JSONObject o = jsonArray.getJSONObject(i);
             FilesData fileData = new FilesData(o.getString("name"), o.getLong("size"), o.getString("path"), o.optString("url", ""));
-            if (!fileData.getName().equals("samp_log.txt") && !fileData.getName().equals("svlog.txt") && !fileData.getName().equals("gtasatelem.set")) {
-                if (!fileData.getName().equals("GTASAMP10.b") && !fileData.getName().equals(".htaccess")) {
-                    if (!fileData.getName().equals("gta_sa.set")) {
-                        if (!fileData.getName().equals("settings.ini")) {
-                            File file = new File(base, fileData.getPath());
-                            if (!file.exists() || file.length() != fileData.getSize()) {
-                                if(!fileData.getPath().contains("player") && !fileData.getPath().contains("playerhi") && !fileData.getPath().contains("menu") && !fileData.getPath().contains("samp")) {
-                                    if ((fileData.getPath().contains(".dxt.") && mGpuType != 1))
-                                        continue;
-                                    else if ((fileData.getPath().contains(".etc.") && mGpuType != 2))
-                                        continue;
-                                    else if ((fileData.getPath().contains(".pvr.") && mGpuType != 3))
-                                        continue;
-                                }
-
-                                mUpdateFiles.add(fileData.getPath());
-                                mUpdateFilesName.add(fileData.getName());
-                                mUpdateFilesSize.add(fileData.getSize());
-                                mUpdateGameDataSize = mUpdateGameDataSize + fileData.getSize();
-                            }
-                        }
-                    }
-                }
+            String name = fileData.getName();
+            String path = fileData.getPath();
+            // Arquivos gerados pelo jogo/launcher no celular: nunca baixar nem sobrescrever (lista do requisito + nomes do original).
+            if (name.equals("samp_log.txt") || name.equals("svlog.txt") || name.equals("gtasatelem.set")
+                    || name.equals("GTASAMP10.b") || name.equals(".htaccess") || name.equals("gta_sa.set")
+                    || name.equals("settings.ini") || GameFilePolicy.isProtected(path)) {
+                continue;
+            }
+            // Filtro por GPU SEM diferenciar caixa (o original usava contains("samp") e falhava com "SAMP/").
+            if (!GameFilePolicy.wantedForDevice(path, mGpuType)) {
+                continue;
+            }
+            considered++;
+            File file = new File(base, path);
+            if (!file.exists() || file.length() != fileData.getSize()) {
+                mUpdateFiles.add(path);
+                mUpdateFilesName.add(name);
+                mUpdateFilesSize.add(fileData.getSize());
+                mUpdateGameDataSize = mUpdateGameDataSize + fileData.getSize();
             }
         }
-        Log.d("x1y2z", "Data size: " + mUpdateGameDataSize + " files: " + mUpdateFiles.size());
+        mListTotalFiles = considered;
+        decidePackMode(base);
+        Log.d("x1y2z", "Data size: " + mUpdateGameDataSize + " files: " + mUpdateFiles.size() + " usePacks=" + mUsePacks);
+    }
+
+    /**
+     * Pacotes ZIP SO na primeira instalacao: ha packs no servidor, nunca houve instalacao por pacotes
+     * (sem installed.json) e faltam muitos arquivos. Atualizacoes pequenas e a verificacao seguem pelo
+     * fluxo antigo (PRDownloader, arquivo a arquivo, comparando tamanho).
+     */
+    private void decidePackMode(File base) {
+        mUsePacks = false;
+        if (mPackConfig == null || mPackSelection == null) return;
+        if (mUpdateFiles.isEmpty()) return;
+        if (InstalledState.read(base) != null) return;
+        if (mUpdateFiles.size() < PACK_MIN_MISSING_FILES) return;
+        // A maior parte do que o aparelho precisa esta faltando = instalacao nova (ou muito incompleta)
+        if (mUpdateFiles.size() * 2 < mListTotalFiles) return;
+        mUsePacks = true;
+        // O tamanho mostrado ao usuario passa a ser o dos pacotes (download real) + extracao.
+        long total = 0;
+        for (PackSpec p : mPackSelection) total += p.size;
+        Log.d(TAG, "primeira instalacao por pacotes: " + mPackSelection.size() + " pacotes, " + total + " bytes");
     }
 
     public boolean isGameUpdateExists() {
@@ -557,7 +642,121 @@ public class UpdateService extends Service {
         mDlIndex = 0;
         mDlDoneBytes = 0;
         mDlConsecutiveFailures = 0;
+        if (mUsePacks && mPackSelection != null && mPackConfig != null) {
+            startPackInstall(session);
+            return;
+        }
         downloadNextFile(session, 1);
+    }
+
+    // ------------------------------------------------------------------------------------
+    // Primeira instalacao: pacotes ZIP verificados + extracao atomica (ver pacote pack/)
+    // ------------------------------------------------------------------------------------
+
+    private void stopPackWorker() {
+        if (mPackCancel != null) mPackCancel.cancel();
+        if (mPackWorker != null) {
+            mPackWorker.shutdownNow(); // interrompe E-S bloqueante; o instalador confere o CancelToken
+            mPackWorker = null;
+        }
+        mPackCancel = null;
+    }
+
+    private void startPackInstall(final int session) {
+        stopPackWorker();
+        final File base = getExternalFilesDir(null);
+        if (base == null || !base.isDirectory()) {
+            mUpdateFiles.addAll(mDlFiles);
+            reportError("Storage is not available", false);
+            return;
+        }
+        mPackPendingFiles = new ArrayList<>(mDlFiles);
+        final PackInstaller.Config cfg = new PackInstaller.Config();
+        cfg.filesDir = base;
+        cfg.version = mPackConfig.version;
+        cfg.gpu = mGpuType;
+        cfg.packs = mPackSelection;
+        cfg.urls = new PackInstaller.UrlResolver() {
+            @Override
+            public String resolve(PackSpec spec) {
+                return AppEndpoints.packUrl(UpdateService.this, spec.url);
+            }
+        };
+        cfg.freeSpace = new PackInstaller.FreeSpace() {
+            @Override
+            public long freeBytes() {
+                return new StatFs(base.getAbsolutePath()).getAvailableBytes();
+            }
+        };
+        final CancelToken cancel = new CancelToken();
+        cfg.cancel = cancel;
+        mPackCancel = cancel;
+        final long[] last = { 0 };
+        cfg.listener = new PackInstaller.Listener() {
+            @Override
+            public void onProgress(final String stage, final String packName, final int packIndex, final int packCount, final long done, final long total) {
+                long now = System.currentTimeMillis();
+                if (now - last[0] < 100 && done < total) return;
+                last[0] = now;
+                postToService(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (session != mSession) return;
+                        Message obtain = Message.obtain(mInHandler, 4);
+                        obtain.getData().putString("status", UpdateActivity.UpdateStatus.DownloadGameData.name());
+                        obtain.getData().putBoolean("withProgress", true);
+                        obtain.getData().putLong("current", done);   // bytes baixados + extraidos
+                        obtain.getData().putLong("total", total);    // soma(zips) + soma(descompactado)
+                        obtain.getData().putString("filename", "extract".equals(stage) ? packName + " (extracting)" : packName + ".zip");
+                        obtain.getData().putLong("totalfiles", packCount);
+                        obtain.getData().putLong("currentfile", packIndex + 1);
+                        sendToActivity(obtain);
+                    }
+                });
+            }
+        };
+        mDownloadingStatus = true;
+        ExecutorService worker = Executors.newSingleThreadExecutor(new ThreadFactory() {
+            @Override
+            public Thread newThread(Runnable r) {
+                Thread t = new Thread(r, "pack-install");
+                t.setDaemon(true);
+                return t;
+            }
+        });
+        mPackWorker = worker;
+        worker.execute(new Runnable() {
+            @Override
+            public void run() {
+                PackException failure = null;
+                try {
+                    PackInstaller.install(cfg);
+                } catch (PackException e) {
+                    failure = e;
+                } catch (RuntimeException e) {
+                    failure = new PackException("unexpected: " + e, e);
+                }
+                final PackException fail = failure;
+                if (cancel.isCancelled()) return;
+                postToService(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (session != mSession) return;
+                        mDownloadingStatus = false;
+                        if (fail == null) {
+                            Log.d(TAG, "pack install done");
+                            mPackPendingFiles.clear();
+                            notifyGameDataDone();
+                        } else {
+                            Log.e(TAG, "pack install failed: " + fail.getMessage(), fail);
+                            mUpdateFiles.addAll(mPackPendingFiles); // continua pendente: a proxima verificacao tenta de novo
+                            mPackPendingFiles.clear();
+                            reportError("Game data install failed: " + fail.getMessage(), false);
+                        }
+                    }
+                });
+            }
+        });
     }
 
     private void downloadNextFile(final int session, final int attempt) {
@@ -685,6 +884,7 @@ public class UpdateService extends Service {
     /** Cancela qualquer download em andamento e invalida callbacks pendentes. */
     private void cancelDownloads() {
         mSession++; // callbacks e retries atrasados conferem a sessao e se descartam
+        stopPackWorker();
         if (mQueue != null) mQueue.cancelAll(REQUEST_TAG);
         try {
             if (mDownloadId != -1) PRDownloader.cancel(mDownloadId);

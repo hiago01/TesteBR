@@ -38,4 +38,16 @@ public final class AppEndpoints {
         String rel = relativePath.startsWith("/") ? relativePath.substring(1) : relativePath;
         return base(c) + p + rel;
     }
+
+    /**
+     * URL final de um pacote ZIP do client_config ("packs"[].url): absoluta (http/https) fica como esta;
+     * iniciada por "/" e relativa a base do servidor. Qualquer outra forma e rejeitada (null).
+     */
+    public static String packUrl(Context c, String url) {
+        if (url == null) return null;
+        String u = url.trim();
+        if (u.startsWith("http://") || u.startsWith("https://")) return u;
+        if (u.startsWith("/")) return base(c) + u;
+        return null;
+    }
 }
