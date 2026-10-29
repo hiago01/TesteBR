@@ -28,7 +28,7 @@ id, nome, interior, x, y, z, rx, ry, rz, rw, lod
 end
 ```
 - **Índice N** = ordem das linhas `inst` do IPL **decodificado** (a mesma ordem do binário; os do tópico do fórum seguem essa ordem). O `idOriginal` evita aplicar no lugar errado: se não bater, a linha é ignorada e vai pro log.
-- **lod** (replace/inst) usa a numeração do IPL **original**; `-1` = sem LOD. Remover instâncias compacta a tabela e **o jogo recebe todos os lods remapeados** (lod que apontava para removida vira `-1`).
+- **lod** (replace/inst) = índice da linha `inst` no **IPL principal** relacionado (ex.: `countrye_stream4` → `countrye.ipl` de data/maps), **não** desta tabela; `-1` = sem LOD. Passa direto, sem remapear: remover instâncias daqui **não mexe** nos lods das outras (o jogo faz `entityArrays[staticIdx][lod]`, confirmado em `LoadIpl` 0x33b744–0x33b80c e `GetIplEntityIndexArray` 0x33c024).
 - **interior** = campo de 32 bits `m_nInstanceType` (byte baixo = área; bits altos = flags), igual ao decodificado.
 - Modelo resolvido pelo **nome** (como o jogo); se o nome não existir (ex.: `dummy`), vale o **ID numérico** — desde que exista `ModelInfo` (IDE carregado). Modelo inexistente ⇒ linha ignorada (ver “por quê” abaixo). Modelos novos precisam estar no IDE e ter DFF/TXD/COL em algum IMG.
 - Quaternion: igual ao IPL texto, sem conversão (o jogo faz `sscanf` direto na struct).
@@ -55,7 +55,7 @@ Cabeçalho binário usado pelo jogo: `+0x00 "bnry"`, `+0x04 int16 contagem`, `+0
 **Por que validar o ID:** nos dois laços binários (`LoadIpl` 0x33b9d4 e `LoadIplBoundingBox` 0x33be68) o retorno de `LoadObjectInstance` é usado sem teste de nulo.
 
 ## Como a mistura é feita
-Copia o buffer, **anexa a tabela nova no fim** e altera só `+0x04` (contagem) e `+0x1C` (offset). Tudo que é relativo ao início (car generators etc.) fica intacto e válido. Buffer final passa por `Validate` (cabeçalho, lod dentro da tabela, floats finitos); se reprovar, usa o original.
+Copia o buffer, **anexa a tabela nova no fim** e altera só `+0x04` (contagem) e `+0x1C` (offset). Tudo que é relativo ao início (car generators etc.) fica intacto e válido. Buffer final passa por `Validate` (cabeçalho, lod entre -1 e 32767, floats finitos); se reprovar, usa o original.
 Limites: ≤ 32767 instâncias (o jogo lê 16 bits), 2 MB por arquivo de ajuste, 32 MB por IPL.
 
 ## Log (`samp_log.txt`, prefixo `[IPL]`)
@@ -75,5 +75,5 @@ Os testes usam IPLs binários **sintéticos** montados com o layout lido do desa
 ## Limites conhecidos
 - Só IPL **binário em streaming** (`*_stream*.ipl` do gta3.img e IPLs do gta_int.img). IPL texto do `gta.dat` (`data/maps`) passa por `CFileLoader::LoadScene` e não é tocado.
 - Só instâncias (`inst`). Car generators (+0x3C) permanecem como no IMG. Entradas/saídas (`enex`), garagens, zonas etc. não estão no IPL binário de streaming.
-- Instâncias novas só referenciam LOD do IPL original (não dá para apontar para outra instância nova).
+- O LOD de uma casa removida **continua no IPL principal** (texto, `data/maps`): este sistema não o toca, então ele continua aparecendo de longe até ser tratado lá.
 - Se o `GetIplName` devolver um nome diferente do esperado, use o que o log mostrar (`nome='...'`).

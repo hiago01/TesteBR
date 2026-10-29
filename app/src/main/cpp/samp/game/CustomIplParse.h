@@ -20,7 +20,7 @@
 //   4. Para cada instancia: CFileLoader::LoadObjectInstance(CFileObjectInstance*, nullptr)  -> entidade.
 //      O retorno NAO e' testado (0x33b9d4 usa x23 direto): modelo sem ModelInfo => ponteiro nulo => CRASH.
 //      Por isso TODA instancia que o mod acrescenta/troca tem o ID checado contra ms_modelInfoPtrs antes.
-//   5. lod = int32 na posicao 0x24 da instancia: -1 = sem LOD; senao indice (na MESMA tabela) lido num array
+//   5. lod = int32 na posicao 0x24 da instancia: -1 = sem LOD; senao indice no IPL PRINCIPAL relacionado (staticIdx), lido num array
 //      de entidades por indice (ldr [arr + idx*8]) e incrementa o contador de filhos do LOD (+0x58).
 // CFileLoader::LoadObjectInstance(const char*) (0x4d206c) = sscanf("%d %s %d %f %f %f %f %f %f %f %d") direto
 //   para a struct de 0x28 bytes (+0x1C id, +0x20 "interior", +0..8 pos, +0xC..0x18 quaternion, +0x24 lod) e chama
@@ -30,7 +30,7 @@
 // Nunca mexe na tabela original no lugar. A tabela nova (original com trocas/remocoes + acrescimos) e' escrita no
 // FIM de uma COPIA do buffer e so dois campos do cabecalho mudam: +0x04 (contagem) e +0x1C (offset). Tudo que e'
 // relativo ao inicio do buffer (car generators em +0x3C e demais tabelas) continua valido sem relocar.
-// Remover entradas compacta a tabela e REMAPEIA o campo lod de todas as instancias (lod -> removida = -1).
+// Remover entradas compacta a tabela. O campo lod NAO e' remapeado (indexa o IPL principal, nao esta tabela).
 //
 // ======================= FORMATO DO ARQUIVO texdb/ipl/<nome>.ipl =======================
 // O nome do arquivo (sem .ipl, sem diferenciar maiusculas) e' o nome do IPL no IMG (ex.: countrye_stream0.ipl).
@@ -44,7 +44,7 @@
 //   inst                         # acrescenta no fim; mesmo formato de linha do IPL texto do jogo
 //   id, nome, interior, x, y, z, rx, ry, rz, rw, lod
 //   end
-// - O "lod" (replace/inst) usa o indice do IPL ORIGINAL decodificado (-1 = sem LOD).
+// - O "lod" (replace/inst) e' o indice do LOD no IPL PRINCIPAL (data/maps/..., ex. countrye.ipl); copie o de uma instancia existente (-1 = sem LOD).
 // - "interior" e' o campo de 32 bits m_nInstanceType (byte baixo = area; bits altos = flags), igual ao IPL decodificado.
 // - O ID do modelo e' resolvido pelo NOME (como o jogo); se o nome nao existir (ex.: "dummy" de IPL decodificado sem
 //   restaurar IDs), vale o ID numerico, desde que exista ModelInfo.
@@ -310,9 +310,8 @@ namespace CustomIplParse
                 const int mid = resolve ? resolve(r.t.name, r.t.id) : r.t.id;
                 if (mid < 0) { rep.skipped++; note("replace linha " + std::to_string(r.line) + ": modelo '" + r.t.name + "' (id " + std::to_string(r.t.id) + ") nao existe no jogo -> ignorado"); continue; }
                 if (resolve && mid != r.t.id) note("replace linha " + std::to_string(r.line) + ": nome '" + r.t.name + "' resolve para id " + std::to_string(mid) + " (arquivo dizia " + std::to_string(r.t.id) + "); uso o do nome");
-                if (r.t.lod == r.index) { note("replace linha " + std::to_string(r.line) + ": lod aponta para a propria instancia -> -1"); }
                 if (farFrom(r.t.pos)) note("AVISO replace linha " + std::to_string(r.line) + ": posicao a mais de 400 unidades da area do IPL original (a caixa de streaming vai crescer)");
-                repl[r.index] = ToInst(r.t, mid, -1); replLod[r.index] = (r.t.lod == r.index) ? -1 : r.t.lod; act[r.index] = Act::Replace;
+                repl[r.index] = ToInst(r.t, mid, -1); replLod[r.index] = r.t.lod; act[r.index] = Act::Replace;
             }
             for (const AddOp& a : f->add)
             {
@@ -334,11 +333,10 @@ namespace CustomIplParse
         rep.added = adds.size();
         if (rep.replaced == 0 && rep.removed == 0 && rep.added == 0) return fail("nenhuma alteracao aplicavel");
 
-        auto mapLod = [&](int lod, bool& fixed) -> int {
-            if (lod < 0) return -1;
-            if ((size_t)lod >= N || oldToNew[lod] < 0) { fixed = true; return -1; }
-            return oldToNew[lod];
-        };
+        // O campo lod NAO indexa esta tabela: LoadIpl (0x33b744..0x33b80c) faz entityArrays[IplDef.staticIdx][lod], isto e,
+        // o indice e' a posicao da linha 'inst' no IPL PRINCIPAL relacionado (ex.: countrye_stream4 -> countrye.ipl).
+        // Por isso passa SEM remapear e SEM comparar com o tamanho desta tabela.
+        auto mapLod = [&](int lod, bool&) -> int { return lod < 0 ? -1 : lod; };
 
         std::vector<Inst> fin; fin.reserve(finalCount);
         for (size_t i = 0; i < N; i++)
@@ -373,7 +371,7 @@ namespace CustomIplParse
         {
             Inst x; std::memcpy(&x, buf + v.instOff + (size_t)i * kInstSize, kInstSize);
             if (modelExists && !modelExists(x.id)) return "instancia " + std::to_string(i) + " com modelo " + std::to_string(x.id) + " inexistente";
-            if (x.lod < -1 || x.lod >= (int32_t)v.count) return "instancia " + std::to_string(i) + " com lod fora da tabela (" + std::to_string(x.lod) + ")";
+            if (x.lod < -1 || x.lod > (int32_t)kMaxInstances) return "instancia " + std::to_string(i) + " com lod invalido (" + std::to_string(x.lod) + ")";
             for (int k = 0; k < 7; k++) { float f = (k < 3) ? x.pos[k] : x.rot[k - 3]; if (!std::isfinite(f)) return "instancia " + std::to_string(i) + " com valor nao finito"; }
         }
         return {};

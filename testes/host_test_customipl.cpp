@@ -87,7 +87,7 @@ int main()
         CHECK(Validate(out.data(), out.size(), nullptr).empty());
     }
 
-    // --- 3. remove com compactacao e remapeamento de LOD
+    // --- 3. remove com compactacao; lod NAO e' remapeado (indexa o IPL principal)
     {
         // 0,1,2 apontam para LODs 4 e 5 (a frente); 3 sem lod; 4,5 sao os LODs
         std::vector<Inst> v = { MkInst(10,0,0,0,4), MkInst(11,1,0,0,5), MkInst(12,2,0,0,4), MkInst(13,3,0,0,-1), MkInst(14,4,0,0,-1), MkInst(15,5,0,0,-1) };
@@ -97,18 +97,30 @@ int main()
         CHECK(Merge(bin.data(), bin.size(), { &f }, Ok, out, rep, &why));
         auto r = ReadInsts(out);
         CHECK(r.size() == 4 && rep.removed == 2);
-        // novo: [10,12,13,15]  -> 10 e 12 apontavam p/ 4 (removido) = -1 ; indice 15 passa a ser 3
-        CHECK(r[0].id == 10 && r[0].lod == -1 && r[1].id == 12 && r[1].lod == -1 && r[2].id == 13 && r[3].id == 15);
-        CHECK(rep.lodFixed == 2);
+        // novo: [10,12,13,15]; os lod (4 e 4) continuam IGUAIS: sao indices do IPL principal, nao desta tabela
+        CHECK(r[0].id == 10 && r[0].lod == 4 && r[1].id == 12 && r[1].lod == 4 && r[2].id == 13 && r[3].id == 15);
+        CHECK(rep.lodFixed == 0);
         CHECK(Validate(out.data(), out.size(), nullptr).empty());
         // remover so o 1: o LOD 5 (id 15) passa a indice 4 e quem apontava p/ ele... (ninguem apos remocao do 1)
         OverrideFile g = Parse("remove\n 1, 11\nend\n");
         CHECK(Merge(bin.data(), bin.size(), { &g }, Ok, out, rep, &why));
         r = ReadInsts(out);
-        CHECK(r.size() == 5 && r[0].lod == 3 /*antigo 4 -> 3*/ && r[1].lod == 3 && r[4].id == 15);
+        CHECK(r.size() == 5 && r[0].lod == 4 && r[1].lod == 4 && r[4].id == 15);
         // remocao com ID errado nao remove
         OverrideFile h = Parse("remove\n 1, 999\nend\n");
         CHECK(!Merge(bin.data(), bin.size(), { &h }, Ok, out, rep, &why) && rep.skipped == 1);
+    }
+
+    // --- 3b. REGRESSAO: tabela de 3 instancias com lod 350/522 (apontam para o IPL principal): nada pode virar -1
+    {
+        std::vector<Inst> v = { MkInst(10,0,0,0,350), MkInst(11,1,0,0,522), MkInst(12,2,0,0,-1) };
+        auto bin = MakeBin(v, 0);
+        CHECK(Validate(bin.data(), bin.size(), nullptr).empty());
+        OverrideFile f = Parse("remove\n 2, 12\nend\n");
+        std::vector<uint8_t> out; MergeReport rep; std::string why;
+        CHECK(Merge(bin.data(), bin.size(), { &f }, Ok, out, rep, &why));
+        auto r = ReadInsts(out);
+        CHECK(r.size() == 2 && r[0].lod == 350 && r[1].lod == 522 && rep.lodFixed == 0);
     }
 
     // --- 4. inst (acrescentar) + lod no indice original + modelo inexistente
@@ -120,7 +132,7 @@ int main()
         CHECK(Merge(bin.data(), bin.size(), { &f }, OnlyNames, out, rep, &why));
         auto r = ReadInsts(out);
         CHECK(rep.added == 2 && rep.skipped == 1 && r.size() == 4);
-        CHECK(r[2].id == 500 && r[2].lod == 0 && r[3].id == 502 && r[3].lod == -1 && rep.lodFixed == 1);   // lod 99 inexistente -> -1
+        CHECK(r[2].id == 500 && r[2].lod == 0 && r[3].id == 502 && r[3].lod == 99 && rep.lodFixed == 0);   // lod 99 = indice no IPL principal: passa direto
         // tudo ignorado => sem mistura
         OverrideFile g = Parse("inst\n 501 naoexiste 0 4 4 4 0 0 0 1 -1\nend\n");
         CHECK(!Merge(bin.data(), bin.size(), { &g }, OnlyNames, out, rep, &why));

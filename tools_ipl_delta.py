@@ -49,8 +49,6 @@ def main():
         for k in range(n): rep.append((i1 + k, o[i1 + k][0], e[j1 + k]))
         for i in range(i1 + n, i2): rem.append((i, o[i][0]))
         for j in range(j1 + n, j2): add.append(e[j])
-    for t in [r[2] for r in rep] + add:
-        if int(t[10]) >= len(o): warn.append(f"lod {t[10]} da linha '{fmt(t)}' passa do IPL original ({len(o)}): sera -1")
     out = [f"# gerado por tools_ipl_delta.py | original={len(o)} instancias | trocadas={len(rep)} removidas={len(rem)} novas={len(add)}"]
     if rep:
         out.append("replace");  out += [f"{i}, {oid}, {fmt(t)}" for i, oid, t in rep]; out.append("end")
