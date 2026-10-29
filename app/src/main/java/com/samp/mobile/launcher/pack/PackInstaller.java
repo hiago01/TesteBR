@@ -27,6 +27,12 @@ public final class PackInstaller {
         void onProgress(String stage, String packName, int packIndex, int packCount, long doneBytes, long totalBytes);
     }
 
+    /** Progresso separado (download x extracao), para a UI mostrar o tamanho REAL do download. */
+    public interface Detail {
+        void onDetail(String stage, String packName, int packIndex, int packCount,
+                      long dlDone, long dlTotal, long exDone, long exTotal);
+    }
+
     public interface FreeSpace { long freeBytes(); }
 
     public static final class Config {
@@ -42,6 +48,7 @@ public final class PackInstaller {
         };
         public FreeSpace freeSpace;
         public Listener listener;
+        public Detail detail; // opcional
         public CancelToken cancel = new CancelToken();
         public AtomicInstaller.FailPoint failPoint; // testes
     }
@@ -75,6 +82,11 @@ public final class PackInstaller {
         for (PackSpec p : c.packs) totalBytes += p.size + p.estimatedUnpacked();
         final long total = totalBytes;
         final AtomicLong done = new AtomicLong(0);
+        final AtomicLong dlDone = new AtomicLong(0);
+        final AtomicLong exDone = new AtomicLong(0);
+        long zt = 0, ut = 0;
+        for (PackSpec p : c.packs) { zt += p.size; ut += p.estimatedUnpacked(); }
+        final long zipTotal = zt, unpTotal = ut;
         final int count = c.packs.size();
 
         ExecutorService extractor = Executors.newSingleThreadExecutor(new java.util.concurrent.ThreadFactory() {
@@ -97,7 +109,10 @@ public final class PackInstaller {
                 final String stage1 = "download";
                 File zip = PackDownloader.downloadVerified(c.urls.resolve(spec), downloads, spec.name, spec.size, spec.sha256,
                         c.maxAttempts, c.sleeper, new PackDownloader.ByteProgress() {
-                            @Override public void add(long d) { report(c, stage1, spec.name, idx, count, done.addAndGet(d), total); }
+                            @Override public void add(long d) {
+                                report(c, stage1, spec.name, idx, count, done.addAndGet(d), total);
+                                detail(c, stage1, spec.name, idx, count, dlDone.addAndGet(d), zipTotal, exDone.get(), unpTotal);
+                            }
                         }, c.cancel);
                 // credita a diferenca entre o tamanho do zip e o contado (igual, pois ja conferido) -> nada a ajustar
 
@@ -116,11 +131,15 @@ public final class PackInstaller {
                                 @Override public void onBytes(long d) {
                                     est[0] += d;
                                     report(c, "extract", spec.name, idx, count, done.addAndGet(d), total);
+                                    detail(c, "extract", spec.name, idx, count, dlDone.get(), zipTotal, exDone.addAndGet(d), unpTotal);
                                 }
                             }, c.cancel);
                             // acerta a estimativa de "unpacked": completa o que faltou do estimado
                             long expected = spec.estimatedUnpacked();
-                            if (est[0] < expected) report(c, "extract", spec.name, idx, count, done.addAndGet(expected - est[0]), total);
+                            if (est[0] < expected) {
+                                report(c, "extract", spec.name, idx, count, done.addAndGet(expected - est[0]), total);
+                                detail(c, "extract", spec.name, idx, count, dlDone.get(), zipTotal, exDone.addAndGet(expected - est[0]), unpTotal);
+                            }
                             return r;
                         } finally {
                             zipF.delete(); // zip ja consumido: libera espaco
@@ -190,6 +209,10 @@ public final class PackInstaller {
         File cur = f;
         for (int k = 0; k < depth; k++) cur = cur.getParentFile();
         return cur;
+    }
+
+    private static void detail(Config c, String stage, String name, int idx, int count, long dl, long dlT, long ex, long exT) {
+        if (c.detail != null) c.detail.onDetail(stage, name, idx, count, Math.min(dl, dlT), dlT, Math.min(ex, exT), exT);
     }
 
     private static void report(Config c, String stage, String name, int idx, int count, long done, long total) {

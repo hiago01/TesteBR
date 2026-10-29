@@ -692,22 +692,26 @@ public class UpdateService extends Service {
         cfg.cancel = cancel;
         mPackCancel = cancel;
         final long[] last = { 0 };
-        cfg.listener = new PackInstaller.Listener() {
+        // A UI mostra o tamanho REAL do download (soma dos .zip); a extracao aparece depois, com seu proprio total.
+        cfg.detail = new PackInstaller.Detail() {
             @Override
-            public void onProgress(final String stage, final String packName, final int packIndex, final int packCount, final long done, final long total) {
+            public void onDetail(final String stage, final String packName, final int packIndex, final int packCount,
+                                 final long dlDone, final long dlTotal, final long exDone, final long exTotal) {
                 long now = System.currentTimeMillis();
-                if (now - last[0] < 100 && done < total) return;
+                boolean finished = dlDone >= dlTotal && exDone >= exTotal;
+                if (now - last[0] < 100 && !finished) return;
                 last[0] = now;
                 postToService(new Runnable() {
                     @Override
                     public void run() {
                         if (session != mSession) return;
+                        boolean downloading = dlDone < dlTotal;
                         Message obtain = Message.obtain(mInHandler, 4);
                         obtain.getData().putString("status", UpdateActivity.UpdateStatus.DownloadGameData.name());
                         obtain.getData().putBoolean("withProgress", true);
-                        obtain.getData().putLong("current", done);   // bytes baixados + extraidos
-                        obtain.getData().putLong("total", total);    // soma(zips) + soma(descompactado)
-                        obtain.getData().putString("filename", "extract".equals(stage) ? packName + " (extracting)" : packName + ".zip");
+                        obtain.getData().putLong("current", downloading ? dlDone : exDone);
+                        obtain.getData().putLong("total", downloading ? dlTotal : exTotal);
+                        obtain.getData().putString("filename", downloading ? packName + ".zip" : packName + " (extracting)");
                         obtain.getData().putLong("totalfiles", packCount);
                         obtain.getData().putLong("currentfile", packIndex + 1);
                         sendToActivity(obtain);
