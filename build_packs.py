@@ -10,7 +10,10 @@ Uso (Windows, Python 3.8+):
 Regras (devem bater com GameFilePolicy.java do app):
   * SO LE a pasta de origem; nunca altera nada nela. Tudo e escrito em --out.
   * Nomes em UTF-8, separador "/", caixa preservada. ERRO se dois caminhos diferirem so pela caixa.
-  * Ignora lixo de SO/servidor e arquivos gerados pelo jogo no celular (lista abaixo).
+  * PADRAO: copia TUDO da pasta de origem, sem excecoes (so os arquivos internos do instalador - installed.json,
+    .staging/.backup/.downloads - ficam de fora) e emite "include_all": true no trecho do client_config, o que faz
+    o app extrair tudo. Use --com-excecoes para o modo antigo (ignora lixo de SO e arquivos gerados pelo jogo:
+    lista abaixo).
   * core = tudo que nao e de GPU; gpu_dxt/gpu_etc/gpu_pvr = ".dxt." / ".etc." / ".pvr." no caminho,
     EXCETO caminhos com "samp", "player" ou "menu" (sempre core, sem diferenciar caixa) - mesma regra do app.
   * Cada zip tem no maximo --max-mb (padrao 900 MiB) de dados: pacotes maiores sao divididos em
@@ -43,8 +46,17 @@ FIXED_DATE = (2020, 1, 1, 0, 0, 0)  # zips reproduziveis (mesmo conteudo => mesm
 MAX_ZIP64 = 0xFFFFFFFF
 
 
+INTERNAL_DIRS = (".staging/", ".backup/", ".downloads/")
+INCLUDE_ALL = True   # padrao: SEM excecoes (so os arquivos internos do instalador ficam de fora)
+
+
 def is_ignored(rel):
     low = rel.lower()
+    # internos do instalador / do proprio script: nunca entram, em nenhum modo
+    if low == "installed.json" or low == MANIFEST_NAME or low.startswith(INTERNAL_DIRS):
+        return True
+    if INCLUDE_ALL:
+        return False
     if low in IGNORE_PATHS:
         return True
     return low.rsplit("/", 1)[-1] in IGNORE_BASENAMES
@@ -153,8 +165,12 @@ def main():
     ap.add_argument("--out", default=r"C:\cache-server\packs", help="pasta onde os zips e o manifest serao escritos")
     ap.add_argument("--base-url", required=True, help="URL publica da pasta dos zips, ex.: http://IP:8080/packs")
     ap.add_argument("--version", required=True, help="versao do conteudo (letras/numeros . _ -), ex.: 1")
+    ap.add_argument("--com-excecoes", action="store_true",
+                    help="modo antigo: ignora lixo de SO e arquivos gerados pelo jogo (SAMP/settings.ini, CINFO.BIN...)")
     ap.add_argument("--max-mb", type=int, default=900, help="dados maximos por zip (MiB); padrao 900")
     a = ap.parse_args()
+    global INCLUDE_ALL
+    INCLUDE_ALL = not a.com_excecoes
 
     src = os.path.abspath(a.src)
     out = os.path.abspath(a.out)
@@ -201,7 +217,10 @@ def main():
     with open(os.path.join(out, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(full_manifest, f, ensure_ascii=False, indent=1)
 
-    snippet = {"version": a.version, "packs": packs}
+    snippet = {"version": a.version}
+    if INCLUDE_ALL:
+        snippet["include_all"] = True
+    snippet["packs"] = packs
     print("\n=== cole dentro de \"client_config\" no client_config.json (mantenha url_cache_files) ===")
     print(json.dumps(snippet, indent=2))
     print("\nTotal: %d arquivos em %d pacote(s). Copie os .zip para %s no servidor." % (len(items), len(packs), a.base_url))

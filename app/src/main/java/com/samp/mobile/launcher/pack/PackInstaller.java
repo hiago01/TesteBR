@@ -195,7 +195,7 @@ public final class PackInstaller {
         }
         AtomicInstaller.commit(r.files, base, backupRoot, c.failPoint);
         for (ZipPackExtractor.ExtractedFile ef : r.files) {
-            if (!GameFilePolicy.isProtected(ef.path)) installed.add(new InstalledState.Entry(ef.path, ef.size));
+            if (!GameFilePolicy.isInternal(ef.path) && !GameFilePolicy.isGenerated(ef.path)) installed.add(new InstalledState.Entry(ef.path, ef.size));
         }
         // staging deste pacote ja foi movido arquivo a arquivo; remove o que sobrou (pastas vazias)
         AtomicInstaller.deleteTree(r.files.isEmpty() ? new File(new File(base, GameFilePolicy.DIR_STAGING), "x") : stageDirOf(r));

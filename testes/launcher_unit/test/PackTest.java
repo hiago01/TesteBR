@@ -342,6 +342,26 @@ public class PackTest {
             r("extracao: arquivo protegido do zip e pulado (nao extraido)", res.skippedProtected.contains("SAMP/settings.ini")
                     && !new File(d, "stg/SAMP/settings.ini").exists(), "");
         }
+        {   // include_all: tudo e extraido (so internos do instalador ficam de fora)
+            GameFilePolicy.setProtectGenerated(false);
+            try {
+                File d = tmp();
+                Map<String, byte[]> m = sample();
+                m.put("SAMP/settings.ini", "DO-ZIP".getBytes());
+                m.put("CINFO.BIN", "CI".getBytes());
+                ZipPackExtractor.Result res = extract(buildZip(m, false, true), new File(d, "stg"));
+                r("include_all: settings.ini e CINFO.BIN SAO extraidos", res.skippedProtected.isEmpty()
+                        && new File(d, "stg/SAMP/settings.ini").exists() && new File(d, "stg/CINFO.BIN").exists(), "");
+                r("include_all: installed.json continua interno", GameFilePolicy.isProtected("installed.json")
+                        && GameFilePolicy.isProtected(".staging/x") && !GameFilePolicy.isProtected("SAMP/settings.ini"), "");
+            } finally { GameFilePolicy.setProtectGenerated(true); }
+            r("include_all: padrao volta a proteger", GameFilePolicy.isProtected("SAMP/settings.ini"), "");
+            try {
+                PackConfig pcIA = PackConfig.parse("{\"client_config\":{\"version\":\"1\",\"include_all\":true,\"packs\":[]}}");
+                PackConfig pdIA = PackConfig.parse("{\"client_config\":{\"version\":\"1\",\"packs\":[]}}");
+                r("include_all lido do client_config (e ausente = false)", pcIA.includeAll && !pdIA.includeAll, "");
+            } catch (PackException e) { r("include_all lido do client_config", false, e.getMessage()); }
+        }
         {
             File d = tmp();
             Map<String, byte[]> m = new LinkedHashMap<>();

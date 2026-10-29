@@ -8,8 +8,11 @@ import java.util.Map;
 public final class PackConfig {
     public final String version;       // versao do CONTEUDO (null se ausente)
     public final List<PackSpec> packs; // vazio se ausente
+    /** "include_all": true -> os pacotes trazem tudo e nada e ignorado na extracao. */
+    public final boolean includeAll;
 
-    private PackConfig(String version, List<PackSpec> packs) {
+    private PackConfig(String version, List<PackSpec> packs, boolean includeAll) {
+        this.includeAll = includeAll;
         this.version = version;
         this.packs = packs;
     }
@@ -46,7 +49,8 @@ public final class PackConfig {
                     if (list.get(a).name.equals(list.get(b).name)) throw new PackException("pacote repetido: " + list.get(a).name);
             if (!list.isEmpty() && version == null) throw new PackException("\"packs\" exige \"version\" no client_config");
         }
-        return new PackConfig(version, list);
+        Object ia = cfg.get("include_all");
+        return new PackConfig(version, list, Boolean.TRUE.equals(ia) || "true".equals(String.valueOf(ia)));
     }
 
     /** core (gpu 0) + os pacotes do gpuType do aparelho, na ordem do JSON. null se faltar pacote da GPU. */

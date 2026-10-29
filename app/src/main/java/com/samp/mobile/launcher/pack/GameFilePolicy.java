@@ -33,14 +33,35 @@ public final class GameFilePolicy {
     public static final String DIR_BACKUP = ".backup";
     public static final String DIR_DOWNLOADS = ".downloads";
 
-    public static boolean isProtected(String relPath) {
+    /**
+     * true (padrao) = arquivos gerados pelo jogo NUNCA sao extraidos/sobrescritos.
+     * false = o client_config diz "include_all": true -> o pacote traz TUDO e tudo e extraido
+     * (so os arquivos internos do instalador continuam de fora). Ajustado pelo UpdateService
+     * antes de cada instalacao.
+     */
+    private static volatile boolean protectGenerated = true;
+    public static void setProtectGenerated(boolean v) { protectGenerated = v; }
+
+    /** Arquivos internos do instalador: nunca fazem parte do jogo, em nenhum modo. */
+    public static boolean isInternal(String relPath) {
+        if (relPath == null) return true;
+        String l = relPath.toLowerCase(Locale.ROOT);
+        if (l.equals("installed.json")) return true;
+        return l.startsWith(DIR_STAGING + "/") || l.startsWith(DIR_BACKUP + "/") || l.startsWith(DIR_DOWNLOADS + "/");
+    }
+
+    /** Lixo de SO/servidor ou arquivo gerado pelo jogo/launcher no celular (lista do requisito). */
+    public static boolean isGenerated(String relPath) {
         if (relPath == null) return true;
         String l = relPath.toLowerCase(Locale.ROOT);
         if (PROTECTED_PATHS.contains(l)) return true;
         int slash = l.lastIndexOf('/');
         String base = slash >= 0 ? l.substring(slash + 1) : l;
-        if (JUNK_BASENAMES.contains(base)) return true;
-        return l.startsWith(DIR_STAGING + "/") || l.startsWith(DIR_BACKUP + "/") || l.startsWith(DIR_DOWNLOADS + "/");
+        return JUNK_BASENAMES.contains(base);
+    }
+
+    public static boolean isProtected(String relPath) {
+        return isInternal(relPath) || (protectGenerated && isGenerated(relPath));
     }
 
     /**

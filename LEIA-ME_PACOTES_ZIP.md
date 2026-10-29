@@ -45,7 +45,7 @@ Copie os `.zip` para a pasta servida em `/packs/` e cole o trecho impresso dentr
 - Se o app morrer no meio: no `onCreate` do servico (na HandlerThread) `recoverOnStartup` apaga staging/downloads e restaura do backup o que faltar.
 - Nunca grava nem apaga os arquivos da lista IGNORAR (SAMP/settings.ini, CINFO.BIN, gta_sa.set...). `installed.json` guarda versao + GPU + path/size.
 - Filtro corrigido: agora sem diferenciar caixa (antes `"SAMP/..."` nao casava com `contains("samp")`).
-- Contrato de mensagens 0/7, 1, 2, 4, 5, 6 mantido. Msg 4: `current/total` = bytes baixados + extraidos; `filename` = `core.zip` ou `core (extracting)`; `totalfiles/currentfile` = pacotes.
+- Contrato de mensagens 0/7, 1, 2, 4, 5, 6 mantido. Msg 4: `current/total` = bytes baixados / soma dos .zip (tamanho real do download); quando o download termina, passa a mostrar a extracao (bytes extraidos / total descompactado); `filename` = `core.zip` ou `core (extracting)`; `totalfiles/currentfile` = pacotes.
 - Cancelamento: `cancelDownloads()` e `onDestroy()` cancelam o `CancelToken` e encerram a thread; `mSession` descarta callbacks atrasados. A instalacao roda numa thread propria (`pack-install`) e a extracao numa terceira (`pack-extract`), nunca na principal.
 
 ## Mais rapido? (cliente de 1,57 GB)
@@ -66,3 +66,10 @@ implementei** (o app nao depende de Range). Diminuir o proprio conteudo (textura
 
 ## Teste em aparelho
 1. Aparelho limpo, servidor com packs: deve baixar core+gpu e abrir o jogo; confira `installed.json`. 2. Mate o app no meio do download e da extracao: reabrir deve limpar `.staging/.downloads` e refazer. 3. Corrompa 1 byte do zip no servidor: erro apos 3 tentativas, nada em `files/`. 4. Encha o armazenamento: erro de espaco antes de baixar. 5. Edite `SAMP/settings.ini` no celular e reinstale: permanece. 6. Remova `packs` do JSON: fluxo antigo.
+
+## Modo "sem excecoes" (padrao do build_packs.py)
+`build_packs.py` agora copia TUDO da pasta de origem (so `installed.json` e `.staging/.backup/.downloads` ficam de fora) e
+imprime `"include_all": true`, que o app le do `client_config` e entao extrai tudo, inclusive `SAMP/settings.ini`, `CINFO.BIN`,
+`gta_sa.set` etc. Sem esse campo o app mantem a protecao antiga. `--com-excecoes` volta ao modo antigo.
+Atencao: so vale para a PRIMEIRA instalacao por pacotes; o fluxo antigo (atualizacao/verificacao) continua sem baixar os arquivos
+gerados pelo jogo, para nao sobrescrever as configuracoes do jogador a cada abertura.

@@ -671,6 +671,7 @@ public class UpdateService extends Service {
             return;
         }
         mPackPendingFiles = new ArrayList<>(mDlFiles);
+        GameFilePolicy.setProtectGenerated(!mPackConfig.includeAll);
         final PackInstaller.Config cfg = new PackInstaller.Config();
         cfg.filesDir = base;
         cfg.version = mPackConfig.version;
