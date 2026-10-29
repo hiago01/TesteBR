@@ -91,6 +91,8 @@ public class UpdateService extends Service {
     public ArrayList<String> mUpdateFiles = new ArrayList<>();
     public ArrayList<String> mUpdateFilesName = new ArrayList<>();
     public ArrayList<Long> mUpdateFilesSize = new ArrayList<>();
+    /** SHA-256 esperado de cada arquivo (do files.json; "" = lista sem hash, so confere o tamanho). */
+    public ArrayList<String> mUpdateFilesSha = new ArrayList<>();
 
     public int mGpuType = 0;
 
@@ -100,6 +102,7 @@ public class UpdateService extends Service {
     // estado do download de dados do jogo (somente na HandlerThread)
     private ArrayList<String> mDlFiles = new ArrayList<>();
     private ArrayList<Long> mDlSizes = new ArrayList<>();
+    private ArrayList<String> mDlShas = new ArrayList<>();
     private ArrayList<String> mDlFailed = new ArrayList<>();
     private int mDlIndex = 0;
     private int mDlConsecutiveFailures = 0;
@@ -116,8 +119,6 @@ public class UpdateService extends Service {
     private CancelToken mPackCancel;
     /** Arquivos que ficam pendentes se a instalacao por pacotes falhar (a proxima verificacao refaz). */
     private ArrayList<String> mPackPendingFiles = new ArrayList<>();
-    /** Primeira instalacao: ao menos isto de arquivos faltando E nenhum installed.json => usa pacotes. */
-    private static final int PACK_MIN_MISSING_FILES = 50;
 
     @Override
     public void onCreate() {
@@ -125,7 +126,7 @@ public class UpdateService extends Service {
         mHandlerThread = new HandlerThread("ServiceStartArguments", 10);
         mHandlerThread.start();
         try {
-            PRDownloader.initialize(getApplicationContext(), PRDownloaderConfig.newBuilder().setDatabaseEnabled(true).setReadTimeout(30000).setConnectTimeout(30000).build());
+            PRDownloader.initialize(getApplicationContext(), PRDownloaderConfig.newBuilder().setDatabaseEnabled(false).setReadTimeout(30000).setConnectTimeout(30000).build());
         } catch (RuntimeException e) {
             Log.e(TAG, "PRDownloader init failed: " + e);
         }
@@ -308,6 +309,7 @@ public class UpdateService extends Service {
         mUpdateFiles = new ArrayList<>();
         mUpdateFilesName = new ArrayList<>();
         mUpdateFilesSize = new ArrayList<>();
+        mUpdateFilesSha = new ArrayList<>();
         mUsePacks = false;
         mPackConfig = null;
         mPackSelection = null;
@@ -428,6 +430,7 @@ public class UpdateService extends Service {
                 mUpdateFiles.add(path);
                 mUpdateFilesName.add(name);
                 mUpdateFilesSize.add(fileData.getSize());
+                mUpdateFilesSha.add(o.optString("sha256", "").trim().toLowerCase(java.util.Locale.ROOT));
                 mUpdateGameDataSize = mUpdateGameDataSize + fileData.getSize();
             }
         }
@@ -437,23 +440,33 @@ public class UpdateService extends Service {
     }
 
     /**
-     * Pacotes ZIP SO na primeira instalacao: ha packs no servidor, nunca houve instalacao por pacotes
-     * (sem installed.json) e faltam muitos arquivos. Atualizacoes pequenas e a verificacao seguem pelo
-     * fluxo antigo (PRDownloader, arquivo a arquivo, comparando tamanho).
+     * Pacotes ZIP (verificados por SHA-256) sao usados em TODA instalacao que ainda nao foi verificada:
+     * existem packs validos para a GPU e NAO ha installed.json valido para esta GPU (primeira instalacao,
+     * instalacao antiga/quebrada pelo fluxo arquivo-a-arquivo, ou troca de GPU). Nesse caso tudo e baixado
+     * e conferido de novo, MESMO que os arquivos ja existam com o tamanho certo (copias corrompidas com o
+     * mesmo tamanho nao sao detectaveis por size). Depois de uma instalacao por pacotes, atualizacoes e a
+     * verificacao seguem pelo fluxo antigo (PRDownloader, arquivo a arquivo).
      */
     private void decidePackMode(File base) {
         mUsePacks = false;
         if (mPackConfig == null || mPackSelection == null) return;
-        if (mUpdateFiles.isEmpty()) return;
-        if (InstalledState.read(base) != null) return;
-        if (mUpdateFiles.size() < PACK_MIN_MISSING_FILES) return;
-        // A maior parte do que o aparelho precisa esta faltando = instalacao nova (ou muito incompleta)
-        if (mUpdateFiles.size() * 2 < mListTotalFiles) return;
+        InstalledState st = InstalledState.read(base);
+        boolean verified = st != null && st.gpu == mGpuType && !st.files.isEmpty();
+        if (verified) return;
         mUsePacks = true;
-        // O tamanho mostrado ao usuario passa a ser o dos pacotes (download real) + extracao.
+        // Marcador unico: a Activity so pede a instalacao (msg 1) se houver algo "pendente".
         long total = 0;
         for (PackSpec p : mPackSelection) total += p.size;
-        Log.d(TAG, "primeira instalacao por pacotes: " + mPackSelection.size() + " pacotes, " + total + " bytes");
+        mUpdateFiles.clear();
+        mUpdateFilesName.clear();
+        mUpdateFilesSize.clear();
+        mUpdateFilesSha.clear();
+        mUpdateFiles.add("(packs)");
+        mUpdateFilesName.add("(packs)");
+        mUpdateFilesSize.add(total);
+        mUpdateFilesSha.add("");
+        mUpdateGameDataSize = total;
+        Log.d(TAG, "instalacao por pacotes: " + mPackSelection.size() + " pacotes, " + total + " bytes");
     }
 
     public boolean isGameUpdateExists() {
@@ -635,10 +648,12 @@ public class UpdateService extends Service {
         final int session = ++mSession;
         mDlFiles = new ArrayList<>(mUpdateFiles);
         mDlSizes = new ArrayList<>(mUpdateFilesSize);
+        mDlShas = new ArrayList<>(mUpdateFilesSha);
         mDlFailed = new ArrayList<>();
         mUpdateFiles.clear();
         mUpdateFilesName.clear();
         mUpdateFilesSize.clear();
+        mUpdateFilesSha.clear();
         mDlIndex = 0;
         mDlDoneBytes = 0;
         mDlConsecutiveFailures = 0;
@@ -828,6 +843,25 @@ public class UpdateService extends Service {
                         if (session != mSession) return;
                         mDownloadingStatus = false;
                         mDownloadId = -1;
+                        // PRDownloader diz "completo" mesmo com arquivo cortado/errado: confere tamanho (e SHA-256, se a lista tiver).
+                        final File done = new File(parentOf(rel), fileName);
+                        String why = verifyDownloaded(done, mDlSizes.get(mDlIndex), mDlShas.get(mDlIndex));
+                        if (why != null) {
+                            Log.w("x1y2z", "arquivo invalido " + rel + ": " + why + " (attempt " + attempt + ")");
+                            //noinspection ResultOfMethodCallIgnored
+                            done.delete();
+                            if (attempt < MAX_FILE_ATTEMPTS) {
+                                mInHandler.postDelayed(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        downloadNextFile(session, attempt + 1);
+                                    }
+                                }, RETRY_DELAY_MS * attempt);
+                            } else {
+                                onFileGaveUp(session, rel);
+                            }
+                            return;
+                        }
                         mDlDoneBytes += mDlSizes.get(mDlIndex);
                         mDlConsecutiveFailures = 0;
                         mDlIndex++;
@@ -860,6 +894,37 @@ public class UpdateService extends Service {
                 });
             }
         });
+    }
+
+    private File parentOf(String rel) {
+        File base = getExternalFilesDir(null);
+        File f = new File(base, rel);
+        return f.getParentFile();
+    }
+
+    /** null = ok; senao o motivo. Roda na HandlerThread do servico (nao bloqueia a thread principal). */
+    private static String verifyDownloaded(File f, long expectedSize, String expectedSha) {
+        if (!f.isFile()) return "arquivo ausente";
+        if (f.length() != expectedSize) return "tamanho " + f.length() + " != " + expectedSize;
+        if (expectedSha != null && expectedSha.length() == 64) {
+            try {
+                java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+                java.io.FileInputStream in = new java.io.FileInputStream(f);
+                try {
+                    byte[] buf = new byte[256 * 1024];
+                    int n;
+                    while ((n = in.read(buf)) > 0) md.update(buf, 0, n);
+                } finally {
+                    in.close();
+                }
+                StringBuilder sb = new StringBuilder(64);
+                for (byte b : md.digest()) sb.append(String.format(java.util.Locale.ROOT, "%02x", b));
+                if (!sb.toString().equals(expectedSha)) return "sha256 diferente";
+            } catch (java.security.NoSuchAlgorithmException | java.io.IOException e) {
+                return "nao foi possivel conferir o sha256: " + e;
+            }
+        }
+        return null;
     }
 
     private void onFileGaveUp(int session, String rel) {

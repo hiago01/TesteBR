@@ -169,6 +169,14 @@ public final class PackInstaller {
         } catch (IOException e) {
             throw new PackException("nao foi possivel gravar installed.json: " + e.getMessage(), e);
         }
+        // Auto-conferencia final: todo arquivo instalado existe no destino com o tamanho do manifest.
+        for (InstalledState.Entry e : installedEntries) {
+            File f = PathSafety.resolveInside(base, e.path);
+            if (!f.isFile() || f.length() != e.size) {
+                try { new File(base, InstalledState.FILE_NAME).delete(); } catch (RuntimeException ignored) { }
+                throw new PackException("verificacao final falhou: " + e.path);
+            }
+        }
         AtomicInstaller.deleteTree(new File(base, GameFilePolicy.DIR_STAGING));
         AtomicInstaller.deleteTree(new File(base, GameFilePolicy.DIR_BACKUP));
         AtomicInstaller.deleteTree(downloads);

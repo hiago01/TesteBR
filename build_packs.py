@@ -214,6 +214,17 @@ def main():
             full_manifest["packs"].append({"name": name, "gpu": gpu, "size": zsize, "sha256": digest,
                                            "unpacked": unpacked, "files": manifest["files"]})
 
+    # files.json com sha256 por arquivo (formato do launcher: {"files":[{name,size,path,sha256}]}) para o fluxo de
+    # atualizacao/verificacao arquivo-a-arquivo conferir o conteudo. Copie para a raiz do servidor (ao lado do launcher.apk).
+    files_json = {"files": []}
+    for pk in full_manifest["packs"]:
+        for fi in pk["files"]:
+            files_json["files"].append({"name": fi["path"].rsplit("/", 1)[-1], "size": fi["size"],
+                                        "path": fi["path"], "sha256": fi["sha256"]})
+    files_json["files"].sort(key=lambda x: x["path"])
+    with open(os.path.join(out, "files.json"), "w", encoding="utf-8") as f:
+        json.dump(files_json, f, ensure_ascii=False)
+
     with open(os.path.join(out, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(full_manifest, f, ensure_ascii=False, indent=1)
 
@@ -223,6 +234,7 @@ def main():
     snippet["packs"] = packs
     print("\n=== cole dentro de \"client_config\" no client_config.json (mantenha url_cache_files) ===")
     print(json.dumps(snippet, indent=2))
+    print("\nTambem gerado: %s (files.json COM sha256; copie para a raiz do servidor, no lugar do antigo)." % os.path.join(out, "files.json"))
     print("\nTotal: %d arquivos em %d pacote(s). Copie os .zip para %s no servidor." % (len(items), len(packs), a.base_url))
 
 
