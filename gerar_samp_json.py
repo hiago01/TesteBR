@@ -31,10 +31,12 @@ def sha_stream(f):
     return h.hexdigest()
 
 
-def scan_dir(src):
+def scan_dir(src, empty_dirs):
     out = []
     for root, dirs, files in os.walk(src):
         dirs.sort()
+        if not dirs and not files and root != src:
+            empty_dirs.append(os.path.relpath(root, src).replace(os.sep, "/"))
         for n in sorted(files):
             ab = os.path.join(root, n)
             if os.path.islink(ab):
@@ -45,21 +47,33 @@ def scan_dir(src):
     return out
 
 
-def scan_zip(path):
+def scan_zip(path, empty_dirs):
     z = zipfile.ZipFile(path)
     bad = z.testzip()
     if bad:
         sys.exit("ERRO: zip corrompido (CRC) em: " + bad)
     out = []
+    zdirs = []
     for i in z.infolist():
         n = i.filename.replace("\\", "/")
         if n.endswith("/") or i.is_dir():
+            dn = n.rstrip("/")
+            if dn:
+                zdirs.append(dn)
             continue
         if n.startswith("/") or ".." in n.split("/") or "//" in n:
             sys.exit("ERRO: caminho inseguro no zip: " + n)
         out.append((n, i, None))
     names = [n for n, _, _ in out]
     strip = bool(names) and all(n.split("/", 1)[0].lower() == "samp" and "/" in n for n in names)
+    have = set()
+    for n in names:
+        parts = n.split("/")[:-1]
+        for k in range(1, len(parts) + 1):
+            have.add("/".join(parts[:k]))
+    for d in zdirs:
+        if d not in have:  # pasta sem nenhum arquivo dentro
+            empty_dirs.append(d.split("/", 1)[1] if strip and "/" in d else d)
     res = []
     for n, i, _ in out:
         rel = n.split("/", 1)[1] if strip else n
@@ -79,7 +93,9 @@ def main():
         sys.exit("ERRO: nao existe: " + src)
     if os.path.isdir(src) and (out == src or out.startswith(src + os.sep)):
         sys.exit("ERRO: --out nao pode ficar dentro da pasta SAMP (ela nao pode ser alterada)")
-    items = scan_dir(src) if os.path.isdir(src) else scan_zip(src)
+    empty_dirs = []
+    items = scan_dir(src, empty_dirs) if os.path.isdir(src) else scan_zip(src, empty_dirs)
+    empty_dirs = sorted(d for d in set(empty_dirs) if d and d.lower() != "samp")
     if not items:
         sys.exit("ERRO: nenhum arquivo encontrado em " + src)
     seen, zero = {}, []
@@ -98,10 +114,12 @@ def main():
         files.append({"name": rel.rsplit("/", 1)[-1], "path": "SAMP/" + rel, "size": size, "sha256": sha})
     tmp = out + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump({"files": files}, f, ensure_ascii=False, indent=1)
+        json.dump({"files": files, "dirs": ["SAMP/" + d for d in empty_dirs]}, f, ensure_ascii=False, indent=1)
     os.replace(tmp, out)
     print("samp.json gerado: %s" % out)
     print("arquivos: %d   bytes: %d   (nada ignorado)" % (len(files), sum(x["size"] for x in files)))
+    if empty_dirs:
+        print("pastas vazias incluidas (o jogo precisa que existam): %s" % ", ".join("SAMP/" + d for d in empty_dirs))
     if zero:
         print("AVISO: %d arquivo(s) de 0 bytes: %s" % (len(zero), ", ".join(zero[:10])))
     print("Confira no navegador: http://SEU_IP:8080/samp.json  e  http://SEU_IP:8080/%s" % files[0]["path"])

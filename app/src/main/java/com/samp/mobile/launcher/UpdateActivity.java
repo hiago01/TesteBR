@@ -96,7 +96,20 @@ public class UpdateActivity extends AppCompatActivity{
                 long j2 = msg.getData().getLong("current");
                 String fname = msg.getData().getString("filename");
                 if (valueOf == UpdateStatus.DownloadGameData) {
-                    showProgress(R.string.mx_update_title_data, j, j2, fname, (j2 / 1048576) + "MB / " + (j / 1048576) + "MB");
+                    int phase = msg.getData().getInt("phase", 0);
+                    if (phase == 2) {
+                        // etapa final (pasta SAMP): a barra recomeca de 0% DE PROPOSITO; avisa o jogador uma vez
+                        if (!mSampStepShown) {
+                            mSampStepShown = true;
+                            Toast.makeText(UpdateActivity.this, R.string.mx_update_samp_toast, Toast.LENGTH_LONG).show();
+                        }
+                        showProgress(R.string.mx_update_title_samp, j, j2, fname,
+                                msg.getData().getLong("currentfile") + "/" + msg.getData().getLong("totalfiles")
+                                        + " \u2022 " + (j2 / 1048576) + "MB / " + (j / 1048576) + "MB");
+                    } else {
+                        showProgress(phase == 1 ? R.string.mx_update_title_data_step1 : R.string.mx_update_title_data,
+                                j, j2, fname, (j2 / 1048576) + "MB / " + (j / 1048576) + "MB");
+                    }
                 } else if (valueOf == UpdateActivity.UpdateStatus.CheckUpdate) {
                     showProgress(R.string.mx_update_title_check, j, j2, fname, null);
                 } else if (valueOf == UpdateStatus.DownloadGame) {
@@ -152,6 +165,7 @@ public class UpdateActivity extends AppCompatActivity{
 
     private boolean mFinishedOk = false;
     private int mLastNotifPercent = -2;
+    private boolean mSampStepShown = false;
 
     /**
      * Atualiza titulo, arquivo, contador e o ANEL redondo. Escala interna 0..1000 (evita o

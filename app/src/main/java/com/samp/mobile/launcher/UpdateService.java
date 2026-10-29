@@ -115,6 +115,8 @@ public class UpdateService extends Service {
     private List<PackSpec> mPackSelection = null;
     /** true = esta rodada de dados do jogo e a PRIMEIRA instalacao e sera feita por pacotes ZIP. */
     private boolean mUsePacks = false;
+    private boolean mPackHasSampStep = false; // pacotes seguidos da etapa SAMP (so para a mensagem da tela)
+    private boolean mSampStep = false;        // baixando a pasta SAMP depois dos pacotes
     private int mListTotalFiles = 0;
     /** Lista da pasta SAMP/ (samp.json). null = servidor sem samp.json -> a SAMP/ segue pelo files.json (fluxo antigo). */
     private SampList mSampList = null;
@@ -320,6 +322,8 @@ public class UpdateService extends Service {
         mUpdateFilesSize = new ArrayList<>();
         mUpdateFilesSha = new ArrayList<>();
         mUsePacks = false;
+        mSampStep = false;
+        mPackHasSampStep = false;
         mPackConfig = null;
         mPackSelection = null;
         mSampList = null;
@@ -407,6 +411,8 @@ public class UpdateService extends Service {
                     return;
                 }
                 mSampList = list;
+                int madeDirs = list.ensureDirs(base); // pastas vazias (ex.: SAMP/skins/fallback_tex)
+                if (madeDirs > 0) Log.d(TAG, "SAMP: " + madeDirs + " pasta(s) vazia(s) criada(s)");
                 // verificacao profunda (SHA-256) so quando a instalacao ainda nao foi verificada por pacotes
                 boolean deep = InstalledState.read(base) == null;
                 int pending = 0;
@@ -785,10 +791,12 @@ public class UpdateService extends Service {
             mDlShas.remove(0);
         }
         mUsePacks = false;
+        mPackHasSampStep = false;
         if (mDlFiles.isEmpty()) {
             notifyGameDataDone();
             return;
         }
+        mSampStep = true;
         long total = 0;
         for (Long l : mDlSizes) total += l;
         mUpdateGameDataSize = total;
@@ -817,6 +825,8 @@ public class UpdateService extends Service {
             return;
         }
         mPackPendingFiles = new ArrayList<>(mDlFiles);
+        mPackHasSampStep = mDlFiles.size() > 1; // alem do marcador "(packs)" ha arquivos da SAMP/
+        mSampStep = false;
         GameFilePolicy.setProtectGenerated(!mPackConfig.includeAll);
         final PackInstaller.Config cfg = new PackInstaller.Config();
         cfg.filesDir = base;
@@ -861,6 +871,7 @@ public class UpdateService extends Service {
                         obtain.getData().putString("filename", downloading ? packName + ".zip" : packName + " (extracting)");
                         obtain.getData().putLong("totalfiles", packCount);
                         obtain.getData().putLong("currentfile", packIndex + 1);
+                        obtain.getData().putInt("phase", mPackHasSampStep ? 1 : 0); // 1 = ainda vem a etapa SAMP
                         sendToActivity(obtain);
                     }
                 });
@@ -977,6 +988,7 @@ public class UpdateService extends Service {
                             obtain.getData().putString("filename", fileName);
                             obtain.getData().putLong("totalfiles", mDlFiles.size());
                             obtain.getData().putLong("currentfile", mDlIndex);
+                            obtain.getData().putInt("phase", mSampStep ? 2 : 0); // 2 = etapa final (pasta SAMP)
                             sendToActivity(obtain);
                         }
                     });

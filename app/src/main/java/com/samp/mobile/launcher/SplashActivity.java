@@ -19,6 +19,7 @@ import android.os.Messenger;
 import android.os.RemoteException;
 import android.util.Log;
 import android.widget.ProgressBar;
+import android.view.View;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -234,35 +235,31 @@ public class SplashActivity extends AppCompatActivity {
                 Log.i("x1y2z", "gameStatus = " + valueOf2);
 
                 if (valueOf2 == UpdateActivity.GameStatus.UpdateRequired) {
-                    if(!new SharedPreferenceCore().getBoolean(SplashActivity.this, "MODIFIED_DATA")) {
-                        if(!isFinishing()) {
-                            builder.setMessage("Game data update found!\nDo you want to update?")
-                                    .setCancelable(false)
-                                    .setPositiveButton("Update", new DialogInterface.OnClickListener() {
-                                        public void onClick(DialogInterface dialog, int id) {
-                                            Intent intent = new Intent(SplashActivity.this, UpdateActivity.class);
-                                            intent.putExtra("mode", UpdateActivity.UpdateMode.GameDataUpdate.name());
-                                            startActivity(intent);
-                                            finish();
-                                            dialog.dismiss();
-                                        }
-                                    })
-                                    .setNegativeButton("No", new DialogInterface.OnClickListener() {
-                                        @Override
-                                        public void onClick(DialogInterface dialogInterface, int i) {
-                                            startActivity(new Intent(SplashActivity.this, MainActivity.class));
-                                            finish();
-                                            dialogInterface.dismiss();
-                                        }
-                                    });
-                            AlertDialog alert = builder.create();
-                            alert.setTitle("Update");
-                            alert.show();
+                    // Atualizacao de dados SEMPRE obrigatoria: um unico botao, sem "Nao", sem cancelar.
+                    if (!isFinishing() && !isDestroyed() && !mDialogShowing) {
+                        mDialogShowing = true;
+                        View v = getLayoutInflater().inflate(R.layout.mx_dialog_update_required, null);
+                        final AlertDialog alert = new AlertDialog.Builder(SplashActivity.this)
+                                .setView(v).setCancelable(false).create();
+                        alert.setCanceledOnTouchOutside(false);
+                        v.findViewById(R.id.mx_upd_req_btn).setOnClickListener(new View.OnClickListener() {
+                            @Override
+                            public void onClick(View view) {
+                                mDialogShowing = false;
+                                Intent intent = new Intent(SplashActivity.this, UpdateActivity.class);
+                                intent.putExtra("mode", UpdateActivity.UpdateMode.GameDataUpdate.name());
+                                startActivity(intent);
+                                finish();
+                                alert.dismiss();
+                            }
+                        });
+                        alert.show();
+                        if (alert.getWindow() != null) {
+                            alert.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
+                            int w = Math.min((int) (400 * getResources().getDisplayMetrics().density),
+                                    (int) (getResources().getDisplayMetrics().widthPixels * 0.9f));
+                            alert.getWindow().setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
                         }
-                    }
-                    else {
-                        startActivity(new Intent(SplashActivity.this, MainActivity.class));
-                        finish();
                     }
                 }
                 else if (valueOf2 == UpdateActivity.GameStatus.GameUpdateRequired) {

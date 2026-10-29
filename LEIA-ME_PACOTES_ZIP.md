@@ -106,3 +106,8 @@ Sem `samp.json` no servidor o launcher cai para o fluxo antigo (SAMP/ pelo files
 **Arquivos que o jogo regrava** (settings.ini, favorites.json, svlog.txt, cinfo.sig, col_index.txt, sampvoice/svconfig.ini): entram no samp.json e sao
 baixados SEMPRE que estiverem ausentes; se ja existirem NAO sao sobrescritos (senao toda abertura apagaria configuracoes e favoritos do jogador).
 Para rebaixar sempre, `SampList.restoreVolatileOnlyIfMissing = false` (pack/SampList.java).
+
+## Pastas vazias da SAMP/ (ex.: SAMP/skins/fallback_tex)
+O `samp.json` agora tem `"dirs": [...]` com as pastas VAZIAS da SAMP/. O launcher cria essas pastas (mkdirs, idempotente)
+ao ler o samp.json. Sem `SAMP/skins/fallback_tex` o jogo nao usa a textura `male01` de reserva e a skin fica branca/manchada.
+Rode de novo `py gerar_samp_json.py` (ele imprime "pastas vazias incluidas"). A pasta no servidor deve se chamar `skins`.

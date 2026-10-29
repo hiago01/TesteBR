@@ -40,8 +40,25 @@ public final class SampList {
     }
 
     public final List<Entry> files;
+    /** Pastas VAZIAS da SAMP/ (ex.: SAMP/skins/fallback_tex): o jogo checa so a existencia delas. */
+    public final List<String> dirs;
 
-    private SampList(List<Entry> files) { this.files = files; }
+    private SampList(List<Entry> files, List<String> dirs) { this.files = files; this.dirs = dirs; }
+
+    /** Cria (se faltarem) as pastas vazias da lista. Retorna quantas foram criadas. Idempotente. */
+    public int ensureDirs(File filesDir) {
+        int made = 0;
+        for (String d : dirs) {
+            try {
+                File f = PathSafety.resolveInside(filesDir, d);
+                if (f.isDirectory()) continue;
+                if (f.exists()) continue; // existe como arquivo: nao mexe
+                if (f.mkdirs() || f.isDirectory()) made++;
+            } catch (PackException ignored) {
+            }
+        }
+        return made;
+    }
 
     public static boolean isSampPath(String rel) {
         return rel != null && rel.regionMatches(true, 0, PREFIX, 0, PREFIX.length());
@@ -51,7 +68,7 @@ public final class SampList {
         return rel != null && VOLATILE.contains(rel.toLowerCase(Locale.ROOT));
     }
 
-    /** samp.json: {"files":[{"name":..., "path":"SAMP/...", "size":N, "sha256":"..."}]} */
+    /** samp.json: {"files":[{"name":..., "path":"SAMP/...", "size":N, "sha256":"..."}], "dirs":["SAMP/pasta/vazia"]} */
     public static SampList parse(String json) throws PackException {
         Map<String, Object> m = MiniJson.asMap(MiniJson.parse(json));
         if (m == null) throw new PackException("samp.json nao e um objeto JSON");
@@ -73,7 +90,17 @@ public final class SampList {
             lower.put(lc, path);
             out.add(new Entry(path, size, sha == null ? "" : sha.toLowerCase(Locale.ROOT)));
         }
-        return new SampList(out);
+        List<String> dirs = new ArrayList<>();
+        List<Object> da = MiniJson.asList(m.get("dirs"));
+        if (da != null) {
+            for (Object o : da) {
+                if (!(o instanceof String)) throw new PackException("samp.json: item de \"dirs\" invalido");
+                String d = PathSafety.validateRelative((String) o);
+                if (!isSampPath(d)) throw new PackException("samp.json: pasta fora de SAMP/: " + d);
+                dirs.add(d);
+            }
+        }
+        return new SampList(out, dirs);
     }
 
     /**

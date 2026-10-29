@@ -471,6 +471,21 @@ public class PackTest {
                     && !SampList.isSampPath("data/SAMP/x") && SampList.isVolatile("SAMP/Favorites.json") && !SampList.isVolatile("SAMP/vehicles.ide"), "");
         }
 
+        // ---------------- SAMP: pastas vazias (fallback_tex) ----------------
+        {
+            try {
+                SampList sl = SampList.parse("{\"files\":[{\"path\":\"SAMP/skins/a.txt\",\"size\":1}],\"dirs\":[\"SAMP/skins/fallback_tex\"]}");
+                File base = tmp();
+                int n1 = sl.ensureDirs(base), n2 = sl.ensureDirs(base);
+                r("SAMP: pasta vazia fallback_tex e criada (e e idempotente)", sl.dirs.size() == 1 && n1 == 1 && n2 == 0
+                        && new File(base, "SAMP/skins/fallback_tex").isDirectory(), "n1=" + n1 + " n2=" + n2);
+                int rej = 0;
+                String[] bd = { "{\"files\":[],\"dirs\":[\"../x\"]}", "{\"files\":[],\"dirs\":[\"data/x\"]}", "{\"files\":[],\"dirs\":[5]}" };
+                for (String b : bd) { try { SampList.parse(b); } catch (PackException e) { rej++; } catch (RuntimeException e) { rej++; } }
+                r("SAMP: \"dirs\" invalido e rejeitado", rej == bd.length, "rej=" + rej);
+            } catch (Exception e) { r("SAMP dirs", false, e.toString()); }
+        }
+
         // ---------------- installed.json ----------------
         {
             File base = tmp();

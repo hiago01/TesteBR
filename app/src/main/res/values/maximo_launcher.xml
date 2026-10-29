@@ -73,7 +73,14 @@
     <string name="mx_settings_subtitle">Ajustes do jogo e do launcher</string>
 
     <!-- Atualizacao / download -->
+    <string name="mx_upd_req_title">Atualização obrigatória</string>
+    <string name="mx_upd_req_msg">Encontramos novos arquivos do jogo. Para entrar no servidor é preciso atualizar agora.</string>
+    <string name="mx_upd_req_hint">Use Wi-Fi e mantenha o celular carregado. O download pode ser grande.</string>
+    <string name="mx_upd_req_btn">ATUALIZAR AGORA</string>
     <string name="mx_update_title_data">Baixando dados do jogo</string>
+    <string name="mx_update_title_data_step1">Baixando dados do jogo (etapa 1 de 2)</string>
+    <string name="mx_update_title_samp">Etapa final 2 de 2: recursos do servidor</string>
+    <string name="mx_update_samp_toast">Etapa final: baixando os recursos do servidor. A barra recomeça do 0%, isso é normal. Não feche o jogo.</string>
     <string name="mx_update_title_game">Atualizando o jogo</string>
     <string name="mx_update_title_install">Instalando…</string>
     <string name="mx_update_title_check">Verificando atualizações…</string>
