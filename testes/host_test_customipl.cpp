@@ -194,6 +194,21 @@ int main()
         CHECK(r.pos[0] == -1.25f && r.pos[1] == 2.5f && r.pos[2] == 3.75f && r.rot[0] == 0.1f && r.rot[1] == 0.2f && r.rot[2] == 0.3f && r.rot[3] == 0.9f && r.id == 321 && r.type == 12 && r.lod == -1);
     }
 
+    // --- 7. hide (LOD do IPL principal): parse + casamento por id e raio
+    {
+        OverrideFile f = Parse("hide\n 13292, 166.6, -106.6, 4.5, 30   # casa 07\n 13293, 201.1, -106.6, 4.5, 30\nend\n");
+        CHECK(f.hide.size() == 2 && f.linesBad == 0 && !f.Empty());
+        const float a[3] = { 166.7f, -106.5f, 4.4f }, b[3] = { 201.0f, -106.5f, 4.4f }, far3[3] = { 900.f, 900.f, 4.f };
+        CHECK(HideMatch(f.hide, 13292, a) && HideMatch(f.hide, 13293, b));
+        CHECK(!HideMatch(f.hide, 13292, far3));      // mesmo id, longe
+        CHECK(!HideMatch(f.hide, 12938, a));         // outro id, mesma posicao
+        CHECK(!HideMatch(f.hide, 13292, b));         // 13292 a ~35u de b > raio 30
+        OverrideFile g = Parse("hide\n 13292, 1, 2, 3\n 13292, 1, 2, 3, 0\n 13292, 1, 2, 3, 900\n 13292, x, 2, 3, 5\n 99999, 1, 2, 3, 5\n 13292, nan, 2, 3, 5\nend\n");
+        CHECK(g.hide.empty() && g.linesBad == 6);    // sem raio, raio 0, raio > 500, numero ruim, id > 65535, nan: tudo recusado
+        OverrideFile h = Parse("remove\n 209, 12938\nend\nhide\n 13292, 166.6, -106.6, 4.5, 30\nend\n");
+        CHECK(h.rem.size() == 1 && h.hide.size() == 1 && h.linesBad == 0);   // remove + hide no mesmo arquivo
+    }
+
     std::cout << "ok=" << g_ok << " falhou=" << g_fail << "\n";
     return g_fail ? 1 : 0;
 }

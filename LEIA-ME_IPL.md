@@ -77,3 +77,25 @@ Os testes usam IPLs binários **sintéticos** montados com o layout lido do desa
 - Só instâncias (`inst`). Car generators (+0x3C) permanecem como no IMG. Entradas/saídas (`enex`), garagens, zonas etc. não estão no IPL binário de streaming.
 - O LOD de uma casa removida **continua no IPL principal** (texto, `data/maps`): este sistema não o toca, então ele continua aparecendo de longe até ser tratado lá.
 - Se o `GetIplName` devolver um nome diferente do esperado, use o que o log mostrar (`nome='...'`).
+
+
+## V2 - seção `hide` (esconder LOD/instância do IPL principal)
+
+O LOD de uma instância de streaming fica no IPL **principal** (texto, `data/maps`), na linha cujo número é o campo `lod`. Apagar a linha
+deslocaria todos os lods seguintes; por isso `hide` **não apaga**: troca só o modelo por um invisível (19300) e a instância continua na mesma
+posição da lista, então o índice das outras não muda.
+
+```
+hide
+13292, 166.62, -106.58, 4.45, 60    # id, x, y, z, raio
+end
+```
+- Só esconde se o **id for igual** e a instância estiver a **menos de `raio` unidades** do ponto (0 < raio <= 500). Outro id, ou o mesmo id longe, não é tocado.
+- Vale em qualquer arquivo `.ipl` de `SAMP/ipl/` ou `texdb/ipl/` (pode estar junto com `remove`). Regras de todos os arquivos somam.
+- Ponto de ligação: `CFileLoader::LoadObjectInstance(const char*)` (a única chamada de `LoadScene` 0x553dbc para linhas `inst`).
+- Se o modelo 19300 não existir no cliente, **nada é escondido** e o log avisa (`hide: modelo invisivel 19300 NAO existe`).
+- Log ao esconder: `[IPL] hide: instancia do IPL principal escondida: id=... pos=(...) -> modelo 19300`.
+- `SAMP/ipl_off.on` desliga também o hide.
+- Para voltar ao normal: apague a seção/arquivo (o jogo relê em ~2 s; o LOD só volta ao recarregar o IPL principal, isto é, reiniciando o jogo).
+
+Observação: se `texdb/ipl/` der `errno=13 Permission denied`, o arquivo foi copiado com outro dono; use `SAMP/ipl/` (funcionou).

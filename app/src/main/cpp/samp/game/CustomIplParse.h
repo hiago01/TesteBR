@@ -132,15 +132,18 @@ namespace CustomIplParse
     struct ReplaceOp { int index; int origId; InstText t; int line; };
     struct RemoveOp  { int index; int origId; int line; };
     struct AddOp     { InstText t; int line; };
+    // hide: esconde uma instancia do IPL PRINCIPAL (texto, data/maps) sem apagar a linha => o indice das demais (LODs) nao muda.
+    struct HideOp    { int id; float pos[3]; float radius; int line; };
 
     struct OverrideFile
     {
         std::vector<ReplaceOp> rep;
         std::vector<RemoveOp>  rem;
         std::vector<AddOp>     add;
+        std::vector<HideOp>    hide;
         std::vector<std::string> errors;     // "linha N: motivo"
         int linesOk = 0, linesBad = 0;
-        bool Empty() const { return rep.empty() && rem.empty() && add.empty(); }
+        bool Empty() const { return rep.empty() && rem.empty() && add.empty() && hide.empty(); }
     };
 
     namespace detail
@@ -197,7 +200,7 @@ namespace CustomIplParse
     inline bool ParseOverride(const char* text, size_t len, OverrideFile& out)
     {
         using namespace detail;
-        enum Sec { None, Replace, Remove, Inst } sec = None;
+        enum Sec { None, Replace, Remove, Inst, Hide } sec = None;
         int lineNo = 0; size_t pos = 0; std::vector<std::string> tk; std::string why;
         auto bad = [&](const char* m) { out.linesBad++; out.errors.push_back("linha " + std::to_string(lineNo) + ": " + m); };
         while (pos <= len)
@@ -209,19 +212,29 @@ namespace CustomIplParse
             line = Trim(line); if (line.empty()) continue;
             Split(line, tk); if (tk.empty()) continue;
             std::string k0 = tk[0]; for (auto& c : k0) c = (char)std::tolower((unsigned char)c);
-            if (tk.size() == 1 && (k0 == "replace" || k0 == "remove" || k0 == "inst"))
+            if (tk.size() == 1 && (k0 == "replace" || k0 == "remove" || k0 == "inst" || k0 == "hide"))
             {
                 if (sec != None) { bad("secao aberta sem 'end'"); }
-                sec = (k0 == "replace") ? Replace : (k0 == "remove") ? Remove : Inst; continue;
+                sec = (k0 == "replace") ? Replace : (k0 == "remove") ? Remove : (k0 == "hide") ? Hide : Inst; continue;
             }
             if (tk.size() == 1 && k0 == "end") { if (sec == None) bad("'end' sem secao"); sec = None; continue; }
-            if (sec == None) { bad("linha fora de secao (replace/remove/inst)"); continue; }
+            if (sec == None) { bad("linha fora de secao (replace/remove/inst/hide)"); continue; }
             long long idx, oid;
             if (sec == Remove)
             {
                 if (tk.size() != 2 || !ToInt(tk[0], idx) || !ToInt(tk[1], oid) || idx < 0 || idx > (long long)kMaxInstances || oid < 0 || oid > 65535)
                 { bad("remove espera: indice, idOriginal"); continue; }
                 out.rem.push_back({ (int)idx, (int)oid, lineNo }); out.linesOk++;
+            }
+            else if (sec == Hide)
+            {
+                // id, x, y, z, raio   (raio em unidades; 0 < raio <= 500)
+                HideOp hd{}; long long hid; float f[4];
+                if (tk.size() != 5 || !ToInt(tk[0], hid) || hid < 0 || hid > 65535 || !ToFloat(tk[1], f[0]) || !ToFloat(tk[2], f[1]) || !ToFloat(tk[3], f[2]) || !ToFloat(tk[4], f[3])
+                    || !std::isfinite(f[0]) || !std::isfinite(f[1]) || !std::isfinite(f[2]) || !std::isfinite(f[3]) || f[3] <= 0.f || f[3] > 500.f)
+                { bad("hide espera: id, x, y, z, raio (0 < raio <= 500)"); continue; }
+                hd.id = (int)hid; hd.pos[0] = f[0]; hd.pos[1] = f[1]; hd.pos[2] = f[2]; hd.radius = f[3]; hd.line = lineNo;
+                out.hide.push_back(hd); out.linesOk++;
             }
             else if (sec == Replace)
             {
@@ -241,6 +254,18 @@ namespace CustomIplParse
         }
         if (sec != None) { out.linesBad++; out.errors.push_back("arquivo terminou com secao aberta (falta 'end')"); }
         return !out.Empty();
+    }
+
+    // true se (id, pos) casa com alguma entrada hide: MESMO id e distancia 3D <= raio. Id diferente ou longe => nao casa.
+    inline bool HideMatch(const std::vector<HideOp>& v, int id, const float p[3])
+    {
+        for (const auto& h : v)
+        {
+            if (h.id != id) continue;
+            const float dx = p[0] - h.pos[0], dy = p[1] - h.pos[1], dz = p[2] - h.pos[2];
+            if (dx * dx + dy * dy + dz * dz <= h.radius * h.radius) return true;
+        }
+        return false;
     }
 
     // ------------------------------------------------------------------ mistura

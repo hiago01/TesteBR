@@ -11,6 +11,7 @@
 #include "game/Models/AtomicModelInfo.h"
 #include "Streaming.h"
 #include "util.h"
+#include "CustomIpl.h"   // hide (LOD do IPL principal)
 
 // Load line into static buffer (`ms_line`)
 char* CFileLoader::LoadLine(FILE* file) {
@@ -120,6 +121,13 @@ CEntityGTA* CFileLoader::LoadObjectInstance1(const char* line) {
             &instance.m_qRotation.w,
             &instance.m_nLodInstanceIndex
     ) == 11);
+
+    // hide (texdb/ipl ou SAMP/ipl): troca so o MODELO por um invisivel; a instancia continua na mesma posicao da lista,
+    // entao o indice das demais (os lods dos IPLs de streaming) nao muda.
+    {
+        const float p3[3] = { instance.m_vecPosition.x, instance.m_vecPosition.y, instance.m_vecPosition.z };
+        instance.m_nModelId = CustomIpl::HideModelFor(instance.m_nModelId, p3);
+    }
 
     /*if (iBuildingToRemoveCount >= 1) {
         for (int i = 0; i < iBuildingToRemoveCount; i++)

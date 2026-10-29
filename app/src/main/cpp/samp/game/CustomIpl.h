@@ -74,8 +74,11 @@ namespace CustomIpl
     inline std::map<std::string, std::vector<size_t>> g_byIpl;   // chave -> indices em g_src (ordem de prioridade)
     inline std::string g_sig;
     inline bool g_scanned = false;
+    inline bool g_off = false;                                    // SAMP/ipl_off.on presente
+    inline std::chrono::steady_clock::time_point g_lastHide{};
     inline std::chrono::steady_clock::time_point g_lastCheck{};
     inline std::set<std::string> g_seenNames;                     // diagnostico: nomes de IPL ja vistos
+    inline std::vector<CustomIplParse::HideOp> g_hide;           // secao 'hide' de todos os arquivos (global)
     inline std::set<std::string> g_loggedKey;                     // loga a mistura de cada IPL so na 1a vez
 
     inline bool ReadFile(const std::string& p, std::string& out, long long& mt, long long& sz)
@@ -126,7 +129,7 @@ namespace CustomIpl
 
     inline void Rescan(const std::vector<std::string>& files, const std::string& sig)
     {
-        g_src.clear(); g_byIpl.clear(); g_loggedKey.clear(); g_sig = sig; g_scanned = true;
+        g_src.clear(); g_byIpl.clear(); g_hide.clear(); g_loggedKey.clear(); g_sig = sig; g_scanned = true;
         if (files.empty()) { FLog("[IPL] nenhum .ipl em texdb/ipl nem SAMP/ipl -> mistura inativa (jogo usa so os IPLs do IMG)"); return; }
         FLog("[IPL] %zu arquivo(s) de ajuste:", files.size());
         for (auto& p : files)
@@ -140,16 +143,17 @@ namespace CustomIpl
             for (size_t i = 0; i < s.of.errors.size() && i < 10; i++) FLog("[IPL]     %s", s.of.errors[i].c_str());
             if (s.of.errors.size() > 10) FLog("[IPL]     ... e mais %zu erro(s)", s.of.errors.size() - 10);
             if (s.of.Empty()) continue;
+            for (auto& hd : s.of.hide) g_hide.push_back(hd);
             g_src.push_back(std::move(s));
             g_byIpl[g_src.back().key].push_back(g_src.size() - 1);
         }
-        FLog("[IPL] %zu IPL(s) com ajustes validos", g_byIpl.size());
+        FLog("[IPL] %zu IPL(s) com ajustes validos, %zu regra(s) hide", g_byIpl.size(), g_hide.size());
     }
 
     // Reavalia a lista de arquivos no maximo a cada 2 s (arquivo novo/editado entra sem reiniciar o jogo)
     inline bool Refresh()
     {
-        if (Marker("ipl_off.on")) { static bool said = false; if (!said) { said = true; FLog("[IPL] SAMP/ipl_off.on presente: mistura DESLIGADA"); } return false; }
+        if ((g_off = Marker("ipl_off.on"))) { static bool said = false; if (!said) { said = true; FLog("[IPL] SAMP/ipl_off.on presente: mistura DESLIGADA"); } return false; }
         const auto now = std::chrono::steady_clock::now();
         if (g_scanned && now - g_lastCheck < std::chrono::seconds(2)) return !g_byIpl.empty();
         g_lastCheck = now;
@@ -242,6 +246,26 @@ namespace CustomIpl
         const bool ok = g_origLoadIpl(slot, useBuf, useSize);
         if (mixed && !ok) FLog("[IPL] '%s' slot=%d: LoadIpl nativo retornou 0 com o buffer misturado", key.c_str(), slot);
         return ok;
+    }
+
+    // ----------------------------------------------------------------- hide (IPL principal em texto)
+    // Chamado por CFileLoader::LoadObjectInstance(const char*) (o unico ponto que LoadScene e LoadIpl-texto usam para 'inst').
+    // Devolve o modelo a usar: o proprio (nada muda) ou o modelo invisivel. A instancia continua sendo criada NA MESMA POSICAO
+    // da lista => o indice de todas as outras (os lods dos IPLs de streaming) permanece igual.
+    inline constexpr int kInvisibleModel = 19300;
+    inline int HideModelFor(int modelId, const float pos[3])
+    {
+        std::lock_guard<std::mutex> lk(g_m);
+        const auto now = std::chrono::steady_clock::now();            // chamado 1x por linha 'inst' de TODO IPL texto: so reavalia a cada 2 s
+        if (!g_scanned || now - g_lastHide >= std::chrono::seconds(2)) { g_lastHide = now; Refresh(); }
+        if (g_off || g_hide.empty() || !CustomIplParse::HideMatch(g_hide, modelId, pos)) return modelId;
+        if (!ModelIdExists(kInvisibleModel))
+        {
+            static bool said = false; if (!said) { said = true; FLog("[IPL] hide: modelo invisivel %d NAO existe neste cliente -> hide ignorado (nada foi escondido)", kInvisibleModel); }
+            return modelId;
+        }
+        FLog("[IPL] hide: instancia do IPL principal escondida: id=%d pos=(%.2f, %.2f, %.2f) -> modelo %d", modelId, pos[0], pos[1], pos[2], kInvisibleModel);
+        return kInvisibleModel;
     }
 
     inline void Install()
