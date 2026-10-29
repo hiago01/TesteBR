@@ -21,7 +21,7 @@ import build_packs as bp
 
 
 def sha(path):
-    return bp.sha256_file(path)
+    return bp.sha256_file(path)  # arquivo do celular (em disco)
 
 
 def source_files(src):
@@ -63,7 +63,7 @@ def cmd_zip(a):
                     b = f.read(1 << 20)
                     if not b: break
                     h.update(b)
-            if h.hexdigest() != sha(ab):
+            if h.hexdigest() != bp.sha256_ref(ab):
                 print("  CONTEUDO diferente: " + n); problems += 1
     for rel in sorted(src):
         if rel not in seen:
@@ -94,7 +94,7 @@ def cmd_device(a):
             continue
         if os.path.getsize(have[rel]) != size:
             print("TAMANHO diferente: %s celular=%d cliente=%d" % (rel, os.path.getsize(have[rel]), size)); diffsize += 1
-        elif a.hash and sha(have[rel]) != sha(ab):
+        elif a.hash and sha(have[rel]) != bp.sha256_ref(ab):
             print("CONTEUDO diferente (mesmo tamanho): " + rel); diffhash += 1
     extra = [r for r in sorted(have) if r not in src and not bp.is_ignored(r)
              and not r.startswith((".staging/", ".backup/", ".downloads/"))]

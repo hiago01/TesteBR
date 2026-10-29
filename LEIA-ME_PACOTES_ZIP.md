@@ -73,3 +73,14 @@ imprime `"include_all": true`, que o app le do `client_config` e entao extrai tu
 `gta_sa.set` etc. Sem esse campo o app mantem a protecao antiga. `--com-excecoes` volta ao modo antigo.
 Atencao: so vale para a PRIMEIRA instalacao por pacotes; o fluxo antigo (atualizacao/verificacao) continua sem baixar os arquivos
 gerados pelo jogo, para nao sobrescrever as configuracoes do jogador a cada abertura.
+
+## Modos do build_packs.py
+- **seguro (--seguro):** tudo, exceto lixo de SO, lista.txt/files.json e caches do aparelho (CINFO.BIN, models/MINFO.BIN, SAMP/cinfo.sig, SAMP/col_index.txt, logs). settings.ini, favorites.json, gta_sa.set etc. vao no pacote.
+- **padrao** (`--sem-excecoes`): absolutamente tudo (so internos do instalador ficam de fora; sobre os caches: os caches sao validados por mtime/tamanho/assinatura no aparelho).
+- `--com-excecoes`: modo antigo (ignora tambem as configuracoes do jogador).
+
+## Gerando os pacotes a partir do files.zip
+`python build_packs.py --src C:\cache-server\files.zip --out C:\cache-server\packs --base-url http://201.33.84.96:8080/packs --version 1`
+Le direto de dentro do .zip (nada e extraido em disco; testa o CRC do zip antes), remove a pasta raiz unica se houver (`--no-strip` desliga)
+e, por padrao, NAO deixa nada de fora. `--seguro` deixa de fora lixo de SO, lista.txt e os caches do aparelho. O `verify_install.py zip`
+tambem aceita o .zip em `--src`. O fluxo antigo (atualizacao) continua sem baixar/sobrescrever arquivos gerados pelo jogo.

@@ -3,17 +3,22 @@
 """
 build_packs.py - gera os pacotes ZIP do cliente (core + gpu_*) e o trecho "packs" do client_config.json.
 
-Uso (Windows, Python 3.8+):
+Uso (Windows, Python 3.8+), lendo direto do .zip do cliente completo:
+    python build_packs.py --src C:\\cache-server\\files.zip --out C:\\cache-server\\packs ^
+        --base-url http://201.33.84.96:8080/packs --version 1
+Ou a partir da pasta:
     python build_packs.py --src C:\\cache-server\\files --out C:\\cache-server\\packs ^
         --base-url http://201.33.84.96:8080/packs --version 1
 
 Regras (devem bater com GameFilePolicy.java do app):
   * SO LE a pasta de origem; nunca altera nada nela. Tudo e escrito em --out.
   * Nomes em UTF-8, separador "/", caixa preservada. ERRO se dois caminhos diferirem so pela caixa.
-  * PADRAO: copia TUDO da pasta de origem, sem excecoes (so os arquivos internos do instalador - installed.json,
-    .staging/.backup/.downloads - ficam de fora) e emite "include_all": true no trecho do client_config, o que faz
-    o app extrair tudo. Use --com-excecoes para o modo antigo (ignora lixo de SO e arquivos gerados pelo jogo:
-    lista abaixo).
+  * --src aceita a PASTA do cliente OU o .zip do cliente completo (ex.: C:\\cache-server\\files.zip): nesse caso le direto de
+    dentro do .zip (nada e extraido em disco) e remove a pasta raiz unica, se houver (--no-strip desliga).
+  * PADRAO: copia TUDO, sem nenhuma excecao (so os internos do instalador - installed.json, .staging/.backup/.downloads - ficam
+    de fora) e emite "include_all": true no client_config (o app entao extrai tudo que esta no zip).
+    --seguro deixa de fora lixo de SO, lista.txt e os caches gerados no aparelho (CINFO.BIN, MINFO.BIN, cinfo.sig, col_index.txt).
+    --com-excecoes = modo antigo (ignora tambem as configuracoes do jogador; lista abaixo).
   * core = tudo que nao e de GPU; gpu_dxt/gpu_etc/gpu_pvr = ".dxt." / ".etc." / ".pvr." no caminho,
     EXCETO caminhos com "samp", "player" ou "menu" (sempre core, sem diferenciar caixa) - mesma regra do app.
   * Cada zip tem no maximo --max-mb (padrao 900 MiB) de dados: pacotes maiores sao divididos em
@@ -47,7 +52,14 @@ MAX_ZIP64 = 0xFFFFFFFF
 
 
 INTERNAL_DIRS = (".staging/", ".backup/", ".downloads/")
-INCLUDE_ALL = True   # padrao: SEM excecoes (so os arquivos internos do instalador ficam de fora)
+# Modos: "seguro" (padrao) = tudo, menos lixo de SO e CACHES gerados no aparelho; "tudo" = sem nenhuma excecao;
+#        "antigo" = lista completa de ignorados (inclui settings.ini, favorites.json etc.).
+MODE = "tudo"
+INCLUDE_ALL = True   # "seguro" e "tudo" emitem include_all:true
+# Caches que o JOGO gera no celular e valida por mtime/tamanho/assinatura (CustomCol/CustomImg): trazer a copia do PC
+# pode deixar cache que nao confere com os arquivos instalados.
+DEVICE_CACHES = {"cinfo.bin", "models/minfo.bin", "samp/cinfo.sig", "samp/col_index.txt",
+                 "samp/svlog.txt", "samp_log.txt", "lista.txt", "files.json"}
 
 
 def is_ignored(rel):
@@ -55,8 +67,10 @@ def is_ignored(rel):
     # internos do instalador / do proprio script: nunca entram, em nenhum modo
     if low == "installed.json" or low == MANIFEST_NAME or low.startswith(INTERNAL_DIRS):
         return True
-    if INCLUDE_ALL:
+    if MODE == "tudo":
         return False
+    if MODE == "seguro":
+        return low in DEVICE_CACHES or low.rsplit("/", 1)[-1] in IGNORE_BASENAMES
     if low in IGNORE_PATHS:
         return True
     return low.rsplit("/", 1)[-1] in IGNORE_BASENAMES
@@ -75,6 +89,24 @@ def gpu_of(rel):
     return 0
 
 
+def open_ref(ref):
+    """Abre a origem de um arquivo: caminho em disco (str) ou entrada de um .zip de origem ((ZipFile, ZipInfo))."""
+    if isinstance(ref, tuple):
+        return ref[0].open(ref[1], "r")
+    return open(ref, "rb")
+
+
+def sha256_ref(ref, bufsize=1024 * 1024):
+    h = hashlib.sha256()
+    with open_ref(ref) as f:
+        while True:
+            b = f.read(bufsize)
+            if not b:
+                break
+            h.update(b)
+    return h.hexdigest()
+
+
 def sha256_file(path, bufsize=1024 * 1024):
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -86,7 +118,72 @@ def sha256_file(path, bufsize=1024 * 1024):
     return h.hexdigest()
 
 
-def scan(src):
+def _zip_name(info):
+    """Nome da entrada em UTF-8 (WinRAR marca UTF-8; senao tenta cp437->utf-8 e por fim cp1252)."""
+    n = info.filename
+    if not (info.flag_bits & 0x800):
+        try:
+            n = n.encode("cp437").decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            try:
+                n = info.filename.encode("cp437").decode("cp1252")
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                n = info.filename
+    return n.replace("\\", "/")
+
+
+def scan_zip(zpath, strip=True):
+    """Le o cliente completo de dentro de um .zip (ex.: files.zip). Mesma saida de scan()."""
+    zf = zipfile.ZipFile(zpath, "r")
+    bad = zf.testzip()
+    if bad:
+        sys.exit("ERRO: o .zip de origem esta corrompido (CRC) em: " + bad)
+    entries = []
+    for info in zf.infolist():
+        n = _zip_name(info)
+        if n.endswith("/") or info.is_dir():
+            continue
+        mode = (info.external_attr >> 16) & 0xFFFF
+        if (mode & 0o170000) == 0o120000:
+            sys.exit("ERRO: link simbolico no .zip de origem: " + n)
+        if n.startswith("/") or ".." in n.split("/") or (len(n) > 1 and n[1] == ":") or "//" in n:
+            sys.exit("ERRO: caminho inseguro no .zip de origem: " + n)
+        entries.append((n, info))
+    if not entries:
+        sys.exit("ERRO: o .zip de origem nao tem arquivos")
+    prefix = ""
+    if strip:
+        firsts = {n.split("/", 1)[0] for n, _ in entries if "/" in n}
+        if len(firsts) == 1 and all("/" in n for n, _ in entries):
+            prefix = firsts.pop() + "/"
+            print("pasta raiz '%s' dentro do .zip removida dos caminhos (use --no-strip para manter)" % prefix.rstrip("/"))
+    items, seen_lower, zero = [], {}, []
+    for n, info in entries:
+        rel = n[len(prefix):] if prefix else n
+        if is_ignored(rel):
+            continue
+        low = rel.lower()
+        if low in seen_lower:
+            sys.exit("ERRO: dois caminhos diferem so pela caixa (Android e case-sensitive):\n  %s\n  %s" % (seen_lower[low], rel))
+        seen_lower[low] = rel
+        try:
+            rel.encode("utf-8")
+        except UnicodeEncodeError:
+            sys.exit("ERRO: nome nao representavel em UTF-8: %r" % rel)
+        if info.file_size == 0:
+            zero.append(rel)
+        if info.file_size >= MAX_ZIP64:
+            sys.exit("ERRO: arquivo >= 4 GB nao cabe em zip sem Zip64: " + rel)
+        items.append((rel, (zf, info), info.file_size))
+    items.sort(key=lambda t: t[0])
+    return items, zero
+
+
+def scan(src, strip=True):
+    if os.path.isfile(src):
+        if not zipfile.is_zipfile(src):
+            sys.exit("ERRO: --src e um arquivo, mas nao e .zip: " + src)
+        return scan_zip(src, strip)
     items = []          # (rel, abs, size)
     seen_lower = {}
     zero = []
@@ -133,7 +230,7 @@ def split_groups(items, max_bytes):
 def build_zip(zpath, pack_name, group):
     manifest = {"name": pack_name, "files": []}
     for rel, ab, size in group:
-        manifest["files"].append({"path": rel, "size": size, "sha256": sha256_file(ab)})
+        manifest["files"].append({"path": rel, "size": size, "sha256": sha256_ref(ab)})
     mbytes = json.dumps(manifest, ensure_ascii=False, indent=0).encode("utf-8")
     tmp = zpath + ".tmp"
     with zipfile.ZipFile(tmp, "w", allowZip64=False) as z:
@@ -146,7 +243,7 @@ def build_zip(zpath, pack_name, group):
             ext = os.path.splitext(rel)[1].lower()
             zi.compress_type = zipfile.ZIP_STORED if ext in STORED_EXT else zipfile.ZIP_DEFLATED
             zi.external_attr = (0o100644 & 0xFFFF) << 16   # arquivo regular (nunca symlink)
-            with open(ab, "rb") as fi, z.open(zi, "w") as fo:
+            with open_ref(ab) as fi, z.open(zi, "w") as fo:
                 while True:
                     b = fi.read(1024 * 1024)
                     if not b:
@@ -161,28 +258,38 @@ def build_zip(zpath, pack_name, group):
 
 def main():
     ap = argparse.ArgumentParser(description="Gera pacotes ZIP do cliente + trecho do client_config.json")
-    ap.add_argument("--src", default=r"C:\cache-server\files", help="pasta com os arquivos do jogo (somente leitura)")
+    ap.add_argument("--src", default=r"C:\cache-server\files",
+                    help="pasta com os arquivos do jogo OU o .zip do cliente completo, ex.: C:\\cache-server\\files.zip (somente leitura)")
+    ap.add_argument("--no-strip", action="store_true", help="com --src .zip: nao remove a pasta raiz unica de dentro do .zip")
     ap.add_argument("--out", default=r"C:\cache-server\packs", help="pasta onde os zips e o manifest serao escritos")
     ap.add_argument("--base-url", required=True, help="URL publica da pasta dos zips, ex.: http://IP:8080/packs")
     ap.add_argument("--version", required=True, help="versao do conteudo (letras/numeros . _ -), ex.: 1")
+    ap.add_argument("--seguro", action="store_true",
+                    help="deixa de fora lixo de SO, lista.txt e os caches do aparelho (CINFO.BIN, MINFO.BIN, cinfo.sig, col_index.txt, logs)")
+    ap.add_argument("--sem-excecoes", action="store_true", help="(padrao) copia tudo; so os internos do instalador ficam de fora")
     ap.add_argument("--com-excecoes", action="store_true",
-                    help="modo antigo: ignora lixo de SO e arquivos gerados pelo jogo (SAMP/settings.ini, CINFO.BIN...)")
+                    help="modo antigo: ignora tambem settings.ini, favorites.json, gta_sa.set etc.")
     ap.add_argument("--max-mb", type=int, default=900, help="dados maximos por zip (MiB); padrao 900")
     a = ap.parse_args()
-    global INCLUDE_ALL
-    INCLUDE_ALL = not a.com_excecoes
+    global INCLUDE_ALL, MODE
+    MODE = "antigo" if a.com_excecoes else ("seguro" if a.seguro else "tudo")
+    INCLUDE_ALL = MODE != "antigo"
+    print("modo: " + MODE)
 
     src = os.path.abspath(a.src)
     out = os.path.abspath(a.out)
-    if not os.path.isdir(src):
-        sys.exit("ERRO: pasta de origem nao existe: " + src)
-    if out == src or out.startswith(src + os.sep):
+    if not os.path.exists(src):
+        sys.exit("ERRO: origem nao existe: " + src)
+    if os.path.isfile(src):
+        if out == src or src.startswith(out + os.sep) and False:
+            sys.exit("ERRO: --out invalido")
+    elif out == src or out.startswith(src + os.sep):
         sys.exit("ERRO: --out nao pode ficar dentro de --src (a origem nao pode ser alterada)")
     if not a.version or not all(c.isalnum() or c in "._-" for c in a.version):
         sys.exit("ERRO: --version invalida")
     os.makedirs(out, exist_ok=True)
 
-    items, zero = scan(src)
+    items, zero = scan(src, not a.no_strip)
     if not items:
         sys.exit("ERRO: nenhum arquivo encontrado em " + src)
     if zero:

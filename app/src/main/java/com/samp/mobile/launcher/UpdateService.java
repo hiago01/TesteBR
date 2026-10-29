@@ -417,7 +417,7 @@ public class UpdateService extends Service {
             // Arquivos gerados pelo jogo/launcher no celular: nunca baixar nem sobrescrever (lista do requisito + nomes do original).
             if (name.equals("samp_log.txt") || name.equals("svlog.txt") || name.equals("gtasatelem.set")
                     || name.equals("GTASAMP10.b") || name.equals(".htaccess") || name.equals("gta_sa.set")
-                    || name.equals("settings.ini") || GameFilePolicy.isProtected(path)) {
+                    || name.equals("settings.ini") || GameFilePolicy.isInternal(path) || GameFilePolicy.isGenerated(path)) {
                 continue;
             }
             // Filtro por GPU SEM diferenciar caixa (o original usava contains("samp") e falhava com "SAMP/").
@@ -756,6 +756,7 @@ public class UpdateService extends Service {
                 } catch (RuntimeException e) {
                     failure = new PackException("unexpected: " + e, e);
                 }
+                GameFilePolicy.setProtectGenerated(true); // o fluxo antigo (atualizacao) NUNCA sobrescreve arquivos gerados pelo jogo
                 final PackException fail = failure;
                 if (cancel.isCancelled()) return;
                 postToService(new Runnable() {
@@ -807,6 +808,21 @@ public class UpdateService extends Service {
         }
         if (target.exists()) {
             target.delete();
+        }
+
+        // Arquivo de 0 bytes (ex.: data/maps/occluLA.ipl): o PRDownloader nao conclui download sem conteudo e
+        // dois arquivos assim seguidos abortavam TODO o download. Cria vazio localmente e segue.
+        if (mDlSizes.get(mDlIndex) == 0L) {
+            try {
+                if (!target.createNewFile() && !target.isFile()) throw new IOException("createNewFile falhou");
+                mDlConsecutiveFailures = 0;
+                mDlIndex++;
+                downloadNextFile(session, 1);
+            } catch (IOException e) {
+                Log.e(TAG, "cannot create empty file " + rel, e);
+                onFileGaveUp(session, rel);
+            }
+            return;
         }
 
         mDownloadingStatus = true;
