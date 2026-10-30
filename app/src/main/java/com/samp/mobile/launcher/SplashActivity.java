@@ -64,7 +64,7 @@ public class SplashActivity extends AppCompatActivity {
         @Override
         public void run() {
             if (isFinishing() || isDestroyed()) return;
-            showRetryDialog("The launcher could not finish checking for updates.\nCheck your connection and try again.",
+            showRetryDialog("The launcher could not finish checking for updates.\nCheck your connection and try again.\n\nServer: " + com.samp.mobile.launcher.config.AppEndpoints.clientConfigUrl(SplashActivity.this),
                     "Retry", new Runnable() { @Override public void run() { restartStartup(); } },
                     "Continue", new Runnable() { @Override public void run() { openMain(); } });
         }
