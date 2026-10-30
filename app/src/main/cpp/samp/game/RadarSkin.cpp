@@ -111,10 +111,10 @@ namespace
 		if (!ext) { FLog("[RADARSKIN] formato do aparelho (%d) nao gerado pelo banco mapa (so etc/dxt): usa PNG", (int)fmt); return; }
 		for (const char* e : { "dat", "toc" })
 			if (!FileExists(d + "mapa." + ext + "." + e)) { FLog("[RADARSKIN] falta mapa.%s.%s: usa PNG", ext, e); return; }
-		if (!TextureDatabaseRuntime::GetDatabase("mapa") && !TextureDatabaseRuntime::Load("mapa", false, fmt)) { FLog("[RADARSKIN] Load(mapa) falhou: usa PNG"); return; }
+		if (!TextureDatabaseRuntime::GetDatabase("mapa") && !TextureDatabaseRuntime::Load("mapa", true, fmt)) { FLog("[RADARSKIN] Load(mapa) falhou: usa PNG"); return; }
 		if (!TextureDatabaseRuntime::GetDatabase("mapa")) { FLog("[RADARSKIN] banco mapa nao ficou carregado: usa PNG"); return; }
 		g_dbFmt = ext; g_dbState = 1;
-		FLog("[RADARSKIN] banco texdb mapa carregado (%s)", ext);
+		FLog("[RADARSKIN] banco texdb mapa carregado INTEIRO na memoria (%s), sem streaming", ext);
 	}
 
 	bool DbAvailable() { InitDb(); return g_dbState == 1; }
@@ -275,7 +275,7 @@ namespace RadarSkin
 		if (!t) { g_uiMissing[idx] = true; return nullptr; }
 		g_uiLru.push_front(idx);
 		g_ui[idx] = { t, g_uiLru.begin() };
-		while ((int)g_ui.size() > kUiMaxResident)
+		while ((int)g_ui.size() > (g_dbState == 1 ? kCount : kUiMaxResident))   // banco: 144 x 32 KB cabe inteiro; PNG: 48 x 256 KB
 		{
 			const int old = g_uiLru.back(); g_uiLru.pop_back();
 			auto o = g_ui.find(old);

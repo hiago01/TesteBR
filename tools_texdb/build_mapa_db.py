@@ -37,7 +37,7 @@ def main():
         etc_tmb += T.pack_record(nm, T.GL_ETC1, 8, 8, etc1.encode(th)); dxt_tmb += T.pack_record(nm, T.GL_DXT1, 8, 8, dxt1.encode(th))
         unc_tmb += T.pack_record(nm, T.GL_RGB565, 8, 8, rgb565(th))
         lines.append('"%s" width=%d height=%d png=%s img=%s' % (nm, a.size, a.size, T.crc8(big.tobytes()), T.crc8(pe)))
-    cat = 'cat=0 name=Default onfoot=5 slow=5 fast=5 defaultformat=2 defaultstream=0'
+    cat = 'cat=0 name=Default onfoot=5 slow=5 fast=5 defaultformat=2 defaultstream=1'   # stream=1: residente (stream=0 faz o motor mostrar miniaturas 8x8 borradas ate carregar)
     T.write_db(folder, a.name, 'etc', etc_items, cat, lines, True)
     T.write_db(folder, a.name, 'dxt', dxt_items, cat, lines, False)
     for fmt, d in (('etc', etc_tmb), ('dxt', dxt_tmb)): open('%s/%s.%s.tmb' % (folder, a.name, fmt), 'wb').write(d)
