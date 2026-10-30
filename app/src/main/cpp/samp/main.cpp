@@ -286,10 +286,11 @@ extern "C" {
 	// o Java entao NAO repassa o Voltar ao jogo (evita o Pause nativo e o finish() da Activity).
 	JNIEXPORT jboolean JNICALL Java_com_samp_mobile_game_SAMP_onEventBackPressed(JNIEnv *pEnv, jobject thiz)
 	{
-		if(pSettings)
+		// Teclado nativo aberto: Voltar fecha so ele (guarda o rascunho) e nao repassa ao jogo/menu.
+		if (pUI && pUI->keyboard() && pUI->keyboard()->visible())
 		{
-			if(pSettings->Get().iAndroidKeyboard)
-				pJavaWrapper->HideKeyboard();
+			pUI->keyboard()->hide();
+			return JNI_TRUE;
 		}
 		// So abre/fecha o menu quando o jogo esta pronto (UI criada); antes disso, engole o Voltar.
 		if (InventoryUI::OnBackPressed()) return JNI_TRUE;   // inventário aberto: Voltar fecha só ele

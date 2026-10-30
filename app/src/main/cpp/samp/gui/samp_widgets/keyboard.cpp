@@ -2,197 +2,196 @@
 #include "../gui.h"
 #include "../../game/game.h"
 #include "../../log.h"
-#include "../settings.h"
-#include "../java/jniutil.h"
+
+#include <algorithm>
+#include <cmath>
 
 extern CGame* pGame;
 extern UI* pUI;
-extern CSettings* pSettings;
-extern CJavaWrapper* pJavaWrapper;
+
+using namespace KbCore;
+
+namespace
+{
+	const ImColor kBg        (14, 14, 20, 232);
+	const ImColor kKey       (68, 70, 80, 242);
+	const ImColor kKeySpecial(40, 42, 50, 242);
+	const ImColor kKeyDown   (245, 145, 50, 255);
+	const ImColor kSend      (214, 110, 20, 245);
+	const ImColor kAccent    (0xF5, 0x91, 0x32, 255);
+	const ImColor kField     (255, 255, 255, 58);
+	const ImColor kBtn       (214, 8, 92, 245);          // vermelho/magenta dos botoes do chat
+	const ImColor kBtnDown   (255, 80, 140, 255);
+	const ImColor kWhite     (1.0f, 1.0f, 1.0f, 1.0f);
+	const ImColor kHint      (200, 200, 200, 130);
+
+	const long kRepeatDelayMs = 420;
+	const long kRepeatEveryMs = 55;
+}
 
 /* Keyboard */
 
 Keyboard::Keyboard()
 {
-	m_input = new KeyboardInput();
-	this->addChild(m_input);
+	m_caller = nullptr;
+	m_draftOwner = nullptr;
+	m_cachedPage = Page::Lower;
+	m_cachedW = m_cachedH = -1.0f;
+	m_pressT = m_lastRepeatT = 0;
+	m_backspaceFired = false;
+	m_wantCaretFromTap = false;
+	m_tapX = 0.0f;
+	m_scroll = 0.0f;
+	m_blinkBase = 0;
+	m_core.open();
+}
 
+long Keyboard::nowMs() const { return (long)GetTickCount(); }
 
-	m_layoutLowerENG = new KeyboardLayoutLowerENG();
-	this->addChild(m_layoutLowerENG);
-	m_layoutLowerENG->setPadding(0.0f);
-	m_layoutLowerENG->setSpacing(0.0f);
-	m_layoutLowerENG->setVisible(false);
+float Keyboard::inputH() const { return UISettings::keyboardRowHeight(); }
+float Keyboard::rowH()   const { return UISettings::keyboardRowHeight() * 0.80f; }
 
-	m_layoutUpperENG = new KeyboardLayoutUpperENG();
-	this->addChild(m_layoutUpperENG);
-	m_layoutUpperENG->setPadding(0.0f);
-	m_layoutUpperENG->setSpacing(0.0f);
-	m_layoutUpperENG->setVisible(false);
+// Ancora o teclado no rodape da tela, com a altura que ele realmente precisa.
+void Keyboard::applyGeometry()
+{
+	const float w      = UISettings::keyboardSize().x;
+	const float bottom = UISettings::keyboardPos().y + UISettings::keyboardSize().y;
+	const float total  = inputH() + rowH() * 4.0f + rowH() * 0.12f;
 
-	m_layoutLowerRU = new KeyboardLayoutLowerRU();
-	this->addChild(m_layoutLowerRU);
-	m_layoutLowerRU->setPadding(0.0f);
-	m_layoutLowerRU->setSpacing(0.0f);
-	m_layoutLowerRU->setVisible(false);
-
-	m_layoutUpperRU = new KeyboardLayoutUpperRU();
-	this->addChild(m_layoutUpperRU);
-	m_layoutUpperRU->setPadding(0.0f);
-	m_layoutUpperRU->setSpacing(0.0f);
-	m_layoutUpperRU->setVisible(false);
-
-
-	m_layoutNUM = new KeyboardLayoutNUM();
-	this->addChild(m_layoutNUM);
-	m_layoutNUM->setPadding(0.0f);
-	m_layoutNUM->setSpacing(0.0f);
-	m_layoutNUM->setVisible(false);
-
-	m_activeLayout = m_layoutLowerENG;
-	m_activeLayoutType = KeyboardLayout::Type::ENG_LOWER;
-	m_activeLayout->setVisible(true);
-
-	m_history = new KeyboardHistory();
+	this->setFixedSize(ImVec2(w, total));
+	this->setPosition(ImVec2(UISettings::keyboardPos().x, bottom - total));
+	m_cachedW = -1.0f;       // forca recalcular as teclas
 }
 
 void Keyboard::performLayout()
 {
-	m_input->setFixedSize(ImVec2(width(), UISettings::keyboardRowHeight()));
-	m_input->setPosition(ImVec2(0.0f, 0.0f));
-
-	/* ENG */
-	m_layoutLowerENG->setFixedSize(ImVec2(width(), height() - m_input->height()+50.0f));
-	m_layoutLowerENG->setPosition(ImVec2(0.0f, UISettings::keyboardRowHeight()));
-	m_layoutUpperENG->setFixedSize(ImVec2(width(), height() - m_input->height()+50.0f));
-	m_layoutUpperENG->setPosition(ImVec2(0.0f, UISettings::keyboardRowHeight()));
-
-	/* RU */
-	m_layoutLowerRU->setFixedSize(ImVec2(width(), height() - m_input->height()+50.0f));
-	m_layoutLowerRU->setPosition(ImVec2(0.0f, UISettings::keyboardRowHeight()));
-	m_layoutUpperRU->setFixedSize(ImVec2(width(), height() - m_input->height()+50.0f));
-	m_layoutUpperRU->setPosition(ImVec2(0.0f, UISettings::keyboardRowHeight()));
-
-	/* NUM */
-	m_layoutNUM->setFixedSize(ImVec2(width(), height() - m_input->height()+50.0f));
-	m_layoutNUM->setPosition(ImVec2(0.0f, UISettings::keyboardRowHeight()));
-
-	Widget::performLayout();
+	applyGeometry();
+	// sem filhos: o teclado desenha e trata o toque sozinho
 }
 
-void Keyboard::draw(ImGuiRenderer* renderer)
+void Keyboard::ensureKeyRects()
 {
-	renderer->drawRect(absolutePosition(), absolutePosition() + size(), UISettings::keyboardBackgroundColor(), true);
-	Widget::draw(renderer);
+	Page shown = m_core.shownPage();
+	if (shown == m_cachedPage && m_cachedW == width() && m_cachedH == height() && !m_rects.empty()) return;
+
+	m_cachedPage = shown;
+	m_cachedW = width();
+	m_cachedH = height();
+	m_rows = BuildPage(shown);
+	const float gap = std::max(3.0f, rowH() * 0.07f);
+	m_rects = LayoutRows(m_rows, width(), rowH() * 4.0f, gap);
 }
 
-void Keyboard::setActiveLayout(KeyboardLayout::Type type)
+void Keyboard::inputRects(ImVec2& fa, ImVec2& fb, ImVec2 ba[3], ImVec2 bb[3]) const
 {
-	m_activeLayout->setVisible(false);
+	const ImVec2 p = absolutePosition();
+	const float H  = inputH();
+	const float bh = H * 0.78f, bw = bh * 1.35f;
+	const float pad = H * 0.11f, gap = pad * 0.8f;
+	const float top = p.y + (H - bh) * 0.5f;
 
-	switch (type)
+	// ordem na tela: [campo ........] [v] [^] [/]
+	float x = p.x + width() - pad - bw;
+	for (int i = 2; i >= 0; i--)           // 2 = "/", 1 = "^", 0 = "v"
 	{
-		case KeyboardLayout::Type::ENG_LOWER:
-			m_layoutLowerENG->setVisible(true);
-			m_activeLayout = m_layoutLowerENG;
-			break;
-
-		case KeyboardLayout::Type::ENG_UPPER:
-			m_layoutUpperENG->setVisible(true);
-			m_activeLayout = m_layoutUpperENG;
-			break;
-
-		case KeyboardLayout::Type::RU_LOWER:
-			m_layoutLowerRU->setVisible(true);
-			m_activeLayout = m_layoutLowerRU;
-			break;
-
-		case KeyboardLayout::Type::RU_UPPER:
-			m_layoutUpperRU->setVisible(true);
-			m_activeLayout = m_layoutUpperRU;
-			break;
-
-		case KeyboardLayout::Type::NUM:
-			m_layoutNUM->setVisible(true);
-			m_activeLayout = m_layoutNUM;
-			break;
+		ba[i] = ImVec2(x, top);
+		bb[i] = ImVec2(x + bw, top + bh);
+		x -= (bw + gap);
 	}
-
-	m_activeLayoutType = type;
+	fa = ImVec2(p.x + pad, p.y + (H - bh) * 0.5f);
+	fb = ImVec2(x + gap - pad * 0.6f + 0.0f, p.y + (H - bh) * 0.5f + bh);
 }
 
-void Keyboard::changeCase(KeyboardLayout::KeyCase key_case)
+Keyboard::Hit Keyboard::hitTest(const ImVec2& pos) const
 {
-	switch (key_case)
+	Hit h;
+	if (!contains(pos)) return h;
+
+	const ImVec2 p = absolutePosition();
+	if (pos.y < p.y + inputH())
 	{
-		case KeyboardLayout::KeyCase::LOWER:
-			if (m_activeLayoutType == KeyboardLayout::Type::ENG_UPPER) setActiveLayout(KeyboardLayout::Type::ENG_LOWER);
-
-			if (m_activeLayoutType == KeyboardLayout::Type::RU_UPPER) setActiveLayout(KeyboardLayout::Type::RU_LOWER);
-
-			break;
-
-		case KeyboardLayout::KeyCase::UPPER:
-			if (m_activeLayoutType == KeyboardLayout::Type::ENG_LOWER) setActiveLayout(KeyboardLayout::Type::ENG_UPPER);
-
-			if (m_activeLayoutType == KeyboardLayout::Type::RU_LOWER) setActiveLayout(KeyboardLayout::Type::RU_UPPER);
-
-			break;
+		ImVec2 fa, fb, ba[3], bb[3];
+		inputRects(fa, fb, ba, bb);
+		auto in = [&](const ImVec2& a, const ImVec2& b) { return pos.x >= a.x && pos.x < b.x && pos.y >= a.y && pos.y < b.y; };
+		if (in(ba[0], bb[0])) h.target = Target::Newer;       // "v": volta para o mais novo
+		else if (in(ba[1], bb[1])) h.target = Target::Older;  // "^": mensagem anterior
+		else if (in(ba[2], bb[2])) h.target = Target::Slash;
+		else if (in(fa, fb)) h.target = Target::Field;
+		return h;
 	}
 
-
+	const float lx = pos.x - p.x;
+	const float ly = pos.y - (p.y + inputH());
+	for (size_t r = 0; r < m_rects.size() && r < m_rows.size(); r++)
+		for (size_t c = 0; c < m_rects[r].size(); c++)
+			if (m_rects[r][c].has(lx, ly) && m_rows[r][c].kind != Kind::Spacer)
+			{
+				h.target = Target::Key; h.row = (int)r; h.col = (int)c;
+				return h;
+			}
+	return h;
 }
 
-void Keyboard::show(Widget* caller)
+void Keyboard::onAction(Action a)
 {
-	if(pSettings->Get().iAndroidKeyboard)
+	if (a == Action::TextChanged) m_blinkBase = nowMs();     // cursor sempre visivel logo apos digitar
+	else if (a == Action::Send)   send();
+}
+
+void Keyboard::act(const Hit& h)
+{
+	switch (h.target)
 	{
-		pJavaWrapper->ShowKeyboard();
+	case Target::Key:
+		if (h.row >= 0 && h.row < (int)m_rows.size() && h.col >= 0 && h.col < (int)m_rows[h.row].size())
+			onAction(m_core.press(m_rows[h.row][h.col], nowMs()));
+		break;
+	case Target::Older: onAction(m_core.historyOlder()); break;
+	case Target::Newer: onAction(m_core.historyNewer()); break;
+	case Target::Slash: onAction(m_core.slash());        break;
+	default: break;
 	}
-	else {
-		m_history->reset();
-		m_input->clear();
-		this->setVisible(true);
-		pGame->EnableGameInput(false);
-	}
-	m_caller = caller;
 }
 
-void Keyboard::hide()
+void Keyboard::touchEvent(const ImVec2& pos, TouchType type)
 {
-	if(pSettings->Get().iAndroidKeyboard)
+	// fora do teclado (ou teclado fechado): comportamento padrao do Widget (toque fora = fechar)
+	if (!visible() || (type == TouchType::push && !contains(pos)))
 	{
-		pJavaWrapper->HideKeyboard();
+		Widget::touchEvent(pos, type);
+		return;
 	}
-	else {
-		this->setVisible(false);
-		pGame->EnableGameInput(true);
+
+	ensureKeyRects();
+
+	if (type == TouchType::push)
+	{
+		m_pressed = hitTest(pos);
+		m_pressT = m_lastRepeatT = nowMs();
+		m_backspaceFired = false;
+
+		// apagar age ao TOCAR (e repete segurando), como nos teclados normais
+		if (m_pressed.target == Target::Key && m_pressed.row >= 0 &&
+			m_rows[m_pressed.row][m_pressed.col].kind == Kind::Backspace)
+		{
+			act(m_pressed);
+			m_backspaceFired = true;
+		}
 	}
-	m_caller = nullptr;
-}
+	else if (type == TouchType::pop)
+	{
+		Hit up = hitTest(pos);
+		Hit down = m_pressed;
+		m_pressed = Hit();
 
-void Keyboard::send()
-{
-	//if (m_caller) m_caller->keyboardEvent(this->input()->inputString());
-	const std::string input = this->input()->inputString();
-
-	m_history->add(input);
-	if (m_caller) m_caller->keyboardEvent(input);
-	this->hide();
-}
-
-void Keyboard::sendForGB(JNIEnv *pEnv, jobject thiz, jbyteArray str)
-{
-	std::string::size_type v8; // r0
-	v8 = pEnv->functions->GetArrayLength(pEnv, (jarray)str);
-	char* buffer = (char*)malloc(v8 + 1);
-	jbyte* elements = pEnv->GetByteArrayElements(str, NULL);
-	memcpy(buffer, elements, v8);
-	buffer[v8] = 0;
-	std::string input = std::string(buffer);
-	if (m_caller) m_caller->keyboardEvent(input);
-	hide();
-	pEnv->ReleaseByteArrayElements(str, elements, JNI_ABORT);
+		if (up.target != Target::None && up == down && !m_backspaceFired)
+		{
+			if (up.target == Target::Field) { m_wantCaretFromTap = true; m_tapX = pos.x; }
+			else act(up);
+		}
+		m_backspaceFired = false;
+	}
+	// move: nada a fazer (a tecla so dispara se o dedo soltar em cima dela)
 }
 
 void Keyboard::activateEvent(bool active)
@@ -200,645 +199,226 @@ void Keyboard::activateEvent(bool active)
 	if (active == false) this->hide();
 }
 
-/* KeyboardInput */
-KeyboardInput::KeyboardInput()
+void Keyboard::show(Widget* caller)
 {
-	m_buttonTub = new Button("/", UISettings::fontSize());
-	this->addChild(m_buttonTub);
-	m_buttonPrev = new Button("<<", UISettings::fontSize());
-	this->addChild(m_buttonPrev);
-	m_buttonNext = new Button(">>", UISettings::fontSize());
-	this->addChild(m_buttonNext);
+	applyGeometry();
 
-	m_buttonPrev->setCallback([]()
-							  {
-								  std::string text = pUI->keyboard()->history()->prev();
-								  pUI->keyboard()->input()->setInputString(text);
-							  }
-	);
+	// rascunho: so volta se for o mesmo campo que o jogador tinha aberto (como o teclado do Android fazia)
+	m_core.open();
+	if (!m_draft.empty() && m_draftOwner == caller) m_core.field.set(m_draft);
 
-	m_buttonNext->setCallback([]()
-							  {
-								  std::string text = pUI->keyboard()->history()->next();
-								  pUI->keyboard()->input()->setInputString(text);
-							  }
-	);
+	m_pressed = Hit();
+	m_scroll = 0.0f;
+	m_blinkBase = nowMs();
+	m_caller = caller;
 
-	m_buttonTub->setCallback([]()
-							 {
-								 //std::string text = pUI->keyboard()->history()->prev();
-								 pUI->keyboard()->input()->setInputString("/");
-							 }
-	);
-
-	m_buttonPrev->setVisible(true);
-	m_buttonNext->setVisible(true);
-	m_buttonTub->setVisible(true);
+	bool wasVisible = visible();
+	this->setVisible(true);
+	if (!wasVisible) pGame->EnableGameInput(false);
 }
 
-void KeyboardInput::performLayout()
+void Keyboard::hide()
 {
-	Widget::performLayout();
-
-	m_buttonTub->setPosition(
-			ImVec2(width() - (m_buttonTub->width() + UISettings::padding() + m_buttonPrev->width()*2.3 + UISettings::padding()),
-				   (height() - m_buttonTub->height()) / 2));
-	m_buttonPrev->setPosition(
-			ImVec2(width() - (m_buttonPrev->width() + UISettings::padding() + m_buttonNext->width() + UISettings::padding()),
-				   (height() - m_buttonPrev->height()) / 2));
-	m_buttonNext->setPosition(
-			ImVec2(width() - (m_buttonNext->width() + UISettings::padding()),
-				   (height() - m_buttonNext->height()) / 2));
+	close(true);
 }
 
-void KeyboardInput::addCharToInput(char value)
+void Keyboard::close(bool saveDraft)
 {
-	m_input += value;
-	m_caption = Encoding::cp2utf(m_input);
+	if (!visible()) { m_caller = nullptr; return; }
+
+	// fechou sem enviar: guarda o que estava digitado (ao enviar, nao guarda)
+	if (saveDraft) { m_draft = m_core.field.text; m_draftOwner = m_caller; }
+	else           { m_draft.clear();             m_draftOwner = nullptr; }
+
+	this->setVisible(false);
+	pGame->EnableGameInput(true);
+	m_pressed = Hit();
+	m_caller = nullptr;
 }
 
-void KeyboardInput::popCharFromInput()
+void Keyboard::send()
 {
-	if (m_input.empty()) return;
+	const std::string input = m_core.commit();      // bytes Latin-1; vai para o servidor como esta
 
-	m_input.pop_back();
-	m_caption = Encoding::cp2utf(m_input);
+	Widget* caller = m_caller;
+	if (caller) caller->keyboardEvent(input);
+	this->close(false);
 }
 
-void KeyboardInput::draw(ImGuiRenderer* renderer)
+// Legado: o caminho antigo (teclado do Android) entregava o texto por JNI. Mantido so para o
+// simbolo JNI existir; trata como se tivesse sido digitado no teclado nativo.
+void Keyboard::sendForGB(JNIEnv *pEnv, jobject thiz, jbyteArray str)
 {
-	float divLinePosY = (absolutePosition().y + size().y) - UISettings::outlineSize();
-	float font_sz = UISettings::fontSize();
+	if (!str) return;
+	jsize len = pEnv->GetArrayLength(str);
+	jbyte* elements = pEnv->GetByteArrayElements(str, NULL);
+	if (!elements) return;
+	std::string input((const char*)elements, (size_t)len);
+	pEnv->ReleaseByteArrayElements(str, elements, JNI_ABORT);
 
-	renderer->drawText(absolutePosition() + ImVec2(UISettings::padding(), (height() - font_sz) / 2),
-					   ImColor(1.0f, 1.0f, 1.0f), m_caption, false, font_sz);
-
-	renderer->drawLine(
-			ImVec2(absolutePosition().x, divLinePosY),
-			ImVec2(absolutePosition().x + size().x, divLinePosY),
-			ImColor(0xF5, 0x91, 0x32), UISettings::outlineSize()
-	);
-
-	Widget::draw(renderer);
+	if (m_caller) m_caller->keyboardEvent(input);
+	close(false);
 }
 
-/* KeyboardLayout */
+/* ---- desenho ---- */
 
-KeyboardLayout::KeyboardLayout()
-		: Layout(Orientation::VERTICAL)
+void Keyboard::drawKey(ImGuiRenderer* r, const KeyDef& k, const ImVec2& a, const ImVec2& b, bool pressed, float fs) const
 {
-	for (int i = 0; i < 5; i++)
+	const float rd = std::max(4.0f, rowH() * 0.16f);
+	const float w = b.x - a.x, h = b.y - a.y;
+
+	bool active = false;
+	if (k.kind == Kind::Shift) active = m_core.shift != ShiftState::Off;
+
+	ImColor fill = kKey;
+	if (k.kind != Kind::Char && k.kind != Kind::Space) fill = kKeySpecial;
+	if (k.kind == Kind::Send) fill = kSend;
+	if (active) fill = kAccent;
+	if (pressed) fill = kKeyDown;
+	r->drawRoundedRect(a, b, fill, rd);
+
+	auto P = [&](float fx, float fy) { return ImVec2(a.x + w * fx, a.y + h * fy); };
+
+	switch (k.kind)
 	{
-		m_rows[i] = new Row();
-		this->addChild(m_rows[i]);
+	case Kind::Shift:
+	{
+		// seta para cima: triangulo + haste
+		r->drawTriangle(P(0.50f, 0.20f), P(0.74f, 0.50f), P(0.26f, 0.50f), kWhite, true);
+		r->drawRect(P(0.42f, 0.48f), P(0.58f, 0.74f), kWhite, true);
+		if (m_core.shift == ShiftState::Lock) r->drawRect(P(0.30f, 0.82f), P(0.70f, 0.87f), kWhite, true);
+		break;
+	}
+	case Kind::Backspace:
+	{
+		ImVec2 pts[5] = { P(0.28f, 0.50f), P(0.42f, 0.28f), P(0.74f, 0.28f), P(0.74f, 0.72f), P(0.42f, 0.72f) };
+		r->drawConvexPolyFilled(pts, 5, kWhite);
+		const float t = std::max(2.0f, h * 0.05f);
+		r->drawLine(P(0.50f, 0.40f), P(0.64f, 0.60f), kKeySpecial, t);
+		r->drawLine(P(0.64f, 0.40f), P(0.50f, 0.60f), kKeySpecial, t);
+		break;
+	}
+	case Kind::Space:
+	{
+		const float t = std::max(2.0f, h * 0.06f);
+		r->drawLine(P(0.18f, 0.58f), P(0.82f, 0.58f), kWhite, t);
+		r->drawLine(P(0.18f, 0.48f), P(0.18f, 0.58f), kWhite, t);
+		r->drawLine(P(0.82f, 0.48f), P(0.82f, 0.58f), kWhite, t);
+		break;
+	}
+	case Kind::Send:
+		r->drawTriangle(P(0.34f, 0.26f), P(0.34f, 0.74f), P(0.70f, 0.50f), kWhite, true);
+		break;
+	case Kind::Spacer:
+		break;
+	default:
+	{
+		std::string label = k.label;
+		if (k.kind == Kind::Char && m_core.page == Page::Accents)
+			label = Latin1ToUtf8(std::string(1, (char)AccentCase(k.value, m_core.shift != ShiftState::Off)));
+		if (label.empty()) break;
+		float f = fs;
+		ImVec2 sz = r->calculateTextSize(label, f);
+		if (sz.x > w * 0.9f && sz.x > 0.0f) { f *= (w * 0.9f) / sz.x; sz = r->calculateTextSize(label, f); }
+		r->drawText(ImVec2(a.x + (w - sz.x) * 0.5f, a.y + (h - sz.y) * 0.5f), kWhite, label, false, f);
+		break;
+	}
 	}
 }
 
-void KeyboardLayout::performLayout()
+void Keyboard::draw(ImGuiRenderer* renderer)
 {
-	Layout::performLayout();
-}
+	if (!visible()) return;
+	ensureKeyRects();
 
-/* KeyboardLayout::Row */
+	const ImVec2 p = absolutePosition();
+	renderer->drawRect(p, p + size(), kBg, true);
+	renderer->drawLine(p, ImVec2(p.x + width(), p.y), kAccent, UISettings::outlineSize());
 
-KeyboardLayout::Row::Row()
-		: Layout(Orientation::HORIZONTAL)
-{
+	const long now = nowMs();
 
-}
-
-KeyboardLayout::Row::Key* KeyboardLayout::Row::addKey(const std::string&  caption, char value)
-{
-	Key* key = new Key(caption, value);
-	this->addChild(key);
-	return key;
-}
-
-KeyboardLayout::Row::Key* KeyboardLayout::Row::addKey(ExtendedKey extended_key)
-{
-	Key* key = new Key(extended_key);
-	this->addChild(key);
-	return key;
-}
-
-/* KeyboardLayout::Row::Key */
-
-KeyboardLayout::Row::Key::Key(const std::string& caption, char value)
-		: Button(caption)
-{
-	m_extendedKey = ExtendedKey::NONE;
-	m_value = value;
-}
-
-KeyboardLayout::Row::Key::Key(ExtendedKey extended_key)
-		: Button("")
-{
-	switch (extended_key)
+	// segurar o backspace repete
+	if (m_pressed.target == Target::Key && m_backspaceFired && m_pressed.row >= 0 &&
+		now - m_pressT > kRepeatDelayMs && now - m_lastRepeatT > kRepeatEveryMs)
 	{
-		case ExtendedKey::NUM:
-			this->setCaption(std::string("123"));
-			break;
-		case ExtendedKey::LANG_ENG:
-			this->setCaption(std::string("ENG"));
-			break;
-
-		case ExtendedKey::LANG_RU:
-			this->setCaption(std::string("RUS"));
+		m_lastRepeatT = now;
+		act(m_pressed);
 	}
 
-	m_extendedKey = extended_key;
-}
+	// ---------- barra de entrada
+	ImVec2 fa, fb, ba[3], bb[3];
+	inputRects(fa, fb, ba, bb);
 
-void KeyboardLayout::Row::Key::draw(ImGuiRenderer* renderer)
-{
-	if (focused()) renderer->drawRect(absolutePosition(), absolutePosition() + size(), ImColor(0xF5, 0x91, 0x32), true);
+	const float fs = std::min(UISettings::fontSize() * 0.9f, rowH() * 0.58f);
+	const float rd = std::max(4.0f, inputH() * 0.14f);
 
-	switch (m_extendedKey)
+	renderer->drawRoundedRect(fa, fb, kField, rd);
+
+	// texto (Latin-1 -> UTF-8) com rolagem para o cursor aparecer sempre
+	const std::string& raw = m_core.field.text;
+	const float padX = inputH() * 0.14f;
+	const float visW = std::max(10.0f, (fb.x - fa.x) - padX * 2.0f);
+	const std::string before = Latin1ToUtf8(raw.substr(0, std::min(m_core.field.caret, raw.size())));
+	const float caretW = before.empty() ? 0.0f : renderer->calculateTextSize(before, fs).x;
+
+	if (m_wantCaretFromTap)
 	{
-		case ExtendedKey::SHIFT_ON:
-			renderer->drawTriangle(
-					ImVec2(absolutePosition().x + width() * 0.37f, absolutePosition().y + height() * 0.50f),
-					ImVec2(absolutePosition().x + width() * 0.50f, absolutePosition().y + height() * 0.25f),
-					ImVec2(absolutePosition().x + width() * 0.63f, absolutePosition().y + height() * 0.50f),
-					ImColor(1.0f, 1.0f, 1.0f), true
-			);
-			renderer->drawRect(
-					ImVec2(absolutePosition().x + width() * 0.44f, absolutePosition().y + height() * 0.50f - 1),
-					ImVec2(absolutePosition().x + width() * 0.56f, absolutePosition().y + height() * 0.68f),
-					ImColor(1.0f, 1.0f, 1.0f), true
-			);
-			break;
+		m_wantCaretFromTap = false;
+		const float target = (m_tapX - (fa.x + padX)) + m_scroll;
+		size_t best = 0; float bestD = 1e9f;
+		for (size_t i = 0; i <= raw.size(); i++)
+		{
+			std::string pre = Latin1ToUtf8(raw.substr(0, i));
+			float wpx = pre.empty() ? 0.0f : renderer->calculateTextSize(pre, fs).x;
+			float d = std::fabs(wpx - target);
+			if (d < bestD) { bestD = d; best = i; }
+		}
+		m_core.field.setCaret(best);
+		m_blinkBase = now;
+	}
+	if (caretW - m_scroll > visW) m_scroll = caretW - visW;
+	if (caretW - m_scroll < 0.0f) m_scroll = caretW;
+	if (raw.empty()) m_scroll = 0.0f;
 
-		case ExtendedKey::SHIFT_OFF:
-			renderer->drawTriangle(
-					ImVec2(absolutePosition().x + width() * 0.37f, absolutePosition().y + height() * 0.50f),
-					ImVec2(absolutePosition().x + width() * 0.50f, absolutePosition().y + height() * 0.25f),
-					ImVec2(absolutePosition().x + width() * 0.63f, absolutePosition().y + height() * 0.50f),
-					ImColor(0xF5, 0x91, 0x32), true
-			);
-			renderer->drawRect(
-					ImVec2(absolutePosition().x + width() * 0.44f, absolutePosition().y + height() * 0.50f - 1),
-					ImVec2(absolutePosition().x + width() * 0.56f, absolutePosition().y + height() * 0.68f),
-					ImColor(0xF5, 0x91, 0x32), true
-			);
-			break;
+	renderer->pushClipRect(ImVec2(fa.x + padX * 0.5f, fa.y), ImVec2(fb.x - padX * 0.5f, fb.y), true);
+	const float textY = fa.y + ((fb.y - fa.y) - fs) * 0.5f;
+	if (raw.empty())
+		renderer->drawText(ImVec2(fa.x + padX, textY), kHint, std::string("Digite a mensagem"), false, fs);
+	else
+		renderer->drawText(ImVec2(fa.x + padX - m_scroll, textY), kWhite, Latin1ToUtf8(raw), false, fs);
 
-		case ExtendedKey::BACKSPACE:
-			static ImVec2 points[5];
-			points[0] = ImVec2(absolutePosition().x + width() * 0.35f, absolutePosition().y + height() * 0.50f);
-			points[1] = ImVec2(absolutePosition().x + width() * 0.45f, absolutePosition().y + height() * 0.25f);
-			points[2] = ImVec2(absolutePosition().x + width() * 0.65f, absolutePosition().y + height() * 0.25f);
-			points[3] = ImVec2(absolutePosition().x + width() * 0.65f, absolutePosition().y + height() * 0.65f);
-			points[4] = ImVec2(absolutePosition().x + width() * 0.45f, absolutePosition().y + height() * 0.65f);
-			renderer->drawConvexPolyFilled(points, 5, ImColor(1.0f, 1.0f, 1.0f));
-			break;
+	if (((now - m_blinkBase) / 450) % 2 == 0)
+	{
+		const float cx = fa.x + padX - m_scroll + caretW;
+		renderer->drawLine(ImVec2(cx, fa.y + (fb.y - fa.y) * 0.18f), ImVec2(cx, fb.y - (fb.y - fa.y) * 0.18f),
+		                   kWhite, std::max(2.0f, UISettings::outlineSize()));
+	}
+	renderer->popClipRect();
 
-		case ExtendedKey::SPACE:
-			renderer->drawRect(
-					ImVec2(absolutePosition().x + width() * 0.07f, absolutePosition().y + height() * 0.35f),
-					ImVec2(absolutePosition().x + width() * 0.93f, absolutePosition().y + height() * 0.65f),
-					ImColor(1.0f, 1.0f, 1.0f), true
-			);
-			break;
+	// ---------- botoes: v  ^  /
+	const Target tg[3] = { Target::Newer, Target::Older, Target::Slash };
+	const float th = std::max(3.0f, inputH() * 0.045f);
+	for (int i = 0; i < 3; i++)
+	{
+		const bool down = (m_pressed.target == tg[i]);
+		renderer->drawRoundedRect(ba[i], bb[i], down ? kBtnDown : kBtn, rd);
 
-		case ExtendedKey::SEND:
-			renderer->drawTriangle(
-					ImVec2(absolutePosition().x + width() * 0.3f, absolutePosition().y + height() * 0.25f),
-					ImVec2(absolutePosition().x + width() * 0.3f, absolutePosition().y + height() * 0.75f),
-					ImVec2(absolutePosition().x + width() * 0.7f, absolutePosition().y + height() * 0.50f),
-					ImColor(1.0f, 1.0f, 1.0f), true
-			);
-			break;
+		const float w = bb[i].x - ba[i].x, h = bb[i].y - ba[i].y;
+		auto P = [&](float fx, float fy) { return ImVec2(ba[i].x + w * fx, ba[i].y + h * fy); };
+		if (i == 0)       { ImVec2 v[3] = { P(0.30f, 0.38f), P(0.50f, 0.64f), P(0.70f, 0.38f) }; renderer->drawPolyline(v, 3, kWhite, false, th); }
+		else if (i == 1)  { ImVec2 v[3] = { P(0.30f, 0.62f), P(0.50f, 0.36f), P(0.70f, 0.62f) }; renderer->drawPolyline(v, 3, kWhite, false, th); }
+		else              { renderer->drawLine(P(0.40f, 0.76f), P(0.60f, 0.24f), kWhite, th); }
 	}
 
-	Widget::draw(renderer);
-}
-
-void KeyboardLayout::Row::Key::touchPopEvent()
-{
-	Keyboard* keyboard = dynamic_cast<Keyboard*>(this->parent()->parent()->parent());
-
-	switch (m_extendedKey)
-	{
-		case ExtendedKey::BACKSPACE:
-			keyboard->input()->popCharFromInput();
-			break;
-
-		case ExtendedKey::SPACE:
-			keyboard->input()->addCharToInput(' ');
-			break;
-
-		case ExtendedKey::SEND:
-			keyboard->send();
-			break;
-
-		case ExtendedKey::SHIFT_ON:
-			keyboard->changeCase(KeyCase::UPPER);
-			break;
-
-		case ExtendedKey::SHIFT_OFF:
-			keyboard->changeCase(KeyCase::LOWER);
-			break;
-
-		case ExtendedKey::LANG_RU:
-			keyboard->setActiveLayout(KeyboardLayout::Type::RU_LOWER);
-			break;
-
-		case ExtendedKey::LANG_ENG:
-			keyboard->setActiveLayout(KeyboardLayout::Type::ENG_LOWER);
-			break;
-
-		case ExtendedKey::NUM:
-			keyboard->setActiveLayout(KeyboardLayout::Type::NUM);
-			break;
-
-		case ExtendedKey::NONE:
-			keyboard->input()->addCharToInput(m_value);
-			break;
-	}
-}
-
-/* KeyboardLayoutLowerENG */
-
-KeyboardLayoutLowerENG::KeyboardLayoutLowerENG()
-		: KeyboardLayout()
-{
-
-}
-
-void KeyboardLayoutLowerENG::performLayout()
-{
-	m_rows[0]->setPadding(0.0f);
-	m_rows[0]->setSpacing(0.0f);
-	m_rows[0]->addKey(std::string ("q"), 'q');
-	m_rows[0]->addKey(std::string ("w"), 'w');
-	m_rows[0]->addKey(std::string ("e"), 'e');
-	m_rows[0]->addKey(std::string ("r"), 'r');
-	m_rows[0]->addKey(std::string ("t"), 't');
-	m_rows[0]->addKey(std::string ("y"), 'y');
-	m_rows[0]->addKey(std::string ("u"), 'u');
-	m_rows[0]->addKey(std::string ("i"), 'i');
-	m_rows[0]->addKey(std::string ("o"), 'o');
-	m_rows[0]->addKey(std::string ("p"), 'p');
-
-	ImVec2 keySize = ImVec2(width() / 10, UISettings::keyboardRowHeight());
-	float padding = keySize.x / 2;
-	m_rows[1]->setPadding(0.0f);
-	m_rows[1]->setSpacing(0.0f);
-	m_rows[1]->setPaddingLeft(padding);
-	m_rows[1]->setPaddingRight(padding);
-	m_rows[1]->addKey(std::string ("a"), 'a');
-	m_rows[1]->addKey(std::string ("s"), 's');
-	m_rows[1]->addKey(std::string ("d"), 'd');
-	m_rows[1]->addKey(std::string ("f"), 'f');
-	m_rows[1]->addKey(std::string ("g"), 'g');
-	m_rows[1]->addKey(std::string ("h"), 'h');
-	m_rows[1]->addKey(std::string ("j"), 'j');
-	m_rows[1]->addKey(std::string ("k"), 'k');
-	m_rows[1]->addKey(std::string ("l"), 'l');
-
-	m_rows[2]->setPadding(0.0f);
-	m_rows[2]->setSpacing(0.0f);
-	m_rows[2]->addKey(ExtendedKey::SHIFT_ON)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
-	m_rows[2]->addKey(std::string ("z"), 'z');
-	m_rows[2]->addKey(std::string ("x"), 'x');
-	m_rows[2]->addKey(std::string ("c"), 'c');
-	m_rows[2]->addKey(std::string ("v"), 'v');
-	m_rows[2]->addKey(std::string ("b"), 'b');
-	m_rows[2]->addKey(std::string ("n"), 'n');
-	m_rows[2]->addKey(std::string ("m"), 'm');
-	m_rows[2]->addKey(ExtendedKey::BACKSPACE)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
-
-	m_rows[3]->setPadding(0.0f);
-	m_rows[3]->setSpacing(0.0f);
-	/*m_rows[4]->addKey(std::string ("/", '/')->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
-	m_rows[4]->addKey(ExtendedKey::NUM);
-	m_rows[4]->addKey(ExtendedKey::LANG_RU);*/
-	m_rows[3]->addKey(ExtendedKey::NUM);
-	m_rows[3]->addKey(ExtendedKey::LANG_ENG);
-	m_rows[3]->addKey(ExtendedKey::LANG_RU);
-	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
-	m_rows[3]->addKey(std::string ("/"), '/');
-	m_rows[3]->addKey(std::string ("?"), '?');
-	m_rows[3]->addKey(std::string ("."), '.');
-	m_rows[3]->addKey(ExtendedKey::SEND)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
-
-	KeyboardLayout::performLayout();
-}
-
-/* KeyboardLayoutUpperENG */
-
-KeyboardLayoutUpperENG::KeyboardLayoutUpperENG()
-		: KeyboardLayout()
-{
-
-}
-
-void KeyboardLayoutUpperENG::performLayout()
-{
-	m_rows[0]->setPadding(0.0f);
-	m_rows[0]->setSpacing(0.0f);
-	m_rows[0]->addKey(std::string ("Q"), 'Q');
-	m_rows[0]->addKey(std::string ("W"), 'W');
-	m_rows[0]->addKey(std::string ("E"), 'E');
-	m_rows[0]->addKey(std::string ("R"), 'R');
-	m_rows[0]->addKey(std::string ("T"), 'T');
-	m_rows[0]->addKey(std::string ("Y"), 'Y');
-	m_rows[0]->addKey(std::string ("U"), 'U');
-	m_rows[0]->addKey(std::string ("I"), 'I');
-	m_rows[0]->addKey(std::string ("O"), 'O');
-	m_rows[0]->addKey(std::string ("P"), 'P');
-
-	ImVec2 keySize = ImVec2(width() / 10, UISettings::keyboardRowHeight());
-	float padding = keySize.x / 2;
-	m_rows[1]->setPadding(0.0f);
-	m_rows[1]->setSpacing(0.0f);
-	m_rows[1]->setPaddingLeft(padding);
-	m_rows[1]->setPaddingRight(padding);
-	m_rows[1]->addKey(std::string ("A"), 'A');
-	m_rows[1]->addKey(std::string ("S"), 'S');
-	m_rows[1]->addKey(std::string ("D"), 'D');
-	m_rows[1]->addKey(std::string ("F"), 'F');
-	m_rows[1]->addKey(std::string ("G"), 'G');
-	m_rows[1]->addKey(std::string ("H"), 'H');
-	m_rows[1]->addKey(std::string ("J"), 'J');
-	m_rows[1]->addKey(std::string ("K"), 'K');
-	m_rows[1]->addKey(std::string ("L"), 'L');
-
-	m_rows[2]->setPadding(0.0f);
-	m_rows[2]->setSpacing(0.0f);
-	m_rows[2]->addKey(ExtendedKey::SHIFT_OFF)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
-	m_rows[2]->addKey(std::string ("Z"), 'Z');
-	m_rows[2]->addKey(std::string ("X"), 'X');
-	m_rows[2]->addKey(std::string ("C"), 'C');
-	m_rows[2]->addKey(std::string ("V"), 'V');
-	m_rows[2]->addKey(std::string ("B"), 'B');
-	m_rows[2]->addKey(std::string ("N"), 'N');
-	m_rows[2]->addKey(std::string ("M"), 'M');
-	m_rows[2]->addKey(ExtendedKey::BACKSPACE)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
-
-	m_rows[3]->setPadding(0.0f);
-	m_rows[3]->setSpacing(0.0f);
-	m_rows[3]->addKey(ExtendedKey::NUM);//m_rows[4]->addKey(std::string ("/", '/')->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
-	m_rows[3]->addKey(ExtendedKey::LANG_ENG);
-	m_rows[3]->addKey(ExtendedKey::LANG_RU);
-	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
-	m_rows[3]->addKey(std::string ("/"), '/');//m_rows[4]->addKey(std::string (",", ',');
-	m_rows[3]->addKey(std::string ("?"), '?');
-	m_rows[3]->addKey(std::string ("."), '.');
-	m_rows[3]->addKey(ExtendedKey::SEND)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
-
-	KeyboardLayout::performLayout();
-}
-
-/* KeyboardLayoutLowerRU */
-
-KeyboardLayoutLowerRU::KeyboardLayoutLowerRU()
-		: KeyboardLayout()
-{
-
-}
-
-void KeyboardLayoutLowerRU::performLayout()
-{
-	m_rows[0]->setPadding(0.0f);
-	m_rows[0]->setSpacing(0.0f);
-	m_rows[0]->addKey(Encoding::cp2utf("é"), 'é');
-	m_rows[0]->addKey(Encoding::cp2utf("ö"), 'ö');
-	m_rows[0]->addKey(Encoding::cp2utf("ó"), 'ó');
-	m_rows[0]->addKey(Encoding::cp2utf("ê"), 'ê');
-	m_rows[0]->addKey(Encoding::cp2utf("å"), 'å');
-	m_rows[0]->addKey(Encoding::cp2utf("í"), 'í');
-	m_rows[0]->addKey(Encoding::cp2utf("ã"), 'ã');
-	m_rows[0]->addKey(Encoding::cp2utf("ø"), 'ø');
-	m_rows[0]->addKey(Encoding::cp2utf("ù"), 'ù');
-	m_rows[0]->addKey(Encoding::cp2utf("ç"), 'ç');
-	m_rows[0]->addKey(Encoding::cp2utf("õ"), 'õ');
-
-	m_rows[1]->setPadding(0.0f);
-	m_rows[1]->setSpacing(0.0f);
-	m_rows[1]->addKey(Encoding::cp2utf("ô"), 'ô');
-	m_rows[1]->addKey(Encoding::cp2utf("û"), 'û');
-	m_rows[1]->addKey(Encoding::cp2utf("â"), 'â');
-	m_rows[1]->addKey(Encoding::cp2utf("à"), 'à');
-	m_rows[1]->addKey(Encoding::cp2utf("ï"), 'ï');
-	m_rows[1]->addKey(Encoding::cp2utf("ð"), 'ð');
-	m_rows[1]->addKey(Encoding::cp2utf("î"), 'î');
-	m_rows[1]->addKey(Encoding::cp2utf("ë"), 'ë');
-	m_rows[1]->addKey(Encoding::cp2utf("ä"), 'ä');
-	m_rows[1]->addKey(Encoding::cp2utf("æ"), 'æ');
-	m_rows[1]->addKey(Encoding::cp2utf("ý"), 'ý');
-
-	ImVec2 keySize = ImVec2(width() / 11, UISettings::keyboardRowHeight());
-	m_rows[2]->setPadding(0.0f);
-	m_rows[2]->setSpacing(0.0f);
-	m_rows[2]->addKey(ExtendedKey::SHIFT_ON)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
-	m_rows[2]->addKey(Encoding::cp2utf("ÿ"), 'ÿ');
-	m_rows[2]->addKey(Encoding::cp2utf("÷"), '÷');
-	m_rows[2]->addKey(Encoding::cp2utf("ñ"), 'ñ');
-	m_rows[2]->addKey(Encoding::cp2utf("ì"), 'ì');
-	m_rows[2]->addKey(Encoding::cp2utf("è"), 'è');
-	m_rows[2]->addKey(Encoding::cp2utf("ò"), 'ò');
-	m_rows[2]->addKey(Encoding::cp2utf("ü"), 'ü');
-	m_rows[2]->addKey(Encoding::cp2utf("á"), 'á');
-	m_rows[2]->addKey(Encoding::cp2utf("þ"), 'þ');
-	m_rows[2]->addKey(ExtendedKey::BACKSPACE)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
-
-	m_rows[3]->setPadding(0.0f);
-	m_rows[3]->setSpacing(0.0f);
-	//m_rows[4]->addKey(std::string ("/", '/')->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
-	//m_rows[4]->addKey(ExtendedKey::NUM);
-	//m_rows[4]->addKey(ExtendedKey::LANG_ENG);
-	m_rows[3]->addKey(ExtendedKey::NUM);
-	m_rows[3]->addKey(ExtendedKey::LANG_ENG);
-	m_rows[3]->addKey(ExtendedKey::LANG_RU);
-	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
-	m_rows[3]->addKey(std::string ("/"), '/'); //m_rows[4]->addKey(std::string (",", ',');
-	m_rows[3]->addKey(std::string ("?"), '?');
-	m_rows[3]->addKey(std::string ("."), '.');
-	m_rows[3]->addKey(ExtendedKey::SEND)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
-
-	KeyboardLayout::performLayout();
-}
-
-/* KeyboardLayoutUpperRU*/
-
-KeyboardLayoutUpperRU::KeyboardLayoutUpperRU()
-		: KeyboardLayout()
-{
-
-}
-
-void KeyboardLayoutUpperRU::performLayout()
-{
-	m_rows[0]->setPadding(0.0f);
-	m_rows[0]->setSpacing(0.0f);
-	m_rows[0]->addKey(Encoding::cp2utf("É"), 'É');
-	m_rows[0]->addKey(Encoding::cp2utf("Ö"), 'Ö');
-	m_rows[0]->addKey(Encoding::cp2utf("Ó"), 'Ó');
-	m_rows[0]->addKey(Encoding::cp2utf("Ê"), 'Ê');
-	m_rows[0]->addKey(Encoding::cp2utf("Å"), 'Å');
-	m_rows[0]->addKey(Encoding::cp2utf("Í"), 'Í');
-	m_rows[0]->addKey(Encoding::cp2utf("Ã"), 'Ã');
-	m_rows[0]->addKey(Encoding::cp2utf("Ø"), 'Ø');
-	m_rows[0]->addKey(Encoding::cp2utf("Ù"), 'Ù');
-	m_rows[0]->addKey(Encoding::cp2utf("Ç"), 'Ç');
-	m_rows[0]->addKey(Encoding::cp2utf("Õ"), 'Õ');
-
-	m_rows[1]->setPadding(0.0f);
-	m_rows[1]->setSpacing(0.0f);
-	m_rows[1]->addKey(Encoding::cp2utf("Ô"), 'Ô');
-	m_rows[1]->addKey(Encoding::cp2utf("Û"), 'Û');
-	m_rows[1]->addKey(Encoding::cp2utf("Â"), 'Â');
-	m_rows[1]->addKey(Encoding::cp2utf("À"), 'À');
-	m_rows[1]->addKey(Encoding::cp2utf("Ï"), 'Ï');
-	m_rows[1]->addKey(Encoding::cp2utf("Ð"), 'Ð');
-	m_rows[1]->addKey(Encoding::cp2utf("Î"), 'Î');
-	m_rows[1]->addKey(Encoding::cp2utf("Ë"), 'Ë');
-	m_rows[1]->addKey(Encoding::cp2utf("Ä"), 'Ä');
-	m_rows[1]->addKey(Encoding::cp2utf("Æ"), 'Æ');
-	m_rows[1]->addKey(Encoding::cp2utf("Ý"), 'Ý');
-
-	ImVec2 keySize = ImVec2(width() / 11, UISettings::keyboardRowHeight());
-	m_rows[2]->setPadding(0.0f);
-	m_rows[2]->setSpacing(0.0f);
-	m_rows[2]->addKey(ExtendedKey::SHIFT_ON)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
-	m_rows[2]->addKey(Encoding::cp2utf("ß"), 'ß');
-	m_rows[2]->addKey(Encoding::cp2utf("×"), '×');
-	m_rows[2]->addKey(Encoding::cp2utf("Ñ"), 'Ñ');
-	m_rows[2]->addKey(Encoding::cp2utf("Ì"), 'Ì');
-	m_rows[2]->addKey(Encoding::cp2utf("È"), 'È');
-	m_rows[2]->addKey(Encoding::cp2utf("Ò"), 'Ò');
-	m_rows[2]->addKey(Encoding::cp2utf("Ü"), 'Ü');
-	m_rows[2]->addKey(Encoding::cp2utf("Á"), 'Á');
-	m_rows[2]->addKey(Encoding::cp2utf("Þ"), 'Þ');
-	m_rows[2]->addKey(ExtendedKey::BACKSPACE)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
-
-	m_rows[3]->setPadding(0.0f);
-	m_rows[3]->setSpacing(0.0f);
-	//m_rows[4]->addKey(std::string ("/", '/')->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
-	//m_rows[4]->addKey(ExtendedKey::NUM);
-	//m_rows[4]->addKey(ExtendedKey::LANG_ENG);
-	m_rows[3]->addKey(ExtendedKey::NUM);
-	m_rows[3]->addKey(ExtendedKey::LANG_ENG);
-	m_rows[3]->addKey(ExtendedKey::LANG_RU);
-	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
-	m_rows[3]->addKey(std::string ("/"), '/'); //m_rows[4]->addKey(std::string (",", ',');
-	m_rows[3]->addKey(std::string ("?"), '?');
-	m_rows[3]->addKey(std::string ("."), '.');
-	m_rows[3]->addKey(ExtendedKey::SEND)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
-
-	KeyboardLayout::performLayout();
-}
-
-/* KeyboardLayoutNUM */
-
-KeyboardLayoutNUM::KeyboardLayoutNUM()
-		: KeyboardLayout()
-{
-
-}
-
-void KeyboardLayoutNUM::performLayout()
-{
-	m_rows[0]->setPadding(0.0f);
-	m_rows[0]->setSpacing(0.0f);
-	m_rows[0]->addKey(std::string ("1"), '1');
-	m_rows[0]->addKey(std::string ("2"), '2');
-	m_rows[0]->addKey(std::string ("3"), '3');
-	m_rows[0]->addKey(std::string ("4"), '4');
-	m_rows[0]->addKey(std::string ("5"), '5');
-	m_rows[0]->addKey(std::string ("6"), '6');
-	m_rows[0]->addKey(std::string ("7"), '7');
-	m_rows[0]->addKey(std::string ("8"), '8');
-	m_rows[0]->addKey(std::string ("9"), '9');
-	m_rows[0]->addKey(std::string ("0"), '0');
-
-	m_rows[1]->setPadding(0.0f);
-	m_rows[1]->setSpacing(0.0f);
-	m_rows[1]->addKey(std::string ("@"), '@');
-	m_rows[1]->addKey(std::string ("#"), '#');
-	m_rows[1]->addKey(std::string ("$"), '$');
-	m_rows[1]->addKey(std::string ("%"), '%');
-	m_rows[1]->addKey(std::string ("\""), '\"');
-	m_rows[1]->addKey(std::string ("*"), '*');
-	m_rows[1]->addKey(std::string ("("), '(');
-	m_rows[1]->addKey(std::string (")"), ')');
-	m_rows[1]->addKey(std::string ("-"), '-');
-	m_rows[1]->addKey(std::string ("_"), '_');
-
-	m_rows[2]->setPadding(0.0f);
-	m_rows[2]->setSpacing(0.0f);
-	m_rows[2]->addKey(std::string ("."), '.');
-	m_rows[2]->addKey(std::string (":"), ':');
-	m_rows[2]->addKey(std::string (";"), ';');
-	m_rows[2]->addKey(std::string ("+"), '+');
-	m_rows[2]->addKey(std::string ("="), '=');
-	m_rows[2]->addKey(std::string ("<"), '<');
-	m_rows[2]->addKey(std::string (">"), '>');
-	m_rows[2]->addKey(std::string ("["), '[');
-	m_rows[2]->addKey(std::string ("]"), ']');
-	m_rows[2]->addKey(ExtendedKey::BACKSPACE);
-
-	ImVec2 keySize = ImVec2(width() / 10, UISettings::keyboardRowHeight());
-
-	m_rows[3]->setPadding(0.0f);
-	m_rows[3]->setSpacing(0.0f);
-	//m_rows[4]->addKey(std::string ("/", '/');
-	//m_rows[4]->addKey(ExtendedKey::LANG_ENG);
-	//m_rows[4]->addKey(std::string (",", ',');
-	m_rows[3]->addKey(ExtendedKey::NUM);
-	m_rows[3]->addKey(ExtendedKey::LANG_ENG);
-	m_rows[3]->addKey(ExtendedKey::LANG_RU);
-	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 4, 0.0f));
-	m_rows[3]->addKey(std::string ("/"), '/');//m_rows[4]->addKey(std::string ("?", '?');
-	m_rows[3]->addKey(std::string ("?"), '?');
-	m_rows[3]->addKey(std::string ("!"), '!');
-	m_rows[3]->addKey(ExtendedKey::SEND);
-
-	KeyboardLayout::performLayout();
-}
-
-KeyboardHistory::KeyboardHistory()
-{
-	m_index = 0;
-	m_count = 0;
-	m_vMessages.resize(KEYBOARD_MAX_HISTORY_MESSAGES);
-}
-
-void KeyboardHistory::add(const std::string& input)
-{
-	for (int i = KEYBOARD_MAX_HISTORY_MESSAGES - 2; i > 0; i--)
-	{
-		std::string str = m_vMessages[i];
-		m_vMessages[i] = m_vMessages[i - 1];
-		m_vMessages[i - 1] = str;
-	}
-
-	m_vMessages[0] = input;
-	if (m_count < KEYBOARD_MAX_HISTORY_MESSAGES) m_count++;
-}
-
-void KeyboardHistory::reset()
-{
-	m_index = 0;
-}
-
-const std::string KeyboardHistory::next()
-{
-	if (m_count == 0) return "";
-
-	std::string str = m_vMessages[m_index];
-
-	if (m_index < m_count - 1) m_index++;
-	return str;
-}
-
-const std::string KeyboardHistory::prev()
-{
-	if (m_count == 0) return "";
-
-	std::string str = m_vMessages[m_index];
-	if (m_index > 0) m_index--;
-	return str;
+	// ---------- teclas
+	const float baseY = p.y + inputH();
+	for (size_t r = 0; r < m_rects.size() && r < m_rows.size(); r++)
+		for (size_t c = 0; c < m_rects[r].size() && c < m_rows[r].size(); c++)
+		{
+			const KeyDef& k = m_rows[r][c];
+			if (k.kind == Kind::Spacer) continue;
+			const Rect& rc = m_rects[r][c];
+			const bool down = (m_pressed.target == Target::Key && m_pressed.row == (int)r && m_pressed.col == (int)c);
+			drawKey(renderer, k, ImVec2(p.x + rc.x0, baseY + rc.y0), ImVec2(p.x + rc.x1, baseY + rc.y1), down, fs);
+		}
 }

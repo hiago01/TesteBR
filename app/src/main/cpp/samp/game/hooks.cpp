@@ -5,6 +5,7 @@
 #include "../main.h"
 #include "../vendor/armhook/patch.h"
 #include "game.h"
+#include "DamageRules.h"
 #include "camerazoom.h"
 #include "../net/netgame.h"
 #include "../gui/gui.h"
@@ -1283,8 +1284,19 @@ bool ComputeDamageResponse(CPedDamageResponseCalculator* calculator, CPedGTA* pP
 	if (!pNetGame) return false;
 
     CPedGTA* pDamager = calculator->m_pDamager;
-	if (pDamager != pGamePed && IsValidGamePed(pGamePed)) /* CCivilianPed */
-		return true;
+	{
+		// CORRECAO (dano): este teste devolvia 'true' (= ignora o dano) para QUALQUER agressor que nao fosse o jogador local,
+		// porque IsValidGamePed(pGamePed) confere o ped LOCAL (sempre valido). Assim o tiro de outro jogador no ped local
+		// nunca virava SendTakeDamageEvent: o servidor nao recebia OnPlayerTakeDamage e a vida nao descia.
+		// Agora so se deixa passar "jogador remoto atingindo o ped local"; todo o resto segue ignorado, como antes.
+		const bool damagerIsLocal = (pDamager == pGamePed);
+		const bool victimIsLocal = (pPed == pGamePed);
+		const PLAYERID damagerId = (!damagerIsLocal && pDamager) ? FindPlayerIDFromGtaPtr(pDamager) : INVALID_PLAYER_ID;
+		if (DamageRules::Ignore(damagerIsLocal, victimIsLocal, damagerId != INVALID_PLAYER_ID))
+			return true;
+		if (!damagerIsLocal) FLog("[DANO] jogador %d me acertou: fator=%.2f arma=%d parte=%d", (int)damagerId,
+			calculator->m_fDamageFactor, calculator->m_weaponType, calculator->m_pedPieceType);
+	}
 
 	if (pPed == pGamePed) {
 		isLocalPed = true;

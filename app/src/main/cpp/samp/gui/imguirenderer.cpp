@@ -19,6 +19,12 @@ void ImGuiRenderer::drawRect(const ImVec2& a, const ImVec2& b, const ImColor& co
 		m_drawList->AddRect(a, b, color, 0.0f, 15, thickness);
 }
 
+void ImGuiRenderer::drawRoundedRect(const ImVec2& a, const ImVec2& b, const ImColor& color, float rounding, bool fill, float thickness)
+{
+	fill ? m_drawList->AddRectFilled(a, b, color, rounding) :
+		m_drawList->AddRect(a, b, color, rounding, 15, thickness);
+}
+
 void ImGuiRenderer::drawRectFilledMulticolor(const ImVec2& a, const ImVec2& b,
 	const ImColor& col_upr_left, const ImColor& col_upr_right,
 	const ImColor& col_bot_right, const ImColor& col_bot_left)

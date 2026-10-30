@@ -115,8 +115,10 @@ public class SettingsFragment extends Fragment {
 
         // Travados: Keyboard/Voice chat ligados, versao sempre a ultima; FPS e Monet ocultos.
         com.samp.mobile.launcher.util.FixedSettings.apply(getActivity());
-        mKeyboardSwitch.setChecked(true);
+        // Teclado: agora e NATIVO do jogo (sempre), nao ha mais escolha. Linha escondida.
+        mKeyboardSwitch.setChecked(false);
         mKeyboardSwitch.setEnabled(false);
+        if (mKeyboardSwitch.getParent() instanceof View) ((View) mKeyboardSwitch.getParent()).setVisibility(View.GONE);
         mVoiceSwitch.setChecked(true);
         mVoiceSwitch.setEnabled(false);
         autoCompleteTextView.setSelection(titles.length - 1);
@@ -289,7 +291,7 @@ public class SettingsFragment extends Fragment {
         super.onResume();
 
         com.samp.mobile.launcher.util.FixedSettings.apply(getActivity());
-        mKeyboardSwitch.setChecked(true);
+        mKeyboardSwitch.setChecked(false);
         mVoiceSwitch.setChecked(true);
         mModifySwitch.setChecked(new SharedPreferenceCore().getBoolean(requireContext().getApplicationContext(), "MODIFIED_DATA"));
         autoCompleteTextView.setSelection(titles.length - 1);

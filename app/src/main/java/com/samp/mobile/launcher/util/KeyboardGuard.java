@@ -59,11 +59,8 @@ public final class KeyboardGuard {
         try {
             Report r = check(a);
             last = r;
-            if (!r.imeOk) {
-                Toast.makeText(a, "Nenhum teclado do Android ativo: o jogo vai usar o teclado interno. Para o teclado do Android, ative um em Ajustes > Idioma e entrada.", Toast.LENGTH_LONG).show();
-            }
             if (!r.iniOk) {
-                Toast.makeText(a, "Não foi possível garantir o teclado do Android no settings.ini. Use CORREÇÕES > Exportar relatório.", Toast.LENGTH_LONG).show();
+                Toast.makeText(a, "Não foi possível gravar o settings.ini. Use CORREÇÕES > Exportar relatório.", Toast.LENGTH_LONG).show();
             }
         } catch (RuntimeException e) {
             // a analise nunca pode impedir o jogador de entrar
@@ -75,7 +72,7 @@ public final class KeyboardGuard {
         Report r = new Report();
         Context app = ctx.getApplicationContext();
         analyzeIme(app, r);                                    // antes do ini: decide se a chave vai para 1 ou 0
-        r.wanted = (r.imeKnown && !r.imeOk) ? "0" : "1";
+        r.wanted = "0";                                       // o jogo usa SEMPRE o teclado nativo (nao depende do Android)
         File dir = app.getExternalFilesDir(null);
         if (dir == null) { r.notes.add("armazenamento do app indisponivel"); r.iniOk = false; return r; }
         File ini = new File(dir, "SAMP/settings.ini");
@@ -101,7 +98,7 @@ public final class KeyboardGuard {
             final boolean want = "1".equals(r.wanted);
             if (IniFix.asBool(IniFix.read(text, "gui", "androidkeyboard"), false) != want) {
                 String fixed = IniFix.enforce(text, "gui", "androidkeyboard", r.wanted);
-                if (write(ini, fixed)) { r.iniFixed = true; r.notes.add("androidkeyboard ajustado para " + r.wanted + (want ? "" : " (sem teclado do Android ativo)")); }
+                if (write(ini, fixed)) { r.iniFixed = true; r.notes.add("androidkeyboard ajustado para " + r.wanted + " (teclado nativo do jogo)"); }
                 else r.notes.add("falha ao gravar settings.ini");
                 text = read(ini);
             }

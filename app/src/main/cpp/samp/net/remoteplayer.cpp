@@ -790,7 +790,10 @@ void CRemotePlayer::StoreBulletFullSyncData(BULLET_SYNC_DATA* btSync)
 			{
 				if (btSync->PlayerID == pPlayerPool->GetLocalPlayerID())
 				{
-					pEntity = reinterpret_cast<CEntityGTA *>(&pGame->FindPlayerPed()->m_pPed);
+					// CORRECAO (dano): antes passava &m_pPed (o ENDERECO do ponteiro, um CPedGTA**) como se fosse a entidade;
+					// o hook de ProcessLineOfSight lia posicao/matriz de lixo e o tiro nunca acertava o ped local.
+					pEntity = reinterpret_cast<CEntityGTA *>(pGame->FindPlayerPed()->m_pPed);
+					FLog("[TIRO] jogador %d atirou no jogador local (arma %d, hit=%d)", (int)m_PlayerID, (int)btSync->byteWeaponID, (int)btSync->byteHitType);
 				}
 				else if (btSync->PlayerID == m_PlayerID)
 				{
@@ -800,7 +803,7 @@ void CRemotePlayer::StoreBulletFullSyncData(BULLET_SYNC_DATA* btSync)
 				{
 					CPlayerPed* pPlayerPed = pPlayerPool->GetAt(btSync->PlayerID)->GetPlayerPed();
 					if (pPlayerPed) {
-						pEntity = reinterpret_cast<CEntityGTA *>(&pPlayerPed->m_pPed);
+						pEntity = reinterpret_cast<CEntityGTA *>(pPlayerPed->m_pPed);   // ponteiro do ped, nao o endereco do membro
 					}
 				}
 			}
@@ -812,7 +815,7 @@ void CRemotePlayer::StoreBulletFullSyncData(BULLET_SYNC_DATA* btSync)
 			{
 				if (pVehiclePool->GetSlotState(btSync->PlayerID))
 				{
-					pEntity = reinterpret_cast<CEntityGTA *>(&pVehiclePool->GetAt(
+					pEntity = reinterpret_cast<CEntityGTA *>(pVehiclePool->GetAt(
                             btSync->PlayerID)->m_pVehicle);
 				}
 			}

@@ -167,7 +167,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
             @Override
             public void run() {
                 Log.d("AXL", "showKeyboard()");
-                mKeyboard.ShowInputLayout();
+                if (mKeyboard != null) mKeyboard.ShowInputLayout();
             }
         });
     }
@@ -177,7 +177,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                mKeyboard.HideInputLayout();
+                if (mKeyboard != null) mKeyboard.HideInputLayout();
             }
         });
     }
@@ -225,7 +225,10 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
 
         //mHeightProvider = new HeightProvider(this);
 
-        mKeyboard = new CustomKeyboard(this);
+        // Teclado do chat agora e NATIVO (C++/ImGui). A View Java (CustomKeyboard) nao e mais criada: ela dependia do
+        // teclado do Android e quebrava em alguns aparelhos. Os metodos showKeyboard/hideKeyboard abaixo seguem existindo
+        // (o lado nativo os resolve por nome) mas nao fazem nada.
+        mKeyboard = null;
 
         mDialog = new DialogManager(this);
 
