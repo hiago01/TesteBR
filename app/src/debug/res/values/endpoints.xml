@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Somente build debug: servidor de desenvolvimento em HTTP (permitido por src/debug/res/xml/network_security_config.xml). -->
+<!-- Build debug: mesmo servidor do release (HTTPS no dominio proprio). Pode apagar este arquivo: o valor de src/main e o mesmo. -->
 <resources>
-    <string name="endpoint_base_url" translatable="false">http://201.33.84.96:8080</string>
+    <string name="endpoint_base_url" translatable="false">https://maximoroleplay.com.br</string>
 </resources>
