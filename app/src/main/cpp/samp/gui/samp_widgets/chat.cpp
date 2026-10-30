@@ -1,3 +1,4 @@
+#include "../../game/Diag.h"
 #include "../gui.h"
 #include "../../main.h"
 #include "../../game/game.h"
@@ -162,6 +163,11 @@ if (input == "/skin7" || input.rfind("/skin7 ", 0) == 0)
             std::string reply = CCustomSkin::DebugCommand(args);
             addDebugMessage("%s", reply.c_str());
 
+            return;
+        }
+if (input == "/diag")
+        {
+            addDebugMessage("%s", Diag::Summary().c_str());
             return;
         }
 if (input == "/radarskin" || input.rfind("/radarskin ", 0) == 0)

@@ -2,6 +2,7 @@
 // Created by x1y2z on 11.01.2023.
 //
 
+#include "Diag.h"
 #include "Streaming.h"
 #include "../vendor/armhook/patch.h"
 #include "StreamingInfo.h"
@@ -31,7 +32,7 @@ bool CStreaming::TryLoadModel(int modelId) {
         if (!CStreaming::GetInfo(modelId).HasCdPosnAndSize()) {
             // O LoadCdDirectory nao ligou este ID a nenhum IMG. Plano B: se o nome do modelo existe no touch.img,
             // liga na mao (causa tipica: cache posicional MODELS\MINFO.BIN velho, ja contornado em InitImageList).
-            if (modelId >= 612 && CustomImg::AttachFromTouch(modelId))
+            if (modelId >= 612 && Diag::On("touch") && CustomImg::AttachFromTouch(modelId))
                 CustomImg::LogModelState(modelId, "TryLoadModel/apos-plano-B");
             else {
                 // ID sem entrada em nenhum IMG: nada sera lido do disco, nao adianta esperar
@@ -241,11 +242,11 @@ void CStreaming::InjectHooks() {
 
     CHook::Redirect("_ZN10CStreaming13InitImageListEv", &CStreaming::InitImageList);
     // touch.img: ignora o cache posicional MODELS\MINFO.BIN (ver CustomImg.h) para o diretorio dos IMGs ser ligado pelo NOME
-    CustomImg::InstallAcceleratorBypass();
+    if (Diag::On("touch")) CustomImg::InstallAcceleratorBypass();
     // CINFO.BIN (cache de colisao): invalida o cache velho antes do CColAccel::startCache (ver CustomCol.h)
-    CustomCol::InstallCinfoGuard();
+    if (Diag::On("col")) CustomCol::InstallCinfoGuard();
     // IPL por instancia (texdb/ipl/*.ipl): mistura no CIplStore::LoadIpl (ver CustomIpl.h / LEIA-ME_IPL.md)
-    CustomIpl::Install();
+    if (Diag::On("ipl")) CustomIpl::Install();
     CHook::Redirect("_ZN10CStreaming12MakeSpaceForEi", &CStreaming::MakeSpaceFor);
     //CHook::Redirect("_ZN10CStreaming22LoadAllRequestedModelsEb", &CStreaming::LoadAllRequestedModels);
 }
@@ -289,7 +290,7 @@ void CStreaming::InitImageList() {
 
     // touch.img: veiculos/skins customizados (ids no samp.ide / vehicles.ide). So o diretorio e' lido aqui;
     // o DFF so vem do disco quando o modelo e' requisitado (criar veiculo / setar skin com o ID).
-    if (CustomImg::ImgPresent())
+    if (Diag::On("touch") && CustomImg::ImgPresent())
     {
         const int idx = CStreaming::AddImageToList(CustomImg::kImgListName, true);
         FLog("[TOUCH] %s registrado no slot %d (handle=%d)", CustomImg::kImgListName, idx,

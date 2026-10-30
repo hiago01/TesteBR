@@ -1,3 +1,4 @@
+#include "Diag.h"
 #include <GLES2/gl2.h>
 #include <cstring>
 #include <atomic>
@@ -2439,8 +2440,8 @@ void ClothesFrameTick()
 
     VitalStatsClothesWatchdog();           // fecha /roupas se o jogo parou de perguntar
     CCameraZoom::Process();                // aplica o zoom de camera salvo (pinca desativada)
-    CClothesSync::Process();               // CJ real (RPC do servidor e /cj)
-    CCustomSkin::Process();                // skin DFF (/skin7)
+    if (Diag::On("clothes")) CClothesSync::Process();               // CJ real (RPC do servidor e /cj)
+    if (Diag::On("skin")) CCustomSkin::Process();                // skin DFF (/skin7)
     CorpTex::Process();                    // texturas por corporacao, por jogador (/corp)
     ProcessPendingPlayerClothesRebuild();  // testes manuais (/testeclothes)
 }
@@ -3586,7 +3587,7 @@ void TestPlayerClothesDesc()
 void SetUpGLHooks();
 void InstallHooks()
 {
-CustomSkinStream::Install();
+if (Diag::On("dff")) CustomSkinStream::Install();
 CHook::InlineHook(
     "_Z25HandleTextureEnhancementsP8RwRaster",
     &HandleTextureEnhancements_hook,
@@ -3700,7 +3701,7 @@ CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
     CHook::Redirect("_ZN6CRadar19GetRadarTraceColourEjhh", &CRadar__GetRadarTraceColor); // dangerous
     CHook::InlineHook("_ZN6CRadar12SetCoordBlipE9eBlipType7CVectorj12eBlipDisplayPc", &CRadar__SetCoordBlip_hook, &CRadar__SetCoordBlip);
     CHook::InlineHook("_ZN6CRadar20DrawRadarGangOverlayEb", & CRadar_DrawRadarGangOverlay_hook, &CRadar_DrawRadarGangOverlay);
-    RadarSkin::InstallHooks();   // tiles PNG no radar nativo (volta ao nativo se faltar PNG ou /radarskin off)
+    if (Diag::On("radarskin")) RadarSkin::InstallHooks();   // tiles PNG no radar nativo (volta ao nativo se faltar PNG ou /radarskin off)
 
     CHook::Redirect("_Z10GetTexturePKc", &CUtil::GetTexture);
 

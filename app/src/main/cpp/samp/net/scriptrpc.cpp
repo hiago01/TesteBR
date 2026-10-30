@@ -1,3 +1,4 @@
+#include "../game/Diag.h"
 #include "../main.h"
 #include "../game/game.h"
 #include "netgame.h"
@@ -1995,7 +1996,7 @@ void ScrSetPlayerClothes(RPCParameters* rpcParams)
 		items[n++] = it;
 	}
 
-	CClothesSync::Receive(playerId, (flags & 1) != 0, items, n);
+	if (Diag::On("clothes")) CClothesSync::Receive(playerId, (flags & 1) != 0, items, n);
 }
 
 // HUD do jogador: servidor -> client (RPC_ScrSetHud = 201)
@@ -2123,11 +2124,11 @@ void RegisterScriptRPCs(RakClientInterface *pRakClient)
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrMap, ScrMap);
 	WorldMapWidget::Reset();
 	InventoryUI::Reset();  // nova conexão: inventário fechado e vazio
-	CustomAnimSync::Register(pRakClient);   // RPC 230: anim customizada (servidor -> cliente)
+	if (Diag::On("anim")) CustomAnimSync::Register(pRakClient);   // RPC 230: anim customizada (servidor -> cliente)
 	CustomAnimSync::ClearAll();             // nova conexão: descarta estado da sessão anterior
-	CorpTex::Register(pRakClient);          // RPC 231: textura por corporação (servidor -> cliente)
+	if (Diag::On("corptex")) CorpTex::Register(pRakClient);          // RPC 231: textura por corporação (servidor -> cliente)
 	CorpTex::ClearAll();                    // nova conexão: descarta corps da sessão anterior
-	CustomAnimTest::AutoLoad();                // carrega SAMP/anims/poses.ifp (cruzar bracos / apontar) se existir
+	if (Diag::On("anim")) CustomAnimTest::AutoLoad();                // carrega SAMP/anims/poses.ifp (cruzar bracos / apontar) se existir
 	Hose_Stop(-1);         // nova conexão: solta qualquer mangueira da sessão anterior
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetPlayerName, ScrSetPlayerName);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetPlayerPos, ScrSetPlayerPos);
