@@ -18,6 +18,7 @@ import com.joom.paranoid.Obfuscate;
 import com.samp.mobile.R;
 import com.samp.mobile.launcher.MainActivity;
 import com.samp.mobile.launcher.config.Config;
+import com.samp.mobile.launcher.util.NickManager;
 import com.samp.mobile.launcher.util.SAMPServerInfo;
 import com.samp.mobile.launcher.util.ViewPagerWithoutSwipe;
 
@@ -91,6 +92,16 @@ public class ServersFragment extends Fragment implements MainActivity.ServerStat
                     main.refreshAll();
                 }
             });
+            view.findViewById(R.id.mx_nick_chip).setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    // Tela de Nick (antes ficava em Configuracoes). Aqui pode cancelar; na 1a conexao e obrigatoria.
+                    NickManager.showDialog(main, !NickManager.hasNick(main), new NickManager.Callback() {
+                        @Override public void onNick(String nick) { updateNickChip(); }
+                    });
+                }
+            });
+            updateNickChip(view);
             view.findViewById(R.id.mx_btn_connect).setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
@@ -101,9 +112,20 @@ public class ServersFragment extends Fragment implements MainActivity.ServerStat
         return view;
     }
 
+    private void updateNickChip() { updateNickChip(getView()); }
+
+    private void updateNickChip(View root) {
+        if (root == null || getActivity() == null) return;
+        TextView t = root.findViewById(R.id.mx_nick_chip_text);
+        if (t == null) return;
+        String n = NickManager.getNick(getActivity());
+        t.setText(n == null ? getString(R.string.mx_nick_chip_empty) : getString(R.string.mx_nick_chip, n));
+    }
+
     @Override
     public void onStart() {
         super.onStart();
+        updateNickChip();
         View view = getView();
         if (view != null) {
             TabLayout tabLayout = view.findViewById(R.id.tabLayout_servers);

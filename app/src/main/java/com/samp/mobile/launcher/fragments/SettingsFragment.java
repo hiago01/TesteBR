@@ -85,8 +85,6 @@ public class SettingsFragment extends Fragment {
         try {
             mWini = new Wini(file);
 
-            mNickName.setText(mWini.get("client", "name"));
-
             mWini.store();
         } catch (IOException e) {
             e.printStackTrace();
@@ -115,33 +113,9 @@ public class SettingsFragment extends Fragment {
             }
         });
 
-        mNickName.addTextChangedListener(new TextWatcher() {
-            @Override
-            public void beforeTextChanged(CharSequence charSequence, int i, int i1, int i2) {
-
-            }
-
-            @Override
-            public void onTextChanged(CharSequence charSequence, int i, int i1, int i2) {
-                String text = charSequence.toString();
-                File file = new File(getActivity().getExternalFilesDir(null) + "/SAMP/settings.ini");
-                if(file.exists()) {
-                    try {
-                        if(mWini != null) {
-                            mWini.put("client", "name", text);
-                            mWini.store();
-                        }
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }
-
-            @Override
-            public void afterTextChanged(Editable editable) {
-
-            }
-        });
+        // Nick agora e escolhido na tela Servidores (NickManager); o campo foi removido das Configuracoes.
+        View nickCard = view.findViewById(R.id.settings_nick_card);
+        if (nickCard != null) nickCard.setVisibility(View.GONE);
 
         mModifySwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override

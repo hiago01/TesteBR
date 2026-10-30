@@ -138,7 +138,14 @@ public class ServerInformationFragment extends Dialog {
      * Fluxo ORIGINAL de conexao: grava host/porta em SAMP/settings.ini, confere os arquivos do jogo
      * e abre a SAMP activity. Usado pelo dialogo de detalhes e pelo botao CONECTAR do painel.
      */
-    public static void launchGame(Activity activity, SAMPServerInfo info) {
+    public static void launchGame(final Activity activity, final SAMPServerInfo info) {
+        // Primeira vez: tela "Escolha seu Nick" (obrigatoria) antes de entrar no servidor.
+        com.samp.mobile.launcher.util.NickManager.ensureNick(activity, new Runnable() {
+            @Override public void run() { launchGameNow(activity, info); }
+        });
+    }
+
+    private static void launchGameNow(Activity activity, SAMPServerInfo info) {
         File file = new File(activity.getExternalFilesDir(null) + "/SAMP/settings.ini");
         if (file.exists()) {
             try {

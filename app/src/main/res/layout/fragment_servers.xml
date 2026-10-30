@@ -156,9 +156,38 @@
             android:textColor="@color/mx_text_dim"
             android:textSize="9sp"
             app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toStartOf="@+id/mx_btn_connect"
+            app:layout_constraintEnd_toStartOf="@+id/mx_nick_chip"
             app:layout_constraintStart_toEndOf="@+id/mx_hint_icon"
             app:layout_constraintTop_toTopOf="parent" />
+
+        <LinearLayout
+            android:id="@+id/mx_nick_chip"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/mx_bg_btn_ghost"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@+id/mx_btn_connect"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <TextView
+                android:id="@+id/mx_nick_chip_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="@font/montserrat_bold"
+                android:maxWidth="130dp"
+                android:maxLines="1"
+                android:text="@string/mx_nick_chip_empty"
+                android:textColor="@color/mx_accent"
+                android:textSize="10sp" />
+        </LinearLayout>
 
         <LinearLayout
             android:id="@+id/mx_btn_connect"
