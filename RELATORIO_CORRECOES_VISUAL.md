@@ -46,3 +46,12 @@ Correção (CorpTex.cpp + LookSlots.h):
 - O servidor não obriga tom do rosto == tom do corpo; quem garante é o cliente ao escolher PELE.
 - Molde model-7 compartilhado: limite anterior continua.
 - É preciso recompilar `maximorp.amx`.
+
+---
+# Provador com conta nova (corpo/rosto/pernas invisíveis)
+
+**Causa (reproduzida no teste de host, não no aparelho):** o `contanova.ini` está correto (7 slots padrão). Ao abrir o /provador o cliente reinstala o molde (DFF puro, onde TODAS as peças estão "visíveis" com textura invisível) e só aplica os slots que o servidor lista. Conta nova lista 7 slots; os outros (camisas, calças, tênis...) ficavam "visíveis" e a regra de cobertura (`CoveredByGarments`) escondia pele, pés e roupa íntima. Sobravam cabelo e mãos. Contas antigas têm "off" gravado nas peças, por isso não sofriam.
+
+**Correção:** `SyncMoldFromServer` oculta primeiro todo slot que o servidor não lista (mesma regra `PlanWithDefaults` usada para os outros jogadores) e só depois aplica os slots do servidor. Esses slots continuam aparecendo como "padrão, nada equipado" (não "desligado") na lista do /provador.
+
+**Testado:** `sh testes/run_host_provador.sh` (novo bloco "CONTA NOVA" falhava antes e passa agora). **Não testado:** aparelho, APK, servidor real. Snapshot que chega DEPOIS do molde já preparado não reaplica o molde (comportamento anterior, não alterado).

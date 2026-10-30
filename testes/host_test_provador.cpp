@@ -567,6 +567,32 @@ int main()
         CHECK(Ui("prepare")); CHECK(InstalledOurs());
         std::remove(marker.c_str());
 
+        // ---- CONTA NOVA (contanova.ini): servidor tem so os 7 slots padrao (estado 2, variante 1; head1=101), molde reinstalado ao abrir ----
+        {
+            installed = nullptr; s_installed = nullptr; s_prepLastMs = 0; s_prepGiveUp = false; s_prepAutoFail = 0; g_hostModelLoaded = true;
+            std::remove(marker.c_str());
+            s_hidden.assign(n, 1); s_matPack.clear(); s_slotVar.clear();
+            g_hostSrv = ProvadorModel::NewTable();
+            const char* defs[] = { "skin_torso", "skin_leg", "skin_feet", "head1", "brow1", "hair1", "underwear" };
+            for (const char* d : defs) g_hostSrv[(size_t)SlotId(d)] = ProvadorModel::Srv{true, 2, (uint16_t)(std::string(d) == "head1" ? 101 : 1)};
+            g_hostSrvHave = true; ++g_hostSrvVer; g_hostChat.clear(); g_hostLocalModel = 7;
+            CHECK(Ui("refresh")); CHECK(InstalledOurs());
+            for (const char* d : defs) {
+                const SkinSlots::Slot& sl = SkinSlots::kSlots[(size_t)SlotId(d) - 1];
+                const std::vector<int> idx = SlotMaterials(sl);
+                bool allVis = !idx.empty();
+                for (int i : idx) if (s_hidden[(size_t)i]) allVis = false;
+                if (!allVis) { std::printf("CONTA NOVA: slot %s com material oculto/sem material (%zu mats)\n", d, idx.size());
+                    for (int i : idx) std::printf("   mat %d hidden=%d tex=%s\n", i, (int)s_hidden[(size_t)i], s_parsed.materialsList[(size_t)i].texture.c_str()); }
+                CHECK(allVis);
+            }
+            auto st2 = Pub();
+            for (const char* d : defs) { if (U(st2, d).state != ProvadorModel::kEquipped) std::printf("CONTA NOVA: %s estado=%d\n", d, (int)U(st2, d).state); CHECK(U(st2, d).state == ProvadorModel::kEquipped); }
+            CHECK(U(st2, "torso1").state == ProvadorModel::kDefault && U(st2, "pants1").state == ProvadorModel::kDefault && U(st2, "boot1").state == ProvadorModel::kDefault);   // "padrao, nada equipado"
+            CHECK(!U(st2, "torso1").previewed && !st2.pending);
+            std::remove(marker.c_str());
+        }
+
         installed = nullptr; s_installed = nullptr; s_prepLastMs = 0; s_prepGiveUp = false; g_hostSrvHave = false;
         CHECK(Ui("refresh")); CHECK(InstalledOurs());
         st = Pub(); CHECK(!st.serverSynced && U(st, "hair2").state == ProvadorModel::kDefault);

@@ -183,6 +183,7 @@ namespace
     bool        s_wasOnline    = false;
     uint64_t    s_lastSyncMs   = 0;
     uint32_t    s_srvSeenVer   = 0;
+    std::vector<uint8_t> s_defHide;                 // materiais ocultos POR PADRAO (slot que o servidor nao lista): ver SyncMoldFromServer
     std::string s_notice;                       // evento assíncrono para a UI mostrar 1x
     uint32_t    s_noticeSeq    = 0;
     std::unordered_map<std::string, std::vector<int>> s_varCache;   // pasta -> variantes (evita varrer o pack a cada publicação)
@@ -1475,7 +1476,7 @@ namespace
 
         if (arg == "on" || arg == "off")
         {
-            for (int i : idx) { s_hidden.resize(s_parsed.materialsList.size(), 0); s_hidden[(size_t)i] = (arg == "off") ? 1 : 0; }
+            for (int i : idx) { s_hidden.resize(s_parsed.materialsList.size(), 0); s_hidden[(size_t)i] = (arg == "off") ? 1 : 0; if ((size_t)i < s_defHide.size()) s_defHide[(size_t)i] = 0; }
             RecountHidden();
             std::string note; ApplyHiddenToTemplate(note);
             std::string exNote;
@@ -1871,6 +1872,23 @@ namespace
         if (!have) return;                                // sem snapshot: molde puro = padrão
         int applied = 0, failed = 0;
         s_lookSuppress = true;
+        // Slot que o servidor NAO lista = padrao = oculto (mesma regra do CorpTex::PlanWithDefaults para os outros jogadores).
+        // Sem isso, conta nova (so 7 slots no .ini) ficava com todas as pecas do DFF "visiveis" (textura invisivel) e a cobertura
+        // (CoveredByGarments) escondia pele/rosto/intima: no /provador so aparecia cabelo e maos.
+        {
+            s_hidden.resize(s_parsed.materialsList.size(), 0);
+            s_defHide.assign(s_parsed.materialsList.size(), 0);
+            int hid = 0;
+            for (int id = 1; id <= SkinSlots::kCount; ++id)
+            {
+                const ProvadorModel::Srv& v = (size_t)id < t.size() ? t[(size_t)id] : ProvadorModel::Srv();
+                if (v.known) continue;
+                for (int i : SlotMaterials(SkinSlots::kSlots[id - 1]))
+                    if ((size_t)i < s_hidden.size() && !s_hidden[(size_t)i]) { s_hidden[(size_t)i] = 1; s_defHide[(size_t)i] = 1; ++hid; }
+            }
+            if (hid) { RecountHidden(); std::string n; ApplyHiddenToTemplate(n); }
+            FLog("[SKIN7] sync: %d material(is) de slots nao listados pelo servidor ocultados (padrao)", hid);
+        }
         for (int id = 1; id <= SkinSlots::kCount; ++id)
         {
             const ProvadorModel::Srv& v = (size_t)id < t.size() ? t[(size_t)id] : ProvadorModel::Srv();
@@ -1893,6 +1911,7 @@ namespace
         s_await = Awaiting();
         s_lookQ.clear(); s_lookPrevQ.clear();
         s_varCacheOn = false;
+        s_defHide.clear();
         std::fill(s_hidden.begin(), s_hidden.end(), 0);   // molde novo = DFF puro (DoApply reaproveitaria o oculto antigo)
         s_matPack.clear(); s_slotVar.clear();
         DoApply();
@@ -2077,6 +2096,19 @@ namespace
             }
             c.variant = variant;
             u.state     = ProvadorModel::Classify(c);
+            // slot que o servidor nao registra = padrao = oculto de proposito (SyncMoldFromServer): para o jogador e "nada equipado",
+            // nao "desligado". So um DESLIGAR feito na previa (diferente do backup) aparece como desligado.
+            bool defHid = !idx.empty();
+            for (int i : idx) if (!((size_t)i < s_defHide.size() && s_defHide[(size_t)i])) defHid = false;
+            if (u.state == ProvadorModel::kDisabled && st.serverSynced && !sv.known && !differsFromBackup && defHid)
+            {
+                bool otherWorn = false;                              // oculto porque OUTRA peca do mesmo grupo esta vestida (hair1 com hair2): continua "desligado"
+                const int g = SkinSlots::GroupOf(sl.name);
+                if (g >= 0)
+                    for (int o = 1; o <= SkinSlots::kCount && !otherWorn; ++o)
+                        if (o != k + 1 && SkinSlots::GroupOf(SkinSlots::kSlots[o - 1].name) == g && (size_t)o < srv.size() && srv[(size_t)o].known && srv[(size_t)o].est != 0) otherWorn = true;
+                if (!otherWorn) u.state = ProvadorModel::kDefault;
+            }
             u.visible   = c.hidden == 0;
             u.partial   = c.hidden > 0 && c.hidden < c.total;
             u.previewed = s_bak.active && differsFromBackup;
