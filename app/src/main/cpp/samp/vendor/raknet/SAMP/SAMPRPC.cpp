@@ -158,3 +158,5 @@ int RPC_ScrSetHud = 201;
 int RPC_ScrSetIdCard = 202;
 // Inventario Maximo RP (servidor -> cliente; ver gui/samp_widgets/inventory.h) - ID customizado, livre no 0.3.7
 int RPC_ScrInventory = 203;
+// Mapa aberto Maximo RP (servidor -> cliente; ver gui/samp_widgets/WorldMapCore.h) - ID customizado
+int RPC_ScrMap = 204;

@@ -28,6 +28,7 @@
 #include "samp_widgets/weaponbar.h"
 #include "samp_widgets/hud.h"
 #include "samp_widgets/inventory.h"
+#include "samp_widgets/worldmap.h"
 #include "samp_widgets/provador.h"
 #include "samp_widgets/maximomenu.h"
 
@@ -109,6 +110,7 @@ private:
 	HudInfo* m_hud = nullptr;
 	MaximoMenu* m_maximoMenu = nullptr;
 	InventoryUI* m_inventory = nullptr;
+	WorldMapWidget* m_worldmap = nullptr;
 	Provador* m_provador = nullptr;
 	Label* label;
     Label* label2;

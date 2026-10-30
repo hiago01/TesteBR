@@ -114,6 +114,13 @@ bool UI::initialize()
 	m_inventory->setPosition(ImVec2(0.0f, 0.0f));
 	m_inventory->setVisible(true);
 
+	// Mapa aberto (/mapa, aba MAPA do menu ou servidor). So desenha quando aberto.
+	m_worldmap = new WorldMapWidget();
+	this->addChild(m_worldmap);
+	m_worldmap->setFixedSize(size());
+	m_worldmap->setPosition(ImVec2(0.0f, 0.0f));
+	m_worldmap->setVisible(true);
+
 	// Provador (/provador): personalizacao do /skin7. So desenha quando aberto; os toques sao
 	// capturados em AND_TouchEvent_hook (Provador::HandleRawTouch).
 	m_provador = new Provador();

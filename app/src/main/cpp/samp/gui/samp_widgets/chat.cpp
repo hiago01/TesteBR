@@ -163,6 +163,14 @@ if (input == "/skin7" || input.rfind("/skin7 ", 0) == 0)
 
             return;
         }
+if (input == "/mapa" || input.rfind("/mapa ", 0) == 0)
+        {
+            // mapa aberto: /mapa (abre/fecha) | /mapa grade | /mapa info
+            const std::string args = input.size() > 5 ? input.substr(6) : std::string();
+            if (args == "grade" || args == "info") addDebugMessage("%s", WorldMapWidget::DebugCommand(args).c_str());
+            else WorldMapWidget::Toggle();
+            return;
+        }
 if (input == "/provador" || input.rfind("/provador ", 0) == 0)
         {
             // interface de personalizacao do /skin7: /provador (abre/fecha) | /provador fechar

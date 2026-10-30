@@ -7,6 +7,7 @@
 #include "../game/Hose.h"
 #include "../game/IdCard3D.h"
 #include "../gui/samp_widgets/inventory.h"
+#include "../gui/samp_widgets/worldmap.h"
 #include "../game/CustomAnimSync.h"
 #include "../game/CorpTex.h"
 #include "../game/CustomAnimTest.h"
@@ -2050,6 +2051,14 @@ void ScrInventory(RPCParameters* rpcParams)
 	InventoryUI::OnServerPacket(Data, (iBitLength / 8) + 1);
 }
 
+// Mapa aberto Maximo RP: servidor -> client (RPC_ScrMap = 204). Formato em WorldMapCore.h / maximo_mapa.inc.
+void ScrMap(RPCParameters* rpcParams)
+{
+	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
+	int iBitLength = rpcParams->numberOfBitsOfData;
+	WorldMapWidget::OnServerPacket(Data, (iBitLength / 8) + 1);
+}
+
 void RegisterScriptRPCs(RakClientInterface *pRakClient)
 {
 	FLog("Registering script RPC's..");
@@ -2111,6 +2120,8 @@ void RegisterScriptRPCs(RakClientInterface *pRakClient)
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetIdCard, ScrSetIdCard);
 	IdCard3D_Reset();      // nova conexão: descarta cartões da sessão anterior
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrInventory, ScrInventory);
+	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrMap, ScrMap);
+	WorldMapWidget::Reset();
 	InventoryUI::Reset();  // nova conexão: inventário fechado e vazio
 	CustomAnimSync::Register(pRakClient);   // RPC 230: anim customizada (servidor -> cliente)
 	CustomAnimSync::ClearAll();             // nova conexão: descarta estado da sessão anterior
@@ -2173,6 +2184,8 @@ void UnregisterScriptRPCs(RakClientInterface *pRakClient)
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetHud);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetIdCard);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrInventory);
+	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrMap);
+	WorldMapWidget::Reset();
 	InventoryUI::Reset();
 	IdCard3D_Reset();      // saiu do servidor: limpa cartões
 	CustomAnimSync::Unregister(pRakClient);

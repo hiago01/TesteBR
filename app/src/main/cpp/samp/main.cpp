@@ -293,6 +293,7 @@ extern "C" {
 			return JNI_TRUE;
 		}
 		// So abre/fecha o menu quando o jogo esta pronto (UI criada); antes disso, engole o Voltar.
+		if (WorldMapWidget::OnBackPressed()) return JNI_TRUE;   // mapa aberto: Voltar fecha so ele
 		if (InventoryUI::OnBackPressed()) return JNI_TRUE;   // inventário aberto: Voltar fecha só ele
 		if (Provador::OnBackPressed()) return JNI_TRUE;      // /provador aberto: Voltar cancela a prévia e fecha só ele
 		if (pUI && pUI->maximomenu())

@@ -7,6 +7,7 @@
 #include "../../vendor/armhook/patch.h"
 #include "../../vendor/SimpleIni/SimpleIni.h"
 #include "maximomenu.h"
+#include "worldmap.h"
 
 #include <dlfcn.h>
 #include <algorithm>
@@ -466,6 +467,7 @@ void MaximoMenu::draw(ImGuiRenderer* r)
 			if (ok)
 			{
 				if (g_drag.kind == 1) { g_open.store(false); if (g_dirty) SaveCfg(); g_drag = Drag(); return; }
+				if (g_drag.kind == 2 && g_drag.idx == T_MAPA) { g_open.store(false); if (g_dirty) SaveCfg(); g_drag = Drag(); WorldMapWidget::Open(); return; }
 				if (g_drag.kind == 2) { g_tab = g_drag.idx; g_scroll = 0.0f; g_quitArmedUntil = 0; }
 				if (g_drag.kind == 3) { g_sub = g_drag.idx; g_scroll = 0.0f; }
 				if (g_drag.kind == 4 && g_drag.idx >= 0)
