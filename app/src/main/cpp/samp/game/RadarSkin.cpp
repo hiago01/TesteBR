@@ -136,21 +136,36 @@ namespace
 	}
 
 	void EnsureInit();
+	// Poe o tile do skin em gRadarTextures[idx] se ainda estiver vazio. true = o slot ficou preenchido por nos.
+	bool FillSlot(int x, int y)
+	{
+		if (!g_enabled.load() || x < 0 || x >= kTiles || y < 0 || y >= kTiles) return false;
+		RwTexture** arr = Array();
+		const int idx = y * kTiles + x;
+		if (arr[idx]) return false;
+		if (RwTexture* t = LoadTileDb(idx)) { arr[idx] = t; g_loaded++; return true; }      // 1o: banco texdb (comprimido, sem decodificar PNG)
+		if (RwTexture* t = LoadTile(idx, 0)) { arr[idx] = t; g_loaded++; return true; }      // 2o: PNG
+		return false;                                                                        // 3o: nativo (o original preenche)
+	}
+
 	void CRadar__RequestMapSection_hook(int x, int y)
 	{
 		EnsureInit();
-		if (g_enabled.load() && x >= 0 && x < kTiles && y >= 0 && y < kTiles)
-		{
-			RwTexture** arr = Array();
-			const int idx = y * kTiles + x;
-			if (!arr[idx])
-			{
-				if (RwTexture* t = LoadTileDb(idx)) { arr[idx] = t; g_loaded++; return; }      // 1o: banco texdb (comprimido, sem decodificar PNG)
-				if (RwTexture* t = LoadTile(idx, 0)) { arr[idx] = t; g_loaded++; return; }      // 2o: PNG
-   // refCount 1; RemoveMapSection destroi
-			}
-		}
-		CRadar__RequestMapSection(x, y);   // nativo
+		if (!FillSlot(x, y)) CRadar__RequestMapSection(x, y);   // nativo
+	}
+
+	// O minimapa NAO passa por RequestMapSection: StreamRadarSections(x,y) tem o carregamento INLINE (conferido no
+	// desassembly: GetDatabase/Register/snprintf/GetTexture dentro dele, ldr [x24+idx*8] -> cbnz = pula se ja houver).
+	// Entao antes do original preenchemos nos mesmos a vizinhanca 3x3 (slot ocupado = o original nao toca).
+	void (*CRadar__StreamRadarSections)(int, int) = nullptr;
+	int g_streamCalls = 0;
+	void CRadar__StreamRadarSections_hook(int x, int y)
+	{
+		EnsureInit();
+		g_streamCalls++;
+		if (g_enabled.load())
+			for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) FillSlot(x + dx, y + dy);
+		CRadar__StreamRadarSections(x, y);
 	}
 
 	void PatchOcean(bool custom)
@@ -229,6 +244,7 @@ namespace RadarSkin
 		if (g_installed) return;
 		g_installed = true;
 		CHook::InlineHook("_ZN6CRadar17RequestMapSectionEii", &CRadar__RequestMapSection_hook, &CRadar__RequestMapSection);
+		CHook::InlineHook("_ZN6CRadar19StreamRadarSectionsEii", &CRadar__StreamRadarSections_hook, &CRadar__StreamRadarSections);   // minimapa
 		CHook::InlineHook("_ZN6CRadar12DrawRadarMapEv", &CRadar__DrawRadarMap_hook, &CRadar__DrawRadarMap);
 		// o resto (ler ini, ligar, trocar a cor do oceano) acontece no 1o pedido de tile (EnsureInit): g_pszStorage ja existe
 	}
@@ -255,8 +271,8 @@ namespace RadarSkin
 			return "[RADARSKIN] recarregado";
 		}
 		char b[300];
-		std::snprintf(b, sizeof(b), "[RADARSKIN] %s | PNG=%d banco=%s(%d) | carregados=%d ausentes=%d | oceano=%d,%d,%d | use /radarskin on|off|reload",
-			g_enabled.load() ? "ligado" : "desligado", (int)FileExists(TilePath(0)), g_dbState == 1 ? g_dbFmt : (g_dbState < 0 ? "indisp" : "?"), g_dbHit, g_loaded, g_failed, g_ocean[0], g_ocean[1], g_ocean[2]);
+		std::snprintf(b, sizeof(b), "[RADARSKIN] %s | PNG=%d banco=%s(%d) | streamRadar=%d carregados=%d ausentes=%d | oceano=%d,%d,%d | use /radarskin on|off|reload",
+			g_enabled.load() ? "ligado" : "desligado", (int)FileExists(TilePath(0)), g_dbState == 1 ? g_dbFmt : (g_dbState < 0 ? "indisp" : "?"), g_dbHit, g_streamCalls, g_loaded, g_failed, g_ocean[0], g_ocean[1], g_ocean[2]);
 		return b;
 	}
 
