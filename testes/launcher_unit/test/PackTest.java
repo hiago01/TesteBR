@@ -658,6 +658,8 @@ public class PackTest {
                 PackDownloader.ByteProgress bp = new PackDownloader.ByteProgress() { public void add(long d) { bytes[0] += d; } };
                 ResumeTransfer rt = new ResumeTransfer();
                 File z = PackDownloader.downloadVerified(url, dl, "core", big.length, sha(big), 3, NO_SLEEP, bp, ct(), rt);
+                // o servidor de teste soma "served" depois de escrever: espera ate 2 s (corrida do teste, nao do app)
+                for (int w = 0; w < 200 && served.get() != big.length; w++) { try { Thread.sleep(10); } catch (InterruptedException ie) { break; } }
                 r("retomada: queda no meio -> 2a tentativa continua do ponto (nao baixa tudo de novo)",
                         z.length() == big.length && rt.fetches == 2 && reqs.get() == 2 && served.get() == big.length, "fetches=" + rt.fetches + " reqs=" + reqs.get() + " servido=" + served.get());
                 r("retomada: progresso final = tamanho do pacote (sem dupla contagem)", bytes[0] == big.length, "bytes=" + bytes[0]);

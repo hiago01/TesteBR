@@ -37,6 +37,7 @@ import com.joom.paranoid.Obfuscate;
 import com.samp.mobile.R;
 import com.samp.mobile.launcher.config.Config;
 import com.samp.mobile.launcher.util.SharedPreferenceCore;
+import com.samp.mobile.launcher.util.SecretGesture;
 import com.samp.mobile.launcher.util.SignatureChecker;
 import com.samp.mobile.launcher.util.Util;
 
@@ -55,6 +56,39 @@ public class SplashActivity extends AppCompatActivity {
     private static final long LOAD_TIMEOUT_MS = 30000;
 
     private final Handler mUiHandler = new Handler(android.os.Looper.getMainLooper());
+
+    // ---- Gesto secreto: tocar os 4 cantos (sup.esq -> sup.dir -> inf.dir -> inf.esq) liga/desliga o "modo sem verificacao":
+    // pula a checagem de atualizacao de dados e de APK novo (vai direto ao menu). Persistente ate repetir o gesto.
+    private static final String PREF_SKIP_CHECKS = "skip_update_checks";
+    private static final long SKIP_OPEN_DELAY_MS = 2500;   // tempo para dar o gesto de novo e DESLIGAR o modo
+    private final SecretGesture mSecretGesture = new SecretGesture();
+    private final Runnable mSkipOpen = new Runnable() {
+        @Override public void run() { if (!isFinishing() && !isDestroyed()) openMain(); }
+    };
+
+    private boolean isSkipChecksEnabled() {
+        try { return getSharedPreferences("com.samp.mobile", MODE_PRIVATE).getBoolean(PREF_SKIP_CHECKS, false); }
+        catch (RuntimeException e) { return false; }
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
+        if (ev.getActionMasked() == android.view.MotionEvent.ACTION_UP && mInHandler != null) {
+            final View root = getWindow().getDecorView();
+            if (mSecretGesture.onTap(ev.getRawX(), ev.getRawY(), root.getWidth(), root.getHeight(), android.os.SystemClock.uptimeMillis())) {
+                final boolean on = !isSkipChecksEnabled();
+                try { getSharedPreferences("com.samp.mobile", MODE_PRIVATE).edit().putBoolean(PREF_SKIP_CHECKS, on).apply(); }
+                catch (RuntimeException ignored) { }
+                Toast.makeText(this, on ? "Modo sem verificacao: ATIVADO (nao checa atualizacao/APK). Repita o gesto para desativar."
+                                        : "Modo sem verificacao: DESATIVADO", Toast.LENGTH_LONG).show();
+                mUiHandler.removeCallbacks(mSkipOpen);
+                mUiHandler.removeCallbacks(mLoadTimeout);
+                if (on) mUiHandler.postDelayed(mSkipOpen, 800);   // sai ja para o menu
+                else restartStartup();                            // volta a checar
+            }
+        }
+        return super.dispatchTouchEvent(ev);
+    }
     private boolean mGpuReady = false;
     private boolean mPermissionRequestInFlight = false;
     private boolean mDialogShowing = false;
@@ -236,6 +270,8 @@ public class SplashActivity extends AppCompatActivity {
                     valueOf2 = UpdateActivity.GameStatus.Unknown;
                 }
                 Log.i("x1y2z", "gameStatus = " + valueOf2);
+                // modo sem verificacao: ignora "dados/APK desatualizado" e segue para o menu
+                if (isSkipChecksEnabled() && valueOf2 != UpdateActivity.GameStatus.Updated) valueOf2 = UpdateActivity.GameStatus.Unknown;
 
                 if (valueOf2 == UpdateActivity.GameStatus.UpdateRequired) {
                     // Atualizacao de dados SEMPRE obrigatoria: um unico botao, sem "Nao", sem cancelar.
@@ -357,6 +393,14 @@ public class SplashActivity extends AppCompatActivity {
     }
 
     private void startUpdateService() {
+        if (isSkipChecksEnabled()) {
+            // modo sem verificacao: nao conecta ao UpdateService (sem checar dados nem APK). Pequena espera para o gesto de desligar.
+            Config.clientUpToDate = false;
+            Toast.makeText(this, "Modo sem verificacao ATIVO (gesto dos 4 cantos para desativar)", Toast.LENGTH_SHORT).show();
+            mUiHandler.removeCallbacks(mSkipOpen);
+            mUiHandler.postDelayed(mSkipOpen, SKIP_OPEN_DELAY_MS);
+            return;
+        }
         mIsBind = bindService(new Intent(this, UpdateService.class), mConnection, Context.BIND_AUTO_CREATE);
         if (!mIsBind) {
             Log.e(TAG, "bindService(UpdateService) failed");

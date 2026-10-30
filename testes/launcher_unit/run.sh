@@ -7,7 +7,7 @@ SRC=../../app/src/main/java/com/samp/mobile/launcher/util
 PACK=../../app/src/main/java/com/samp/mobile/launcher/pack
 rm -rf out && mkdir -p out
 JAVAC="javac"; command -v javac >/dev/null 2>&1 || JAVAC="java -m jdk.compiler/com.sun.tools.javac.Main"
-$JAVAC -d out org/json/*.java $SRC/ServerConfigParser.java $SRC/SampQueryAPI.java $SRC/NickRules.java $PACK/*.java test/*.java
+$JAVAC -d out org/json/*.java $SRC/ServerConfigParser.java $SRC/SampQueryAPI.java $SRC/NickRules.java $SRC/SecretGesture.java $PACK/*.java test/*.java
 java -cp out test.ParserTest
 java -cp out test.QueryTest
 java -cp out test.PackTest
@@ -22,6 +22,7 @@ if command -v g++ >/dev/null 2>&1; then
   out/inih_check out/ini/*.ini && echo "INIREADER REAL: androidkeyboard=1 em todos os casos"
 fi
 java -cp out test.NickRulesTest
+java -cp out test.SecretGestureTest
 if command -v g++ >/dev/null 2>&1; then
   g++ -std=c++17 -I../../app/src/main/cpp/samp -o out/nickwire nickwire_check.cpp && out/nickwire
 fi
