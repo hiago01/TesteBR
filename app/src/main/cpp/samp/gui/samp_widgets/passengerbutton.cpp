@@ -5,6 +5,7 @@
 #include "../../game/RW/RenderWare.h"
 #include "../../net/netgame.h"
 #include "../../net/localplayer.h"
+#include "../../util/CUtil.h"
 #include "passengerbutton_logic.h"
 
 #include <chrono>
@@ -91,7 +92,30 @@ void PassengerButton::draw(ImGuiRenderer* r)
 	m_cx.store(c.cx); m_cy.store(c.cy); m_r.store(c.r);
 
 	const bool pressed = m_finger.load() >= 0;
-	const int cooling = (NowMs() - m_lastUseMs.load()) < PassengerLogic::kCooldownMs;
+	const bool cooling = (NowMs() - m_lastUseMs.load()) < PassengerLogic::kCooldownMs;
+
+	// Icone original "enterandexit" (texdb/mobile, o mesmo banco do icone nativo do carro). Carrega sob demanda; se nao achar,
+	// tenta de novo a cada ~2 s e enquanto isso desenha o botao simples "P2".
+	static RwTexture* s_icon = nullptr;
+	static int64_t    s_nextTry = 0;
+	if (!(s_icon && s_icon->raster) && NowMs() >= s_nextTry)
+	{
+		s_nextTry = NowMs() + 2000;
+		s_icon = CUtil::LoadTextureFromDB("mobile", "enterandexit");
+	}
+
+	if (s_icon && s_icon->raster)
+	{
+		float iw = (float)s_icon->raster->width, ih = (float)s_icon->raster->height;
+		if (iw < 1.0f || ih < 1.0f) iw = ih = 1.0f;
+		const float box = c.r * 2.0f, k = std::min(box / iw, box / ih);
+		const float dw = iw * k, dh = ih * k;
+		const int a = cooling ? 110 : 255;
+		const ImColor tint = pressed ? ImColor(255, 220, 90, a) : ImColor(255, 255, 255, a);
+		r->drawImage(ImVec2(c.cx - dw * 0.5f, c.cy - dh * 0.5f), ImVec2(c.cx + dw * 0.5f, c.cy + dh * 0.5f), (ImTextureID)s_icon->raster, tint);
+		return;
+	}
+
 	constexpr int N = 28;
 	ImVec2 p[N];
 	for (int i = 0; i < N; i++) { const float a = (float)i * 6.2831853f / (float)N; p[i] = ImVec2(c.cx + std::cos(a) * c.r, c.cy + std::sin(a) * c.r); }

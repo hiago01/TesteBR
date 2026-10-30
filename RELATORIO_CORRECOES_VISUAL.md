@@ -72,3 +72,6 @@ Correção (CorpTex.cpp + LookSlots.h):
 
 ## Calçados - 2ª rodada (boot1/boot3 ainda sem tornozelo)
 Pela foto nova o pé já aparecia (pele marrom no cabedal/calcanhar), mas o tornozelo continuava cortado. Medindo o skin.dff: `body.leg4` vai até y=-0.69 (a caixa de cobertura dizia -0.81) e as texturas de pele dos 6 tons têm alfa cheio nessas regiões (não é PNG transparente). Então boot1/boot3 passaram a não esconder também `body.legleft4/legright4`. Testado só no host; falta confirmar no aparelho.
+
+## P2: ícone "enterandexit"
+`passengerbutton.cpp` agora desenha a textura `enterandexit` do banco `mobile` (mesma chamada `CUtil::LoadTextureFromDB("mobile", ...)` que o `CWidgetGta::SetTexture` usa para o ícone do carro), no lugar do círculo "P2". Carrega sob demanda, tenta de novo a cada 2 s se não achar e, sem a textura, cai no círculo "P2". Tamanho = diâmetro do botão, toque = mesma área. Não compilado/testado no aparelho (não tenho o texdb aqui, só a lógica de posição está no teste de host).
