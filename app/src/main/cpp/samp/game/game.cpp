@@ -707,7 +707,7 @@ bool CGame::InitialiseRenderWare() {
 #endif
 
     // banco de texturas do touch.img (texdb/touch/). fullyLoad=false: so o indice; texturas sob demanda.
-    if (Diag::On("touch") && CustomImg::DbPresent())
+    if (CustomImg::DbPresent())
     {
         const auto db = TextureDatabaseRuntime::Load(CustomImg::kDbName, false, TextureDatabaseFormat::DF_Default);
         FLog("[TOUCH] banco '%s' %s", CustomImg::kDbName, db ? "carregado" : "FALHOU ao carregar");

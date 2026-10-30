@@ -291,7 +291,8 @@ void CStreaming::InitImageList() {
 
     // touch.img: veiculos/skins customizados (ids no samp.ide / vehicles.ide). So o diretorio e' lido aqui;
     // o DFF so vem do disco quando o modelo e' requisitado (criar veiculo / setar skin com o ID).
-    if (Diag::On("touch") && CustomImg::ImgPresent())
+    // O IMG e SEMPRE registrado (se existir): sem ele o jogo fecha logo depois de "Loading script.img.." (logs de 2026-10-30, 4 execucoes)
+    if (CustomImg::ImgPresent())
     {
         const int idx = CStreaming::AddImageToList(CustomImg::kImgListName, true);
         FLog("[TOUCH] %s registrado no slot %d (handle=%d)", CustomImg::kImgListName, idx,

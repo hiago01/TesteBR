@@ -7,7 +7,7 @@ daí se corrige só ele. Isso é feito por `files/SAMP/diag.ini` (modelo em `dia
 ## Módulos (chaves do diag.ini)
 | chave | o que desliga |
 |---|---|
-| touch | touch.img (carros/skins customizados): registro do IMG, plano B, banco texdb/touch, auditoria |
+| touch | plano B do touch.img (AttachFromTouch) e auditoria. O IMG e o banco texdb/touch continuam SEMPRE registrados (ver abaixo) |
 | skin | /skin7 (CCustomSkin) |
 | clothes | CJ real (roupas/tatuagens, RPC) |
 | dff | DFF por entrada (texdb/DFF) + hook de GetTexture |
@@ -23,6 +23,9 @@ Importante: o "base" NÃO é o GTA puro. Continuam ativos o resto do cliente (HU
 Bypass do cache `MODELS\MINFO.BIN` e guarda do `CINFO.BIN` ficam SEMPRE ativos, mesmo no "base". Na 1ª versão eu os desliguei junto com
 touch/col e o jogo fechou em `Loading script.img..` (suspeita: cache velho posicional) - corrigido. Para testar COL: tire os arquivos de `SAMP/col`.
 O log `[DIAG]` é gravado depois (o FLog descarta linhas antes de existir a pasta de armazenamento).
+
+**touch.img não pode ser removido nem 'não registrado'**: nas 4 execuções de 2026-10-30 sem ele (com e sem diag) o jogo fechou sempre logo depois de
+`Loading script.img..`. Para testar "sem carros do touch": deixe o touch.img no lugar e não crie esses veículos/skins no servidor.
 
 ## Passo a passo (uma etapa por vez; anotar cada uma)
 1. Copie `diag_presets/etapa0_base_tudo_desligado.ini` para `Android/data/com.samp.mobile/files/SAMP/diag.ini`. Abra o jogo, `/diag` deve listar tudo em DESLIGADOS.
