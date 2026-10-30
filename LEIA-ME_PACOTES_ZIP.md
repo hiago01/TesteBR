@@ -98,9 +98,9 @@ Nas aberturas seguintes (atualizacao/verificacao) a SAMP/ continua sendo conferi
 
 Servidor (C:\cache-server):
 ```
-SAMP\           <- a pasta, na raiz do servidor HTTP (arquivos em http://IP:8080/SAMP/...)
+SAMP\           <- a pasta, na raiz do servidor HTTP (arquivos em https://maximoroleplay.com.br/SAMP/...)
 samp.json       <- py gerar_samp_json.py --src C:\cache-server\SAMP --out C:\cache-server\samp.json
-packs\*.zip     <- py build_packs.py --src C:\cache-server\files.zip --excluir-pasta SAMP --out C:\cache-server\packs --base-url http://IP:8080/packs --version 1
+packs\*.zip     <- py build_packs.py --src C:\cache-server\files.zip --excluir-pasta SAMP --out C:\cache-server\packs --base-url https://maximoroleplay.com.br/packs --version 1
 ```
 Sem `samp.json` no servidor o launcher cai para o fluxo antigo (SAMP/ pelo files.json). Endpoint novo: `endpoint_samp_json_path` (endpoints.xml / AppEndpoints.sampJsonUrl / sampFileUrl).
 **Arquivos que o jogo regrava** (settings.ini, favorites.json, svlog.txt, cinfo.sig, col_index.txt, sampvoice/svconfig.ini): entram no samp.json e sao

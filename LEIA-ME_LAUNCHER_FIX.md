@@ -76,7 +76,7 @@ O código completo de cada arquivo está no próprio projeto (ZIP).
 - Favoritos continuam na aba Favorites (lista separada); nunca entram na aba Hosted.
 
 ## 4. Como configurar os endereços
-Edite `app/src/main/res/values/endpoints.xml` (`endpoint_base_url` + caminhos). Os valores atuais são **de desenvolvimento** (IP privado de LAN, HTTP :8080), idênticos aos do código original; não inventei domínio de produção. Para produção crie `app/src/release/res/values/endpoints.xml` com os mesmos nomes e URLs HTTPS reais.
+Edite `app/src/main/res/values/endpoints.xml` (`endpoint_base_url` + caminhos). Os valores atuais são **de desenvolvimento** (IP privado de LAN, HTTP), idênticos aos do código original; não inventei domínio de produção. Para produção crie `app/src/release/res/values/endpoints.xml` com os mesmos nomes e URLs HTTPS reais.
 Dependências: o servidor HTTP precisa servir `/servers.json`, `/client_config.json` e `/files/<path>`. Dentro do `client_config.json` continuam valendo `version_code`, `url_launcher` e `url_cache_files` (esta última e `url_launcher` são URLs completas definidas por você; `AppEndpoints` só centraliza `/files/`).
 **Atenção HTTP:** agora o build `release` bloqueia HTTP (Android). Para testar com o IP de LAN use o build **debug**, ou use HTTPS em release. Sem isso o app mostrará erro recuperável de conexão.
 

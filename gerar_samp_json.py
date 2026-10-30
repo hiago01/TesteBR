@@ -9,7 +9,7 @@ gerar_samp_json.py - le a pasta SAMP do cache do servidor e gera SO o samp.json 
 * So le a pasta; nunca altera nada nela. Grava apenas o samp.json.
 * Cada item: {"name": nome, "path": "SAMP/<caminho>", "size": bytes, "sha256": "..."}; caminhos em UTF-8 com "/",
   caixa preservada. ERRO se dois caminhos diferirem so pela caixa (Android e case-sensitive).
-* O launcher baixa cada arquivo em  http://IP:8080/<path>  (ex.: http://IP:8080/SAMP/dff/x.dff), entao a pasta
+* O launcher baixa cada arquivo em  https://maximoroleplay.com.br/<path>  (ex.: https://maximoroleplay.com.br/SAMP/dff/x.dff), entao a pasta
   C:\\cache-server\\SAMP precisa ficar na raiz do servidor HTTP (ao lado do launcher.apk) e o samp.json em C:\\cache-server.
 * --src tambem aceita um .zip da pasta SAMP (com ou sem a pasta raiz "SAMP/" dentro).
 """

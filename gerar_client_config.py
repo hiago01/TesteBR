@@ -258,7 +258,7 @@ def main():
     s.add_argument("--apk", required=True)
     s.add_argument("--config", required=True, help="client_config.json (criado se nao existir)")
     s.add_argument("--out", help="saida (padrao: sobrescreve --config)")
-    s.add_argument("--url-launcher", help="URL publica do APK (ex.: http://IP:8080/launcher.apk)")
+    s.add_argument("--url-launcher", help="URL publica do APK (ex.: https://maximoroleplay.com.br/launcher.apk)")
     s.add_argument("--version-code", type=int, help="so para conferir; precisa ser igual ao do APK")
     s.set_defaults(fn=cmd_gerar)
     s = sub.add_parser("conferir", help="confere o que o servidor HTTP esta servindo")

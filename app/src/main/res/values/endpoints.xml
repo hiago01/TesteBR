@@ -2,9 +2,7 @@
 <!--
   Endpoints do launcher (fonte unica). NAO espalhe URLs pelas classes: use AppEndpoints.java.
 
-  Valores abaixo = PRODUCAO: HTTPS no dominio proprio (Caddy faz reverse_proxy para o cache-server em 127.0.0.1:8080).
-  Para testar em LAN com build debug crie app/src/debug/res/values/endpoints.xml com os mesmos nomes
-  e a URL http://IP:8080 (o debug permite HTTP).
+  Valores abaixo = PRODUCAO: HTTPS no dominio proprio (o Caddy serve a pasta do site direto com file_server).
   Veja LEIA-ME_LAUNCHER_FIX.md.
 -->
 <resources>

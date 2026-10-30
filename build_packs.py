@@ -286,7 +286,7 @@ def main():
                          "launcher via samp.json). Pode repetir.")
     ap.add_argument("--no-strip", action="store_true", help="com --src .zip: nao remove a pasta raiz unica de dentro do .zip")
     ap.add_argument("--out", default=r"C:\cache-server\packs", help="pasta onde os zips e o manifest serao escritos")
-    ap.add_argument("--base-url", required=True, help="URL publica da pasta dos zips, ex.: http://IP:8080/packs")
+    ap.add_argument("--base-url", required=True, help="URL publica da pasta dos zips, ex.: https://maximoroleplay.com.br/packs")
     ap.add_argument("--version", required=True, help="versao do conteudo (letras/numeros . _ -), ex.: 1")
     ap.add_argument("--seguro", action="store_true",
                     help="deixa de fora lixo de SO, lista.txt e os caches do aparelho (CINFO.BIN, MINFO.BIN, cinfo.sig, col_index.txt, logs)")
