@@ -467,6 +467,8 @@ public class SplashActivity extends AppCompatActivity {
             prefs.edit().putBoolean("firstrun", false).commit();
         }
 
+        com.samp.mobile.launcher.util.FixedSettings.apply(this);
+
         // Retorno das configuracoes do Android (ou de um dialogo): reavalia se ja pode prosseguir.
         proceedIfReady();
     }

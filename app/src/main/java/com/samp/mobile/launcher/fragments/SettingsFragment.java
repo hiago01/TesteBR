@@ -93,7 +93,7 @@ public class SettingsFragment extends Fragment {
         autoCompleteTextView.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                new SharedPreferenceCore().setInt(requireContext().getApplicationContext(), "VERSION", position);
+                new SharedPreferenceCore().setInt(requireContext().getApplicationContext(), "VERSION", titles.length - 1);
                 File file = new File(getActivity().getExternalFilesDir(null) + "/SAMP/settings.ini");
                 if(file.exists()) {
                     try {
@@ -112,6 +112,18 @@ public class SettingsFragment extends Fragment {
 
             }
         });
+
+        // Travados: Keyboard/Voice chat ligados, versao sempre a ultima; FPS e Monet ocultos.
+        com.samp.mobile.launcher.util.FixedSettings.apply(getActivity());
+        mKeyboardSwitch.setChecked(true);
+        mKeyboardSwitch.setEnabled(false);
+        mVoiceSwitch.setChecked(true);
+        mVoiceSwitch.setEnabled(false);
+        autoCompleteTextView.setSelection(titles.length - 1);
+        autoCompleteTextView.setEnabled(false);
+        autoCompleteTextView.setClickable(false);
+        if (mFPSSwitch.getParent() instanceof View) ((View) mFPSSwitch.getParent()).setVisibility(View.GONE);
+        if (mMonetSwitch.getParent() instanceof View) ((View) mMonetSwitch.getParent()).setVisibility(View.GONE);
 
         // Nick agora e escolhido na tela Servidores (NickManager); o campo foi removido das Configuracoes.
         View nickCard = view.findViewById(R.id.settings_nick_card);
@@ -276,12 +288,11 @@ public class SettingsFragment extends Fragment {
     public void onResume() {
         super.onResume();
 
-        mKeyboardSwitch.setChecked(new SharedPreferenceCore().getBoolean(requireContext().getApplicationContext(), "ANDROID_KEYBOARD"));
-        mVoiceSwitch.setChecked(new SharedPreferenceCore().getBoolean(requireContext().getApplicationContext(), "AIM"));
-        mFPSSwitch.setChecked(new SharedPreferenceCore().getBoolean(requireContext().getApplicationContext(), "FPS_DISPLAY"));
+        com.samp.mobile.launcher.util.FixedSettings.apply(getActivity());
+        mKeyboardSwitch.setChecked(true);
+        mVoiceSwitch.setChecked(true);
         mModifySwitch.setChecked(new SharedPreferenceCore().getBoolean(requireContext().getApplicationContext(), "MODIFIED_DATA"));
-        mMonetSwitch.setChecked(new SharedPreferenceCore().getBoolean(requireContext().getApplicationContext(), "MLOADER"));
-        autoCompleteTextView.setSelection(new SharedPreferenceCore().getInt(requireContext().getApplicationContext(), "VERSION"));
+        autoCompleteTextView.setSelection(titles.length - 1);
 
         int fps = new SharedPreferenceCore().getInt(getContext(), "FPS_LIMIT");
         switch (fps)
