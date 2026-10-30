@@ -593,6 +593,30 @@ int main()
             std::remove(marker.c_str());
         }
 
+        // ---- BUG 30/10/2026 (conta nova): a previa passa por Camisa 2, 3 e 4 e volta na 3. Antes TODAS iam ao servidor (ordem de slot)
+        //      e a exclusividade do grupo deixava a ULTIMA enviada (Camisa 4); a UI mostrava Camisa 3. Agora so a peca vestida vai. ----
+        {
+            g_hostChat.clear();
+            CHECK(Ui("prev torso2 3")); CHECK(Ui("prev torso3 1")); CHECK(Ui("prev torso4 1")); CHECK(Ui("prev torso3 1"));
+            CHECK(Vis("torso3") && !Vis("torso4") && !Vis("torso2"));
+            CHECK(CommitOk());
+            const ProvadorModel::Srv& a3 = g_hostSrv[(size_t)SlotId("torso3")];
+            if (!(a3.known && a3.est == 2 && a3.var == 1)) std::printf("PREVIA->SERVIDOR: torso3 known=%d est=%d var=%d (esperado 2/1)\n", (int)a3.known, (int)a3.est, (int)a3.var);
+            CHECK(a3.known && a3.est == 2 && a3.var == 1);
+            CHECK(!g_hostSrv[(size_t)SlotId("torso4")].known && !g_hostSrv[(size_t)SlotId("torso2")].known);
+            // o DESLIGAR feito na previa continua indo (estado 0), e peca solta de outro grupo tambem
+            g_hostChat.clear();
+            CHECK(Ui("prev hair1 2")); CHECK(Ui("prev hair1 off")); CHECK(Ui("prev backpack1 1"));
+            CHECK(CommitOk());
+            CHECK(g_hostSrv[(size_t)SlotId("hair1")].known && g_hostSrv[(size_t)SlotId("hair1")].est == 0);
+            CHECK(g_hostSrv[(size_t)SlotId("backpack1")].known && g_hostSrv[(size_t)SlotId("backpack1")].est == 2);
+            // tom de pele (skin_torso) mesmo coberto pela camisa continua indo
+            g_hostChat.clear();
+            CHECK(Ui("prev skin_torso 3"));
+            CHECK(CommitOk());
+            CHECK(g_hostSrv[(size_t)SlotId("skin_torso")].known && g_hostSrv[(size_t)SlotId("skin_torso")].var == 3);
+        }
+
         installed = nullptr; s_installed = nullptr; s_prepLastMs = 0; s_prepGiveUp = false; g_hostSrvHave = false;
         CHECK(Ui("refresh")); CHECK(InstalledOurs());
         st = Pub(); CHECK(!st.serverSynced && U(st, "hair2").state == ProvadorModel::kDefault);

@@ -1,5 +1,6 @@
 #include "main.h"
 #include "settings.h"
+#include "NickWire.h"
 #include "vendor/inih/cpp/INIReader.h"
 
 #include "vendor/SimpleIni/SimpleIni.h"
@@ -28,6 +29,7 @@ CSettings::CSettings()
 	sprintf(buff, "__android_%d%d", rand() % 1000, rand() % 1000);
 	length = reader.Get("client", "name", buff).copy(m_Settings.szNickName, 24);
 	m_Settings.szNickName[length] = '\0';
+	NickToWire(m_Settings.szNickName);   // SA-MP nao aceita espaco: sempre '_' na hora da conexao
 	length = reader.Get("client", "host", "201.33.84.96").copy(m_Settings.szHost, MAX_SETTINGS_STRING);
 	m_Settings.szHost[length] = '\0';
 	length = reader.Get("client", "password", "").copy(m_Settings.szPassword, MAX_SETTINGS_STRING);

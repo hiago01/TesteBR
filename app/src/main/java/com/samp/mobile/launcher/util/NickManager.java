@@ -23,7 +23,6 @@ import org.ini4j.Wini;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.regex.Pattern;
 
 /**
  * Nick do jogador. Antes ficava em Configuracoes (campo solto em SAMP/settings.ini); agora e escolhido na
@@ -36,24 +35,30 @@ public final class NickManager {
     private static final String KEY_NICK = "PLAYER_NICK";
     private static final String KEY_CONFIRMED = "PLAYER_NICK_CONFIRMED";
 
-    public static final int MIN_LEN = 3;
-    public static final int MAX_LEN = 20; // limite do SA-MP
-    private static final Pattern VALID = Pattern.compile("^[A-Za-z0-9_\\[\\]()$@.=]{" + MIN_LEN + "," + MAX_LEN + "}$");
+    public static final int MIN_LEN = NickRules.MIN_LEN;
+    public static final int MAX_LEN = NickRules.MAX_LEN; // limite do SA-MP
 
     private NickManager() {}
 
     public interface Callback { void onNick(String nick); }
 
+    /** Valida o nick DIGITADO (pode ter espacos; o servidor recebe com "_"). */
     public static boolean isValid(String nick) {
-        return nick != null && VALID.matcher(nick).matches();
+        return NickRules.isValidDisplay(nick);
     }
 
-    /** null se ainda nao confirmou (primeira vez). */
+    /** Nick como vai para o servidor/settings.ini (espacos viram "_"). null se ainda nao confirmou. */
+    public static String getWireNick(Context c) {
+        String n = getNick(c);
+        return n == null ? null : NickRules.toWire(n);
+    }
+
+    /** Nick para MOSTRAR no launcher (pode ter espacos). null se ainda nao confirmou (primeira vez). */
     public static String getNick(Context c) {
         SharedPreferences p = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         if (!p.getBoolean(KEY_CONFIRMED, false)) return null;
         String n = p.getString(KEY_NICK, null);
-        return isValid(n) ? n : null;
+        return isValid(n) ? NickRules.normalizeDisplay(n) : null;
     }
 
     public static boolean hasNick(Context c) { return getNick(c) != null; }
@@ -65,9 +70,11 @@ public final class NickManager {
         writeToSettings(c, nick);
     }
 
-    /** Copia o nick confirmado para SAMP/settings.ini (chamado de novo antes de abrir o jogo). */
+    /** Copia o nick confirmado para SAMP/settings.ini (chamado de novo antes de abrir o jogo). SEMPRE grava o formato WIRE ("_" no lugar dos espacos). */
     public static void writeToSettings(Context c, String nick) {
         if (nick == null) return;
+        nick = NickRules.toWire(nick);
+        if (!NickRules.isValidWire(nick)) return;
         File dir = c.getExternalFilesDir(null);
         if (dir == null) return;
         File f = new File(dir, "SAMP/settings.ini");
@@ -116,13 +123,15 @@ public final class NickManager {
 
         final Runnable validate = new Runnable() {
             @Override public void run() {
-                String t = input.getText().toString().trim();
+                String t = NickRules.normalizeDisplay(input.getText().toString());
                 boolean good = isValid(t);
                 ok.setEnabled(good);
                 ok.setAlpha(good ? 1f : 0.55f);
+                error.setTextColor(a.getColor(good ? R.color.mx_text_dim : R.color.mx_error));
                 if (t.isEmpty()) error.setText("");
                 else if (t.length() < MIN_LEN) error.setText(R.string.mx_nick_err_short);
                 else if (!good) error.setText(R.string.mx_nick_err_chars);
+                else if (NickRules.differsOnWire(t)) error.setText(a.getString(R.string.mx_nick_wire, NickRules.toWire(t)));
                 else error.setText("");
             }
         };
@@ -135,7 +144,7 @@ public final class NickManager {
 
         ok.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View view) {
-                String t = input.getText().toString().trim();
+                String t = NickRules.normalizeDisplay(input.getText().toString());
                 if (!isValid(t)) { validate.run(); return; }
                 save(a, t);
                 d.dismiss();

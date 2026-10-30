@@ -77,11 +77,12 @@
     <string name="mx_nick_title_first">Escolha seu Nick</string>
     <string name="mx_nick_title_change">Trocar Nick</string>
     <string name="mx_nick_msg">Este será o seu nome no servidor. Você pode trocá-lo depois na tela Servidores.</string>
-    <string name="mx_nick_hint">Ex.: Nome_Sobrenome</string>
+    <string name="mx_nick_hint">Ex.: Nome Sobrenome</string>
     <string name="mx_nick_ok">CONFIRMAR</string>
     <string name="mx_nick_cancel">CANCELAR</string>
     <string name="mx_nick_err_short">O nick precisa ter pelo menos 3 caracteres.</string>
-    <string name="mx_nick_err_chars">Use apenas letras, números e _ [ ] ( ) $ @ . = (sem espaços), até 20 caracteres.</string>
+    <string name="mx_nick_err_chars">Use letras, números, espaço e _ [ ] ( ) $ @ . =, até 20 caracteres.</string>
+    <string name="mx_nick_wire">No servidor seu nome será: %1$s</string>
     <string name="mx_nick_chip">Nick: %1$s</string>
     <string name="mx_nick_chip_empty">Escolher Nick</string>
     <string name="mx_upd_req_title">Atualização obrigatória</string>

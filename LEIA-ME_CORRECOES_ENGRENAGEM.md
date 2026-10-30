@@ -66,3 +66,13 @@ Engrenagem pequena no canto superior direito do launcher, com "SOLUÇÕES DE PRO
 página CORREÇÕES (`openPage(PAGE_REPAIR)`, o item do menu lateral também fica marcado). Arquivos: `res/layout/activity_main.xml`
 (novo `mx_btn_help` dentro de `mx_safe_area`, respeita recortes de tela), `res/values/maximo_repair.xml` (`mx_help_label`),
 `MainActivity.java` (clique). Só XML/Java: NÃO visto em aparelho (posição/tamanho do texto, 6sp, podem precisar de ajuste).
+
+## Nick com espaço (visual) -> "_" na conexão
+- Na tela "Escolha seu Nick"/"Trocar Nick" o jogador pode digitar COM espaços ("Jose Luis Silva"). O launcher continua mostrando assim (chip "Nick: ...").
+  Enquanto digita aparece "No servidor seu nome será: Jose_Luis_Silva".
+- Para o jogo/servidor SEMPRE vai com "_": `NickManager.writeToSettings` converte (ponto único de gravação em SAMP/settings.ini) e
+  o cliente nativo ainda reforça (`NickWire.h` em `settings.cpp`), caso um settings.ini antigo/editado traga espaços.
+- Regras (`util/NickRules.java`): espaços nas pontas somem; vários espaços/tab/NBSP viram UM "_"; "_" digitado fica como está; o limite
+  de 20 e o conjunto de caracteres (letras, números, `_ [ ] ( ) $ @ . =`) valem para o nome JÁ convertido.
+- Testes: NickRulesTest (19) + `nickwire_check.cpp` (host, C++) passam. NÃO compilado com o SDK/NDK reais, NÃO visto em aparelho.
+- Dentro do jogo, nomes de jogadores continuam vindo do servidor (com "_"); mostrar "_" como espaço em nametag/chat/scoreboard seria outra mudança (não feita).

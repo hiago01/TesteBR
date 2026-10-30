@@ -1,0 +1,67 @@
+--- a/app/src/main/cpp/samp/game/CustomSkin.cpp	2026-10-30 05:30:26.000000000 -0300
++++ b/app/src/main/cpp/samp/game/CustomSkin.cpp	2026-10-30 10:43:01.298099375 -0300
+@@ -1418,7 +1418,30 @@
+ 
+     void LookCommitPrev()                       // "ui commit": a prévia confirmada passa para a fila de envio
+     {
+-        for (const LookOp& op : s_lookPrevQ) LookQueue(op);
++        // A fila da prévia guarda UMA operação por slot já experimentado, inclusive peças que o jogador largou ao trocar de
++        // roupa (Camisa 2 -> 3 -> 4 -> 3). O servidor aplica em ordem e a exclusividade de grupo (Look_PutSlot) deixa a ÚLTIMA
++        // enviada: a Camisa 4 era gravada enquanto a interface mostrava a 3. Só vai o que está VESTIDO no molde ao confirmar:
++        // peça de grupo exclusivo, ligada na prévia (est != 0) e hoje oculta = substituída por outra do mesmo grupo -> descarta
++        // (o servidor já limpa a antiga quando recebe a nova). DESLIGAR explícito (est 0) e slots sem grupo (pele, tom) seguem.
++        for (const LookOp& op : s_lookPrevQ)
++        {
++            if (op.est != 0 && op.slotId >= 1 && op.slotId <= SkinSlots::kCount)
++            {
++                const SkinSlots::Slot& sl = SkinSlots::kSlots[op.slotId - 1];
++                if (SkinSlots::GroupOf(sl.name) >= 0)
++                {
++                    const std::vector<int> idx = SlotMaterials(sl);
++                    bool displaced = !idx.empty();
++                    for (int i : idx) if (!((size_t)i < s_hidden.size() && s_hidden[(size_t)i])) displaced = false;
++                    if (displaced)
++                    {
++                        FLog("[SKIN7] lookx: %s descartado ao confirmar (outra peça do mesmo grupo está vestida)", sl.name);
++                        continue;
++                    }
++                }
++            }
++            LookQueue(op);
++        }
+         s_lookPrevQ.clear();
+     }
+ 
+--- a/testes/host_test_provador.cpp	2026-10-30 05:30:26.000000000 -0300
++++ b/testes/host_test_provador.cpp	2026-10-30 10:42:40.344589408 -0300
+@@ -593,6 +593,30 @@
+             std::remove(marker.c_str());
+         }
+ 
++        // ---- BUG 30/10/2026 (conta nova): a previa passa por Camisa 2, 3 e 4 e volta na 3. Antes TODAS iam ao servidor (ordem de slot)
++        //      e a exclusividade do grupo deixava a ULTIMA enviada (Camisa 4); a UI mostrava Camisa 3. Agora so a peca vestida vai. ----
++        {
++            g_hostChat.clear();
++            CHECK(Ui("prev torso2 3")); CHECK(Ui("prev torso3 1")); CHECK(Ui("prev torso4 1")); CHECK(Ui("prev torso3 1"));
++            CHECK(Vis("torso3") && !Vis("torso4") && !Vis("torso2"));
++            CHECK(CommitOk());
++            const ProvadorModel::Srv& a3 = g_hostSrv[(size_t)SlotId("torso3")];
++            if (!(a3.known && a3.est == 2 && a3.var == 1)) std::printf("PREVIA->SERVIDOR: torso3 known=%d est=%d var=%d (esperado 2/1)\n", (int)a3.known, (int)a3.est, (int)a3.var);
++            CHECK(a3.known && a3.est == 2 && a3.var == 1);
++            CHECK(!g_hostSrv[(size_t)SlotId("torso4")].known && !g_hostSrv[(size_t)SlotId("torso2")].known);
++            // o DESLIGAR feito na previa continua indo (estado 0), e peca solta de outro grupo tambem
++            g_hostChat.clear();
++            CHECK(Ui("prev hair1 2")); CHECK(Ui("prev hair1 off")); CHECK(Ui("prev backpack1 1"));
++            CHECK(CommitOk());
++            CHECK(g_hostSrv[(size_t)SlotId("hair1")].known && g_hostSrv[(size_t)SlotId("hair1")].est == 0);
++            CHECK(g_hostSrv[(size_t)SlotId("backpack1")].known && g_hostSrv[(size_t)SlotId("backpack1")].est == 2);
++            // tom de pele (skin_torso) mesmo coberto pela camisa continua indo
++            g_hostChat.clear();
++            CHECK(Ui("prev skin_torso 3"));
++            CHECK(CommitOk());
++            CHECK(g_hostSrv[(size_t)SlotId("skin_torso")].known && g_hostSrv[(size_t)SlotId("skin_torso")].var == 3);
++        }
++
+         installed = nullptr; s_installed = nullptr; s_prepLastMs = 0; s_prepGiveUp = false; g_hostSrvHave = false;
+         CHECK(Ui("refresh")); CHECK(InstalledOurs());
+         st = Pub(); CHECK(!st.serverSynced && U(st, "hair2").state == ProvadorModel::kDefault);

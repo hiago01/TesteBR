@@ -1418,7 +1418,30 @@ namespace
 
     void LookCommitPrev()                       // "ui commit": a prévia confirmada passa para a fila de envio
     {
-        for (const LookOp& op : s_lookPrevQ) LookQueue(op);
+        // A fila da prévia guarda UMA operação por slot já experimentado, inclusive peças que o jogador largou ao trocar de
+        // roupa (Camisa 2 -> 3 -> 4 -> 3). O servidor aplica em ordem e a exclusividade de grupo (Look_PutSlot) deixa a ÚLTIMA
+        // enviada: a Camisa 4 era gravada enquanto a interface mostrava a 3. Só vai o que está VESTIDO no molde ao confirmar:
+        // peça de grupo exclusivo, ligada na prévia (est != 0) e hoje oculta = substituída por outra do mesmo grupo -> descarta
+        // (o servidor já limpa a antiga quando recebe a nova). DESLIGAR explícito (est 0) e slots sem grupo (pele, tom) seguem.
+        for (const LookOp& op : s_lookPrevQ)
+        {
+            if (op.est != 0 && op.slotId >= 1 && op.slotId <= SkinSlots::kCount)
+            {
+                const SkinSlots::Slot& sl = SkinSlots::kSlots[op.slotId - 1];
+                if (SkinSlots::GroupOf(sl.name) >= 0)
+                {
+                    const std::vector<int> idx = SlotMaterials(sl);
+                    bool displaced = !idx.empty();
+                    for (int i : idx) if (!((size_t)i < s_hidden.size() && s_hidden[(size_t)i])) displaced = false;
+                    if (displaced)
+                    {
+                        FLog("[SKIN7] lookx: %s descartado ao confirmar (outra peça do mesmo grupo está vestida)", sl.name);
+                        continue;
+                    }
+                }
+            }
+            LookQueue(op);
+        }
         s_lookPrevQ.clear();
     }
 
