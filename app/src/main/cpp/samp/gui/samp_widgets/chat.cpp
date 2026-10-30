@@ -168,7 +168,7 @@ if (input == "/provador" || input.rfind("/provador ", 0) == 0)
             // interface de personalizacao do /skin7: /provador (abre/fecha) | /provador fechar
             // (/roupas ja existe: tela HTML ligada ao servidor)
             const std::string args = input.size() > 9 ? input.substr(10) : std::string();
-            if (args == "fechar") Provador::Close();
+            if (args == "fechar") Provador::RequestClose();
             else                  Provador::Toggle();
 
             return;

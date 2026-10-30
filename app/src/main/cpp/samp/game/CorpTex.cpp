@@ -170,11 +170,12 @@ struct Look {
     // /cop (teste, so local, nao vai pelo RPC): peca da policia (ex. "vest3") -> "off" | "corp:<nome>" | "cop/<tipo>/<pasta>/<n>.png"
     std::vector<std::pair<std::string, std::string>> ov;
     std::vector<LookSlots::St> slots;                                                            // RPC 232 (slots do /skin7); guardado separado da base (231)
+    bool synthetic = false;                                                                      // visual PADRAO sintetizado aqui (o servidor ainda nao mandou nada deste jogador)
     bool Active() const { return !corp.empty() || tone || hairStyle || bootSet || pantsSet || shirtSet || !ov.empty() || !slots.empty(); }
     bool operator==(const Look& o) const {
         return corp == o.corp && tone == o.tone && face == o.face && hairStyle == o.hairStyle && hairColor == o.hairColor &&
                bootSet == o.bootSet && bootVar == o.bootVar && pantsSet == o.pantsSet && pantsVar == o.pantsVar &&
-               shirtSet == o.shirtSet && shirtVar == o.shirtVar && under == o.under && ov == o.ov && slots == o.slots;
+               shirtSet == o.shirtSet && shirtVar == o.shirtVar && under == o.under && ov == o.ov && slots == o.slots && synthetic == o.synthetic;
     }
 };
 
@@ -734,7 +735,9 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
             FLog("[CORPTEX] AVISO: slots do /skin7 exigem o modo indice (contagem de materiais igual ao DFF): ignorados");
         } else {
             std::vector<LookSlots::Op> ops;
-            LookSlots::Plan(look.slots, ops);
+            // modelo 7: o que o servidor nao citou = padrao (oculto), NUNCA o que estiver no molde (que e a roupa do jogador local)
+            if (model == kNormalModel) LookSlots::PlanWithDefaults(look.slots, ops);
+            else                       LookSlots::Plan(look.slots, ops);
             for (const LookSlots::Op& op : ops) {
                 RwTexture* t = op.kind == LookSlots::kHide ? hideTex : op.kind == LookSlots::kPack ? GetSlotPackTex(op.rel) : GetSlotOrigTex(op.mat);
                 if (!t) { if (op.kind != LookSlots::kOrig) ++nSlotMiss; continue; }
@@ -782,6 +785,26 @@ void ForgetWant(PLAYERID id)
     DropEntry(id);
     s_look[id] = Look{}; s_tried[id] = Tried{};
     s_wantIds.erase(std::remove(s_wantIds.begin(), s_wantIds.end(), id), s_wantIds.end());
+}
+
+// Jogador REMOTO do modelo 7 sem nenhum visual recebido (acabou de aparecer, o servidor ainda nao mandou, ou ele esta todo no
+// padrao): sem isto o ped usava o molde compartilhado = a roupa do jogador local ("todo mundo com a mesma roupa"). Aplica o
+// visual padrao do servidor (Look_ApplyDefault) ate o RPC 231/232 chegar; quando chegar, substitui. So thread do jogo.
+void SynthesizeDefaults()
+{
+    CPlayerPool* pool = pNetGame ? pNetGame->GetPlayerPool() : nullptr;
+    if (!pool) return;
+    const PLAYERID me = pool->GetLocalPlayerID();
+    static const std::vector<LookSlots::St> kDefault = LookSlots::DefaultSlots();
+    for (PLAYERID id = 0; id < MAX_PLAYERS; ++id) {
+        if (id == me || !pool->GetSlotState(id)) continue;
+        if (s_look[id].Active()) continue;                                   // ja tem estado (recebido ou sintetizado)
+        CEntityGTA* e = GetEnt(id);
+        if (!e || (int)e->GetModelId() != kNormalModel || !e->m_pRwClump) continue;
+        Look l; l.slots = kDefault; l.synthetic = true;
+        s_look[id] = std::move(l); s_tried[id].valid = false;
+        if (std::find(s_wantIds.begin(), s_wantIds.end(), id) == s_wantIds.end()) s_wantIds.push_back(id);
+    }
 }
 
 void Push(Cmd::Kind k, PLAYERID id, const Look& look)
@@ -888,14 +911,15 @@ void Process()
         if (c.id >= MAX_PLAYERS) continue;
         if (c.kind == Cmd::Set) {                           // base (231): NAO apaga os slots (232) ja recebidos
             if (std::find(s_wantIds.begin(), s_wantIds.end(), c.id) == s_wantIds.end()) s_wantIds.push_back(c.id);
-            Look nl = c.look; nl.slots = s_look[c.id].slots;
+            Look nl = c.look;
+            if (!s_look[c.id].synthetic) nl.slots = s_look[c.id].slots;     // o padrao sintetizado nao conta como slots recebidos
             s_look[c.id] = std::move(nl); s_tried[c.id].valid = false;
         } else if (c.kind == Cmd::Slots) {                  // slots (232): NAO apaga a base (231)
-            Look nl = s_look[c.id]; nl.slots = c.look.slots;
+            Look nl = s_look[c.id]; nl.slots = c.look.slots; nl.synthetic = false;
             if (!nl.Active()) { ForgetWant(c.id); continue; }
             if (std::find(s_wantIds.begin(), s_wantIds.end(), c.id) == s_wantIds.end()) s_wantIds.push_back(c.id);
             s_look[c.id] = std::move(nl); s_tried[c.id].valid = false;
-        } else if (c.kind == Cmd::Clear && !s_look[c.id].slots.empty()) {   // base zerada (231 vazio): mantem so os slots
+        } else if (c.kind == Cmd::Clear && !s_look[c.id].slots.empty() && !s_look[c.id].synthetic) {   // base zerada (231 vazio): mantem so os slots
             Look nl; nl.slots = s_look[c.id].slots;
             s_look[c.id] = std::move(nl); s_tried[c.id].valid = false;
         } else {                                            // Clear sem slots, ou Release (stream-out/nova conexao): solta tudo
@@ -913,6 +937,7 @@ void Process()
             }
         }
     }
+    SynthesizeDefaults();
     for (size_t i = 0; i < s_wantIds.size(); ++i) Reconcile(s_wantIds[i]);   // ped novo, modelo trocado, clump recriado...
 
     const uint64_t now = NowMs();

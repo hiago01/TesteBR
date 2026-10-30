@@ -16,3 +16,5 @@ g++ -std=c++17 -Wall -Wno-unused-function -DCUSTOMSKIN_HOST_STUBS -I"$T/samp" -I
 "$T/t"
 g++ -std=c++17 -Wall -I"$SRC/game" -o "$T/m" "$ROOT/testes/host_test_provador_model.cpp"
 "$T/m"
+g++ -std=c++17 -Wall -I"$SRC/game" -o "$T/ld" "$ROOT/testes/host_test_lookdefaults.cpp"
+"$T/ld"

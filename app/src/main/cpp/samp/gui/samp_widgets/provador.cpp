@@ -33,6 +33,10 @@ namespace
 	std::atomic<bool> g_open{false};
 	std::atomic<bool> g_flush{false};
 	std::atomic<bool> g_resetView{false};
+	std::atomic<bool> g_pendingMirror{false};    // espelho (thread de desenho) de "ha previa nao salva": lido por Voltar/chat
+	std::atomic<bool> g_awaitMirror{false};      // espelho de "esperando o servidor confirmar"
+	std::atomic<bool> g_confirmExit{false};      // pergunta "salvar ou sair sem salvar?" na tela
+	bool              g_exitAfterSave = false;   // SALVAR E SAIR: fecha quando o servidor confirmar (so thread de desenho)
 	std::atomic<bool> g_claimed[4] = {{false}, {false}, {false}, {false}};
 	std::mutex        g_evMutex;
 	std::vector<TouchEv> g_events;
@@ -66,7 +70,7 @@ namespace
 	bool                 g_toastErr   = false;
 	int64_t              g_toastUntil = 0;
 
-	enum Kind { K_NONE = 0, K_CAT, K_ROW, K_VAR, K_PREV, K_NEXT, K_TOGGLE, K_APPLY, K_CANCEL, K_BACK, K_PREPARE };
+	enum Kind { K_NONE = 0, K_CAT, K_ROW, K_VAR, K_PREV, K_NEXT, K_TOGGLE, K_APPLY, K_CANCEL, K_BACK, K_PREPARE, K_EXIT_SAVE, K_EXIT_DISCARD, K_EXIT_STAY };
 
 	struct Hit { int kind = K_NONE; int idx = -1; };
 
@@ -210,12 +214,16 @@ void Provador::Open()
 	CCustomSkin::UiSetActive(true);        // antes do pedido: o estado e republicado depois de cada comando
 	g_resetView.store(true);               // a thread de desenho zera a tela e pede o estado real
 	g_flush.store(true);                   // o hook solta os dedos que o jogo considera pressionados
+	g_confirmExit.store(false);
+	g_pendingMirror.store(false);
+	g_awaitMirror.store(false);
 	g_open.store(true);
 }
 
 void Provador::Close()
 {
 	if (!g_open.exchange(false)) return;
+	g_confirmExit.store(false);
 	{
 		std::lock_guard<std::mutex> l(g_evMutex);
 		g_events.clear();
@@ -225,7 +233,18 @@ void Provador::Close()
 	CCustomSkin::UiSetActive(false);
 }
 
-void Provador::Toggle() { if (g_open.load()) Close(); else Open(); }
+// Voltar / "/provador" / "/provador fechar": se ha previa nao salva, NAO fecha: abre a pergunta. Esperando o servidor: ignora
+// (o tempo de espera e limitado pelo CCustomSkin; fechar agora perderia o resultado do salvamento).
+void Provador::RequestClose()
+{
+	if (!g_open.load()) return;
+	if (g_confirmExit.load()) return;
+	if (g_awaitMirror.load()) return;
+	if (g_pendingMirror.load()) { g_confirmExit.store(true); return; }
+	Close();
+}
+
+void Provador::Toggle() { if (g_open.load()) RequestClose(); else Open(); }
 
 bool Provador::ConsumeFlushRequest() { return g_flush.exchange(false); }
 
@@ -238,7 +257,7 @@ bool Provador::OnBackPressed()
 	if (now - s_last < 400) return true;
 	if (!g_open.load()) return false;
 	s_last = now;
-	Close();
+	RequestClose();
 	return true;
 }
 
@@ -279,7 +298,7 @@ void Provador::draw(ImGuiRenderer* r)
 	{
 		g_drag = Drag();
 		g_cat = 0; g_sel = -1; g_haveSt = false; g_stVer = ~0u; g_noticeInit = false;
-		g_toastUntil = 0; g_okToast.clear(); g_afterPrepare = false;
+		g_toastUntil = 0; g_okToast.clear(); g_afterPrepare = false; g_exitAfterSave = false; g_confirmExit.store(false);
 		RebuildCategory();
 		Request("refresh", nullptr);
 	}
@@ -301,11 +320,20 @@ void Provador::draw(ImGuiRenderer* r)
 				{
 					g_noticeSeq = g_st.noticeSeq;
 					if (!g_st.notice.empty()) Toast(g_st.notice, g_st.notice.find("salva") == std::string::npos);
+					if (g_exitAfterSave)                 // SALVAR E SAIR: so fecha se o servidor confirmou (ou nao havia o que enviar)
+					{
+						g_exitAfterSave = false;
+						if (g_st.notice.rfind("Aparência salva", 0) == 0 || g_st.notice.rfind("Aplicado ", 0) == 0)
+						{
+							Provador::Close();
+							return;
+						}
+					}
 				}
 				if (g_inflight && g_st.reqId == g_inflight)
 				{
 					g_inflight = 0;
-					if (!g_st.reqOk) Toast(g_st.msg.empty() ? "Não foi possível aplicar" : g_st.msg, true);
+					if (!g_st.reqOk) { g_exitAfterSave = false; Toast(g_st.msg.empty() ? "Não foi possível aplicar" : g_st.msg, true); }
 					else if (!g_okToast.empty()) Toast(g_okToast, false);
 					g_okToast.clear();
 					if (g_afterPrepare)                  // o apply pode ter falhado: confere o estado real, nao o pedido
@@ -331,6 +359,10 @@ void Provador::draw(ImGuiRenderer* r)
 	const bool online   = g_haveSt && g_st.online;
 	const bool dffOk    = !g_haveSt || g_st.dffOk;
 	const bool busy     = g_inflight != 0 || awaiting;      // esperando o servidor = nada novo pode ser pedido
+	g_pendingMirror.store(pending);
+	g_awaitMirror.store(awaiting);
+	if (!pending && !awaiting && g_confirmExit.load() && !g_exitAfterSave) g_confirmExit.store(false);   // nada mais a salvar
+	const bool confirmExit = g_confirmExit.load();
 
 	// ---- layout (unidades de projeto: altura 540 -> k) ----
 	const float m     = 8.0f * k;
@@ -392,6 +424,14 @@ void Provador::draw(ImGuiRenderer* r)
 	const ImVec2 bkA(caB.x + gap, rowCY),         bkB(cx1, rowCY + rowCH);
 	const ImVec2 prepA(cx0, rowBY),               prepB(cx1, rowBY + rowBH);
 
+	// pergunta de saida (so desenhada/tocavel com previa nao salva)
+	const float exW = std::min(scr.x * 0.7f, 460.0f * k), exH = 132.0f * k;
+	const float exX0 = (scr.x - exW) * 0.5f, exY0 = (scr.y - exH) * 0.5f;
+	const float exBw = (exW - 4.0f * gap) / 3.0f, exBy = exY0 + exH - 46.0f * k, exBh = 34.0f * k;
+	const ImVec2 exSaveA(exX0 + gap, exBy),                       exSaveB(exSaveA.x + exBw, exBy + exBh);
+	const ImVec2 exDiscA(exSaveB.x + gap, exBy),                  exDiscB(exDiscA.x + exBw, exBy + exBh);
+	const ImVec2 exStayA(exDiscB.x + gap, exBy),                  exStayB(exStayA.x + exBw, exBy + exBh);
+
 	auto inRect = [](float x, float y, float ax, float ay, float bx, float by) {
 		return x >= ax && x <= bx && y >= ay && y <= by;
 	};
@@ -402,6 +442,13 @@ void Provador::draw(ImGuiRenderer* r)
 
 	auto hitTest = [&](float x, float y, int& region) -> Hit {
 		Hit h; region = 0;
+		if (confirmExit)                                   // pergunta aberta: so os 3 botoes dela recebem toque
+		{
+			if (inBox(x, y, exSaveA, exSaveB)) h.kind = K_EXIT_SAVE;
+			else if (inBox(x, y, exDiscA, exDiscB)) h.kind = K_EXIT_DISCARD;
+			else if (inBox(x, y, exStayA, exStayB)) h.kind = K_EXIT_STAY;
+			return h;
+		}
 		if (inBox(x, y, bkA, bkB)) { h.kind = K_BACK; return h; }
 		if (!ready)
 		{
@@ -452,7 +499,25 @@ void Provador::draw(ImGuiRenderer* r)
 	auto doAction = [&](const Hit& h) -> bool {      // retorna true se a tela foi fechada
 		switch (h.kind)
 		{
-			case K_BACK: Provador::Close(); return true;
+			case K_BACK:
+				if (awaiting) { Toast("Aguarde o servidor confirmar...", false); break; }
+				if (pending) { g_confirmExit.store(true); break; }   // previa nao salva: pergunta antes de sair
+				Provador::Close();
+				return true;
+			case K_EXIT_SAVE:
+				g_confirmExit.store(false);
+				if (!pending || busy) break;
+				if (!online) { Toast("Sem conexão com o servidor: não é possível salvar", true); break; }
+				g_exitAfterSave = true;
+				Request("commit", "Enviado ao servidor...");
+				break;
+			case K_EXIT_DISCARD:
+				g_confirmExit.store(false);
+				Provador::Close();                   // restaura exatamente o estado anterior (cancel)
+				return true;
+			case K_EXIT_STAY:
+				g_confirmExit.store(false);
+				break;
 			case K_PREPARE:
 				if (busy || !dffOk) break;
 				g_afterPrepare = true;
@@ -696,4 +761,19 @@ void Provador::draw(ImGuiRenderer* r)
 	button(apA, apB, awaiting ? "SALVANDO..." : "APLICAR", pending && online && !busy, true, fs);
 	button(caA, caB, "CANCELAR", pending && !busy, false, fs);
 	button(bkA, bkB, "VOLTAR", true, false, fs);
+
+	if (confirmExit)
+	{
+		r->drawRect(ImVec2(0.0f, 0.0f), scr, ImColor(0, 0, 0, 170), true);
+		r->drawRect(ImVec2(exX0, exY0), ImVec2(exX0 + exW, exY0 + exH), cPanel, true);
+		r->drawRect(ImVec2(exX0, exY0), ImVec2(exX0 + exW, exY0 + exH), cAmber, false);
+		const char* t1 = "Sair sem salvar?";
+		const char* t2 = "Você tem uma prévia que ainda não foi salva.";
+		const ImVec2 s1 = r->calculateTextSize(t1, 16.0f * k), s2 = r->calculateTextSize(t2, fsS);
+		r->drawText(ImVec2(exX0 + (exW - s1.x) * 0.5f, exY0 + 12.0f * k), cText, t1, false, 16.0f * k);
+		r->drawText(ImVec2(exX0 + (exW - s2.x) * 0.5f, exY0 + 40.0f * k), cDim, t2, false, fsS);
+		button(exSaveA, exSaveB, "SALVAR E SAIR", online, true, fsS);
+		button(exDiscA, exDiscB, "SAIR SEM SALVAR", true, false, fsS);
+		button(exStayA, exStayB, "CONTINUAR", true, false, fsS);
+	}
 }

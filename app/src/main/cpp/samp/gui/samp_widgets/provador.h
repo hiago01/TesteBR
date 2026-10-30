@@ -26,7 +26,8 @@ public:
 
 	static bool IsOpen();
 	static void Open();
-	static void Close();                       // restaura a previa nao confirmada e fecha
+	static void Close();                       // restaura a previa nao confirmada e fecha (SEM perguntar: uso interno/forcado)
+	static void RequestClose();                // Voltar / /provador: com previa nao salva, pergunta SALVAR E SAIR / SAIR SEM SALVAR / CONTINUAR
 	static void Toggle();
 
 	// Thread do jogo, no inicio de AND_TouchEvent_hook. type: 2 = push, 3 = move, 1 = pop.

@@ -112,4 +112,40 @@ namespace LookSlots
             }
         }
     }
+
+    // Visual PADRAO de um jogador novo (= Look_ApplyDefault do maximo_look.inc): corpo + rosto/sobrancelha/cabelo/intima, variante 1.
+    inline std::vector<St> DefaultSlots()
+    {
+        static const char* const names[] = { "skin_torso", "skin_leg", "skin_feet", "head1", "brow1", "hair1", "underwear" };
+        std::vector<St> v;
+        for (const char* n : names)
+            for (int i = 0; i < SkinSlots::kCount; ++i)
+                if (std::strcmp(SkinSlots::kSlots[i].name, n) == 0) { v.push_back(St{(uint8_t)(i + 1), (uint8_t)kPack, 1}); break; }
+        std::sort(v.begin(), v.end(), [](const St& a, const St& b) { return a.id < b.id; });
+        return v;
+    }
+
+    // Plan() + ESTADO PADRAO EXPLICITO dos slots que o snapshot NAO cita: "slot ausente = padrao" no servidor significa
+    // "invisivel" (o DFF do modelo 7 so mostra male01), mas o MOLDE compartilhado guarda a roupa do jogador LOCAL; sem isto o
+    // ped remoto herdava a roupa de quem esta olhando (todos "com a mesma roupa"). So ops para materiais que nenhum slot citado
+    // ja trata (slots que dividem material, ex.: sobrancelha/barba, nao se anulam).
+    inline void PlanWithDefaults(const std::vector<St>& st, std::vector<Op>& ops)
+    {
+        Plan(st, ops);
+        std::vector<std::string> done;
+        for (const Op& o : ops) done.push_back(o.mat);
+        for (int id = 1; id <= SkinSlots::kCount; ++id)
+        {
+            bool listed = false;
+            for (const St& s : st) if (s.id == id) { listed = true; break; }
+            if (listed) continue;
+            for (const std::string& name : Split(SkinSlots::kSlots[id - 1].texture))
+            {
+                if (std::find(done.begin(), done.end(), name) != done.end()) continue;
+                Op o; o.mat = name; o.slot = id; o.kind = kHide;
+                ops.push_back(std::move(o));
+                done.push_back(name);
+            }
+        }
+    }
 }
