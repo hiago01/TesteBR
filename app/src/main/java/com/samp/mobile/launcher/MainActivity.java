@@ -62,6 +62,7 @@ import com.samp.mobile.launcher.data.OfficialFavorites;
 import com.samp.mobile.launcher.fragments.HomeFragment;
 import com.samp.mobile.launcher.fragments.ServerPagesItemFragment;
 import com.samp.mobile.launcher.fragments.ServersFragment;
+import com.samp.mobile.launcher.fragments.RepairFragment;
 import com.samp.mobile.launcher.fragments.SettingsFragment;
 import com.samp.mobile.launcher.util.ConfigValidator;
 import com.samp.mobile.launcher.util.SAMPServerInfo;
@@ -93,13 +94,14 @@ public class MainActivity extends AppCompatActivity {
     public static final int PAGE_NEWS = 2;
     public static final int PAGE_SETTINGS = 3;
     public static final int PAGE_COMMUNITY = 4;
+    public static final int PAGE_REPAIR = 5;
     private static final int REQ_NOTIFICATIONS = 4101;
 
     private static final int[] MENU_ICONS = { R.drawable.mx_ic_home, R.drawable.mx_ic_servers, R.drawable.mx_ic_news,
-            R.drawable.mx_ic_settings, R.drawable.mx_ic_community, R.drawable.mx_ic_exit };
+            R.drawable.mx_ic_settings, R.drawable.mx_ic_community, R.drawable.mx_ic_repair, R.drawable.mx_ic_exit };
     private static final int[] MENU_TEXTS = { R.string.mx_menu_home, R.string.mx_menu_servers, R.string.mx_menu_news,
-            R.string.mx_menu_settings, R.string.mx_menu_community, R.string.mx_menu_exit };
-    private static final int MENU_EXIT = 5;
+            R.string.mx_menu_settings, R.string.mx_menu_community, R.string.mx_menu_repair, R.string.mx_menu_exit };
+    private static final int MENU_EXIT = 6;
 
     /** Notificado quando a lista, a selecao ou o estado de algum servidor muda. */
     public interface ServerStateListener { void onServerStateChanged(); }
@@ -815,13 +817,14 @@ public class MainActivity extends AppCompatActivity {
                 case PAGE_NEWS: return new NewsFragment();
                 case PAGE_SETTINGS: return new SettingsFragment();
                 case PAGE_COMMUNITY: return new CommunityFragment();
+                case PAGE_REPAIR: return new RepairFragment();
                 default: return new HomeFragment();
             }
         }
 
         @Override
         public int getCount() {
-            return 5;
+            return 6;
         }
     }
 

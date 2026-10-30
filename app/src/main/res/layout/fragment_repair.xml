@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/mx_bg_panel">
+
+    <ImageView
+        android:id="@+id/mx_page_icon"
+        android:layout_width="26dp"
+        android:layout_height="26dp"
+        android:layout_marginStart="14dp"
+        android:layout_marginTop="10dp"
+        android:importantForAccessibility="no"
+        android:src="@drawable/mx_ic_repair"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:tint="@color/mx_accent" />
+
+    <TextView
+        android:id="@+id/mx_page_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:fontFamily="@font/montserrat_bold"
+        android:text="@string/mx_repair_title"
+        android:textColor="@color/mx_text"
+        android:textSize="13sp"
+        app:layout_constraintStart_toEndOf="@+id/mx_page_icon"
+        app:layout_constraintTop_toTopOf="@+id/mx_page_icon" />
+
+    <TextView
+        android:id="@+id/mx_page_subtitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="@font/montserrat_medium"
+        android:text="@string/mx_repair_subtitle"
+        android:textColor="@color/mx_text_dim"
+        android:textSize="9sp"
+        app:layout_constraintStart_toStartOf="@+id/mx_page_title"
+        app:layout_constraintTop_toBottomOf="@+id/mx_page_title" />
+
+    <View
+        android:id="@+id/mx_page_divider"
+        android:layout_width="0dp"
+        android:layout_height="1dp"
+        android:layout_marginStart="10dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="10dp"
+        android:background="#332B6BFF"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/mx_page_subtitle" />
+
+    <ScrollView
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="6dp"
+        android:fillViewport="true"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/mx_page_divider">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="10dp">
+
+            <LinearLayout
+                android:id="@+id/repair_btn_verify"
+                style="@style/MxRepairAction">
+                <TextView style="@style/MxRepairActionTitle" android:text="@string/mx_repair_verify" />
+                <TextView style="@style/MxRepairActionHint" android:text="@string/mx_repair_verify_hint" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/repair_btn_full"
+                style="@style/MxRepairAction">
+                <TextView style="@style/MxRepairActionTitle" android:text="@string/mx_repair_full" />
+                <TextView style="@style/MxRepairActionHint" android:text="@string/mx_repair_full_hint" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/repair_btn_export"
+                style="@style/MxRepairAction">
+                <TextView style="@style/MxRepairActionTitle" android:text="@string/mx_repair_export" />
+                <TextView style="@style/MxRepairActionHint" android:text="@string/mx_repair_export_hint" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/repair_btn_clean"
+                style="@style/MxRepairAction">
+                <TextView style="@style/MxRepairActionTitle" android:text="@string/mx_repair_clean" />
+                <TextView style="@style/MxRepairActionHint" android:text="@string/mx_repair_clean_hint" />
+            </LinearLayout>
+
+            <ProgressBar
+                android:id="@+id/repair_progress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="6dp"
+                android:layout_marginTop="4dp"
+                android:max="1000"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/repair_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:fontFamily="@font/montserrat_medium"
+                android:text="@string/mx_repair_idle"
+                android:textColor="@color/mx_text"
+                android:textSize="10sp" />
+
+            <TextView
+                android:id="@+id/repair_detail"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:fontFamily="@font/montserrat_medium"
+                android:textColor="@color/mx_text_dim"
+                android:textSize="9sp" />
+
+            <TextView
+                android:id="@+id/repair_btn_cancel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/mx_bg_card"
+                android:fontFamily="@font/montserrat_bold"
+                android:paddingStart="16dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="16dp"
+                android:paddingBottom="8dp"
+                android:text="@string/mx_repair_cancel"
+                android:textColor="@color/mx_error"
+                android:textSize="10sp"
+                android:visibility="gone" />
+        </LinearLayout>
+    </ScrollView>
+</androidx.constraintlayout.widget.ConstraintLayout>

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="mx_menu_repair">CORREÇÕES</string>
+    <string name="mx_repair_title">CORREÇÕES</string>
+    <string name="mx_repair_subtitle">Solução de problemas dos arquivos do jogo (SAMP e texdb)</string>
+    <string name="mx_repair_verify">VERIFICAR ARQUIVOS</string>
+    <string name="mx_repair_verify_hint">Confere cada arquivo (tamanho e SHA-256) e mostra o que está errado</string>
+    <string name="mx_repair_full">REPARAR TEXDB/SAMP DO ZERO</string>
+    <string name="mx_repair_full_hint">Baixa de novo todos os arquivos. Use Wi-Fi. Suas configurações são mantidas</string>
+    <string name="mx_repair_export">EXPORTAR RELATÓRIO</string>
+    <string name="mx_repair_export_hint">Gera um texto com dados do aparelho e do log para enviar ao suporte</string>
+    <string name="mx_repair_clean">LIMPAR TEMPORÁRIOS</string>
+    <string name="mx_repair_clean_hint">Remove downloads incompletos e restos de instalações interrompidas</string>
+    <string name="mx_repair_cancel">CANCELAR</string>
+    <string name="mx_repair_idle">Pronto. Escolha uma ação.</string>
+    <string name="mx_repair_full_title">Reparar do zero?</string>
+    <string name="mx_repair_full_msg">Todos os arquivos de texdb e SAMP serão baixados novamente. Pode consumir bastante dados e tempo. Configurações, favoritos e CINFO não são apagados. Continuar?</string>
+    <string name="mx_repair_fix_title">Corrigir agora?</string>
+    <string name="mx_repair_fix_msg">Foram encontrados %1$d arquivo(s) com problema. Baixar de novo somente esses?</string>
+    <string name="mx_repair_yes">SIM</string>
+    <string name="mx_repair_no">NÃO</string>
+
+    <style name="MxRepairAction" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginBottom">8dp</item>
+        <item name="android:background">@drawable/mx_bg_card</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:paddingStart">14dp</item>
+        <item name="android:paddingEnd">14dp</item>
+        <item name="android:paddingTop">8dp</item>
+        <item name="android:paddingBottom">8dp</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+    <style name="MxRepairActionTitle" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:fontFamily">@font/montserrat_bold</item>
+        <item name="android:textColor">@color/mx_text</item>
+        <item name="android:textSize">10sp</item>
+    </style>
+    <style name="MxRepairActionHint" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:fontFamily">@font/montserrat_medium</item>
+        <item name="android:textColor">@color/mx_text_dim</item>
+        <item name="android:textSize">9sp</item>
+    </style>
+</resources>

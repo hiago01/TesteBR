@@ -11,3 +11,4 @@ $JAVAC -d out org/json/*.java $SRC/ServerConfigParser.java $SRC/SampQueryAPI.jav
 java -cp out test.ParserTest
 java -cp out test.QueryTest
 java -cp out test.PackTest
+java -cp out test.RepairTest
