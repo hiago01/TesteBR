@@ -22,6 +22,7 @@ import com.joom.paranoid.Obfuscate;
 import com.nvidia.devtech.NvEventQueueActivity;
 import com.samp.mobile.R;
 import com.samp.mobile.launcher.util.CustomRecyclerView;
+import com.samp.mobile.launcher.util.MaxHeightScrollView;
 import com.samp.mobile.launcher.util.Util;
 
 import java.io.UnsupportedEncodingException;
@@ -137,6 +138,10 @@ public class DialogManager {
         isShow = false;
         Util.HideLayout(this.mMainLayout, false);
         Util.scaleViewAndChildren(this.activity, this.mMainLayout);
+        // altura maxima do cartao de texto (depois de escalar): 480 na base 1080p
+        if (this.mDialogTextLayout instanceof MaxHeightScrollView) {
+            ((MaxHeightScrollView) this.mDialogTextLayout).setMaxHeightPx((int) Util.scale(this.activity, 480.0f));
+        }
     }
 
     public void show(int i, int i2, String str, String str2, String str3, String str4) {
@@ -148,7 +153,7 @@ public class DialogManager {
         this.mButtonPositive = str3;
         this.mButtonNegative = str4;
 
-        ConstraintLayout.LayoutParams layoutParams = (ConstraintLayout.LayoutParams) this.mDialogTextLayout.getLayoutParams();
+        ViewGroup.LayoutParams layoutParams = (ViewGroup.LayoutParams) this.mDialogTextLayout.getLayoutParams();
         layoutParams.height = -2;
         this.mDialogTextLayout.setLayoutParams(layoutParams);
         FrameLayout.LayoutParams layoutParams2 = (FrameLayout.LayoutParams) this.mMainLayout.getLayoutParams();
@@ -184,7 +189,7 @@ public class DialogManager {
                 return;
             }
             if (i <= 150) {
-                ConstraintLayout.LayoutParams layoutParams = (ConstraintLayout.LayoutParams) this.mDialogTextLayout.getLayoutParams();
+                ViewGroup.LayoutParams layoutParams = (ViewGroup.LayoutParams) this.mDialogTextLayout.getLayoutParams();
                 layoutParams.height = -2;
                 this.mDialogTextLayout.setLayoutParams(layoutParams);
                 FrameLayout.LayoutParams layoutParams2 = (FrameLayout.LayoutParams) this.mMainLayout.getLayoutParams();
@@ -192,7 +197,7 @@ public class DialogManager {
                 this.mMainLayout.setLayoutParams(layoutParams2);
                 return;
             }
-            ConstraintLayout.LayoutParams layoutParams3 = (ConstraintLayout.LayoutParams) this.mDialogTextLayout.getLayoutParams();
+            ViewGroup.LayoutParams layoutParams3 = (ViewGroup.LayoutParams) this.mDialogTextLayout.getLayoutParams();
             layoutParams3.height = (int) Util.scale(this.activity, 104.0f);
             this.mDialogTextLayout.setLayoutParams(layoutParams3);
             FrameLayout.LayoutParams layoutParams4 = (FrameLayout.LayoutParams) this.mMainLayout.getLayoutParams();
@@ -318,27 +323,27 @@ public class DialogManager {
     }
 
     public void loadSizes() {
-        ConstraintLayout.LayoutParams layoutParams = (ConstraintLayout.LayoutParams) this.mDialogListLayout.getLayoutParams();
+        ViewGroup.LayoutParams layoutParams = (ViewGroup.LayoutParams) this.mDialogListLayout.getLayoutParams();
         layoutParams.width = -2;
         this.mDialogListLayout.setLayoutParams(layoutParams);
-        ConstraintLayout.LayoutParams layoutParams2 = (ConstraintLayout.LayoutParams) this.mDialogList.getLayoutParams();
+        ViewGroup.LayoutParams layoutParams2 = (ViewGroup.LayoutParams) this.mDialogList.getLayoutParams();
         layoutParams2.width = -2;
         this.mDialogList.setLayoutParams(layoutParams2);
-        ConstraintLayout.LayoutParams layoutParams3 = (ConstraintLayout.LayoutParams) this.mDialogListRecycler.getLayoutParams();
+        ViewGroup.LayoutParams layoutParams3 = (ViewGroup.LayoutParams) this.mDialogListRecycler.getLayoutParams();
         layoutParams3.width = -2;
         this.mDialogListRecycler.setLayoutParams(layoutParams3);
         this.mDialogBody.post(new Runnable() {
             public void run() {
                 if (DialogManager.this.mDialogBody.getWidth() > DialogManager.this.mDialogList.getWidth()) {
                     if (DialogManager.this.mDialogBody.getWidth() > DialogManager.this.mDialogListLayout.getWidth()) {
-                        ConstraintLayout.LayoutParams layoutParams = (ConstraintLayout.LayoutParams) DialogManager.this.mDialogListLayout.getLayoutParams();
+                        ViewGroup.LayoutParams layoutParams = (ViewGroup.LayoutParams) DialogManager.this.mDialogListLayout.getLayoutParams();
                         layoutParams.width = 0;
                         DialogManager.this.mDialogListLayout.setLayoutParams(layoutParams);
                     }
-                    ConstraintLayout.LayoutParams layoutParams2 = (ConstraintLayout.LayoutParams) DialogManager.this.mDialogList.getLayoutParams();
+                    ViewGroup.LayoutParams layoutParams2 = (ViewGroup.LayoutParams) DialogManager.this.mDialogList.getLayoutParams();
                     layoutParams2.width = 0;
                     DialogManager.this.mDialogList.setLayoutParams(layoutParams2);
-                    ConstraintLayout.LayoutParams layoutParams3 = (ConstraintLayout.LayoutParams) DialogManager.this.mDialogListRecycler.getLayoutParams();
+                    ViewGroup.LayoutParams layoutParams3 = (ViewGroup.LayoutParams) DialogManager.this.mDialogListRecycler.getLayoutParams();
                     layoutParams3.width = 0;
                     DialogManager.this.mDialogListRecycler.setLayoutParams(layoutParams3);
                     DialogManager.this.mListAdapter.setMatchParent(true);
