@@ -565,11 +565,54 @@ public class UpdateService extends Service {
         Log.d(TAG, "instalacao por pacotes: " + mPackSelection.size() + " pacotes, " + total + " bytes");
     }
 
+    private String mInstalledShaPath = "";
+    private long mInstalledShaStamp = -1;
+    private String mInstalledSha = "";
+
+    /** SHA-256 do APK instalado (base.apk). Em cache por caminho+tamanho+data; roda na HandlerThread do servico. "" = nao deu para ler. */
+    private String installedApkSha(String path) {
+        File f = new File(path);
+        long stamp = f.length() ^ (f.lastModified() * 31);
+        if (path.equals(mInstalledShaPath) && stamp == mInstalledShaStamp) return mInstalledSha;
+        String r = "";
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            java.io.FileInputStream in = new java.io.FileInputStream(f);
+            try {
+                byte[] buf = new byte[256 * 1024];
+                int n;
+                while ((n = in.read(buf)) > 0) md.update(buf, 0, n);
+            } finally {
+                in.close();
+            }
+            StringBuilder sb = new StringBuilder(64);
+            for (byte b : md.digest()) sb.append(String.format(java.util.Locale.ROOT, "%02x", b));
+            r = sb.toString();
+        } catch (java.security.NoSuchAlgorithmException | java.io.IOException e) {
+            Log.w(TAG, "nao foi possivel calcular o sha256 do APK instalado: " + e);
+        }
+        mInstalledShaPath = path; mInstalledShaStamp = stamp; mInstalledSha = r;
+        return r;
+    }
+
+    /**
+     * Ha APK novo quando o versionCode do client_config e DIFERENTE do instalado OU (com launcher_sha256 no client_config)
+     * quando o APK instalado nao e byte a byte o publicado no servidor - assim trocar o launcher.apk sem mexer no
+     * version_code tambem forca a atualizacao. Se o hash do instalado nao puder ser lido, vale so o versionCode.
+     */
     public boolean isGameUpdateExists() {
         try {
             PackageInfo packageInfo = getPackageManager().getPackageInfo("com.samp.mobile", 0);
             Log.d("x1y2z", "isGameUpdateExists -> currentVersion " + packageInfo.versionCode + " | mUpdateVersion " + this.mUpdateVersion);
-            return packageInfo.versionCode != this.mUpdateVersion;
+            if (packageInfo.versionCode != this.mUpdateVersion) return true;
+            if (!mUpdateGameSha.isEmpty() && packageInfo.applicationInfo != null && packageInfo.applicationInfo.sourceDir != null) {
+                String have = installedApkSha(packageInfo.applicationInfo.sourceDir);
+                if (!have.isEmpty() && !have.equals(mUpdateGameSha)) {
+                    Log.w(TAG, "APK instalado difere do publicado (mesmo versionCode): " + have + " != " + mUpdateGameSha);
+                    return true;
+                }
+            }
+            return false;
         } catch (PackageManager.NameNotFoundException e) {
             Log.e(TAG, "own package not found", e);
             return false;
