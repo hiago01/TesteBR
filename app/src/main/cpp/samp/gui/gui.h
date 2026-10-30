@@ -22,6 +22,7 @@
 #include "samp_widgets/chat.h"
 #include "samp_widgets/spawn.h"
 #include "samp_widgets/buttonpanel.h"
+#include "samp_widgets/passengerbutton.h"
 #include "samp_widgets/playertablist.h"
 #include "samp_widgets/voicebutton.h"
 #include "samp_widgets/weaponbar.h"
@@ -59,6 +60,7 @@ public:
 	PlayerTabList* playertablist() const { return m_playerTabList; }
 	VoiceButton* voicebutton() const { return m_voiceButton; }
 	WeaponBar* weaponbar() const { return m_weaponBar; }
+	PassengerButton* passengerbutton() const { return m_passengerButton; }
 	HudInfo* hud() const { return m_hud; }
 	MaximoMenu* maximomenu() const { return m_maximoMenu; }
 
@@ -103,6 +105,7 @@ private:
 	PlayerTabList* m_playerTabList;
 	VoiceButton* m_voiceButton;
 	WeaponBar* m_weaponBar;
+	PassengerButton* m_passengerButton;
 	HudInfo* m_hud = nullptr;
 	MaximoMenu* m_maximoMenu = nullptr;
 	InventoryUI* m_inventory = nullptr;

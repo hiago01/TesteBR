@@ -325,14 +325,15 @@ namespace SkinSlots
     };
 
     // Tenis de cano BAIXO (boot1 e boot3): a boca do calcado e aberta e mostra o peito do pe e o tornozelo. A malha do tenis NAO
-    // cobre essa area, entao esconder body.feet*/body.leg5 (pele) deixava um buraco (aparecia o interior cinza/vermelho do tenis).
+    // cobre essa area, entao esconder body.feet*/body.leg4/leg5 (pele) deixava um buraco (aparecia o interior cinza/vermelho do tenis).
     // Eles continuam escondendo o resto; boot2/boot4 (fechados) seguem cobrindo tudo.
     inline bool PieceNeverCovers(const char* piece, const char* target)
     {
         const bool lowShoe = std::strcmp(piece, "fantasy_m_boot1") == 0 || std::strcmp(piece, "fantasy_m_boot3") == 0;
         if (!lowShoe) return false;
         return std::strcmp(target, "body.feetleft") == 0 || std::strcmp(target, "body.feetright") == 0 ||
-               std::strcmp(target, "body.legleft5") == 0 || std::strcmp(target, "body.legright5") == 0;
+               std::strcmp(target, "body.legleft5") == 0 || std::strcmp(target, "body.legright5") == 0 ||
+               std::strcmp(target, "body.legleft4") == 0 || std::strcmp(target, "body.legright4") == 0;   // leg4 (tornozelo) vai ate y=-0.69 no DFF, acima do que a caixa diz
     }
 
     inline bool PieceCovers(const Box& p, const Box& r)

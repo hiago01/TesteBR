@@ -67,10 +67,11 @@ int main()
         using namespace SkinSlots;
         auto piece = [](const char* n) { for (const Box& b : kCoverPieces) if (!std::strcmp(b.name, n)) return &b; return (const Box*)nullptr; };
         auto target = [](const char* n) { for (const Box& b : kCoverTargets) if (!std::strcmp(b.name, n)) return &b; return (const Box*)nullptr; };
-        const char* skin[] = { "body.feetleft", "body.feetright", "body.legleft5", "body.legright5" };
+        const char* skin[] = { "body.feetleft", "body.feetright", "body.legleft5", "body.legright5", "body.legleft4", "body.legright4" };
         for (const char* t : skin) {
             CHECK(!PieceCovers(*piece("fantasy_m_boot1"), *target(t)));
             CHECK(!PieceCovers(*piece("fantasy_m_boot3"), *target(t)));
+            if (std::strstr(t, "leg") && t[std::strlen(t) - 1] == '4') continue;      // leg4: boot2 (cano mais baixo) nunca cobriu; so importa que boot1/3 nao cubram
             CHECK(PieceCovers(*piece("fantasy_m_boot2"), *target(t)));
             CHECK(PieceCovers(*piece("fantasy_m_boot4"), *target(t)));
         }

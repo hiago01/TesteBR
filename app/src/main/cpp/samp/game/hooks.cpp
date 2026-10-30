@@ -966,6 +966,9 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 		// segue para o jogo (camera/joystick) nem para os outros widgets.
 		if (pUI->weaponbar() && pUI->weaponbar()->onRawTouch(type, num, posX, posY))
 			return;
+		// Botao P2 (passageiro): idem, o dedo que comeca nele nao vai para o jogo
+		if (pUI->passengerbutton() && pUI->passengerbutton()->onRawTouch(type, num, posX, posY))
+			return;
 
 		switch (type)
 		{

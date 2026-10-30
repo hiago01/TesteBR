@@ -65,6 +65,15 @@ bool UI::initialize()
 		m_weaponBar->setVisible(true);   // o proprio draw() so desenha com o jogador em campo
 	}
 
+	// Botao P2 (entrar como passageiro) ao lado do botao nativo do carro (P1 = motorista). So aparece perto de um veiculo.
+	{
+		m_passengerButton = new PassengerButton();
+		this->addChild(m_passengerButton);
+		m_passengerButton->setFixedSize(PassengerButton::SizeFor(size()));
+		m_passengerButton->setPosition(PassengerButton::PosFor(size()));
+		m_passengerButton->setVisible(true);   // o proprio draw() decide quando aparece
+	}
+
 	// HUD do jogador (logo Maximo RP + vida/colete/fome/energia/sede + dinheiro): canto superior direito.
 	{
 		m_hud = new HudInfo();
