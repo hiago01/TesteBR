@@ -22,3 +22,5 @@ g++ -std=c++17 -Wall -I"$SRC/game" -o "$T/rt" "$ROOT/testes/host_test_rosto_tom.
 "$T/rt"
 g++ -std=c++17 -Wall -o "$T/pb" "$ROOT/testes/host_test_passengerbutton.cpp"
 "$T/pb"
+g++ -std=c++17 -Wall -o "$T/lim" "$ROOT/testes/host_test_entervehiclelimiter.cpp"
+"$T/lim"

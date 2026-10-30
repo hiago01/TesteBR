@@ -1219,28 +1219,28 @@ extern bool bNeedEnterVehicle;
 
 bool CLocalPlayer::HandlePassengerEntry()
 {
-	CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
-
-	// CTouchInterface::IsDoubleTapped
-	//int isHeldDown = ((int (*)(int, bool, int))(g_libGTASA + 0x2B2068 + 1))(0, true, 1);
-	//if (!isHeldDown) return false;
-
+	// Um toque em P2 (bNeedEnterVehicle) vale por NO MAXIMO um pedido: a flag e consumida aqui, sempre, mesmo que o pedido seja
+	// recusado (sem acumular toques). Retornar true so serve para o hook do botao nativo ignorar o clique do P1 neste instante.
 	if (!bNeedEnterVehicle) return false;
+	bNeedEnterVehicle = false;
+
+	if (!pNetGame || !pNetGame->GetVehiclePool() || !m_pPlayerPed || !m_pPlayerPed->m_pPed) return true;
+	CPedGTA* ped = m_pPlayerPed->m_pPed;
+	if (ped->m_fHealth <= 0.0f || ped->IsInVehicle()) return true;                          // morto / ja dentro
+	if (m_pPlayerPed->IsEnteringVehicle() || m_pPlayerPed->IsExitingVehicle()) return true; // ja ha uma entrada/saida em andamento (P1 ou P2)
+
+	CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
 	VEHICLEID ClosetVehicleID = pVehiclePool->FindNearestToLocalPlayerPed();
 	CVehicle* pVehicle = pVehiclePool->GetAt(ClosetVehicleID);
-	if (!pVehicle) return false;
+	if (!pVehicle || !pVehicle->m_pVehicle) return true;
+	if (pVehicle->m_pVehicle->GetDistanceFromLocalPlayerPed() >= 8.0f) return true;          // longe demais: nada sai
+	if (!m_enterLimiter.Check(GetTickCount(), ClosetVehicleID, true)) return true;           // flood: recusa ANTES de mandar o ped andar
 
-	if (pVehicle->m_pVehicle->GetDistanceFromLocalPlayerPed() < 8.0f)
-	{
-		if (m_pPlayerPed->GetCurrentWeapon() == WEAPON_PARACHUTE) {
-			m_pPlayerPed->SetArmedWeapon(0, false);
-		}
-
-		m_pPlayerPed->EnterVehicle(pVehicle->m_dwGTAId, true);
-		SendEnterVehicleNotification(ClosetVehicleID, true);
-		bNeedEnterVehicle = false;
+	if (m_pPlayerPed->GetCurrentWeapon() == WEAPON_PARACHUTE) {
+		m_pPlayerPed->SetArmedWeapon(0, false);
 	}
-	bNeedEnterVehicle = false;
+	m_pPlayerPed->EnterVehicle(pVehicle->m_dwGTAId, true);
+	SendEnterVehicleNotification(ClosetVehicleID, true);                                     // passa pelo limitador (ja checado acima)
 	return true;
 }
 
@@ -1673,6 +1673,12 @@ bool CLocalPlayer::IsNeedSyncDataSend(const void* data1, const void* data2, size
 // 0.3.7
 void CLocalPlayer::SendEnterVehicleNotification(VEHICLEID VehicleID, bool bPassenger)
 {
+	// ponto unico de saida do RPC EnterVehicle: intervalo minimo, mesmo veiculo/papel e id valido (EnterVehicleLimiter.h)
+	if (!m_enterLimiter.Allow(GetTickCount(), VehicleID, bPassenger))
+	{
+		FLog("[ENTERVEH] pedido de entrada descartado (limite): veiculo %d passageiro %d", (int)VehicleID, bPassenger ? 1 : 0);
+		return;
+	}
 	uint8_t bytePassenger = 0;
 
 	if(bPassenger)

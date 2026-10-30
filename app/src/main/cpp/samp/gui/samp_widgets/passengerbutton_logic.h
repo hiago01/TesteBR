@@ -39,8 +39,9 @@ namespace PassengerLogic
 		return dx * dx + dy * dy <= R * R;
 	}
 
-	inline bool ShouldShow(bool pedOk, bool blockedUi, bool inVehicle, bool alive, float nearestDist)
+	inline bool ShouldShow(bool pedOk, bool blockedUi, bool inVehicle, bool alive, float nearestDist, bool busy = false)
 	{
-		return pedOk && !blockedUi && !inVehicle && alive && nearestDist >= 0.0f && nearestDist <= kShowDist;
+		// busy = ja entrando/saindo de veiculo: o botao some (nao da para acumular toques durante a animacao)
+		return pedOk && !blockedUi && !inVehicle && alive && !busy && nearestDist >= 0.0f && nearestDist <= kShowDist;
 	}
 }

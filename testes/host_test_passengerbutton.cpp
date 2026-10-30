@@ -17,6 +17,8 @@ int main()
     CHECK(!ShouldShow(true, true, false, true, 1.0f));                   // dialogo/teclado
     CHECK(!ShouldShow(true, false, false, false, 1.0f));                 // morto
     CHECK(!ShouldShow(false, false, false, true, 1.0f));                 // sem ped
+    CHECK(!ShouldShow(true, false, false, true, 1.0f, true));            // entrando/saindo de veiculo (busy)
+    CHECK(ShouldShow(true, false, false, true, 1.0f, false));
     // retangulo nativo valido/invalido
     CHECK(NativeRectOk(1480, 360, 1560, 440, W, H));
     CHECK(!NativeRectOk(1560, 360, 1480, 440, W, H));                    // invertido

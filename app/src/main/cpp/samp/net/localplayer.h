@@ -1,4 +1,5 @@
 #pragma once
+#include "EnterVehicleLimiter.h"
 
 #define SPECTATE_TYPE_NONE						0
 #define SPECTATE_TYPE_PLAYER					1
@@ -285,6 +286,7 @@ public:
 
 
 	bool                 m_bWasInCar;
+	EnterVehicleLimiter  m_enterLimiter;     // anti-flood do RPC EnterVehicle (P1/P2)
 private:
 	CPlayerPed*			m_pPlayerPed;
 	bool				m_bIsWasted;

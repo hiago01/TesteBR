@@ -27,14 +27,15 @@ namespace
 	}
 
 	// distancia (m) ao veiculo SA-MP mais proximo do ped local; -1 = nenhum
-	float NearestVehicleDist(CPedGTA*& pedOut, bool& aliveOut, bool& inVehOut)
+	float NearestVehicleDist(CPedGTA*& pedOut, bool& aliveOut, bool& inVehOut, bool& busyOut)
 	{
-		pedOut = nullptr; aliveOut = false; inVehOut = false;
+		pedOut = nullptr; aliveOut = false; inVehOut = false; busyOut = false;
 		if (!pNetGame || !pNetGame->GetPlayerPool() || !pNetGame->GetVehiclePool()) return -1.0f;
 		CLocalPlayer* lp = pNetGame->GetPlayerPool()->GetLocalPlayer();
 		if (!lp || !lp->GetPlayerPed() || !lp->GetPlayerPed()->m_pPed) return -1.0f;
 		CPedGTA* ped = lp->GetPlayerPed()->m_pPed;
 		pedOut = ped; aliveOut = ped->m_fHealth > 0.0f; inVehOut = ped->IsInVehicle();
+		busyOut = ped->IsEnteringCar() || ped->IsExitingVehicle();
 		CVehiclePool* vp = pNetGame->GetVehiclePool();
 		const VEHICLEID id = vp->FindNearestToLocalPlayerPed();
 		CVehicle* v = vp->GetAt(id);
@@ -79,9 +80,9 @@ PassengerButton::PassengerButton() : Widget()
 
 void PassengerButton::draw(ImGuiRenderer* r)
 {
-	CPedGTA* ped = nullptr; bool alive = false, inVeh = false;
-	const float dist = NearestVehicleDist(ped, alive, inVeh);
-	const bool show = PassengerLogic::ShouldShow(ped != nullptr, UiBlocked(), inVeh, alive, dist);
+	CPedGTA* ped = nullptr; bool alive = false, inVeh = false, busy = false;
+	const float dist = NearestVehicleDist(ped, alive, inVeh, busy);
+	const bool show = PassengerLogic::ShouldShow(ped != nullptr, UiBlocked(), inVeh, alive, dist, busy);
 	m_available.store(show);
 	if (!show) { m_finger.store(-1); return; }
 
@@ -134,6 +135,7 @@ bool PassengerButton::onRawTouch(int type, int num, int x, int y)
 	if (type == 2)                                                   // push
 	{
 		if (!m_available.load() || m_finger.load() >= 0 || !(c.r > 0.0f)) return false;
+		if (bNeedEnterVehicle) return PassengerLogic::Hit(c, fx, fy);        // pedido anterior ainda nao consumido: engole o toque, nao empilha
 		if (!PassengerLogic::Hit(c, fx, fy)) return false;
 		m_finger.store(num);
 		return true;
