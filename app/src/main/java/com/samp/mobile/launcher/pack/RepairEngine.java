@@ -63,9 +63,15 @@ public final class RepairEngine {
         public int fixed;
         public final List<String> failed = new ArrayList<>();
         public long downloadedBytes;
+        /** Uma linha por arquivo baixado: tamanho, tempo, velocidade (para achar o que trava). */
+        public final List<String> log = new ArrayList<>();
     }
 
     public interface Progress { void onStep(String what, int done, int total); }
+    /** Progresso por BYTE do arquivo atual e do total (a tela mostra MB e velocidade). */
+    public interface ByteProgress {
+        void onBytes(int idx, int total, String path, long fileDone, long fileTotal, long allDone, long allTotal);
+    }
     public interface UrlResolver { String urlFor(String relPath); }
     public interface FreeSpace { long freeBytes(); }
 
@@ -121,6 +127,30 @@ public final class RepairEngine {
         if (files != null) for (Entry e : files) {
             if (haveSamp && SampList.isSampPath(e.path)) continue;
             if (seen.add(e.path.toLowerCase(Locale.ROOT))) out.add(e);
+        }
+        return out;
+    }
+
+    // ------------------------------------------------------------------ GPU
+    /**
+     * Mantem so o que o aparelho usa (MESMA regra do fluxo antigo: GameFilePolicy.wantedForDevice).
+     * gpu 1=dxt 2=etc 3=pvr. gpu desconhecida (0): so os arquivos sem marca de GPU + os de GPU que JA existem no aparelho
+     * (nunca marca como "ausente" nem baixa textura de outra GPU).
+     */
+    public static List<Entry> forGpu(File base, List<Entry> entries, int gpu, List<String> warnings) throws PackException {
+        List<Entry> out = new ArrayList<>();
+        int skipped = 0;
+        for (Entry e : entries) {
+            int g = GameFilePolicy.gpuOf(e.path);
+            boolean keep;
+            if (g == 0) keep = true;
+            else if (gpu >= 1 && gpu <= 3) keep = g == gpu;
+            else keep = PathSafety.resolveInside(base, e.path).isFile();
+            if (keep) out.add(e); else skipped++;
+        }
+        if (warnings != null) {
+            if (gpu < 1 || gpu > 3) warnings.add("GPU do aparelho ainda nao registrada (abra o launcher de novo): texturas de GPU so sao conferidas se ja existirem");
+            if (skipped > 0) warnings.add(skipped + " arquivo(s) de outra GPU ignorados (nao sao usados neste aparelho)");
         }
         return out;
     }
@@ -226,7 +256,12 @@ public final class RepairEngine {
 
     public static RepairResult repair(File base, List<Entry> targets, UrlResolver urls, int maxAttempts, PackDownloader.Sleeper sleeper,
                                       FreeSpace free, Progress progress, CancelToken cancel) throws PackException {
-        RepairResult res = new RepairResult();
+        return repair(base, targets, urls, maxAttempts, sleeper, free, progress, null, cancel);
+    }
+
+    public static RepairResult repair(File base, List<Entry> targets, UrlResolver urls, int maxAttempts, PackDownloader.Sleeper sleeper,
+                                      FreeSpace free, Progress progress, final ByteProgress bytes, CancelToken cancel) throws PackException {
+        final RepairResult res = new RepairResult();
         if (targets.isEmpty()) return res;
         long maxFile = 0;
         for (Entry e : targets) maxFile = Math.max(maxFile, e.size);
@@ -237,6 +272,10 @@ public final class RepairEngine {
                 throw new PackException("espaco insuficiente: livre " + (have >> 20) + " MB, necessario " + (need >> 20) + " MB");
         }
         File tmpDir = new File(base, REPAIR_TMP);
+        long allTotal0 = 0;
+        for (Entry e : targets) allTotal0 += e.size;
+        final long allTotal = allTotal0;
+        final long[] doneBefore = {0}; // soma dos arquivos ja concluidos
         int i = 0;
         try {
             for (Entry e : targets) {
@@ -244,19 +283,35 @@ public final class RepairEngine {
                 if (progress != null) progress.onStep(e.path, ++i, targets.size());
                 File dest = PathSafety.resolveInside(base, e.path);
                 File tmp = new File(tmpDir, i + ".tmp");
+                final long[] fileDone = {0};
+                final int idx = i, cnt = targets.size();
+                final String fpath = e.path;
+                final long fsize = e.size;
+                long t0 = System.currentTimeMillis();
                 try {
                     if (dest.isDirectory()) throw new PackException("o destino e uma pasta");
+                    if (bytes != null) bytes.onBytes(idx, cnt, fpath, 0, fsize, doneBefore[0], allTotal);
                     FileDownloader.downloadVerified(urls.urlFor(e.path), tmp, e.size, e.sha256, maxAttempts, sleeper,
-                            new FileDownloader.Bytes() { @Override public void add(long d) { res.downloadedBytes += d; } }, cancel);
+                            new FileDownloader.Bytes() {
+                                @Override public void add(long d) {
+                                    res.downloadedBytes += d;
+                                    fileDone[0] += d;
+                                    if (bytes != null) bytes.onBytes(idx, cnt, fpath, fileDone[0], fsize, doneBefore[0] + fileDone[0], allTotal);
+                                }
+                            }, cancel);
                     File parent = dest.getParentFile();
                     if (parent != null && !parent.isDirectory() && !parent.mkdirs() && !parent.isDirectory())
                         throw new PackException("nao foi possivel criar a pasta " + parent);
                     replace(tmp, dest);
                     res.fixed++;
+                    doneBefore[0] += e.size;
+                    long ms = Math.max(1, System.currentTimeMillis() - t0);
+                    res.log.add(e.path + ": " + (e.size >> 10) + " KB em " + (ms / 1000.0) + " s (" + String.format(java.util.Locale.ROOT, "%.2f", e.size / 1048.576 / ms) + " MB/s)");
                 } catch (CancelToken.Cancelled c) {
                     throw c;
                 } catch (PackException | IOException ex) {
-                    res.failed.add(e.path + ": " + ex.getMessage());
+                    res.failed.add(e.path + " (" + (e.size >> 10) + " KB, apos " + ((System.currentTimeMillis() - t0) / 1000) + " s): " + ex.getMessage());
+                    doneBefore[0] += e.size;
                     tmp.delete();
                 }
             }
@@ -316,6 +371,8 @@ public final class RepairEngine {
             b.append("\n[Reparo] corrigidos=").append(rep.fixed).append(" falhas=").append(rep.failed.size())
                     .append(" baixado=").append(rep.downloadedBytes >> 10).append(" KB\n");
             for (String f : rep.failed) b.append("  - ").append(f).append('\n');
+            int k = 0;
+            for (String l : rep.log) { if (k++ >= 60) break; b.append("  ok ").append(l).append('\n'); }
         }
         if (logTail != null && !logTail.isEmpty()) b.append("\n[samp_log.txt - final]\n").append(logTail).append('\n');
         return b.toString();

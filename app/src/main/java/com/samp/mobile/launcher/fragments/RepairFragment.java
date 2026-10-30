@@ -23,6 +23,7 @@ import androidx.fragment.app.Fragment;
 import com.samp.mobile.R;
 import com.samp.mobile.launcher.config.AppEndpoints;
 import com.samp.mobile.launcher.pack.AtomicInstaller;
+import com.samp.mobile.launcher.pack.InstalledState;
 import com.samp.mobile.launcher.pack.CancelToken;
 import com.samp.mobile.launcher.pack.FileDownloader;
 import com.samp.mobile.launcher.pack.MiniJson;
@@ -63,6 +64,12 @@ public class RepairFragment extends Fragment {
     private volatile RepairEngine.VerifyResult lastVerify;
     private volatile RepairEngine.RepairResult lastRepair;
     private volatile boolean haveSampJson;
+    private volatile int gpuType;                 // 1=dxt 2=etc 3=pvr, 0=desconhecida
+    private volatile List<String> listWarnings = new ArrayList<>();
+    private volatile long lastByteMs;             // ultimo instante em que chegaram bytes (detector de travamento)
+    private volatile boolean downloading;
+    private volatile long fileStartMs, lastUiMs;
+    private volatile String stallNote = "";
 
     @Nullable
     @Override
@@ -86,8 +93,25 @@ public class RepairFragment extends Fragment {
         return v;
     }
 
+    private final Runnable stallTicker = new Runnable() {
+        @Override public void run() {
+            if (detail == null || !downloading) return;
+            long idle = System.currentTimeMillis() - lastByteMs;
+            if (idle > 8000) {
+                stallNote = "\n⚠ Sem receber dados há " + (idle / 1000) + " s (conexão lenta ou servidor travado). Tentando de novo automaticamente.";
+                CharSequence cur = detail.getText();
+                String base = cur.toString();
+                int k = base.indexOf("\n⚠");
+                if (k >= 0) base = base.substring(0, k);
+                detail.setText(base + stallNote);
+            }
+            ui.postDelayed(this, 1000);
+        }
+    };
+
     @Override
     public void onDestroyView() {
+        ui.removeCallbacks(stallTicker);
         cancel.cancel();
         status = detail = cancelBtn = null;
         bar = null;
@@ -110,7 +134,7 @@ public class RepairFragment extends Fragment {
                 RepairEngine.VerifyResult v = RepairEngine.verify(base, entries, stepProgress("Verificando"), cancel);
                 lastVerify = v;
                 lastRepair = null;
-                post("Verificação concluída", summarize(v));
+                post("Verificação concluída", summarize(v) + warnText());
                 if (!v.bad.isEmpty()) askFix(v.bad.size());
             }
         });
@@ -167,14 +191,22 @@ public class RepairFragment extends Fragment {
     /** Baixa os alvos (verificados), confere de novo e mostra o resultado. */
     private void doRepair(File base, List<RepairEngine.Entry> targets, List<RepairEngine.Entry> entries) throws PackException {
         final File fb = base;
-        RepairEngine.RepairResult rr = RepairEngine.repair(base, targets, urlResolver(), ATTEMPTS, SLEEP,
+        lastByteMs = System.currentTimeMillis();
+        downloading = true;
+        ui.post(new Runnable() { @Override public void run() { ui.removeCallbacks(stallTicker); ui.postDelayed(stallTicker, 1000); } });
+        RepairEngine.RepairResult rr;
+        try {
+            rr = RepairEngine.repair(base, targets, urlResolver(), ATTEMPTS, SLEEP,
                 new RepairEngine.FreeSpace() { @Override public long freeBytes() { return new StatFs(fb.getAbsolutePath()).getAvailableBytes(); } },
-                stepProgress("Baixando"), cancel);
+                null, byteProgress(), cancel);
+        } finally {
+            downloading = false;
+        }
         lastRepair = rr;
         RepairEngine.VerifyResult v = RepairEngine.verify(base, entries, stepProgress("Conferindo"), cancel);
         lastVerify = v;
         String head = rr.failed.isEmpty() && v.bad.isEmpty() ? "Tudo certo" : "Concluído com pendências";
-        post(head, "Corrigidos: " + rr.fixed + "  |  Falhas: " + rr.failed.size() + "  |  Baixado: " + (rr.downloadedBytes >> 20) + " MB\n" + summarize(v));
+        post(head, "Corrigidos: " + rr.fixed + "  |  Falhas: " + rr.failed.size() + "  |  Baixado: " + (rr.downloadedBytes >> 20) + " MB\n" + summarize(v) + warnText());
     }
 
     private void startExport() {
@@ -262,10 +294,26 @@ public class RepairFragment extends Fragment {
         List<String> warns = new ArrayList<>();
         String fj = FileDownloader.fetchText(filesUrl, 32 << 20, ATTEMPTS, SLEEP, cancel);
         List<RepairEngine.Entry> files = RepairEngine.fromFilesJson(fj, warns);
-        List<RepairEngine.Entry> all = RepairEngine.merge(samp, files);
+        List<RepairEngine.Entry> merged = RepairEngine.merge(samp, files);
+        gpuType = detectGpu(a, base);
+        List<RepairEngine.Entry> all = RepairEngine.forGpu(base, merged, gpuType, warns);
+        listWarnings = warns;
         if (all.isEmpty()) throw new PackException("as listas do servidor não têm arquivos de texdb/SAMP");
         lastEntries = all;
         return all;
+    }
+
+    /** GPU gravada pelo Splash (1=dxt 2=etc 3=pvr); senao a do installed.json; senao 0 (desconhecida). */
+    private static int detectGpu(Activity a, File base) {
+        try {
+            int g = a.getSharedPreferences("com.samp.mobile", Activity.MODE_PRIVATE).getInt("gpu_type", 0);
+            if (g >= 1 && g <= 3) return g;
+        } catch (RuntimeException ignored) { }
+        try {
+            InstalledState st = InstalledState.read(base);
+            if (st != null && st.gpu >= 1 && st.gpu <= 3) return st.gpu;
+        } catch (RuntimeException ignored) { }
+        return 0;
     }
 
     private RepairEngine.UrlResolver urlResolver() {
@@ -294,6 +342,36 @@ public class RepairFragment extends Fragment {
                 } });
             }
         };
+    }
+
+    /** Progresso por BYTE: "12,3 / 140 MB - 1,8 MB/s", barra pelo total. Atualiza a tela no maximo 4x por segundo. */
+    private RepairEngine.ByteProgress byteProgress() {
+        return new RepairEngine.ByteProgress() {
+            private int curIdx = -1;
+            @Override public void onBytes(final int idx, final int total, final String path, final long fd, final long ft, final long ad, final long at) {
+                long now = System.currentTimeMillis();
+                if (idx != curIdx) { curIdx = idx; fileStartMs = now; }
+                if (fd > 0) lastByteMs = now; else if (fd == 0) lastByteMs = now;
+                boolean last = fd >= ft;
+                if (!last && now - lastUiMs < 250) return;
+                lastUiMs = now;
+                final double secs = Math.max(0.001, (now - fileStartMs) / 1000.0);
+                final double mbps = fd / 1048576.0 / secs;
+                ui.post(new Runnable() { @Override public void run() {
+                    if (status == null) return;
+                    status.setText("Baixando (" + (idx + 1) + "/" + total + ")");
+                    detail.setText(path + "\n" + String.format(java.util.Locale.US, "%.1f / %.1f MB  ·  %.2f MB/s", fd / 1048576.0, ft / 1048576.0, mbps)
+                            + (now - lastByteMs > 8000 ? stallNote : ""));
+                    bar.setProgress(at == 0 ? 0 : (int) (1000L * ad / at));
+                } });
+            }
+        };
+    }
+
+    private String warnText() {
+        StringBuilder b = new StringBuilder();
+        for (String w : listWarnings) b.append("\n• ").append(w);
+        return b.toString();
     }
 
     private static String summarize(RepairEngine.VerifyResult v) {
@@ -341,6 +419,7 @@ public class RepairFragment extends Fragment {
             if (a != null) b.append("\napp: ").append(a.getPackageName()).append(' ')
                     .append(a.getPackageManager().getPackageInfo(a.getPackageName(), 0).versionName);
         } catch (Exception ignored) { }
+        b.append("\nGPU do launcher: ").append(gpuType == 1 ? "DXT" : gpuType == 2 ? "ETC" : gpuType == 3 ? "PVR" : "desconhecida");
         b.append("\nsamp.json: ").append(haveSampJson ? "usado" : "indisponível (SAMP/ pelo files.json)");
         return b.toString();
     }

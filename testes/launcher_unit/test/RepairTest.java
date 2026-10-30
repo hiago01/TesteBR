@@ -163,6 +163,78 @@ public class RepairTest {
             catch (CancelToken.Cancelled e) { r("reparo: cancelado", true, ""); }
         } finally { srv.stop(0); }
 
+        // ---- filtro por GPU (o falso positivo do video: gta3.dxt.dat/.pvr.* "ausentes" num aparelho ETC)
+        {
+            File b2 = Files.createTempDirectory("gpu").toFile();
+            String js = "{\"files\":[{\"path\":\"texdb/gta3/gta3.dxt.dat\",\"size\":5},{\"path\":\"texdb/gta3/gta3.etc.dat\",\"size\":5},"
+                    + "{\"path\":\"texdb/gta3/gta3.pvr.tmb\",\"size\":5},{\"path\":\"texdb/gta3/gta3.img\",\"size\":5},{\"path\":\"texdb/samp/samp.etc.dat\",\"size\":5}]}";
+            List<RepairEngine.Entry> all2 = RepairEngine.fromFilesJson(js, null);
+            List<String> gw = new ArrayList<>();
+            List<RepairEngine.Entry> etc = RepairEngine.forGpu(b2, all2, 2, gw);
+            r("gpu ETC: fica core + .etc., descarta .dxt./.pvr.", etc.size() == 3 && !containsE(etc, "texdb/gta3/gta3.dxt.dat") && !containsE(etc, "texdb/gta3/gta3.pvr.tmb")
+                    && containsE(etc, "texdb/gta3/gta3.etc.dat") && containsE(etc, "texdb/gta3/gta3.img"), "n=" + etc.size());
+            r("gpu ETC: avisa quantos de outra GPU foram ignorados", gw.size() == 1 && gw.get(0).contains("2"), "" + gw);
+            r("gpu ETC: verificacao nao marca .dxt./.pvr. como ausentes", RepairEngine.verify(b2, etc, null, new CancelToken()).bad.size() == 3, "");
+            r("gpu DXT/PVR", RepairEngine.forGpu(b2, all2, 1, null).size() == 3 && RepairEngine.forGpu(b2, all2, 3, null).size() == 3, "");
+            put(b2, "texdb/gta3/gta3.dxt.dat", new byte[5]);
+            List<String> gw0 = new ArrayList<>();
+            List<RepairEngine.Entry> unk = RepairEngine.forGpu(b2, all2, 0, gw0);
+            r("gpu desconhecida: so sem marca + os de GPU que ja existem (nunca baixa textura a esmo)", unk.size() == 3 && containsE(unk, "texdb/samp/samp.etc.dat") && containsE(unk, "texdb/gta3/gta3.dxt.dat") && containsE(unk, "texdb/gta3/gta3.img") && gw0.size() >= 1, "n=" + unk.size());
+        }
+
+        // ---- retomada (Range) e progresso por byte
+        {
+            final byte[] big = data(11, 600000);
+            final AtomicInteger served = new AtomicInteger(), reqs = new AtomicInteger();
+            final boolean[] honorRange = {true};
+            HttpServer rs = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            rs.createContext("/", new HttpHandler() {
+                @Override public void handle(HttpExchange ex) throws IOException {
+                    int n = reqs.incrementAndGet();
+                    String range = ex.getRequestHeaders().getFirst("Range");
+                    ex.getResponseHeaders().add("Accept-Ranges", "bytes");
+                    int from = 0; boolean partial = false;
+                    if (range != null && honorRange[0]) { from = Integer.parseInt(range.substring(6, range.indexOf('-'))); partial = true; }
+                    int len = big.length - from;
+                    if (partial) ex.getResponseHeaders().add("Content-Range", "bytes " + from + "-" + (big.length - 1) + "/" + big.length);
+                    ex.sendResponseHeaders(partial ? 206 : 200, len);
+                    int send = n == 1 ? len / 2 : len; // 1a resposta corta no meio
+                    ex.getResponseBody().write(big, from, send);
+                    served.addAndGet(send);
+                    ex.close();
+                }
+            });
+            rs.start();
+            try {
+                File d = Files.createTempDirectory("rng").toFile();
+                final long[] net = {0};
+                FileDownloader.downloadVerified("http://127.0.0.1:" + rs.getAddress().getPort() + "/big", new File(d, "big.bin"), big.length, sha(big), 3, NO_SLEEP,
+                        new FileDownloader.Bytes() { @Override public void add(long x) { net[0] += x; } }, new CancelToken());
+                r("range: arquivo final identico (SHA) apos corte no meio", Arrays.equals(big, Files.readAllBytes(new File(d, "big.bin").toPath())), "");
+                r("range: retomou (serviu ~1x o arquivo, nao 1,5x) e o progresso liquido == tamanho", served.get() == big.length && net[0] == big.length, "served=" + served + " net=" + net[0]);
+
+                // servidor que anuncia Accept-Ranges mas IGNORA o Range (200): recomeca do zero e ainda assim fecha certo
+                honorRange[0] = false; reqs.set(0); served.set(0); net[0] = 0;
+                File d2 = Files.createTempDirectory("rng2").toFile();
+                FileDownloader.downloadVerified("http://127.0.0.1:" + rs.getAddress().getPort() + "/big", new File(d2, "big.bin"), big.length, sha(big), 3, NO_SLEEP,
+                        new FileDownloader.Bytes() { @Override public void add(long x) { net[0] += x; } }, new CancelToken());
+                r("range ignorado pelo servidor: recomeca do zero, arquivo correto, progresso liquido correto", Arrays.equals(big, Files.readAllBytes(new File(d2, "big.bin").toPath())) && net[0] == big.length, "net=" + net[0]);
+                r("range: sem sobras .part", !new File(d, "big.bin.part").exists() && !new File(d2, "big.bin.part").exists(), "");
+
+                // progresso por byte no reparo + log de velocidade
+                honorRange[0] = true; reqs.set(5);
+                final List<Long> seen = new ArrayList<>();
+                RepairEngine.Entry be = RepairEngine.fromFilesJson("{\"files\":[{\"path\":\"texdb/big.bin\",\"size\":" + big.length + ",\"sha256\":\"" + sha(big) + "\"}]}", null).get(0);
+                File b3 = Files.createTempDirectory("rb").toFile();
+                final String rootUrl = "http://127.0.0.1:" + rs.getAddress().getPort() + "/";
+                RepairEngine.RepairResult rb = RepairEngine.repair(b3, Arrays.asList(be), new RepairEngine.UrlResolver() { @Override public String urlFor(String p) { return rootUrl + "big"; } },
+                        2, NO_SLEEP, null, null, new RepairEngine.ByteProgress() {
+                            @Override public void onBytes(int i, int t, String path, long fd, long ft, long ad, long at) { seen.add(fd); }
+                        }, new CancelToken());
+                r("reparo: ByteProgress chega ate o tamanho total e o log traz velocidade", rb.fixed == 1 && !seen.isEmpty() && seen.get(seen.size() - 1) == big.length && rb.log.size() == 1 && rb.log.get(0).contains("MB/s"), rb.fixed + " " + rb.log);
+            } finally { rs.stop(0); }
+        }
+
         // ---- "do zero" e limpeza
         List<RepairEngine.Entry> all = RepairEngine.allTargets(base, ents);
         r("do zero: tudo da lista, menos arquivo regravado pelo jogo que ja existe", all.size() == 5 && !containsE(all, "SAMP/settings.ini"), "n=" + all.size());

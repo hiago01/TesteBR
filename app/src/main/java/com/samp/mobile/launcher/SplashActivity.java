@@ -163,6 +163,9 @@ public class SplashActivity extends AppCompatActivity {
                     }
                     Log.e("x1y2z", "GPU name: " + glGetString);
                     Log.e("x1y2z", "GPU type: " + egputype.name());
+                    try { // usado pela tela CORRECOES para nao tratar textura de outra GPU como "ausente"
+                        getSharedPreferences("com.samp.mobile", MODE_PRIVATE).edit().putInt("gpu_type", mGpuType).apply();
+                    } catch (RuntimeException ignored) { }
 
                     // Esta callback roda na thread GL: permissoes, dialogos e bindService vao para a UI thread.
                     runOnUiThread(new Runnable() {

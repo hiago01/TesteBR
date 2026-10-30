@@ -25,3 +25,18 @@ Alterados: `MainActivity.java` (+ item de menu antes do SAIR, `PAGE_REPAIR=5`, `
 - Compilado só contra STUBS de Android (sintaxe/tipos do meu código). NÃO compilado com o SDK/Gradle real, NÃO rodado em aparelho,
   NÃO visto na tela (layout/tema/ícone). O menu ficou com 7 itens: em telas muito baixas o último pode ficar apertado.
 - Não prova que o `python http.server` é a causa dos celulares quebrados. Use "Exportar relatório" num celular com defeito.
+
+## Atualização (video do celular que não passava na correção)
+Vídeo: a verificação apontou 30 "ausentes" = `gta3.dxt.dat/.tmb/.toc`, `gta3.pvr.*`: texturas de OUTRA GPU (o aparelho usa ETC).
+O fluxo antigo filtra por GPU (`GameFilePolicy.wantedForDevice`); a minha verificação NÃO filtrava. Corrigido:
+- `RepairEngine.forGpu`: só core + GPU do aparelho. GPU lida de `SharedPreferences "com.samp.mobile"/gpu_type` (gravada pelo
+  `SplashActivity`, 1 linha nova) ou `installed.json`. GPU desconhecida = só confere o que já existe (nunca baixa textura a esmo).
+  O valor só aparece depois de abrir o launcher uma vez com o APK novo.
+- Reparo parecia "travado" porque só mostrava "Baixando (1/30)". Agora mostra MB baixados / total, MB/s e barra por byte;
+  se ficar 8 s sem receber dados avisa "sem receber dados há N s".
+- Download com retomada (Range) quando o servidor responde `Accept-Ranges: bytes`; se ignorar o Range, recomeça do zero.
+  O `python http.server` NÃO suporta Range -> com ele nada muda: cada tentativa recomeça.
+- Relatório agora traz, por arquivo baixado, tamanho/tempo/MB/s e, nas falhas, quanto tempo levou até falhar.
+Arquivos a mais neste pacote: `SplashActivity.java`.
+Testes: RepairTest 37 ok (inclui GPU ETC/DXT/PVR/desconhecida, retomada por Range, Range ignorado, progresso por byte), PackTest 88 ok.
+NÃO compilado com o SDK real, NÃO rodado em aparelho.
