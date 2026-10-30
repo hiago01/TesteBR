@@ -102,7 +102,8 @@ public:
         bool             partial     = false;  // só parte dos materiais visível (ex.: pele das pernas sob uma bermuda)
         bool             previewed   = false;  // difere do estado ANTES da prévia (só existe com prévia ativa)
         int              variant     = -1;     // variante do pack aplicada (-1 = textura original do DFF / caminho avulso)
-        std::vector<int> variants;             // variantes existentes em pack/<pasta>/
+        std::vector<int> variants;             // variantes oferecidas (rosto: do tom atual, valor = tom*100+rosto; pele: tons 1..6)
+        int              varMod      = 0;      // 100 nos slots de rosto: a UI mostra variante % 100 (o rosto) e variante / 100 (o tom)
         // O que o SERVIDOR gravou para o jogador local (autoridade). srvKnown=false: sem registro (padrão).
         bool             srvKnown    = false;
         int              srvEst      = 0;      // 0 oculto | 1 original | 2 variante

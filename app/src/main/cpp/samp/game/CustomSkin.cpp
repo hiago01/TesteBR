@@ -1394,12 +1394,8 @@ namespace
             const auto it = s_matPack.find(idx[0]);
             if (it != s_matPack.end())
             {
-                const std::string pre = std::string(sl.folder) + "/";
                 const std::string& v = it->second;
-                std::string tail = (v.size() > pre.size() && v.compare(0, pre.size(), pre) == 0) ? v.substr(pre.size()) : std::string();
-                bool digits = !tail.empty() && tail.size() <= 4;
-                for (char c : tail) if (!std::isdigit((unsigned char)c)) digits = false;
-                const int n = digits ? std::atoi(tail.c_str()) : -1;
+                const int n = SkinSlots::VariantFromRel(sl, v.c_str());      // rosto: "heads/3/5" -> 305 (tom*100+rosto)
                 if (n < 0 || n > kLookMaxVar)
                 {
                     FLog("[SKIN7] lookx: slot %s usa '%s' (fora do pack do slot): NAO sincronizado", sl.name, v.c_str());
@@ -1457,6 +1453,9 @@ namespace
     // [LOOKX-FUNCS-END]
 
     // ---- /skin7 slot <nome> <n | + | - | on | off | pasta/arquivo> ------------------------------
+    std::vector<int> SlotVariants(const SkinSlots::Slot& sl);   // definida junto de CachedVariants
+    void ToneCompanions(int tone);
+
     void DoSlot(const std::string& rest)
     {
         if (!s_loadedOk && !DoLoad(false)) return;
@@ -1494,7 +1493,7 @@ namespace
         if (arg.find('/') != std::string::npos) rel = arg;                 // caminho explícito (marcas: versace/tshirts/2_1)
         else
         {
-            const std::vector<int> var = PackVariants(sl->folder);
+            const std::vector<int> var = SlotVariants(*sl);              // rosto: so os do tom atual; pele: so tons 1..6
             if (arg == "+" || arg == "-")
             {
                 if (var.empty()) { SetInfo(std::string("sem variantes em pack/") + sl->folder + " (use /skin7 pack)"); return; }
@@ -1511,7 +1510,7 @@ namespace
                 if (!endp || *endp || n < 0 || n > 99999) { SetInfo("variante inválida: '" + arg + "' (use número, +, -, on, off ou pasta/arquivo)"); return; }
                 newVar = (int)n;
             }
-            rel = std::string(sl->folder) + "/" + std::to_string(newVar);
+            rel = SkinSlots::VariantRel(*sl, newVar);
         }
 
         std::string note;
@@ -1772,15 +1771,19 @@ namespace
     bool SlotMatches(const SkinSlots::Slot& sl, const std::vector<int>& idx, const std::string& what)
     {
         bool allVisible = true, allHidden = true;
-        for (int i : idx)
+        const std::vector<int> cov = CoveredByGarments();             // ocultos POR COBERTURA (pele sob a camisa/calça/tênis) valem como visíveis:
+        for (int i : idx)                                             // o pedido foi cumprido, só não aparece enquanto a roupa cobrir
         {
             const bool h = (size_t)i < s_hidden.size() && s_hidden[(size_t)i];
-            if (h) allVisible = false; else allHidden = false;
+            if (h && std::find(cov.begin(), cov.end(), i) == cov.end()) allVisible = false;
+            if (!h) allHidden = false;
         }
         if (what == "off") return allHidden;
         if (what == "on")  return allVisible;
         if (!allVisible) return false;
-        const std::string want = std::string(sl.folder) + "/" + what;
+        bool wnum = !what.empty() && what.size() <= 5;
+        for (char c : what) if (!std::isdigit((unsigned char)c)) wnum = false;
+        const std::string want = wnum ? SkinSlots::VariantRel(sl, std::atoi(what.c_str())) : std::string(sl.folder) + "/" + what;
         for (int i : idx)                                 // TODOS os materiais do slot (antes só o primeiro era conferido)
         {
             const auto it = s_matPack.find(i);
@@ -1796,6 +1799,64 @@ namespace
         auto it = s_varCache.find(folder);
         if (it == s_varCache.end()) it = s_varCache.emplace(folder, PackVariants(folder)).first;
         return it->second;
+    }
+
+    // Tom de pele atual do MOLDE (variante de skin_torso 1..6); sem pele aplicada = 1 (o padrão do servidor).
+    int CurrentTone()
+    {
+        const SkinSlots::Slot* st = SkinSlots::Find("skin_torso");
+        if (!st) return 1;
+        const std::vector<int> idx = SlotMaterials(*st);
+        if (idx.empty()) return 1;
+        const auto it = s_matPack.find(idx[0]);
+        if (it == s_matPack.end()) return 1;
+        const int v = SkinSlots::VariantFromRel(*st, it->second.c_str());
+        return (v >= 1 && v <= SkinSlots::kTones) ? v : 1;
+    }
+
+    // Variantes que a INTERFACE oferece para o slot: rosto = rostos do tom ATUAL (valor = tom*100+rosto, sem a textura transparente);
+    // pele (torso/leg/feet) = tons 1..6 (sem a transparente); o resto = o que existe no pack.
+    std::vector<int> SlotVariants(const SkinSlots::Slot& sl)
+    {
+        std::vector<int> out;
+        if (SkinSlots::IsHeadSlot(sl))
+        {
+            const int t = CurrentTone();
+            for (int f : CachedVariants("heads/" + std::to_string(t)))
+                if (f >= 1 && f <= SkinSlots::kToneFaces[t]) out.push_back(t * SkinSlots::kHeadVarBase + f);
+            return out;
+        }
+        out = CachedVariants(sl.folder);
+        if (SkinSlots::IsToneSlot(sl)) out.erase(std::remove_if(out.begin(), out.end(), [](int v) { return v < 1 || v > SkinSlots::kTones; }), out.end());
+        return out;
+    }
+
+    // Trocar o TOM (skin_torso = T) leva junto o resto do corpo e o rosto visível: pernas e pés no mesmo tom e a cabeça
+    // visível com o MESMO rosto (limitado aos rostos que o tom tem). Só no caminho da prévia do provador.
+    void ToneCompanions(int tone)
+    {
+        if (tone < 1 || tone > SkinSlots::kTones) return;
+        DoSlot(std::string("skin_leg ") + std::to_string(tone));
+        DoSlot(std::string("skin_feet ") + std::to_string(tone));
+        for (int h = 1; h <= 5; ++h)
+        {
+            const std::string hn = "head" + std::to_string(h);
+            const SkinSlots::Slot* hs = SkinSlots::Find(hn.c_str());
+            if (!hs) continue;
+            const std::vector<int> idx = SlotMaterials(*hs);
+            if (idx.empty()) continue;
+            bool vis = true;
+            for (int i : idx) if ((size_t)i < s_hidden.size() && s_hidden[(size_t)i]) vis = false;
+            if (!vis) continue;
+            const auto it = s_matPack.find(idx[0]);
+            if (it == s_matPack.end()) continue;
+            const int cur = SkinSlots::VariantFromRel(*hs, it->second.c_str());
+            if (cur < 0) continue;
+            int face = SkinSlots::HeadVarFace(cur);
+            if (face > SkinSlots::kToneFaces[tone]) face = SkinSlots::kToneFaces[tone];
+            if (face < 1) face = 1;
+            DoSlot(hn + " " + std::to_string(tone * SkinSlots::kHeadVarBase + face));
+        }
     }
 
     // ---- molde: reconstrução a partir do servidor ------------------------------------------------------
@@ -2002,7 +2063,7 @@ namespace
                     if (std::find(covered.begin(), covered.end(), i) != covered.end()) ++c.hiddenCover;
                 }
                 const auto it = s_matPack.find(i);
-                const int vi = it != s_matPack.end() ? ProvadorModel::VariantOf(it->second.c_str(), sl.folder) : ProvadorModel::kNoPack;
+                const int vi = it != s_matPack.end() ? SkinSlots::VariantFromRel(sl, it->second.c_str()) : ProvadorModel::kNoPack;
                 if (first) { variant = vi; first = false; }
                 else if (vi != variant) variant = ProvadorModel::kMixed;
                 if (s_bak.active)
@@ -2019,7 +2080,8 @@ namespace
             u.visible   = c.hidden == 0;
             u.partial   = c.hidden > 0 && c.hidden < c.total;
             u.previewed = s_bak.active && differsFromBackup;
-            u.variants  = CachedVariants(sl.folder);
+            u.variants  = SlotVariants(sl);
+            u.varMod    = SkinSlots::IsHeadSlot(sl) ? SkinSlots::kHeadVarBase : 0;
             u.variant   = variant >= 0 ? variant : -1;
         }
         {
@@ -2078,6 +2140,8 @@ namespace
                 {
                     s_lookInPrev = true;                 // prévia: só vai ao servidor no commit
                     DoSlot(name + " " + what);           // o mesmo caminho do /skin7 slot (inclui a exclusividade)
+                    if (numeric && sl == SkinSlots::Find("skin_torso") && SlotMatches(*sl, idx, what))
+                        ToneCompanions(std::atoi(what.c_str()));    // tom de pele: corpo inteiro + rosto acompanham
                     s_lookInPrev = false;
                     if (SlotMatches(*sl, idx, what)) { s_bak.changed = true; PreviewSuspend(true); }
                     else fail(LastInfo());

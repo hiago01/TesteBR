@@ -14,7 +14,8 @@ int main()
     const std::vector<St> def = DefaultSlots();
     CHECK(def.size() == 7);
     std::set<std::string> names;
-    for (const St& s : def) { CHECK(s.est == kPack && s.var == 1); names.insert(SkinSlots::kSlots[s.id - 1].name); }
+    for (const St& s : def) { CHECK(s.est == kPack && s.var == SkinSlots::CanonVar(SkinSlots::kSlots[s.id - 1], 1)); names.insert(SkinSlots::kSlots[s.id - 1].name); }
+    for (const St& s : def) if (std::string(SkinSlots::kSlots[s.id - 1].name) == "head1") CHECK(s.var == 101);
     for (const char* n : {"skin_torso", "skin_leg", "skin_feet", "head1", "brow1", "hair1", "underwear"}) CHECK(names.count(n) == 1);
 
     // 1) so o padrao: TODO material de slot nao citado fica oculto

@@ -81,6 +81,8 @@ int main()
     for (int k = 0; k < SkinSlots::kCount; ++k)
         for (int v = 1; v <= 3; ++v) Touch(root + "SAMP/skins/pack/" + SkinSlots::kSlots[k].folder + "/" + std::to_string(v) + ".png");
     Touch(root + "SAMP/skins/pack/hair/2/4.png");
+    for (int t = 1; t <= 6; ++t) for (int f = 1; f <= 13; ++f) Touch(root + "SAMP/skins/pack/heads/" + std::to_string(t) + "/" + std::to_string(f) + ".png");   // rostos por tom (+ transparente)
+    for (const char* part : {"torso", "leg", "feet"}) for (int t = 1; t <= 7; ++t) Touch(root + "SAMP/skins/pack/" + part + "/1/" + std::to_string(t) + ".png");   // 7 = transparente
 
     // "DFF" carregado: 1 material por textura citada nos slots
     std::set<std::string> seen;
@@ -340,6 +342,65 @@ int main()
         s_hidden.assign(n, 0); s_matPack.clear(); s_slotVar.clear(); RecountHidden();
         { auto idx = SlotMaterials(*SkinSlots::Find("skin_leg")); CHECK(idx.size() > 1); s_matPack[idx[0]] = "leg/1/2"; s_matPack[idx[1]] = "leg/1/3";
           st = Pub(); CHECK(U(st, "skin_leg").variant == -1); s_matPack.clear(); }
+    }
+
+    // ---- 12b) ROSTO = FORMATO x TOM; PELE troca corpo inteiro + rosto juntos ----
+    {
+        s_hidden.assign(n, 0); s_matPack.clear(); s_slotVar.clear(); RecountHidden(); DiscardBackup(); s_await = Awaiting(); s_moldStale = false; s_lookQ.clear(); s_lookPrevQ.clear();
+        g_hostSrv = ProvadorModel::NewTable(); ++g_hostSrvVer; s_srvSeenVer = g_hostSrvVer; g_hostChat.clear();
+        auto Mat = [&](const char* nm) -> std::string { auto idx = SlotMaterials(*SkinSlots::Find(nm)); auto it = s_matPack.find(idx[0]); return it == s_matPack.end() ? std::string() : it->second; };
+        auto PrevHas = [&](const char* nm, int est, int var) { for (const LookOp& q : s_lookPrevQ) if (q.slotId == SlotId(nm) && q.est == est && q.var == var) return true; return false; };
+
+        // formato 3 com o rosto 5 do tom 2: qualquer formato aceita qualquer tom
+        CHECK(Ui("prev head3 205"));
+        CHECK(Mat("head3") == "heads/2/5" && Vis("head3"));
+        CHECK(PrevHas("head3", 2, 205));
+        auto st = Pub();
+        CHECK(U(st, "head3").variant == 205 && U(st, "head3").state == ProvadorModel::kEquipped && U(st, "head3").varMod == 100);
+        // com o corpo ainda sem tom aplicado, o tom atual e 1 e a lista de rostos e a do tom 1 (6 rostos, sem a transparente)
+        CHECK((int)U(st, "head1").variants.size() == SkinSlots::kToneFaces[1] && U(st, "head1").variants.front() == 101 && U(st, "head1").variants.back() == 106);
+        // a pele oferece so os tons 1..6 (a 7 e transparente)
+        CHECK(U(st, "skin_torso").variants == std::vector<int>({1, 2, 3, 4, 5, 6}));
+
+        // trocar o TOM do corpo para 4: pernas e pes acompanham e o rosto visivel fica no mesmo rosto, tom 4
+        CHECK(Ui("prev skin_torso 4"));
+        CHECK(Mat("skin_torso") == "torso/1/4" && Mat("skin_leg") == "leg/1/4" && Mat("skin_feet") == "feet/1/4");
+        CHECK(Mat("head3") == "heads/4/5");                                   // rosto 5 mantido, tom 4
+        CHECK(PrevHas("skin_torso", 2, 4) && PrevHas("skin_leg", 2, 4) && PrevHas("skin_feet", 2, 4) && PrevHas("head3", 2, 405));
+        st = Pub();
+        CHECK(U(st, "head1").variants.front() == 401 && (int)U(st, "head1").variants.size() == SkinSlots::kToneFaces[4]);   // lista passa a ser do tom 4
+        CHECK(U(st, "skin_torso").variant == 4);
+
+        // trocar o ROSTO nao muda a cor do corpo: o novo rosto sai do tom atual
+        CHECK(Ui("prev head3 407")); CHECK(Mat("head3") == "heads/4/7"); CHECK(Mat("skin_torso") == "torso/1/4");
+
+        // tom com menos rostos: o rosto e limitado (7 -> 5 no tom 5)
+        CHECK(Ui("prev skin_torso 5")); CHECK(Mat("head3") == "heads/5/5" && Mat("skin_leg") == "leg/1/5");
+        // tom 6 (12 rostos) alcanca rostos que antes nao existiam na interface
+        CHECK(Ui("prev head3 612")); CHECK(Mat("head3") == "heads/6/12");
+
+        // so a cabeca VISIVEL acompanha: head1 desligada nao ganha textura nova
+        CHECK(Ui("prev head1 off")); CHECK(!Vis("head1"));
+        CHECK(Ui("prev skin_torso 2"));
+        CHECK(Mat("head3") == "heads/2/12" || Mat("head3") == "heads/2/8");   // 12 -> limite do tom 2 (8 rostos)
+        CHECK(Mat("head1").find("heads/2/") == std::string::npos);
+
+        // commit: o servidor recebe corpo (tom) + rosto (tom*100+rosto) e o eco confirma
+        g_hostChat.clear(); CHECK(Ui("commit")); CHECK(s_await.active);
+        for (int i = 0; i < 12; ++i) Pump();
+        bool sTor = false, sHead = false;
+        for (auto& c : g_hostChat) { if (c == "/lookx set " + std::to_string(SlotId("skin_torso")) + " 2 2") sTor = true; if (c == "/lookx set " + std::to_string(SlotId("head3")) + " 2 208") sHead = true; }
+        CHECK(sTor && sHead);
+        ServerEcho(); Pump();
+        CHECK(!s_await.active && !s_bak.active);
+        st = Pub(); CHECK(U(st, "head3").srvKnown && U(st, "head3").srvVar == 208 && U(st, "skin_leg").srvVar == 2);
+
+        // cancelar volta TUDO (corpo + rosto) ao que estava
+        s_lookQ.clear(); s_lookPrevQ.clear(); g_hostChat.clear();
+        CHECK(Ui("prev skin_torso 6")); CHECK(Mat("head3") == "heads/6/8" && Mat("skin_feet") == "feet/1/6");
+        CHECK(Ui("cancel"));
+        CHECK(Mat("skin_torso") == "torso/1/2" && Mat("skin_leg") == "leg/1/2" && Mat("skin_feet") == "feet/1/2" && Mat("head3") == "heads/2/8");
+        CHECK(s_lookPrevQ.empty() && !s_bak.active);
     }
 
     // ---- 13) COMMIT só vale com a confirmação do servidor ----

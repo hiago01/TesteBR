@@ -66,6 +66,7 @@ namespace LookSlots
             if (est > 2)                       { err = "estado " + std::to_string((int)est) + " invalido"; out.clear(); return false; }
             if (est == 2 && !bs.Read(var))     { err = "variante ausente"; out.clear(); return false; }
             if (id < 1 || id > SkinSlots::kCount || var > kMaxVar) continue;          // desconhecido: ignora (compat futura)
+            if (est == 2) var = (uint16_t)SkinSlots::CanonVar(SkinSlots::kSlots[id - 1], var);   // rosto: formato antigo -> tom*100+rosto
             bool dup = false;
             for (St& s : out) if (s.id == id) { s.est = est; s.var = (est == 2) ? var : 0; dup = true; break; }
             if (!dup) out.push_back(St{id, est, (uint16_t)(est == 2 ? var : 0)});
@@ -87,7 +88,7 @@ namespace LookSlots
                 Op o; o.mat = name; o.slot = s.id;
                 if      (s.est == 0) o.kind = kHide;
                 else if (s.est == 1) o.kind = kOrig;
-                else { o.kind = kPack; o.rel = std::string(sl.folder) + "/" + std::to_string((int)s.var) + ".png"; }
+                else { o.kind = kPack; o.rel = SkinSlots::VariantRel(sl, (int)s.var) + ".png"; }
                 ops.push_back(std::move(o));
             }
         }
@@ -120,7 +121,7 @@ namespace LookSlots
         std::vector<St> v;
         for (const char* n : names)
             for (int i = 0; i < SkinSlots::kCount; ++i)
-                if (std::strcmp(SkinSlots::kSlots[i].name, n) == 0) { v.push_back(St{(uint8_t)(i + 1), (uint8_t)kPack, 1}); break; }
+                if (std::strcmp(SkinSlots::kSlots[i].name, n) == 0) { v.push_back(St{(uint8_t)(i + 1), (uint8_t)kPack, (uint16_t)SkinSlots::CanonVar(SkinSlots::kSlots[i], 1)}); break; }
         std::sort(v.begin(), v.end(), [](const St& a, const St& b) { return a.id < b.id; });
         return v;
     }

@@ -117,7 +117,7 @@ namespace
 			{ "clock", "Relógio" }, { "mask", "Máscara" }, { "necklace", "Colar" }, { "hat", "Chapéu" },
 			{ "boot", "Bota" }, { "slipper", "Chinelo" }, { "backpack", "Mochila" },
 			{ "brow", "Sobrancelha" }, { "beard", "Barba" },
-			{ "skin_torso", "Pele: tronco" }, { "skin_leg", "Pele: pernas" }, { "skin_feet", "Pele: pés" },
+			{ "skin_torso", "Tom de pele" }, { "skin_leg", "Pele: pernas" }, { "skin_feet", "Pele: pés" },
 			{ "tat_back", "Tatuagem: costas" }, { "tat_chest", "Tatuagem: peito" }, { "tat_arm", "Tatuagem: braços" },
 			{ "tat_shoulder", "Tatuagem: ombros" }, { "tat_legs", "Tatuagem: pernas" },
 		};
@@ -136,11 +136,18 @@ namespace
 		return name;
 	}
 
+	// skin_leg/skin_feet acompanham skin_torso (TOM DE PELE unico): nao aparecem como itens separados
+	bool IsToneHelper(const char* name) { return std::strcmp(name, "skin_leg") == 0 || std::strcmp(name, "skin_feet") == 0; }
+	bool IsToneSlotName(const char* name) { return std::strcmp(name, "skin_torso") == 0; }
+
+	// rotulo da variante: rosto mostra so o rosto (o tom vem do corpo); demais = o proprio numero
+	int VarLabel(const SlotState* u, int v) { return (u && u->varMod > 0) ? v % u->varMod : v; }
+
 	void RebuildCategory()
 	{
 		g_catSlots.clear();
 		for (int k = 0; k < SkinSlots::kCount; ++k)
-			if (SkinSlots::UiCategoryOf(SlotAt(k).name) == g_cat) g_catSlots.push_back(k);
+			if (SkinSlots::UiCategoryOf(SlotAt(k).name) == g_cat && !IsToneHelper(SlotAt(k).name)) g_catSlots.push_back(k);
 	}
 
 	// Selecao inicial da categoria: o slot que ja esta visivel (estado real) ou o primeiro que existe no DFF.
@@ -187,13 +194,16 @@ namespace
 		if (!u->hasMaterial) return s + "  -  indisponível no modelo";
 		switch (u->state)
 		{
-			case kEquipped: s += "  -  EQUIPADO, variante " + std::to_string(u->variant); break;
+			case kEquipped:
+				if (u->varMod > 0) s += "  -  EQUIPADO, rosto " + std::to_string(u->variant % u->varMod) + " (tom " + std::to_string(u->variant / u->varMod) + ")";
+				else               s += "  -  EQUIPADO, variante " + std::to_string(u->variant);
+				break;
 			case kDisabled: s += "  -  desligado"; break;
 			case kCovered:  s += "  -  coberto por outra peça"; break;
 			default:        s += u->variants.empty() ? "  -  sem variantes no pack" : "  -  padrão, nada equipado (" + std::to_string(u->variants.size()) + " variantes)"; break;
 		}
 		if (u->previewed) s += "  -  PRÉVIA";
-		else if (u->srvKnown) s += std::string("  -  servidor: ") + ProvadorModel::SrvWord(ProvadorModel::Srv{true, (uint8_t)u->srvEst, (uint16_t)u->srvVar}) + (u->srvEst == 2 ? " " + std::to_string(u->srvVar) : std::string());
+		else if (u->srvKnown) s += std::string("  -  servidor: ") + ProvadorModel::SrvWord(ProvadorModel::Srv{true, (uint8_t)u->srvEst, (uint16_t)u->srvVar}) + (u->srvEst == 2 ? " " + std::to_string(u->varMod > 0 ? u->srvVar % u->varMod : u->srvVar) : std::string());
 		return s;
 	}
 }
@@ -438,7 +448,8 @@ void Provador::draw(ImGuiRenderer* r)
 	auto inBox = [&](float x, float y, const ImVec2& a, const ImVec2& b) { return inRect(x, y, a.x, a.y, b.x, b.y); };
 
 	const bool canStep   = ready && selU && selU->hasMaterial && nVars > 0;
-	const bool canToggle = ready && selU && selU->hasMaterial;
+	const bool isToneRow = g_sel >= 0 && IsToneSlotName(SlotAt(g_sel).name);
+	const bool canToggle = ready && selU && selU->hasMaterial && !isToneRow;   // o tom de pele nao se desliga (corpo invisivel)
 
 	auto hitTest = [&](float x, float y, int& region) -> Hit {
 		Hit h; region = 0;
@@ -689,7 +700,8 @@ void Provador::draw(ImGuiRenderer* r)
 		ImColor stc = cDim;
 		if (!u)           st = "...";
 		else if (!avail)  st = "indisponível";
-		else if (u->state == kEquipped) { st = "EQUIPADO " + std::to_string(u->variant); stc = cBlue; }
+		else if (IsToneSlotName(SlotAt(k2).name) && u->variant >= 1) { st = "TOM " + std::to_string(u->variant); stc = cBlue; }   // mesmo coberto por roupa
+		else if (u->state == kEquipped) { st = "EQUIPADO " + std::to_string(VarLabel(u, u->variant)); stc = cBlue; }
 		else if (u->state == kCovered)  st = "coberto";
 		else if (u->state == kDisabled) st = "desligado";
 		else if (u->partial)            st = "parcial";      // ex.: pele das pernas parcialmente coberta por uma bermuda
@@ -702,7 +714,12 @@ void Provador::draw(ImGuiRenderer* r)
 
 	// grade de variantes (rolavel)
 	r->drawRect(ImVec2(panX, varTitleY - 2.0f * k), ImVec2(panX + panW, varTitleY - 1.0f * k), cLine, true);
-	r->drawText(ImVec2(panX + pad, varTitleY + 3.0f * k), cBlue, "VARIANTES", false, fsS);
+	{
+		std::string vt = "VARIANTES";
+		if (selU && selU->varMod > 0 && !selU->variants.empty()) vt = "ROSTOS DO TOM " + std::to_string(selU->variants.front() / selU->varMod) + " (cor do corpo)";
+		else if (isToneRow) vt = "TOM DE PELE (corpo e rosto)";
+		r->drawText(ImVec2(panX + pad, varTitleY + 3.0f * k), cBlue, vt, false, fsS);
+	}
 	r->pushClipRect(ImVec2(panX, varTop), ImVec2(panX + panW, varBot), true);
 	if (!selU || !selU->hasMaterial)
 		r->drawText(ImVec2(panX + pad, varTop + 6.0f * k), cDim, selU ? "Item indisponível no modelo" : "Escolha um item acima", false, fsS);
@@ -716,11 +733,11 @@ void Provador::draw(ImGuiRenderer* r)
 			const float cyp = varTop + (i / cols) * (cellH + cellGap) - g_scrollVar;
 			if (cyp + cellH < varTop || cyp > varBot) continue;
 			const int v = selU->variants[(size_t)i];
-			const bool cur = selU->state == kEquipped && selU->variant == v;
+			const bool cur = (selU->state == kEquipped || (isToneRow && selU->variant >= 1)) && selU->variant == v;
 			const bool pv  = cur && selU->previewed;
 			r->drawRect(ImVec2(cxp, cyp), ImVec2(cxp + cellW, cyp + cellH), pv ? cAmberBg : (cur ? cBlueBg : cPanel2), true);
 			r->drawRect(ImVec2(cxp, cyp), ImVec2(cxp + cellW, cyp + cellH), pv ? cAmber : (cur ? cBlue : cLine), false);
-			const std::string t = std::to_string(v);
+			const std::string t = std::to_string(VarLabel(selU, v));
 			const ImVec2 ts = r->calculateTextSize(t, fs);
 			r->drawText(ImVec2(cxp + (cellW - ts.x) * 0.5f, cyp + (cellH - ts.y) * 0.5f), cur ? cText : cDim, t, false, fs);
 		}

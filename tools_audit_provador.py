@@ -89,7 +89,10 @@ def main():
             if gaps: note += f' lacunas={gaps}'
             if j: note += f' jpeg={j}'
             print(f'  {s["name"]:11s} {s["folder"]:28s} png={len(n):3d} max={n[-1] if n else 0:3d}{note}')
-            out.append((s['name'], n[-1] if n else 0))
+            mx = n[-1] if n else 0
+            if s['folder'] in ('torso/1', 'leg/1', 'feet/1'): mx = min(mx, 6)     # tom 1..6 (a variante 7 e transparente, nao e tom)
+            if s['folder'].startswith('heads/'): mx = 612                          # rosto = tom*100 + rosto (ate 6*100+12); o servidor valida tom/rosto sozinho
+            out.append((s['name'], mx))
         # pastas do pack sem slot
         orphans = []
         for sub in sorted(os.listdir(pack)):
@@ -102,7 +105,7 @@ def main():
         print('  pastas com PNG numerado SEM slot (nao aparecem no /provador):', ', '.join(orphans) or '-')
         if gen:
             with open(gen, 'w', encoding='utf-8') as f:
-                f.write('; gerado por tools_audit_provador.py: slot=maior variante existente em pack/<pasta>/\n')
+                f.write('; gerado por tools_audit_provador.py: slot=maior variante existente em pack/<pasta>/ (pele: 6 tons; rosto: 612 = tom 6 rosto 12, validado por tom/rosto no servidor)\n')
                 for n, m in out: f.write(f'{n}={m}\n')
             print('escrito', gen)
 

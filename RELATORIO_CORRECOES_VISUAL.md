@@ -21,3 +21,28 @@ Correção (CorpTex.cpp + LookSlots.h):
  - Jogador que o servidor devolve com TUDO desmarcado passa a ser mostrado com o padrão (antes ficava invisível).
  - Recompile o gamemode (maximorp.amx) – o .amx antigo não tem o comando.
  - DOF2 pode manter cache do arquivo; se editar o .ini à mão com o servidor ligado, /atualizarvisual pode reler o cache.
+
+---
+# Rosto = formato × tom, e área PELE no /provador
+
+## O que mudou
+- `head1..head5` agora escolhem só o **formato** do rosto (mesma malha/UV, geometrias diferentes do skin.dff).
+- A textura do rosto é `heads/<tom>/<n>.png`. A variante de cabeça é codificada como `tom*100 + rosto` (ex.: 304 = tom 3, rosto 4; máx. 612). Valores antigos (<100) são convertidos para `N*100+v` ao carregar (cliente e servidor).
+- Nova categoria **PELE** no /provador (skin_torso, skin_leg, skin_feet): 6 tons. Ao escolher o tom, tronco, pernas, pés **e o rosto visível** mudam juntos (o rosto mantém o formato atual).
+- Servidor: `maximo_look.inc` canoniza/valida variantes de cabeça (tom 1..6, rosto 1..12); head1 padrão = 101.
+- `tools_audit_provador.py --gen-variantes`: pele = 6, cabeça = 612.
+
+## Testado (host, sem aparelho)
+- `sh testes/run_host_provador.sh`: provador, modelo puro, lookdefaults, rosto_tom — todos passaram.
+- Os dois `maximorp.pwn` compilam com pawncc sem avisos.
+- Auditoria servidor × cliente: CONSISTENTE.
+
+## NÃO testado
+- Build do APK / CorpTex.cpp com compilador real do NDK.
+- Aparelho, vários jogadores, servidor open.mp rodando; lógica Pawn só compilada, não executada.
+- Modal e UI de tom na tela.
+
+## Limites conhecidos
+- O servidor não obriga tom do rosto == tom do corpo; quem garante é o cliente ao escolher PELE.
+- Molde model-7 compartilhado: limite anterior continua.
+- É preciso recompilar `maximorp.amx`.

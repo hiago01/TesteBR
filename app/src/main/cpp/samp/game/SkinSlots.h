@@ -121,6 +121,64 @@ namespace SkinSlots
         return nullptr;
     }
 
+    // ---------------------------------------------------------------------------------------------------
+    // ROSTO = FORMATO x TOM.  (provado: skin.dff tem 5 cabeças body.head1..5 com a MESMA topologia/UV e formas diferentes;
+    // pack/heads/<tom 1..6>/<n>.png = textura do rosto com a cor do tom N embutida, mesma cor em toda a pasta)
+    //   slot headN (N 1..5)  = FORMATO da cabeça (malha).      skin_torso/leg/feet variante T (1..6) = TOM do corpo.
+    //   variante do slot head = tom*100 + rosto  ->  pack/heads/<tom>/<rosto>.png  (qualquer formato aceita qualquer tom)
+    //   Valor < 100 é o formato ANTIGO (heads/<N do slot>/<v>): vira N*100+v em CanonVar (arquivos/servidores antigos).
+    // ---------------------------------------------------------------------------------------------------
+    static constexpr int kTones = 6;
+    static constexpr int kToneFaces[kTones + 1] = { 0, 6, 8, 8, 7, 5, 12 };   // rostos validos por tom (sem a variante transparente)
+    static constexpr int kHeadVarBase = 100;
+
+    inline bool IsHeadSlot(const Slot& sl) { return std::strncmp(sl.folder, "heads/", 6) == 0; }
+    inline bool IsToneSlot(const Slot& sl)  // torso/leg/feet: variante = tom 1..6 (7 = transparente, nao e tom)
+    {
+        return std::strcmp(sl.folder, "torso/1") == 0 || std::strcmp(sl.folder, "leg/1") == 0 || std::strcmp(sl.folder, "feet/1") == 0;
+    }
+    inline int HeadVarTone(int var) { return var / kHeadVarBase; }
+    inline int HeadVarFace(int var) { return var >= kHeadVarBase ? var % kHeadVarBase : var; }
+    inline bool HeadVarValid(int var)
+    {
+        const int t = var / kHeadVarBase, f = var % kHeadVarBase;
+        return var >= kHeadVarBase && t >= 1 && t <= kTones && f >= 1 && f <= kToneFaces[t];
+    }
+    inline int CanonVar(const Slot& sl, int var)
+    {
+        if (IsHeadSlot(sl) && var >= 1 && var < kHeadVarBase && sl.folder[6] >= '1' && sl.folder[6] <= '6')
+            return (sl.folder[6] - '0') * kHeadVarBase + var;
+        return var;
+    }
+    // caminho relativo ao pack, SEM ".png" ("heads/3/5"). Slot de rosto com variante >= 100: tom/rosto; senao pasta/variante.
+    inline std::string VariantRel(const Slot& sl, int var)
+    {
+        if (IsHeadSlot(sl) && var >= kHeadVarBase) return std::string("heads/") + std::to_string(HeadVarTone(var)) + "/" + std::to_string(var % kHeadVarBase);
+        return std::string(sl.folder) + "/" + std::to_string(var);
+    }
+    // inverso de VariantRel: "heads/3/5" -> 305 | "tshirts/1/34" -> 34 | qualquer outra coisa -> -1
+    inline int VariantFromRel(const Slot& sl, const char* rel)
+    {
+        if (!rel) return -1;
+        auto digits = [](const char* t, int& out) {
+            if (!*t || std::strlen(t) > 4) return false;
+            int n = 0;
+            for (const char* p = t; *p; ++p) { if (*p < '0' || *p > '9') return false; n = n * 10 + (*p - '0'); }
+            out = n; return true;
+        };
+        if (IsHeadSlot(sl) && std::strncmp(rel, "heads/", 6) == 0 && rel[6] >= '1' && rel[6] <= '6' && rel[7] == '/')
+        {
+            int f = 0;
+            if (!digits(rel + 8, f)) return -1;
+            return (rel[6] - '0') * kHeadVarBase + f;
+        }
+        const size_t fl = std::strlen(sl.folder);
+        if (std::strncmp(rel, sl.folder, fl) != 0 || rel[fl] != '/') return -1;
+        int n = 0;
+        if (!digits(rel + fl + 1, n)) return -1;
+        return n;
+    }
+
     // "a,b,c" contém `tex` (sem diferenciar maiúscula/minúscula)?
     inline bool TextureListHas(const char* list, const char* tex)
     {
@@ -210,6 +268,7 @@ namespace SkinSlots
         { "ROUPAS",    "torso1,torso2,torso3,torso4,pants1,pants2,pants3,pants4,short1,short2,short3,underwear" },
         { "CABELO",    "hair1,hair2,hair3,hair4" },
         { "ROSTO",     "head1,head2,head3,head4,head5" },
+        { "PELE",      "skin_torso,skin_leg,skin_feet" },     // tom de pele: so skin_torso aparece (muda corpo + rosto juntos)
         { "ACESSÓRIOS","glasse1,glasse2,ear1,ear2,ear3,ear4,clock1,clock2,mask1,mask2,necklace1,hat1" },
         { "CALÇADOS",  "boot1,boot2,boot3,boot4,slipper1,slipper2,slipper3" },
         { "MOCHILA",   "backpack1,backpack2,backpack3" },
