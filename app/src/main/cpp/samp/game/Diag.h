@@ -6,7 +6,7 @@
 //     all=0          ; 0 = tudo desligado por padrao (vale para as chaves nao citadas) ; 1 = tudo ligado (padrao sem arquivo)
 //     touch=1        ; touch.img (carros/skins customizados) + bypass do MINFO.BIN
 //     ipl=1          ; IPL por instancia (texdb/ipl)
-//     col=1          ; mistura de COL + guarda do CINFO.BIN
+//     (col NAO e' chave: o guarda do CINFO.BIN/MINFO.BIN fica SEMPRE ligado, suspeita de ser o que travou o jogo em 'Loading script.img' quando foi desligado)
 //     dff=1          ; DFF por entrada (texdb/DFF) + hook de GetTexture
 //     skin=1         ; /skin7 (CCustomSkin)
 //     clothes=1      ; CJ real (roupas/tatuagens, RPC)
@@ -26,9 +26,9 @@
 
 namespace Diag
 {
-    inline constexpr const char* kKeys[] = { "touch", "ipl", "col", "dff", "skin", "clothes", "anim", "corptex", "radarskin" };
+    inline constexpr const char* kKeys[] = { "touch", "ipl", "dff", "skin", "clothes", "anim", "corptex", "radarskin" };
 
-    struct State { bool loaded = false, fileFound = false; bool on[9]; std::string path; };
+    struct State { bool loaded = false, fileFound = false; bool on[8]; std::string path, pending; };
     inline State& S() { static State s; return s; }
 
     inline std::string IniPath()
@@ -45,7 +45,7 @@ namespace Diag
         for (bool& b : s.on) b = true;
         s.path = IniPath();
         FILE* f = std::fopen(s.path.c_str(), "r");
-        if (!f) { FLog("[DIAG] sem %s: tudo ligado", s.path.c_str()); return; }
+        if (!f) { s.pending = "[DIAG] sem " + s.path + ": tudo ligado"; return; }
         s.fileFound = true;
         char line[160]; bool allSet = false, inDiag = true;
         std::map<std::string, int> v;
@@ -68,16 +68,19 @@ namespace Diag
         }
         std::fclose(f);
         (void)allSet;
-        for (size_t i = 0; i < 9; i++) { auto it = v.find(kKeys[i]); if (it != v.end()) s.on[i] = it->second != 0; }
+        for (size_t i = 0; i < 8; i++) { auto it = v.find(kKeys[i]); if (it != v.end()) s.on[i] = it->second != 0; }
         std::string off, on;
-        for (size_t i = 0; i < 9; i++) (s.on[i] ? on : off) += std::string(kKeys[i]) + " ";
-        FLog("[DIAG] %s | LIGADOS: %s| DESLIGADOS: %s", s.path.c_str(), on.c_str(), off.c_str());
+        for (size_t i = 0; i < 8; i++) (s.on[i] ? on : off) += std::string(kKeys[i]) + " ";
+        s.pending = "[DIAG] " + s.path + " | LIGADOS: " + on + "| DESLIGADOS: " + off;
     }
+
+    // FLog descarta linhas ate g_pszStorage existir; o Load() roda cedo (ao instalar ganchos), entao a linha e gravada aqui depois.
+    inline void Flush() { Load(); State& s = S(); if (!s.pending.empty()) { FLog("%s", s.pending.c_str()); s.pending.clear(); } }
 
     inline bool On(const char* key)
     {
         Load();
-        for (size_t i = 0; i < 9; i++) if (std::strcmp(kKeys[i], key) == 0) return S().on[i];
+        for (size_t i = 0; i < 8; i++) if (std::strcmp(kKeys[i], key) == 0) return S().on[i];
         return true;
     }
 
@@ -85,7 +88,7 @@ namespace Diag
     {
         Load();
         std::string on, off;
-        for (size_t i = 0; i < 9; i++) (S().on[i] ? on : off) += std::string(kKeys[i]) + " ";
+        for (size_t i = 0; i < 8; i++) (S().on[i] ? on : off) += std::string(kKeys[i]) + " ";
         return std::string("[DIAG] ") + (S().fileFound ? "diag.ini lido" : "sem diag.ini (tudo ligado)") + " | LIGADOS: " + (on.empty() ? "-" : on) + "| DESLIGADOS: " + (off.empty() ? "-" : off) + "| (mudou o arquivo? reinicie o jogo)";
     }
 }

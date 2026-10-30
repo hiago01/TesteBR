@@ -242,9 +242,10 @@ void CStreaming::InjectHooks() {
 
     CHook::Redirect("_ZN10CStreaming13InitImageListEv", &CStreaming::InitImageList);
     // touch.img: ignora o cache posicional MODELS\MINFO.BIN (ver CustomImg.h) para o diretorio dos IMGs ser ligado pelo NOME
-    if (Diag::On("touch")) CustomImg::InstallAcceleratorBypass();
+    // SEMPRE: ignora o cache posicional MINFO.BIN (evita travar com cache velho mesmo sem touch.img) - nao e funcionalidade, e protecao
     // CINFO.BIN (cache de colisao): invalida o cache velho antes do CColAccel::startCache (ver CustomCol.h)
-    if (Diag::On("col")) CustomCol::InstallCinfoGuard();
+    // SEMPRE: guarda do CINFO.BIN (invalida cache velho) - protecao, nao e desligavel pelo diag (para testar col: tire os arquivos de SAMP/col)
+    CustomCol::InstallCinfoGuard();
     // IPL por instancia (texdb/ipl/*.ipl): mistura no CIplStore::LoadIpl (ver CustomIpl.h / LEIA-ME_IPL.md)
     if (Diag::On("ipl")) CustomIpl::Install();
     CHook::Redirect("_ZN10CStreaming12MakeSpaceForEi", &CStreaming::MakeSpaceFor);

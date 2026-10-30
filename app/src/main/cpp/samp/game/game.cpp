@@ -1,3 +1,4 @@
+#include "Diag.h"
 #include "../main.h"
 #include "game.h"
 #include "../vendor/armhook/patch.h"
@@ -90,14 +91,15 @@ void CGame::Initialize()
 	FLog("CGame initializing..");
 
     // diagnostico do touch.img: IDE x diretorio do IMG de cada entrada (roda depois dos IDEs e dos diretorios)
-    if (CustomImg::ImgPresent())
+    Diag::Flush();   // [DIAG] foi decidido antes de existir arquivo de log: grava agora
+    if (Diag::On("touch") && CustomImg::ImgPresent())
         CustomImg::Audit("CGame::Initialize");
 
     // countrye_10.col / CE_brewery: leitura passo a passo em SAMP/col, SAMP e texdb (somente log; nova leitura so com SAMP/col_reload.on)
     CustomCol::Audit("CGame::Initialize");
 
     // texdb/DFF/*.dff: DFF por entrada (ver CustomDff.h) - so log
-    CustomSkinStream::AuditDff("CGame::Initialize");
+    if (Diag::On("dff")) CustomSkinStream::AuditDff("CGame::Initialize");
 
     ApplySAMPPatchesInGame();
 	GameResetRadarColors();
@@ -667,6 +669,7 @@ void InitGui();
 
 bool CGame::InitialiseRenderWare() {
     FLog("InitialiseRenderWare ..");
+    Diag::Flush();
 
     CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + 0xBBA8D0);
 
@@ -704,7 +707,7 @@ bool CGame::InitialiseRenderWare() {
 #endif
 
     // banco de texturas do touch.img (texdb/touch/). fullyLoad=false: so o indice; texturas sob demanda.
-    if (CustomImg::DbPresent())
+    if (Diag::On("touch") && CustomImg::DbPresent())
     {
         const auto db = TextureDatabaseRuntime::Load(CustomImg::kDbName, false, TextureDatabaseFormat::DF_Default);
         FLog("[TOUCH] banco '%s' %s", CustomImg::kDbName, db ? "carregado" : "FALHOU ao carregar");

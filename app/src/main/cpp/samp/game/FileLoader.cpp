@@ -2,6 +2,7 @@
 // Created by x1y2z on 15.04.2023.
 //
 
+#include "Diag.h"
 #include "FileLoader.h"
 #include "../main.h"
 #include "CFileMgr.h"
@@ -126,7 +127,7 @@ CEntityGTA* CFileLoader::LoadObjectInstance1(const char* line) {
     // entao o indice das demais (os lods dos IPLs de streaming) nao muda.
     {
         const float p3[3] = { instance.m_vecPosition.x, instance.m_vecPosition.y, instance.m_vecPosition.z };
-        instance.m_nModelId = CustomIpl::HideModelFor(instance.m_nModelId, p3);
+        if (Diag::On("ipl")) instance.m_nModelId = CustomIpl::HideModelFor(instance.m_nModelId, p3);
     }
 
     /*if (iBuildingToRemoveCount >= 1) {
