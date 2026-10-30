@@ -129,6 +129,7 @@ public class FavouriteServerInformationFragment extends Dialog {
         mConnect.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
+                com.samp.mobile.launcher.util.KeyboardGuard.beforeLaunch(act); // ANTES de gravar host/port
                 File file = new File(act.getExternalFilesDir(null) + "/SAMP/settings.ini");
                 if(file.exists()) {
                     try {

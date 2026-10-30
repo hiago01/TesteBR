@@ -82,7 +82,7 @@ CSettings::CSettings()
 	m_Settings.fVoiceChatPosX = reader.GetReal("gui", "VoiceChatPosX", 1520.0f);
 	m_Settings.fVoiceChatPosY = reader.GetReal("gui", "VoiceChatPosY", 480.0f);
 
-	m_Settings.iAndroidKeyboard = reader.GetBoolean("gui", "androidkeyboard", false);
+	m_Settings.iAndroidKeyboard = reader.GetBoolean("gui", "androidkeyboard", true);   // padrao = teclado do Android (opcao travada no launcher)
 	m_Settings.iFirstPerson = reader.GetBoolean("gui", "firstperson", true);
 	m_Settings.iCutout = reader.GetBoolean("gui", "cutout", false);
 	m_Settings.iFPSCounter = reader.GetBoolean("gui", "fps", false);

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="mx_help_label">SOLUÇÕES DE PROBLEMAS</string>
     <string name="mx_menu_repair">CORREÇÕES</string>
     <string name="mx_repair_title">CORREÇÕES</string>
     <string name="mx_repair_subtitle">Solução de problemas dos arquivos do jogo (SAMP e texdb)</string>

@@ -1,0 +1,151 @@
+package com.samp.mobile.launcher.util;
+
+import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.provider.Settings;
+import android.view.inputmethod.InputMethodInfo;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.Toast;
+
+import com.samp.mobile.launcher.pack.IniFix;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Analise de teclado ANTES de abrir o jogo (chamada nos 3 caminhos que iniciam a SAMP.class).
+ * O cliente nativo le "SAMP/settings.ini" uma vez na partida (settings.cpp):
+ *   - arquivo ausente  -> std::terminate()  (o jogo fecha);
+ *   - chave "[gui] androidkeyboard" ausente/0/arquivo quebrado -> usa o teclado antigo do jogo (ENG/RUS), nao o do Android.
+ * Aqui: (1) garante que o settings.ini existe e e legivel (restaura do asset, guardando o quebrado como .bad),
+ * (2) grava [gui] androidkeyboard = 1 por edicao de texto tolerante (nao depende do Wini) e CONFERE relendo,
+ * (3) confere se ha teclado do Android ativo e avisa se nao houver. Nunca bloqueia a entrada no jogo.
+ */
+public final class KeyboardGuard {
+    private KeyboardGuard() {}
+
+    public static final class Report {
+        public boolean iniRestored, iniFixed, iniOk;
+        public final List<String> notes = new ArrayList<>();
+        public final List<String> keyboards = new ArrayList<>();
+        public String defaultIme = "";
+        public boolean imeOk = true;
+        @Override public String toString() {
+            StringBuilder b = new StringBuilder();
+            b.append("settings.ini: ").append(iniOk ? "OK (androidkeyboard=1)" : "PROBLEMA")
+                    .append(iniRestored ? " [restaurado do APK]" : "").append(iniFixed ? " [corrigido]" : "").append('\n');
+            b.append("teclado padrao do Android: ").append(defaultIme.isEmpty() ? "(nenhum)" : defaultIme).append('\n');
+            b.append("teclados ativos: ").append(keyboards.isEmpty() ? "(nenhum)" : keyboards.toString()).append('\n');
+            for (String n : notes) b.append("  - ").append(n).append('\n');
+            return b.toString();
+        }
+    }
+
+    private static volatile Report last;
+    public static Report last() { return last; }
+
+    /** Chamar logo antes de startActivity(SAMP). Mostra um aviso curto se nao houver teclado do Android. */
+    public static void beforeLaunch(Activity a) {
+        try {
+            Report r = check(a);
+            last = r;
+            if (!r.imeOk) {
+                Toast.makeText(a, "Nenhum teclado do Android ativo. Ative um em Ajustes > Idioma e entrada, senão não dá para digitar no chat.", Toast.LENGTH_LONG).show();
+            }
+            if (!r.iniOk) {
+                Toast.makeText(a, "Não foi possível garantir o teclado do Android no settings.ini. Use CORREÇÕES > Exportar relatório.", Toast.LENGTH_LONG).show();
+            }
+        } catch (RuntimeException e) {
+            // a analise nunca pode impedir o jogador de entrar
+        }
+    }
+
+    /** Analise + correcao (pode ser chamada varias vezes; e idempotente). */
+    public static Report check(Context ctx) {
+        Report r = new Report();
+        Context app = ctx.getApplicationContext();
+        File dir = app.getExternalFilesDir(null);
+        if (dir == null) { r.notes.add("armazenamento do app indisponivel"); r.iniOk = false; analyzeIme(app, r); return r; }
+        File ini = new File(dir, "SAMP/settings.ini");
+
+        String text = read(ini);
+        if (text == null || !IniFix.looksValid(text)) {
+            // ausente, vazio ou quebrado: guarda o quebrado e restaura o padrao do APK
+            if (ini.exists()) {
+                File bad = new File(ini.getPath() + ".bad");
+                bad.delete();
+                if (ini.renameTo(bad)) r.notes.add("settings.ini quebrado guardado como settings.ini.bad");
+                else ini.delete();
+            }
+            ConfigValidator.validateConfigFiles(app); // copia assets/settings.ini
+            text = read(ini);
+            r.iniRestored = true;
+            r.notes.add("settings.ini ausente/quebrado: restaurado do APK");
+        }
+        if (text == null || !IniFix.looksValid(text)) {
+            r.iniOk = false;
+            r.notes.add("nao foi possivel restaurar settings.ini");
+        } else {
+            if (!IniFix.asBool(IniFix.read(text, "gui", "androidkeyboard"), false)) {
+                String fixed = IniFix.enforce(text, "gui", "androidkeyboard", "1");
+                if (write(ini, fixed)) { r.iniFixed = true; r.notes.add("androidkeyboard estava desligado/ausente: ligado"); }
+                else r.notes.add("falha ao gravar settings.ini");
+                text = read(ini);
+            }
+            r.iniOk = text != null && IniFix.asBool(IniFix.read(text, "gui", "androidkeyboard"), false);
+        }
+        analyzeIme(app, r);
+        return r;
+    }
+
+    private static void analyzeIme(Context app, Report r) {
+        try {
+            InputMethodManager imm = (InputMethodManager) app.getSystemService(Context.INPUT_METHOD_SERVICE);
+            PackageManager pm = app.getPackageManager();
+            if (imm != null) {
+                List<InputMethodInfo> list = imm.getEnabledInputMethodList();
+                if (list != null) for (InputMethodInfo i : list) r.keyboards.add(i.getPackageName());
+            }
+            String def = Settings.Secure.getString(app.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD);
+            r.defaultIme = def == null ? "" : def;
+            if (r.keyboards.isEmpty()) { r.imeOk = false; r.notes.add("nenhum teclado do Android ativo"); }
+            if (!r.defaultIme.isEmpty()) {
+                String pkg = r.defaultIme.contains("/") ? r.defaultIme.substring(0, r.defaultIme.indexOf('/')) : r.defaultIme;
+                try { pm.getPackageInfo(pkg, 0); }
+                catch (PackageManager.NameNotFoundException e) { r.imeOk = false; r.notes.add("teclado padrao (" + pkg + ") nao esta instalado"); }
+            }
+        } catch (RuntimeException e) {
+            r.notes.add("nao foi possivel listar teclados: " + e);
+        }
+    }
+
+    /** Abre os ajustes de teclado do Android (para o botao de ajuda). */
+    public static void openInputSettings(Activity a) {
+        try { a.startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)); } catch (RuntimeException ignored) { }
+    }
+
+    private static String read(File f) {
+        try { return f.isFile() ? new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8) : null; }
+        catch (IOException | RuntimeException e) { return null; }
+    }
+
+    /** Escrita atomica: .tmp -> rename (nunca deixa o settings.ini pela metade). */
+    private static boolean write(File f, String text) {
+        File tmp = new File(f.getPath() + ".tmp");
+        try (FileOutputStream o = new FileOutputStream(tmp)) {
+            o.write(text.getBytes(StandardCharsets.UTF_8));
+            o.getFD().sync();
+        } catch (IOException e) { tmp.delete(); return false; }
+        f.delete();
+        if (tmp.renameTo(f)) return true;
+        tmp.delete();
+        return false;
+    }
+}

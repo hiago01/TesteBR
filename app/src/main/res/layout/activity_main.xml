@@ -77,5 +77,42 @@
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent" />
+
+        <!-- Atalho discreto: engrenagem + "SOLUCOES DE PROBLEMAS" -> pagina CORRECOES (MainActivity liga o clique) -->
+        <LinearLayout
+            android:id="@+id/mx_btn_help"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="18dp"
+            android:clickable="true"
+            android:contentDescription="@string/mx_help_label"
+            android:focusable="true"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:padding="4dp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/mx_ic_settings"
+                app:tint="@color/mx_text" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:alpha="0.8"
+                android:fontFamily="@font/montserrat_medium"
+                android:gravity="center"
+                android:letterSpacing="0.06"
+                android:maxWidth="84dp"
+                android:text="@string/mx_help_label"
+                android:textColor="@color/mx_text"
+                android:textSize="6sp" />
+        </LinearLayout>
     </androidx.constraintlayout.widget.ConstraintLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>

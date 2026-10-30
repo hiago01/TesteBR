@@ -420,6 +420,10 @@ public class RepairFragment extends Fragment {
                     .append(a.getPackageManager().getPackageInfo(a.getPackageName(), 0).versionName);
         } catch (Exception ignored) { }
         b.append("\nGPU do launcher: ").append(gpuType == 1 ? "DXT" : gpuType == 2 ? "ETC" : gpuType == 3 ? "PVR" : "desconhecida");
+        try {
+            Activity ka = getActivity();
+            if (ka != null) b.append("\n[Teclado]\n").append(com.samp.mobile.launcher.util.KeyboardGuard.check(ka));
+        } catch (RuntimeException ignored) { }
         b.append("\nsamp.json: ").append(haveSampJson ? "usado" : "indisponível (SAMP/ pelo files.json)");
         return b.toString();
     }

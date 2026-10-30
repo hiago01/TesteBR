@@ -149,6 +149,7 @@ public class MainActivity extends AppCompatActivity {
         mFavoriteServersList = new ArrayList<>();
 
         ConfigValidator.validateConfigFiles(this);
+        com.samp.mobile.launcher.util.KeyboardGuard.check(this); // garante settings.ini e androidkeyboard=1 desde a abertura do launcher
 
         if(!SignatureChecker.isSignatureValid(this, getPackageName()))
         {
@@ -170,6 +171,10 @@ public class MainActivity extends AppCompatActivity {
         mPager.setOffscreenPageLimit(1);
         mPager.setAdapter(new ViewPagerAdapter(getSupportFragmentManager()));
         buildSidebar();
+        View helpBtn = findViewById(R.id.mx_btn_help);   // engrenagem "SOLUCOES DE PROBLEMAS" no topo
+        if (helpBtn != null) helpBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { openPage(PAGE_REPAIR); }
+        });
         bindFooter();
         openPage(PAGE_SERVERS);
 

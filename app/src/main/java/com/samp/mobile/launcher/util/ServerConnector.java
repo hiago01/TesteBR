@@ -23,6 +23,7 @@ public final class ServerConnector {
 
     /** @return true se o jogo foi iniciado; false se faltam arquivos (o usuario e avisado). */
     public static boolean connect(Activity activity, SAMPServerInfo info) {
+        KeyboardGuard.beforeLaunch(activity); // ANTES de gravar host/port: pode restaurar o settings.ini
         File file = new File(activity.getExternalFilesDir(null) + "/SAMP/settings.ini");
         if (file.exists()) {
             try {

@@ -150,6 +150,7 @@ public class ServerInformationFragment extends Dialog {
     }
 
     private static void launchGameNow(Activity activity, SAMPServerInfo info) {
+        com.samp.mobile.launcher.util.KeyboardGuard.beforeLaunch(activity); // ANTES de gravar host/port
         com.samp.mobile.launcher.util.FixedSettings.apply(activity);
         File file = new File(activity.getExternalFilesDir(null) + "/SAMP/settings.ini");
         if (file.exists()) {
