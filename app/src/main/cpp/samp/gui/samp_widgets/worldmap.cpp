@@ -5,6 +5,7 @@
 #include "../../net/netgame.h"
 #include "../../net/playerpool.h"
 #include "../../util/CUtil.h"
+#include "../../game/RadarSkin.h"
 #include "../../vendor/stb/stb_image.h"   // implementacao em game/sprite2d.cpp
 #include "worldmap.h"
 #include "WorldMapUI.h"
@@ -112,7 +113,9 @@ namespace
 		}
 		ImTextureID tile(int idx) override
 		{
-			if (idx < 0 || idx >= kTiles * kTiles || m_src == -2) return 0;
+			if (idx < 0 || idx >= kTiles * kTiles) return 0;
+			if (void* skin = RadarSkin::UiTileRaster(idx)) return (ImTextureID)skin;   // tiles PNG (Google Maps), se ligados
+			if (m_src == -2) return 0;
 			if (m_tex[idx]) return (ImTextureID)m_tex[idx]->raster;
 			if (m_texFailed[idx]) return 0;
 			if (m_src == -1) { Probe(); if (m_src == -2) return 0; if (m_tex[idx]) return (ImTextureID)m_tex[idx]->raster; }
@@ -155,6 +158,7 @@ namespace
 		void sendCommand(const char* cmd) override { if (pNetGame && g_serverSupports.load()) pNetGame->SendChatCommand(cmd); }
 		int64_t nowMs() override { return NowMsReal(); }
 		int tilesLoaded() override { return m_loaded; }
+		int mapDim() override { return RadarSkin::Enabled() ? 0 : 70; }
 	};
 
 	GamePlatform g_plat;

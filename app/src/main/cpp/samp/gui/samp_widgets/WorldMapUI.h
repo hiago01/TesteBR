@@ -31,6 +31,7 @@ namespace WorldMap
 		virtual void   sendCommand(const char* cmd) = 0;        // comando oculto /mapax ...
 		virtual int64_t nowMs() = 0;
 		virtual int    tilesLoaded() { return 0; }
+		virtual int    mapDim() { return 70; }   // escurecimento (0-255) por cima do mapa; 0 para tiles claros (Google Maps)
 	};
 
 	class Ui
@@ -589,7 +590,7 @@ namespace WorldMap
 				}
 			}
 		}
-		r->drawRect(L.mapA, L.mapB, ImColor(0, 0, 0, 70), true);   // escurece (estilo do painel)
+		if (P->mapDim() > 0) r->drawRect(L.mapA, L.mapB, ImColor(0, 0, 0, P->mapDim()), true);   // escurece (estilo do painel)
 		r->drawRect(S(kWorldMin, kWorldMax), S(kWorldMax, kWorldMin), ImColor(255, 255, 255, 40), false, 1.5f);
 
 		// ---- caminho ----

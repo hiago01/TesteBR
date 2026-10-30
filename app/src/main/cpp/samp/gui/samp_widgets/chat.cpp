@@ -12,6 +12,7 @@
 #include "../../game/IdCard3D.h"
 #include "../../game/CustomSkin.h"
 #include "../../game/CorpTex.h"
+#include "../../game/RadarSkin.h"
 #include <cstring>
 #include <string>
 #include "../../game/camerazoom.h"
@@ -161,6 +162,13 @@ if (input == "/skin7" || input.rfind("/skin7 ", 0) == 0)
             std::string reply = CCustomSkin::DebugCommand(args);
             addDebugMessage("%s", reply.c_str());
 
+            return;
+        }
+if (input == "/radarskin" || input.rfind("/radarskin ", 0) == 0)
+        {
+            // tiles PNG (Google Maps) no radar nativo: /radarskin on|off|reload|info
+            const std::string args = input.size() > 10 ? input.substr(11) : std::string();
+            addDebugMessage("%s", RadarSkin::Command(args).c_str());
             return;
         }
 if (input == "/mapa" || input.rfind("/mapa ", 0) == 0)
