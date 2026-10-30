@@ -263,10 +263,34 @@ public class SplashActivity extends AppCompatActivity {
                     }
                 }
                 else if (valueOf2 == UpdateActivity.GameStatus.GameUpdateRequired) {
-                    Intent intent = new Intent(SplashActivity.this, UpdateActivity.class);
-                    intent.putExtra("mode", UpdateActivity.UpdateMode.GameUpdate.name());
-                    startActivity(intent);
-                    finish();
+                    // APK desatualizado: aviso OBRIGATORIO (um botao, sem cancelar) e entao baixa/instala o APK novo.
+                    if (!isFinishing() && !isDestroyed() && !mDialogShowing) {
+                        mDialogShowing = true;
+                        View v = getLayoutInflater().inflate(R.layout.mx_dialog_update_required, null);
+                        ((android.widget.TextView) v.findViewById(R.id.mx_upd_req_title)).setText(R.string.mx_upd_app_title);
+                        ((android.widget.TextView) v.findViewById(R.id.mx_upd_req_msg)).setText(R.string.mx_upd_app_msg);
+                        final AlertDialog alert = new AlertDialog.Builder(SplashActivity.this)
+                                .setView(v).setCancelable(false).create();
+                        alert.setCanceledOnTouchOutside(false);
+                        v.findViewById(R.id.mx_upd_req_btn).setOnClickListener(new View.OnClickListener() {
+                            @Override
+                            public void onClick(View view) {
+                                mDialogShowing = false;
+                                Intent intent = new Intent(SplashActivity.this, UpdateActivity.class);
+                                intent.putExtra("mode", UpdateActivity.UpdateMode.GameUpdate.name());
+                                startActivity(intent);
+                                finish();
+                                alert.dismiss();
+                            }
+                        });
+                        alert.show();
+                        if (alert.getWindow() != null) {
+                            alert.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
+                            int w = Math.min((int) (400 * getResources().getDisplayMetrics().density),
+                                    (int) (getResources().getDisplayMetrics().widthPixels * 0.9f));
+                            alert.getWindow().setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+                        }
+                    }
                 }
                 else {
                     // Updated: nenhuma atualizacao pendente (so este caminho marca "Atualizado")

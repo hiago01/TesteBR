@@ -87,6 +87,8 @@
     <string name="mx_upd_req_title">Atualização obrigatória</string>
     <string name="mx_upd_req_msg">Encontramos novos arquivos do jogo. Para entrar no servidor é preciso atualizar agora.</string>
     <string name="mx_upd_req_hint">Use Wi-Fi e mantenha o celular carregado. O download pode ser grande.</string>
+    <string name="mx_upd_app_title">Nova versão do aplicativo</string>
+    <string name="mx_upd_app_msg">Há uma versão mais nova do aplicativo. Para jogar é preciso atualizar agora; o instalador do Android vai abrir ao terminar o download.</string>
     <string name="mx_upd_req_btn">ATUALIZAR AGORA</string>
     <string name="mx_update_title_data">Baixando dados do jogo</string>
     <string name="mx_update_title_data_step1">Baixando dados do jogo (etapa 1 de 2)</string>

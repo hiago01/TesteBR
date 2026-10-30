@@ -138,6 +138,7 @@ public class UpdateActivity extends AppCompatActivity{
                     }
                     if (mGameApk == null || !mGameApk.exists()) {
                         Log.d("x1y2z", "Error update game data");
+                        if (mUpdateMode == UpdateMode.GameUpdate) { showUpdateError("The launcher update file is missing."); return; }
                         intent = new Intent(UpdateActivity.this, MainActivity.class);
                         startActivity(intent);
                         finish();
@@ -222,7 +223,7 @@ public class UpdateActivity extends AppCompatActivity{
                         }
                     }
                 })
-                .setNegativeButton("Continue", new DialogInterface.OnClickListener() {
+                .setNegativeButton(mUpdateMode == UpdateMode.GameUpdate ? null : "Continue", mUpdateMode == UpdateMode.GameUpdate ? null : new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
                         mErrorDialogShowing = false;
@@ -245,8 +246,7 @@ public class UpdateActivity extends AppCompatActivity{
                 startActivityForResult(settings, REQ_UNKNOWN_SOURCES); // ao voltar: onActivityResult
             } catch (RuntimeException e) {
                 Log.e("x1y2z", "cannot open unknown-sources settings", e);
-                startActivity(new Intent(this, MainActivity.class));
-                finish();
+                showUpdateError("Cannot open the \"Install unknown apps\" settings.");
             }
             return;
         }
@@ -275,6 +275,7 @@ public class UpdateActivity extends AppCompatActivity{
                 requestInstallGame();
             } else {
                 Toast.makeText(this, "Update not installed: permission was not granted.", Toast.LENGTH_LONG).show();
+                if (mUpdateMode == UpdateMode.GameUpdate) { requestInstallGame(); return; }
                 startActivity(new Intent(this, MainActivity.class));
                 finish();
             }

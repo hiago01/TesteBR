@@ -21,6 +21,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:gravity="center"
+        android:id="@+id/mx_upd_req_title"
         android:text="@string/mx_upd_req_title"
         android:textColor="@color/mx_text"
         android:textSize="20sp"
@@ -32,6 +33,7 @@
         android:layout_marginTop="10dp"
         android:gravity="center"
         android:lineSpacingExtra="2dp"
+        android:id="@+id/mx_upd_req_msg"
         android:text="@string/mx_upd_req_msg"
         android:textColor="@color/mx_text_dim"
         android:textSize="15sp" />

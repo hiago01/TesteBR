@@ -88,6 +88,9 @@ public class UpdateService extends Service {
     public long mUpdateGameDataSizeUpdated = 0;
     public String mUpdateGameURL = "";
     public int mUpdateVersion;
+    /** Verificacao do APK novo (client_config.launcher_sha256 / launcher_size). Vazio/0 = sem verificacao (servidor antigo). */
+    public String mUpdateGameSha = "";
+    public long mUpdateGameSize = 0;
 
     public ArrayList<String> mUpdateFiles = new ArrayList<>();
     public ArrayList<String> mUpdateFilesName = new ArrayList<>();
@@ -359,6 +362,9 @@ public class UpdateService extends Service {
                     JSONObject jSONObject = new JSONObject(response).getJSONObject("client_config");
                     mUpdateVersion = jSONObject.getInt("version_code");
                     mUpdateGameURL = jSONObject.getString("url_launcher");
+                    mUpdateGameSha = jSONObject.optString("launcher_sha256", "").trim().toLowerCase(java.util.Locale.ROOT);
+                    if (mUpdateGameSha.length() != 64) mUpdateGameSha = "";
+                    mUpdateGameSize = jSONObject.optLong("launcher_size", 0);
                     if (withFiles) {
                         parsePackConfig(response);
                         String string = jSONObject.getString("url_cache_files");
@@ -662,6 +668,26 @@ public class UpdateService extends Service {
                         if (session != mSession) return;
                         mDownloadingStatus = false;
                         mDownloadId = -1;
+                        // APK novo: confere tamanho/SHA-256 do client_config ANTES de oferecer a instalacao.
+                        if (!mUpdateGameSha.isEmpty() || mUpdateGameSize > 0) {
+                            String why = verifyDownloaded(file, mUpdateGameSize > 0 ? mUpdateGameSize : file.length(), mUpdateGameSha);
+                            if (why != null) {
+                                Log.w("x1y2z", "launcher.apk rejeitado: " + why);
+                                //noinspection ResultOfMethodCallIgnored
+                                file.delete();
+                                if (attempt < MAX_GAME_ATTEMPTS) {
+                                    mInHandler.postDelayed(new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            downloadGame(session, attempt + 1);
+                                        }
+                                    }, RETRY_DELAY_MS * attempt);
+                                } else {
+                                    reportError("The downloaded launcher update failed verification (" + why + ")", false);
+                                }
+                                return;
+                            }
+                        }
                         Message obtain = Message.obtain(UpdateService.this.mInHandler, 2);
                         obtain.getData().putBoolean("status", true);
                         obtain.getData().putString("apkPath", file.getAbsolutePath());
