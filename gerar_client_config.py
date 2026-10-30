@@ -10,10 +10,10 @@ com o HASH de verificacao (SHA-256) que o launcher confere antes de instalar.
   # 2) gerar/atualizar o client_config.json (mantem url_cache_files, packs, version e qualquer outro campo)
   python gerar_client_config.py gerar --apk C:\\cache-server\\launcher.apk ^
          --config C:\\cache-server\\client_config.json ^
-         --url-launcher http://201.33.84.96:8080/launcher.apk
+         --url-launcher https://maximoroleplay.com.br/launcher.apk
 
   # 3) conferir o que o SERVIDOR esta servindo (baixa o client_config e o APK pela URL e compara o hash)
-  python gerar_client_config.py conferir --base-url http://201.33.84.96:8080
+  python gerar_client_config.py conferir --base-url https://maximoroleplay.com.br
 
 Como o launcher usa (UpdateService.java):
   * version_code  : se for DIFERENTE do versionCode do app instalado, o jogo exige atualizar (aviso obrigatorio,

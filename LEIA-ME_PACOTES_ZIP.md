@@ -23,7 +23,7 @@ Nao mexi em C++/JNI, nomes de pacote, layouts, IDs, `endpoints.xml` nem `network
 ## Servidor
 ```
 python build_packs.py --src C:\cache-server\files --out C:\cache-server\packs ^
-   --base-url http://201.33.84.96:8080/packs --version 1
+   --base-url https://maximoroleplay.com.br/packs --version 1
 ```
 Copie os `.zip` para a pasta servida em `/packs/` e cole o trecho impresso dentro de `"client_config"` (mantenha `url_cache_files`):
 ```json
@@ -80,13 +80,13 @@ gerados pelo jogo, para nao sobrescrever as configuracoes do jogador a cada aber
 - `--com-excecoes`: modo antigo (ignora tambem as configuracoes do jogador).
 
 ## Gerando os pacotes a partir do files.zip
-`python build_packs.py --src C:\cache-server\files.zip --out C:\cache-server\packs --base-url http://201.33.84.96:8080/packs --version 1`
+`python build_packs.py --src C:\cache-server\files.zip --out C:\cache-server\packs --base-url https://maximoroleplay.com.br/packs --version 1`
 Le direto de dentro do .zip (nada e extraido em disco; testa o CRC do zip antes), remove a pasta raiz unica se houver (`--no-strip` desliga)
 e, por padrao, NAO deixa nada de fora. `--seguro` deixa de fora lixo de SO, lista.txt e os caches do aparelho. O `verify_install.py zip`
 tambem aceita o .zip em `--src`. O fluxo antigo (atualizacao) continua sem baixar/sobrescrever arquivos gerados pelo jogo.
 
 ## Pasta SAMP/ completa (--overlay)
-`python build_packs.py --src C:\cache-server\files.zip --overlay C:\cache-server\SAMP.zip --out C:\cache-server\packs --base-url http://201.33.84.96:8080/packs --version 1`
+`python build_packs.py --src C:\cache-server\files.zip --overlay C:\cache-server\SAMP.zip --out C:\cache-server\packs --base-url https://maximoroleplay.com.br/packs --version 1`
 O `SAMP.zip` passa a ser a verdade para toda a pasta `SAMP/`: o que existia so no `files.zip` (obsoleto) some e tudo do `SAMP.zip` entra,
 inclusive arquivos recriados pelo jogo (cinfo.sig, col_index.txt, favorites.json, svlog.txt, settings.ini, svconfig.ini) e as
 pastas com espaco/parenteses (`SAMP/dff/New Folder`, `countrye_stream4(edit.txt`). O `files.json` e gerado do MESMO conjunto.

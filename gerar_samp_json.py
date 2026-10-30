@@ -122,7 +122,7 @@ def main():
         print("pastas vazias incluidas (o jogo precisa que existam): %s" % ", ".join("SAMP/" + d for d in empty_dirs))
     if zero:
         print("AVISO: %d arquivo(s) de 0 bytes: %s" % (len(zero), ", ".join(zero[:10])))
-    print("Confira no navegador: http://SEU_IP:8080/samp.json  e  http://SEU_IP:8080/%s" % files[0]["path"])
+    print("Confira no navegador: https://maximoroleplay.com.br/samp.json  e  https://maximoroleplay.com.br/%s" % files[0]["path"])
 
 
 if __name__ == "__main__":

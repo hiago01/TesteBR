@@ -5,10 +5,10 @@ build_packs.py - gera os pacotes ZIP do cliente (core + gpu_*) e o trecho "packs
 
 Uso (Windows, Python 3.8+), lendo direto do .zip do cliente completo:
     python build_packs.py --src C:\\cache-server\\files.zip --out C:\\cache-server\\packs ^
-        --base-url http://201.33.84.96:8080/packs --version 1
+        --base-url https://maximoroleplay.com.br/packs --version 1
 Ou a partir da pasta:
     python build_packs.py --src C:\\cache-server\\files --out C:\\cache-server\\packs ^
-        --base-url http://201.33.84.96:8080/packs --version 1
+        --base-url https://maximoroleplay.com.br/packs --version 1
 
 Regras (devem bater com GameFilePolicy.java do app):
   * SO LE a pasta de origem; nunca altera nada nela. Tudo e escrito em --out.
