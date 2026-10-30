@@ -148,7 +148,7 @@ namespace
 		{
 			clearGps();
 			if (!pGame) return;
-			m_blip = pGame->CreateRadarMarkerIcon(41, x, y, z, 0, 0);   // sprite 41 = destino (nao verificado no aparelho)
+			m_blip = pGame->CreateRadarMarkerIcon(0, x, y, z, 1005, 0);   // blip colorido (mesmo do checkpoint do SA-MP): aparece no minimapa, preso na borda quando longe. (sprite 41 era o cassino, nao destino)
 		}
 		void clearGps() override
 		{

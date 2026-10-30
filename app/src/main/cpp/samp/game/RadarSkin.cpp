@@ -208,7 +208,7 @@ namespace
 		g_enabled.store(FileExists(TilePath(0)) || FileExists(TexdbDir() + "mapa.txt"));      // padrao: liga se houver banco ou PNG
 		LoadIni();
 		if (g_enabled.load() && !FileExists(TilePath(0)) && !FileExists(TexdbDir() + "mapa.txt")) g_enabled.store(false);
-		if (g_enabled.load()) PatchOcean(true);
+		if (g_enabled.load()) { PatchOcean(true); ReloadGameTiles(); }   // o jogo pode ja ter carregado tiles NATIVOS no minimapa antes do 1o hook: solta todos e pede de novo
 		FLog("[RADARSKIN] %s (tiles em %stiles/, oceano %d,%d,%d)", g_enabled.load() ? "LIGADO" : "desligado/sem PNG", Dir().c_str(), g_ocean[0], g_ocean[1], g_ocean[2]);
 	}
 
