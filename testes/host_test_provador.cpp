@@ -286,12 +286,12 @@ int main()
         // e o contrario: ativar tenis desliga o chinelo
         Run("slot boot3 2");
         CHECK(Vis("boot3") && !Vis("slipper1") && !Vis("boot2"));
-        CHECK(H("body.feetleft") && H("body.legleft5") && H("body.legleft4"));      // boot3 sobe ate -0.81: cobre leg4 tambem
+        CHECK(!H("body.feetleft") && !H("body.legleft5") && H("body.legleft4"));     // boot3 (cano baixo): pe e tornozelo ficam a mostra; cobre leg4
         { int vis = 0; for (auto g : {"boot1","boot2","boot3","boot4","slipper1","slipper2","slipper3"}) vis += Vis(g); CHECK(vis == 1); }
 
         // bermuda + tenis: cada um esconde o seu; tirar o tenis nao religa o que a bermuda cobre
         Run("slot short3 2");
-        CHECK(H("body.legleft1") && H("body.legleft5") && H("body.feetleft"));
+        CHECK(H("body.legleft1") && !H("body.legleft5") && !H("body.feetleft"));
         Run("slot boot3 off");
         CHECK(!H("body.feetleft") && !H("body.legleft5") && !H("body.legleft4") && H("body.legleft1") && H("fantasy_m_underwear"));
 

@@ -63,6 +63,28 @@ int main()
         for (auto& o : ops) { if (o.slot == id1 && o.rel == "heads/4/5.png") ok1 = true; if (o.slot == id2 && o.rel == "heads/2/3.png") ok2 = true; }
         CHECK(ok1 && ok2);
     }
+    {   // tenis de cano baixo (boot1/boot3) NAO escondem pe/tornozelo; boot2/boot4 continuam cobrindo
+        using namespace SkinSlots;
+        auto piece = [](const char* n) { for (const Box& b : kCoverPieces) if (!std::strcmp(b.name, n)) return &b; return (const Box*)nullptr; };
+        auto target = [](const char* n) { for (const Box& b : kCoverTargets) if (!std::strcmp(b.name, n)) return &b; return (const Box*)nullptr; };
+        const char* skin[] = { "body.feetleft", "body.feetright", "body.legleft5", "body.legright5" };
+        for (const char* t : skin) {
+            CHECK(!PieceCovers(*piece("fantasy_m_boot1"), *target(t)));
+            CHECK(!PieceCovers(*piece("fantasy_m_boot3"), *target(t)));
+            CHECK(PieceCovers(*piece("fantasy_m_boot2"), *target(t)));
+            CHECK(PieceCovers(*piece("fantasy_m_boot4"), *target(t)));
+        }
+        // Plano completo: boot1 ligado nao esconde body.feet*; boot2 ligado esconde
+        const int b1 = (int)(Find("boot1") - kSlots) + 1, b2 = (int)(Find("boot2") - kSlots) + 1;
+        for (int pass = 0; pass < 2; ++pass) {
+            std::vector<LookSlots::St> st; LookSlots::St x; x.id = (uint8_t)(pass ? b2 : b1); x.est = 1; x.var = 0; st.push_back(x);
+            LookSlots::St f; f.id = (uint8_t)((int)(Find("skin_feet") - kSlots) + 1); f.est = 2; f.var = 1; st.push_back(f);
+            std::vector<LookSlots::Op> ops; LookSlots::Plan(st, ops);
+            bool feetHidden = false;
+            for (auto& o : ops) if (o.mat == "body.feetright" && o.kind == LookSlots::kHide) feetHidden = true;
+            CHECK(feetHidden == (pass == 1));
+        }
+    }
     if (g_fail) { std::printf("%d falha(s)\n", g_fail); return 1; }
     std::printf("ROSTO_TOM: todos os testes passaram\n");
     return 0;

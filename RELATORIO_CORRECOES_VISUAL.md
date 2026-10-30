@@ -55,3 +55,10 @@ Correção (CorpTex.cpp + LookSlots.h):
 **Correção:** `SyncMoldFromServer` oculta primeiro todo slot que o servidor não lista (mesma regra `PlanWithDefaults` usada para os outros jogadores) e só depois aplica os slots do servidor. Esses slots continuam aparecendo como "padrão, nada equipado" (não "desligado") na lista do /provador.
 
 **Testado:** `sh testes/run_host_provador.sh` (novo bloco "CONTA NOVA" falhava antes e passa agora). **Não testado:** aparelho, APK, servidor real. Snapshot que chega DEPOIS do molde já preparado não reaplica o molde (comportamento anterior, não alterado).
+
+---
+# Calçados: buraco no pé com Bota 1 e Bota 3
+
+**Causa (pela foto + geometria do skin.dff):** boot1 e boot3 são tênis de cano baixo: a boca do calçado fica aberta e mostra o peito do pé/tornozelo. A regra de cobertura escondia a pele `body.feet*` e `body.leg5` por baixo deles, então no lugar aparecia o interior do tênis (cinza/vermelho) e a perna terminava cortada. boot2 e boot4 são fechados, por isso funcionam.
+**Correção:** `SkinSlots::PieceNeverCovers` - boot1/boot3 não escondem `body.feetleft/right` nem `body.legleft5/right5` (continuam escondendo as pernas acima). Vale no /provador (CustomSkin), nos outros jogadores (LookSlots) e no caminho antigo do CorpTex.
+**Testado (host):** novo teste em host_test_rosto_tom (boot1/3 não cobrem, boot2/4 cobrem, plano completo); dois testes antigos que esperavam o comportamento anterior foram atualizados. **Não testado:** aparelho. Se ainda sobrar um vão, o próximo passo é medir a malha do tênis contra a pele no aparelho (a análise de geometria só mostrou que o pé fica dentro do tênis).

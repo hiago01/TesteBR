@@ -595,6 +595,7 @@ void DropEntry(PLAYERID id)
 
 bool PieceCovers(const Box& p, const Box& r)
 {
+    if (SkinSlots::PieceNeverCovers(p.name, r.name)) return false;      // tenis de cano baixo (boot1/boot3) deixam pe/tornozelo a mostra
     constexpr float tol = 0.03f;
     return p.zmin <= r.zmin + tol && p.zmax >= r.zmax - tol && p.xabs >= r.xabs - tol;
 }
