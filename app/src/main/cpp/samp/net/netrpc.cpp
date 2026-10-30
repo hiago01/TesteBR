@@ -1,3 +1,4 @@
+#include "../game/Diag.h"
 #include "../main.h"
 #include "../game/game.h"
 #include "netgame.h"
@@ -636,7 +637,7 @@ void WorldPlayerAdd(RPCParameters *rpcParams)
 			{
                 FLog("WorldPlayerAdd");
 				CustomAnimSync::OnPlayerStreamIn(playerId);   // reaplica anim customizada em cache
-				CorpTex::OnPlayerStreamIn(playerId);          // corp: o Process reaplica quando o ped existir
+				if (Diag::On("corptex")) CorpTex::OnPlayerStreamIn(playerId);          // corp: o Process reaplica quando o ped existir
 				pPlayerPed = pRemotePlayer->GetPlayerPed();
 				if (pPlayerPed)
 				{

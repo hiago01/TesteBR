@@ -2442,7 +2442,7 @@ void ClothesFrameTick()
     CCameraZoom::Process();                // aplica o zoom de camera salvo (pinca desativada)
     if (Diag::On("clothes")) CClothesSync::Process();               // CJ real (RPC do servidor e /cj)
     if (Diag::On("skin")) CCustomSkin::Process();                // skin DFF (/skin7)
-    CorpTex::Process();                    // texturas por corporacao, por jogador (/corp)
+    if (Diag::On("corptex")) CorpTex::Process();                    // texturas por corporacao, por jogador (/corp)
     ProcessPendingPlayerClothesRebuild();  // testes manuais (/testeclothes)
 }
 

@@ -23,6 +23,7 @@ if command -v g++ >/dev/null 2>&1; then
 fi
 java -cp out test.NickRulesTest
 java -cp out test.SecretGestureTest
+java -cp out test.ClientWipeTest
 if command -v g++ >/dev/null 2>&1; then
   g++ -std=c++17 -I../../app/src/main/cpp/samp -o out/nickwire nickwire_check.cpp && out/nickwire
 fi

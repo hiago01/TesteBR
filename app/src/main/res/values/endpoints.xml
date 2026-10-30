@@ -13,8 +13,11 @@
     <!-- JSON do atualizador (client_config) com version_code, url_launcher, url_cache_files. -->
     <string name="endpoint_client_config_path" translatable="false">/client_config.json</string>
     <!-- Prefixo de download dos arquivos do jogo; recebe o "path" de cada item de url_cache_files. -->
-    <string name="endpoint_files_path" translatable="false">/files/</string>
+    <string name="endpoint_files_path" translatable="false">/filestestes/</string>
     <!-- JSON da pasta SAMP/ (gerado por gerar_samp_json.py a partir de C:\cache-server\SAMP). Os arquivos dela sao baixados em
          <base>/<path>, ex.: https://maximoroleplay.com.br/SAMP/dff/x.dff (a pasta cache-server/SAMP fica na raiz do servidor). -->
     <string name="endpoint_samp_json_path" translatable="false">/samp.json</string>
+    <!-- true = na 1a abertura de cada APK novo (versionCode diferente) o launcher APAGA os arquivos dos clientes antigos em files/
+         (menos configuracoes/favoritos/log/diag.ini) e instala tudo de novo pelo PRDownloader. false = nao apaga nada. -->
+    <bool name="wipe_files_on_new_apk">true</bool>
 </resources>

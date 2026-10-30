@@ -392,7 +392,44 @@ public class SplashActivity extends AppCompatActivity {
         }
     }
 
+    // ---- APK novo: apaga os arquivos dos clientes antigos e deixa o fluxo normal baixar tudo de novo (PRDownloader) ----
+    private static final String PREF_WIPED_VC = "wiped_for_version_code";
+    private boolean mWipeDone = false;
+
+    private int currentVersionCode() {
+        try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionCode; } catch (Throwable t) { return -1; }
+    }
+
+    /** true = esta e a 1a abertura deste versionCode e o recurso wipe_files_on_new_apk esta ligado (endpoints.xml). */
+    private boolean needsWipe() {
+        try {
+            if (!getResources().getBoolean(R.bool.wipe_files_on_new_apk)) return false;
+            final int vc = currentVersionCode();
+            return vc > 0 && getSharedPreferences("com.samp.mobile", MODE_PRIVATE).getInt(PREF_WIPED_VC, -1) != vc;
+        } catch (Throwable t) { return false; }
+    }
+
+    private void wipeThenStart() {
+        Toast.makeText(this, "Preparando instalacao nova: removendo arquivos antigos...", Toast.LENGTH_LONG).show();
+        final java.io.File dir = getExternalFilesDir(null);
+        final int vc = currentVersionCode();
+        new Thread(new Runnable() {
+            @Override public void run() {
+                String res = "";
+                try { res = com.samp.mobile.launcher.pack.ClientWipe.wipe(dir).toString(); }
+                catch (Throwable t) { Log.e(TAG, "ClientWipe falhou", t); res = "erro " + t; }
+                Log.i(TAG, "ClientWipe (versionCode " + vc + "): " + res);
+                try { getSharedPreferences("com.samp.mobile", MODE_PRIVATE).edit().putInt(PREF_WIPED_VC, vc).apply(); } catch (Throwable ignored) {}
+                runOnUiThread(new Runnable() { @Override public void run() {
+                    mWipeDone = true;
+                    if (!isFinishing() && !isDestroyed()) startUpdateService();
+                } });
+            }
+        }, "client-wipe").start();
+    }
+
     private void startUpdateService() {
+        if (!isSkipChecksEnabled() && !mWipeDone && needsWipe()) { wipeThenStart(); return; }
         if (isSkipChecksEnabled()) {
             // modo sem verificacao: nao conecta ao UpdateService (sem checar dados nem APK). Pequena espera para o gesto de desligar.
             Config.clientUpToDate = false;
