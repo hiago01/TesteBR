@@ -1,19 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layer-list
-    xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:aapt="http://schemas.android.com/aapt">
+<!-- Painel do dialogo (Maximo RP): azul-marinho com brilho ciano na borda -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
-        <shape>
-            <corners
-                android:radius="12.0dip" />
-            <gradient
-                android:startColor="#99000000"
-                android:endColor="#FF0037"
-                android:angle="45.0"
-                android:type="linear"
-                android:centerX="79.99999%"
-                android:centerColor="#bb000000" />
+        <shape android:shape="rectangle">
+            <solid android:color="#332B8BFF" />
+            <corners android:radius="20dp" />
+        </shape>
+    </item>
+    <item android:bottom="2dp" android:left="2dp" android:right="2dp" android:top="2dp">
+        <shape android:shape="rectangle">
+            <gradient android:angle="270" android:endColor="#F2050C22" android:startColor="#F20A1B45" />
+            <stroke android:width="2dp" android:color="#FF2B8BFF" />
+            <corners android:radius="18dp" />
         </shape>
     </item>
 </layer-list>

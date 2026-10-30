@@ -52,6 +52,7 @@
     <string name="mx_music_error">Não foi possível reproduzir a música.</string>
     <string name="mx_connect_select_first">Selecione um servidor válido antes de conectar.</string>
     <string name="mx_connect_wait">Aguarde a consulta terminar ou toque em ATUALIZAR.</string>
+    <string name="mx_connect_offline_toast">Servidor offline no momento. Tente novamente em instantes.</string>
     <string name="mx_connect_offline_title">Servidor sem resposta</string>
     <string name="mx_connect_offline_msg">O servidor não respondeu à consulta. Deseja tentar conectar mesmo assim?</string>
     <string name="mx_connect_anyway">Conectar</string>

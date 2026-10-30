@@ -423,15 +423,8 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         if (s.getServerStatus() == SAMPServerInfo.Status.OFFLINE) {
-            new AlertDialog.Builder(this)
-                    .setTitle(R.string.mx_connect_offline_title)
-                    .setMessage(R.string.mx_connect_offline_msg)
-                    .setNegativeButton(R.string.mx_cancel, null)
-                    .setPositiveButton(R.string.mx_connect_anyway, new android.content.DialogInterface.OnClickListener() {
-                        @Override public void onClick(android.content.DialogInterface d, int w) {
-                            ServerInformationFragment.launchGame(MainActivity.this, s);
-                        }
-                    }).show();
+            // Sem "conectar mesmo assim": servidor que nao respondeu nao deixa entrar.
+            Toast.makeText(this, R.string.mx_connect_offline_toast, Toast.LENGTH_LONG).show();
             return;
         }
         ServerInformationFragment.launchGame(this, s);

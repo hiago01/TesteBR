@@ -106,6 +106,10 @@ public class ServerInformationFragment extends Dialog {
         mConnect.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
+                if (sampServerInfo.getServerStatus() == SAMPServerInfo.Status.OFFLINE) {
+                    Toast.makeText(activity, R.string.mx_connect_offline_toast, Toast.LENGTH_LONG).show();
+                    return;
+                }
                 launchGame(activity, sampServerInfo);
                 dismiss();
             }

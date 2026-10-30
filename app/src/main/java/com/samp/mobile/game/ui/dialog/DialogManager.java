@@ -57,6 +57,8 @@ public class DialogManager {
     private View mDialogButtonPositive;
     private TextView mDialogButtonPositiveText;
     private TextView mDialogCaption;
+    private TextView mDialogSubtitle;
+    private View mDialogClose;
     private EditText mDialogInput;
     private View mDialogInputLayout;
 
@@ -114,6 +116,8 @@ public class DialogManager {
         this.mDialogTabListRow = layout.findViewById(R.id.dialog_tablist_row);
         this.mDialogList = layout.findViewById(R.id.dialog_list);
         this.mDialogCaption = (TextView) layout.findViewById(R.id.dialog_caption);
+        this.mDialogSubtitle = (TextView) layout.findViewById(R.id.dialog_subtitle);
+        this.mDialogClose = layout.findViewById(R.id.dialog_close);
         this.mDialogText = (TextView) layout.findViewById(R.id.dialog_text);
         this.mDialogInput = (EditText) layout.findViewById(R.id.dialog_input);
         this.mDialogTabField[0] = (TextView) layout.findViewById(R.id.dialog_field1);
@@ -245,9 +249,27 @@ public class DialogManager {
         this.mDialogCaption.setText(Util.getColoredString(this.mCaption));
         int i = this.mDialogStyle;
         if (i == 0 || i == 1 || i == 3) {
-            this.mDialogText.setText(Util.getColoredString(this.mText));
+            // Convencao do visual novo: um primeiro paragrafo curto (1 linha) seguido de linha em branco vira o SUBTITULO
+            // do cabecalho ("Bem-vindo ao Maximo RP, Fulano!"); o resto fica no cartao de informacao.
+            String body = this.mText;
+            String sub = "";
+            int p = body.indexOf("\n\n");
+            if (p > 0 && p <= 90 && body.indexOf('\n') == p) {
+                sub = body.substring(0, p);
+                body = body.substring(p + 2);
+            }
+            if (sub.length() > 0) {
+                this.mDialogSubtitle.setText(Util.getColoredString(sub));
+                this.mDialogSubtitle.setVisibility(View.VISIBLE);
+            } else {
+                this.mDialogSubtitle.setText("");
+                this.mDialogSubtitle.setVisibility(View.GONE);
+            }
+            this.mDialogText.setText(Util.getColoredString(body));
             return;
         }
+        this.mDialogSubtitle.setText("");
+        this.mDialogSubtitle.setVisibility(View.GONE);
         if (i != 2) {
             StringBuilder sb = new StringBuilder(this.mText);
             for (int i2 = 0; i2 < sb.length(); i2++) {
@@ -359,6 +381,14 @@ public class DialogManager {
                 }
             });
         }
+        // X do cabecalho: faz o mesmo que o botao negativo (ou o positivo, se so houver um botao)
+        this.mDialogClose.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View view) {
+                DialogManager dialogManager = DialogManager.this;
+                int response = dialogManager.mButtonNegative.length() == 0 ? 1 : 0;
+                dialogManager.SendDialogResponse(response, dialogManager.mCurrentListitem, dialogManager.mCurrentInputtext);
+            }
+        });
         this.mDialogInput.addTextChangedListener(new TextWatcher() {
             public void afterTextChanged(Editable editable) {
             }
