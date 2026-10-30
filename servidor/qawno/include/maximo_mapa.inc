@@ -5,6 +5,7 @@
 //  Uso no gamemode:
 //    #include <maximo_mapa.inc>            (depois de a_samp, Pawn.RakNet, izcmd)
 //    Mapa_OnGameModeInit();                (no OnGameModeInit)
+//    Mapa_OnPlayerSpawn(playerid);         (no OnPlayerSpawn - obrigatorio: liga o mapa no cliente)
 //    Mapa_OnPlayerDisconnect(playerid);    (no OnPlayerDisconnect)
 //  Comandos ocultos enviados pelo cliente: /mapax open|close|sel <id>|pos <x> <y>|clear|arrived <id>
 //  O jogador abre o mapa com /mapa (cliente), pela aba MAPA do menu, ou voce chama Mapa_Open(playerid).
@@ -134,6 +135,9 @@ stock Mapa_OnGameModeInit()
     Mapa_AddLocal(5, 5, 1685.0, -2328.0, 13.0, "Aeroporto");
     return 1;
 }
+
+// Chame no OnPlayerSpawn: avisa o cliente que o servidor tem mapa (ele so envia /mapax depois disso) e manda os locais.
+stock Mapa_OnPlayerSpawn(playerid) { Mapa_Send_Locais(playerid); }
 
 stock Mapa_OnPlayerDisconnect(playerid) { gMapaAberto[playerid] = false; }
 

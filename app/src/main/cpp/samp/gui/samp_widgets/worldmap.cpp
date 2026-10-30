@@ -9,6 +9,7 @@
 #include "worldmap.h"
 #include "WorldMapUI.h"
 
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -50,6 +51,10 @@ namespace
 		RwImageDestroy(image);
 		return raster;
 	}
+
+	// So manda os comandos ocultos /mapax depois que o servidor mandou algum pacote do RPC 204.
+	// Servidor sem o maximo_mapa.inc respondia "SERVER: Unknown command." a cada acao.
+	std::atomic<bool> g_serverSupports{ false };
 
 	class GamePlatform : public IPlatform
 	{
@@ -147,7 +152,7 @@ namespace
 			if (m_blip && pGame) pGame->DisableMarker(m_blip);
 			m_blip = 0;
 		}
-		void sendCommand(const char* cmd) override { if (pNetGame) pNetGame->SendChatCommand(cmd); }
+		void sendCommand(const char* cmd) override { if (pNetGame && g_serverSupports.load()) pNetGame->SendChatCommand(cmd); }
 		int64_t nowMs() override { return NowMsReal(); }
 		int tilesLoaded() override { return m_loaded; }
 	};
@@ -161,7 +166,7 @@ bool WorldMapWidget::IsOpen() { return g_ui.IsOpen(); }
 void WorldMapWidget::Open() { g_ui.Open(); }
 void WorldMapWidget::Close(bool notify) { g_ui.Close(notify); }
 void WorldMapWidget::Toggle() { if (g_ui.IsOpen()) g_ui.Close(true); else g_ui.Open(); }
-void WorldMapWidget::Reset() { g_ui.Reset(); g_plat.clearGps(); }
+void WorldMapWidget::Reset() { g_serverSupports.store(false); g_ui.Reset(); g_plat.clearGps(); }
 bool WorldMapWidget::HandleRawTouch(int type, int num, int x, int y)
 {
 	extern volatile bool g_bTouchCancel;
@@ -176,6 +181,7 @@ void WorldMapWidget::OnServerPacket(const unsigned char* data, int bytes)
 	RakNet::BitStream bs(const_cast<unsigned char*>(data), bytes, false);
 	WorldMap::Packet p;
 	if (!WorldMap::ParsePacket(bs, p)) return;
+	g_serverSupports.store(true);
 	g_ui.Apply(p);
 }
 
@@ -183,6 +189,6 @@ std::string WorldMapWidget::DebugCommand(const std::string& args)
 {
 	if (args == "grade") { g_ui.debugGrid = !g_ui.debugGrid; return g_ui.debugGrid ? "[MAPA] grade ligada" : "[MAPA] grade desligada"; }
 	char b[160];
-	std::snprintf(b, sizeof(b), "[MAPA] aberto=%d locais=%d tiles=%d fonte=%d", (int)g_ui.IsOpen(), (int)g_ui.locations().size(), g_plat.m_loaded, g_plat.m_src);
+	std::snprintf(b, sizeof(b), "[MAPA] servidor=%d aberto=%d locais=%d tiles=%d fonte=%d", (int)g_serverSupports.load(), (int)g_ui.IsOpen(), (int)g_ui.locations().size(), g_plat.m_loaded, g_plat.m_src);
 	return b;
 }
