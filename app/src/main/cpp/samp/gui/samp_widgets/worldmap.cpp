@@ -174,8 +174,8 @@ void WorldMapWidget::draw(ImGuiRenderer* r) { g_ui.Draw(r); }
 void WorldMapWidget::OnServerPacket(const unsigned char* data, int bytes)
 {
 	RakNet::BitStream bs(const_cast<unsigned char*>(data), bytes, false);
-	Packet p;
-	if (!ParsePacket(bs, p)) return;
+	WorldMap::Packet p;
+	if (!WorldMap::ParsePacket(bs, p)) return;
 	g_ui.Apply(p);
 }
 
