@@ -106,8 +106,11 @@ public final class AtomicInstaller {
         }
         deleteTree(backup);
         deleteTree(new File(filesDir, GameFilePolicy.DIR_STAGING));
+        // .downloads: os parciais do PRDownloader (*.temp) e zips completos sao MANTIDOS para retomar o download;
+        // so os *.part (motor sem retomada) sao lixo. Quem termina a instalacao apaga a pasta inteira.
         File dl = new File(filesDir, GameFilePolicy.DIR_DOWNLOADS);
-        if (dl.isDirectory()) deleteTree(dl); // .part incompletos e zips ja usados
+        File[] parts = dl.listFiles();
+        if (parts != null) for (File f : parts) if (f.getName().endsWith(".part")) f.delete();
     }
 
     private static void restoreMissing(File root, File cur, File filesDir) {

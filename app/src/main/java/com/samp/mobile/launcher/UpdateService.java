@@ -111,6 +111,8 @@ public class UpdateService extends Service {
     private int mDlIndex = 0;
     private int mDlConsecutiveFailures = 0;
     private long mDlDoneBytes = 0;
+    /** Arquivos baixados e conferidos nesta rodada (path/size/sha): gravados no installed.json ao final (atualizacoes). */
+    private ArrayList<InstalledState.Entry> mDlOk = new ArrayList<>();
 
     // ---- primeira instalacao por pacotes ZIP (somente na HandlerThread; o trabalho pesado roda em mPackWorker)
     /** Pacotes (core + GPU do aparelho) vindos do client_config; null = servidor sem "packs" (fluxo antigo). */
@@ -135,7 +137,7 @@ public class UpdateService extends Service {
         mHandlerThread = new HandlerThread("ServiceStartArguments", 10);
         mHandlerThread.start();
         try {
-            PRDownloader.initialize(getApplicationContext(), PRDownloaderConfig.newBuilder().setDatabaseEnabled(false).setReadTimeout(30000).setConnectTimeout(30000).build());
+            PRDownloader.initialize(getApplicationContext(), PRDownloaderConfig.newBuilder().setDatabaseEnabled(true).setReadTimeout(30000).setConnectTimeout(30000).build());
         } catch (RuntimeException e) {
             Log.e(TAG, "PRDownloader init failed: " + e);
         }
@@ -484,6 +486,12 @@ public class UpdateService extends Service {
         JSONArray jsonArray = new JSONObject(body).getJSONArray("files");
         Log.d("x1y2z", "Length: " + jsonArray.length());
         int considered = 0;
+        // SHA-256 registrado no installed.json: permite detectar arquivo ALTERADO no servidor com o mesmo tamanho (atualizacao).
+        java.util.HashMap<String, String> installedSha = new java.util.HashMap<>();
+        InstalledState prev = InstalledState.read(base);
+        if (prev != null && prev.gpu == mGpuType) {
+            for (InstalledState.Entry ie : prev.files) if (!ie.sha256.isEmpty()) installedSha.put(ie.path, ie.sha256);
+        }
         for(int i = 0; i<jsonArray.length(); i++) {
             JSONObject o = jsonArray.getJSONObject(i);
             FilesData fileData = new FilesData(o.getString("name"), o.getLong("size"), o.getString("path"), o.optString("url", ""));
@@ -505,7 +513,16 @@ public class UpdateService extends Service {
             }
             considered++;
             File file = new File(base, path);
-            if (!file.exists() || file.length() != fileData.getSize()) {
+            String serverSha = o.optString("sha256", "").trim().toLowerCase(java.util.Locale.ROOT);
+            boolean changed = false;
+            if (file.exists() && file.length() == fileData.getSize() && serverSha.length() == 64) {
+                String have = installedSha.get(path);
+                if (have != null && !have.equals(serverSha)) {
+                    changed = true;
+                    Log.d(TAG, "atualizacao: " + path + " mudou no servidor (mesmo tamanho, sha diferente)");
+                }
+            }
+            if (!file.exists() || file.length() != fileData.getSize() || changed) {
                 mUpdateFiles.add(path);
                 mUpdateFilesName.add(name);
                 mUpdateFilesSize.add(fileData.getSize());
@@ -809,6 +826,7 @@ public class UpdateService extends Service {
         mDlSizes = new ArrayList<>(mUpdateFilesSize);
         mDlShas = new ArrayList<>(mUpdateFilesSha);
         mDlFailed = new ArrayList<>();
+        mDlOk = new ArrayList<>();
         mUpdateFiles.clear();
         mUpdateFilesName.clear();
         mUpdateFilesSize.clear();
@@ -908,6 +926,7 @@ public class UpdateService extends Service {
                 return AppEndpoints.packUrl(UpdateService.this, spec.url);
             }
         };
+        cfg.transfer = new PrDownloaderTransfer(); // PRDownloader (retoma de onde parou) em vez do HttpURLConnection
         cfg.freeSpace = new PackInstaller.FreeSpace() {
             @Override
             public long freeBytes() {
@@ -1091,6 +1110,7 @@ public class UpdateService extends Service {
                             }
                             return;
                         }
+                        mDlOk.add(new InstalledState.Entry(rel, mDlSizes.get(mDlIndex), mDlShas.get(mDlIndex)));
                         mDlDoneBytes += mDlSizes.get(mDlIndex);
                         mDlConsecutiveFailures = 0;
                         mDlIndex++;
@@ -1177,6 +1197,7 @@ public class UpdateService extends Service {
 
     private void finishDataUpdating() {
         mDownloadingStatus = false;
+        recordUpdated();
         if (!mDlFailed.isEmpty()) {
             restorePending(mDlFailed); // continuam pendentes para a proxima verificacao
             int n = mDlFailed.size();
@@ -1185,6 +1206,18 @@ public class UpdateService extends Service {
         }
         Log.d("UpdateService", "updateGameData()");
         notifyGameDataDone();
+    }
+
+    /** Grava no installed.json (se existir) o sha dos arquivos que acabaram de ser baixados e conferidos. */
+    private void recordUpdated() {
+        File base = getExternalFilesDir(null);
+        if (base == null || mDlOk.isEmpty()) return;
+        try {
+            InstalledState.record(base, mDlOk);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "installed.json nao atualizado: " + e);
+        }
+        mDlOk = new ArrayList<>();
     }
 
     /** Cancela qualquer download em andamento e invalida callbacks pendentes. */

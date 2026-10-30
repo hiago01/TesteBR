@@ -47,6 +47,8 @@ public final class PackInstaller {
             @Override public void sleep(long ms) throws InterruptedException { Thread.sleep(ms); }
         };
         public FreeSpace freeSpace;
+        /** Motor de download. null = HttpTransfer (JVM puro). No app: PrDownloaderTransfer (PRDownloader, com retomada). */
+        public FileTransfer transfer;
         public Listener listener;
         public Detail detail; // opcional
         public CancelToken cancel = new CancelToken();
@@ -113,7 +115,7 @@ public final class PackInstaller {
                                 report(c, stage1, spec.name, idx, count, done.addAndGet(d), total);
                                 detail(c, stage1, spec.name, idx, count, dlDone.addAndGet(d), zipTotal, exDone.get(), unpTotal);
                             }
-                        }, c.cancel);
+                        }, c.cancel, c.transfer != null ? c.transfer : new HttpTransfer());
                 // credita a diferenca entre o tamanho do zip e o contado (igual, pois ja conferido) -> nada a ajustar
 
                 // termina (extrai+commit) o pacote anterior ANTES de lancar o proximo (so 1 extracao por vez)
@@ -156,7 +158,7 @@ public final class PackInstaller {
             if (pending != null) pending.cancel(true);
             extractor.shutdownNow();
             AtomicInstaller.deleteTree(new File(base, GameFilePolicy.DIR_STAGING));
-            AtomicInstaller.deleteTree(downloads);
+            // .downloads FICA: os parciais (.temp do PRDownloader) permitem RETOMAR na proxima tentativa; so e apagado no sucesso.
             // .backup so e apagado pelo AtomicInstaller quando o rollback terminou; o resto fica para recoverOnStartup
             throw e;
         } finally {
@@ -203,7 +205,7 @@ public final class PackInstaller {
         }
         AtomicInstaller.commit(r.files, base, backupRoot, c.failPoint);
         for (ZipPackExtractor.ExtractedFile ef : r.files) {
-            if (!GameFilePolicy.isInternal(ef.path) && !GameFilePolicy.isGenerated(ef.path)) installed.add(new InstalledState.Entry(ef.path, ef.size));
+            if (!GameFilePolicy.isInternal(ef.path) && !GameFilePolicy.isGenerated(ef.path)) installed.add(new InstalledState.Entry(ef.path, ef.size, ef.sha256));
         }
         // staging deste pacote ja foi movido arquivo a arquivo; remove o que sobrou (pastas vazias)
         AtomicInstaller.deleteTree(r.files.isEmpty() ? new File(new File(base, GameFilePolicy.DIR_STAGING), "x") : stageDirOf(r));

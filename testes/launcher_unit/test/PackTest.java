@@ -168,6 +168,78 @@ public class PackTest {
         return s;
     }
 
+    static boolean hasFileStartingWith(File dir, String prefix) {
+        File[] fs = dir.listFiles();
+        if (fs == null) return false;
+        for (File f : fs) if (f.getName().startsWith(prefix)) return true;
+        return false;
+    }
+
+    /** Servidor com Range (como o Caddy). cutAfter>0: a PRIMEIRA resposta e cortada nesse numero de bytes. */
+    static HttpServer rangeServer(final byte[] body, final int cutAfter, final AtomicInteger served, final AtomicInteger requests) throws IOException {
+        HttpServer s = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        s.createContext("/big", new com.sun.net.httpserver.HttpHandler() {
+            public void handle(com.sun.net.httpserver.HttpExchange ex) throws IOException {
+                int n = requests.incrementAndGet();
+                String rg = ex.getRequestHeaders().getFirst("Range");
+                int from = 0;
+                if (rg != null && rg.startsWith("bytes=")) from = Integer.parseInt(rg.substring(6, rg.indexOf('-')));
+                ex.getResponseHeaders().add("Accept-Ranges", "bytes");
+                int len = body.length - from;
+                if (rg != null) {
+                    ex.getResponseHeaders().add("Content-Range", "bytes " + from + "-" + (body.length - 1) + "/" + body.length);
+                    ex.sendResponseHeaders(206, len);
+                } else {
+                    ex.sendResponseHeaders(200, len);
+                }
+                java.io.OutputStream o = ex.getResponseBody();
+                int send = (n == 1 && cutAfter > 0) ? Math.min(cutAfter, len) : len;
+                o.write(body, from, send);
+                served.addAndGet(send);
+                o.flush();
+                if (send < len) { ex.getRequestBody().close(); ex.close(); return; } // corta: o cliente ve conexao interrompida
+                o.close();
+            }
+        });
+        s.start();
+        return s;
+    }
+
+    /** Transfer de teste que imita o PRDownloader: grava em <nome>.temp, RETOMA com Range e renomeia ao completar. */
+    static class ResumeTransfer implements FileTransfer {
+        int fetches = 0;
+        public void fetch(String url, File dir, String fileName, long expectedSize, FileTransfer.Progress p, CancelToken cancel) throws PackException {
+            fetches++;
+            dir.mkdirs();
+            File temp = new File(dir, fileName + ".temp");
+            long have = temp.isFile() ? temp.length() : 0;
+            try {
+                java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                if (have > 0) c.setRequestProperty("Range", "bytes=" + have + "-");
+                int code = c.getResponseCode();
+                if (code == 200) have = 0;
+                else if (code != 206) throw new PackException("HTTP " + code);
+                long total = have;
+                try (java.io.InputStream in = c.getInputStream(); java.io.FileOutputStream out = new java.io.FileOutputStream(temp, have > 0)) {
+                    byte[] buf = new byte[8192];
+                    int n;
+                    while ((n = in.read(buf)) > 0) { cancel.check(); out.write(buf, 0, n); total += n; p.at(total); }
+                } catch (IOException e) {
+                    throw new PackException("conexao interrompida: " + e);
+                }
+                if (total != expectedSize) throw new PackException("download incompleto (" + total + " de " + expectedSize + ")");
+                File fin = new File(dir, fileName);
+                fin.delete();
+                if (!temp.renameTo(fin)) throw new PackException("rename");
+            } catch (IOException e) {
+                throw new PackException(String.valueOf(e));
+            }
+        }
+        public void discard(File dir, String fileName) {
+            new File(dir, fileName).delete(); new File(dir, fileName + ".temp").delete();
+        }
+    }
+
     static final PackDownloader.Sleeper NO_SLEEP = new PackDownloader.Sleeper() { @Override public void sleep(long ms) { } };
 
     public static void main(String[] args) throws Exception {
@@ -418,11 +490,13 @@ public class PackTest {
             File base = tmp();
             write(new File(base, ".staging/1/core/x.txt"), "meio".getBytes());
             write(new File(base, ".downloads/core.zip.part"), "parcial".getBytes());
+            write(new File(base, ".downloads/gpu-aaaaaaaaaaaa.zip.temp"), "retomavel".getBytes());
             write(new File(base, ".backup/1/data/perdido.txt"), "ORIGINAL".getBytes());
             write(new File(base, ".backup/1/data/existe.txt"), "VELHO".getBytes());
             write(new File(base, "data/existe.txt"), "ATUAL".getBytes());
             AtomicInstaller.recoverOnStartup(base);
-            r("recuperacao: apaga .staging/.downloads/.backup", !new File(base, ".staging").exists() && !new File(base, ".downloads").exists() && !new File(base, ".backup").exists(), "");
+            r("recuperacao: apaga .staging/.backup e o lixo .part, MANTEM o parcial .temp (retomada do PRDownloader)", !new File(base, ".staging").exists()
+                    && !new File(base, ".downloads/core.zip.part").exists() && new File(base, ".downloads/gpu-aaaaaaaaaaaa.zip.temp").isFile() && !new File(base, ".backup").exists(), "");
             r("recuperacao: restaura do backup o que faltava e nao sobrescreve o que existe",
                     new String(read(new File(base, "data/perdido.txt"))).equals("ORIGINAL") && new String(read(new File(base, "data/existe.txt"))).equals("ATUAL"), "");
         }
@@ -531,8 +605,8 @@ public class PackTest {
                 final long[] bytes = {0};
                 PackDownloader.ByteProgress bp = new PackDownloader.ByteProgress() { public void add(long d) { bytes[0] += d; } };
                 File ok = PackDownloader.downloadVerified(base + "/ok.zip", dl, "core", good.length, sha(good), 3, NO_SLEEP, bp, ct());
-                r("download OK: .zip promovido, .part removido, progresso = tamanho", ok.getName().equals("core.zip") && ok.length() == good.length
-                        && !new File(dl, "core.zip.part").exists() && bytes[0] == good.length, "bytes=" + bytes[0]);
+                r("download OK: .zip promovido, .part removido, progresso = tamanho", ok.getName().equals(PackDownloader.fileNameFor("core", sha(good))) && ok.length() == good.length
+                        && !new File(dl, ok.getName() + ".part").exists() && bytes[0] == good.length, "bytes=" + bytes[0]);
 
                 final int[] hb = {hits.get()};
                 bytes[0] = 0;
@@ -542,13 +616,13 @@ public class PackTest {
                 } catch (PackException e) {
                     r("hash errado: 3 tentativas, depois erro; nada fica em disco; progresso zerado",
                             e.getMessage().contains("3 tentativas") && e.getMessage().contains("SHA-256") && hits.get() - hb[0] == 3
-                                    && !new File(dl, "evil.zip").exists() && !new File(dl, "evil.zip.part").exists() && bytes[0] == 0, e.getMessage() + " hits=" + (hits.get() - hb[0]) + " bytes=" + bytes[0]);
+                                    && !new File(dl, PackDownloader.fileNameFor("evil", sha(good))).exists() && !new File(dl, PackDownloader.fileNameFor("evil", sha(good)) + ".part").exists() && bytes[0] == 0, e.getMessage() + " hits=" + (hits.get() - hb[0]) + " bytes=" + bytes[0]);
                 }
                 try {
                     PackDownloader.downloadVerified(base + "/trunc.zip", dl, "trunc", good.length, sha(good), 3, NO_SLEEP, bp, ct());
                     r("conexao cortada: deveria falhar", false, "aceitou");
                 } catch (PackException e) {
-                    r("conexao cortada: erro apos 3 tentativas e sem .part", e.getMessage().contains("3 tentativas") && !new File(dl, "trunc.zip.part").exists(), e.getMessage());
+                    r("conexao cortada: erro apos 3 tentativas e sem .part", e.getMessage().contains("3 tentativas") && !new File(dl, PackDownloader.fileNameFor("trunc", sha(good)) + ".part").exists(), e.getMessage());
                 }
                 hits.set(0);
                 File flaky = PackDownloader.downloadVerified(base + "/flaky.zip", dl, "flaky", good.length, sha(good), 3, NO_SLEEP, bp, ct());
@@ -570,6 +644,70 @@ public class PackTest {
             } finally {
                 srv.stop(0);
             }
+        }
+
+        // ---------------- retomada (Range) e reaproveitamento ----------------
+        {
+            byte[] big = data(21, 700000);
+            AtomicInteger served = new AtomicInteger(), reqs = new AtomicInteger();
+            HttpServer srv = rangeServer(big, 300000, served, reqs);
+            String url = "http://127.0.0.1:" + srv.getAddress().getPort() + "/big";
+            try {
+                File dl = new File(tmp(), "dl");
+                final long[] bytes = {0};
+                PackDownloader.ByteProgress bp = new PackDownloader.ByteProgress() { public void add(long d) { bytes[0] += d; } };
+                ResumeTransfer rt = new ResumeTransfer();
+                File z = PackDownloader.downloadVerified(url, dl, "core", big.length, sha(big), 3, NO_SLEEP, bp, ct(), rt);
+                r("retomada: queda no meio -> 2a tentativa continua do ponto (nao baixa tudo de novo)",
+                        z.length() == big.length && rt.fetches == 2 && reqs.get() == 2 && served.get() == big.length, "fetches=" + rt.fetches + " reqs=" + reqs.get() + " servido=" + served.get());
+                r("retomada: progresso final = tamanho do pacote (sem dupla contagem)", bytes[0] == big.length, "bytes=" + bytes[0]);
+                r("retomada: nenhum .temp sobra", !new File(dl, z.getName() + ".temp").exists(), "");
+
+                // zip completo e valido deixado por execucao anterior: reaproveita sem baixar
+                bytes[0] = 0;
+                int before = reqs.get();
+                ResumeTransfer rt2 = new ResumeTransfer();
+                File again = PackDownloader.downloadVerified(url, dl, "core", big.length, sha(big), 3, NO_SLEEP, bp, ct(), rt2);
+                r("reaproveita zip ja baixado e conferido (zero requisicoes)", again.equals(z) && rt2.fetches == 0 && reqs.get() == before && bytes[0] == big.length, "fetches=" + rt2.fetches);
+
+                // parcial de OUTRA versao do pacote (sha diferente => outro nome): nunca e misturado
+                byte[] other = data(22, 700000);
+                File oldTemp = new File(dl, PackDownloader.fileNameFor("core", sha(other)) + ".temp");
+                write(oldTemp, "lixo-de-outra-versao".getBytes());
+                r("nome inclui o sha: parcial de outra versao nao e reaproveitado", !PackDownloader.fileNameFor("core", sha(big)).equals(PackDownloader.fileNameFor("core", sha(other))), "");
+
+                // conteudo adulterado no .temp (mesmo nome): SHA nao confere -> descarta tudo e baixa de novo do zero
+                File dl2 = new File(tmp(), "dl2");
+                String fname = PackDownloader.fileNameFor("core", sha(big));
+                byte[] poisoned = java.util.Arrays.copyOf(big, 200000);
+                poisoned[10] ^= 1;
+                write(new File(dl2, fname + ".temp"), poisoned);
+                reqs.set(1); // cutAfter so vale na 1a requisicao: evita novo corte
+                File fixed = PackDownloader.downloadVerified(url, dl2, "core", big.length, sha(big), 3, NO_SLEEP, bp, ct(), new ResumeTransfer());
+                r("parcial corrompido: sha final nao confere -> descarta e baixa do zero ate ficar correto", fixed.length() == big.length && sha(read(fixed)).equals(sha(big)), "");
+            } finally {
+                srv.stop(0);
+            }
+        }
+
+        // ---------------- installed.json com sha256 (atualizacoes) ----------------
+        {
+            File base = tmp();
+            List<InstalledState.Entry> none = new ArrayList<>();
+            r("record sem installed.json: nao cria (evita 'instalacao verificada' falsa)", !InstalledState.record(base, java.util.Collections.singletonList(new InstalledState.Entry("a/b.dat", 3, "ab"))) && !new File(base, "installed.json").exists(), "");
+            List<InstalledState.Entry> es = new ArrayList<>();
+            es.add(new InstalledState.Entry("data/a.dat", 5, sha("12345".getBytes())));
+            es.add(new InstalledState.Entry("data/velho.dat", 7));
+            InstalledState.write(base, new InstalledState("3", 1, es));
+            InstalledState st = InstalledState.read(base);
+            r("installed.json: sha256 gravado e lido; entrada antiga sem sha continua valida", st != null && st.files.get(0).sha256.equals(sha("12345".getBytes())) && st.files.get(1).sha256.isEmpty() && st.files.size() == 2, "");
+            List<InstalledState.Entry> upd = new ArrayList<>();
+            upd.add(new InstalledState.Entry("data/a.dat", 5, sha("ABCDE".getBytes())));
+            upd.add(new InstalledState.Entry("SAMP/novo.txt", 1, sha("x".getBytes())));
+            boolean ok = InstalledState.record(base, upd);
+            InstalledState st2 = InstalledState.read(base);
+            r("record: troca o sha do arquivo atualizado, acrescenta o novo, mantem versao/gpu/os demais",
+                    ok && st2 != null && st2.version.equals("3") && st2.gpu == 1 && st2.files.size() == 3 && st2.files.get(0).sha256.equals(sha("ABCDE".getBytes())), "");
         }
 
         // ---------------- instalacao completa (HTTP real) ----------------
@@ -658,7 +796,7 @@ public class PackTest {
                     r("install com pacote corrompido: erro claro (3 tentativas)", e.getMessage().contains("gpu_dxt") && e.getMessage().contains("3 tentativas"), e.getMessage());
                 }
                 r("install com falha: sem installed.json e sem arquivo pela metade nem lixo",
-                        !new File(files, "installed.json").exists() && !new File(files, ".downloads").exists() && !new File(files, ".staging").exists()
+                        !new File(files, "installed.json").exists() && !hasFileStartingWith(new File(files, ".downloads"), "gpu_dxt") && !new File(files, ".staging").exists()
                                 && !new File(files, "texdb/x.dxt.txd").exists(), "");
                 // espaco insuficiente
                 PackInstaller.Config c2 = new PackInstaller.Config();

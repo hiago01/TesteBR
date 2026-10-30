@@ -18,7 +18,12 @@ public final class InstalledState {
     public static final class Entry {
         public final String path;
         public final long size;
-        public Entry(String path, long size) { this.path = path; this.size = size; }
+        /** SHA-256 (hex minusculo) do conteudo instalado; "" = desconhecido (installed.json antigo). */
+        public final String sha256;
+        public Entry(String path, long size) { this(path, size, ""); }
+        public Entry(String path, long size, String sha256) {
+            this.path = path; this.size = size; this.sha256 = sha256 == null ? "" : sha256.toLowerCase(java.util.Locale.ROOT);
+        }
     }
 
     public final String version;
@@ -42,6 +47,7 @@ public final class InstalledState {
             Map<String, Object> o = new LinkedHashMap<>();
             o.put("path", e.path);
             o.put("size", e.size);
+            if (!e.sha256.isEmpty()) o.put("sha256", e.sha256);
             arr.add(o);
         }
         root.put("files", arr);
@@ -72,11 +78,33 @@ public final class InstalledState {
                 String p = MiniJson.str(e, "path");
                 long s = MiniJson.lng(e, "size", -1);
                 if (p == null || s < 0) return null;
-                list.add(new Entry(p, s));
+                String sh = MiniJson.str(e, "sha256");
+                list.add(new Entry(p, s, sh == null ? "" : sh));
             }
             return new InstalledState(version, (int) MiniJson.lng(m, "gpu", -1), list);
         } catch (IOException | PackException e) {
             return null;
+        }
+    }
+
+    /**
+     * Atualiza (ou acrescenta) entradas em um installed.json JA existente, depois de arquivos baixados e conferidos
+     * um a um (atualizacao). Se nao existir installed.json, NAO cria: um arquivo parcial faria o app achar que a
+     * instalacao inteira foi verificada.
+     * @return true se gravou.
+     */
+    public static boolean record(File filesDir, List<Entry> updated) {
+        if (updated == null || updated.isEmpty()) return false;
+        InstalledState st = read(filesDir);
+        if (st == null) return false;
+        Map<String, Entry> byPath = new LinkedHashMap<>();
+        for (Entry e : st.files) byPath.put(e.path, e);
+        for (Entry e : updated) byPath.put(e.path, e);
+        try {
+            write(filesDir, new InstalledState(st.version, st.gpu, new ArrayList<>(byPath.values())));
+            return true;
+        } catch (IOException e) {
+            return false;
         }
     }
 
