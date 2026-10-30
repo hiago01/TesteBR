@@ -65,7 +65,8 @@ class CCustomSkin
 {
 public:
     static constexpr int  kTargetModelId = 7;      // MODEL_MALE01
-    static constexpr bool kAutoApply     = false;   // false: o visual por jogador vem do CorpTex (render). true = aplica o molde global /skin7 sozinho (1x por sessão) + autoexec.txt
+    static constexpr bool kAutoApply     = false;   // false: o visual por jogador vem do CorpTex (render). true = aplica o molde global /skin7 sozinho (1x por sessão) + autoexec.txt.
+                                                    // O /provador NÃO depende dele: prepara o molde sozinho ao abrir (EnsurePrepared, só se !InstalledOurs()).
 
     static void RequestLoad();     // qualquer thread
     static void RequestUnload();
@@ -81,30 +82,50 @@ public:
     // Tudo thread-safe: a UI só ENFILEIRA pedidos (UiRequest) e LÊ uma cópia do estado real (UiGetState);
     // quem mexe nos materiais é sempre a thread do jogo (Process). Os pedidos reaproveitam o "/skin7 slot"
     // (DoSlot: texturas, exclusividade por categoria) e acrescentam só prévia + confirmar + cancelar:
-    //   UiRequest("prev <slot> <n|on|off>")  aplica ao vivo como PRÉVIA (guarda antes um backup com refs de textura)
-    //   UiRequest("commit")                  confirma a prévia (solta o backup)
-    //   UiRequest("cancel")                  desfaz tudo o que foi feito desde o início da prévia
-    //   UiRequest("refresh")                 só republica o estado
+    //   UiRequest("prev <slot> <n|on|off>")  aplica ao vivo como PRÉVIA, SÓ NESTE APARELHO (guarda antes um backup com refs de
+    //                                        textura; nada vai ao servidor; o ped local deixa de aplicar os slots do servidor por cima)
+    //   UiRequest("commit")                  envia ao servidor (/lookx set ...) e ESPERA o eco (RPC 232). O servidor é a autoridade:
+    //                                        eco igual ao pedido = definitivo (solta o backup); eco diferente/sem eco/queda de
+    //                                        conexão = volta EXATAMENTE ao estado anterior (RestoreBackup) e pede /lookx sync
+    //   UiRequest("cancel")                  desfaz tudo o que foi feito desde o início da prévia (recusado enquanto espera o servidor)
+    //   UiRequest("refresh")                 prepara a skin sozinha se preciso (InstalledOurs; sem reinstalar à toa) e republica
+    //   UiRequest("prepare")                 PREPARAR manual: força a instalação do molde (ignora travas da automática)
+    //   UiRequest("sync")                    pede ao servidor o estado salvo (/lookx sync)
     struct UiSlot
     {
         int              index       = -1;     // posição em SkinSlots::kSlots
         bool             hasMaterial = false;  // o DFF carregado tem o(s) material(is) do slot
-        bool             visible     = false;  // todos os materiais do slot visíveis (estado real, s_hidden)
+        // ProvadorModel::ItemState: kUnavailable | kDefault (visível com a textura ORIGINAL = nada equipado) |
+        // kEquipped (variante do pack aplicada) | kDisabled (oculto pelo jogador) | kCovered (oculto por cobertura).
+        int              state       = 0;
+        bool             visible     = false;  // SÓ o material: todos visíveis. NÃO significa roupa equipada (use `state`)
         bool             partial     = false;  // só parte dos materiais visível (ex.: pele das pernas sob uma bermuda)
+        bool             previewed   = false;  // difere do estado ANTES da prévia (só existe com prévia ativa)
         int              variant     = -1;     // variante do pack aplicada (-1 = textura original do DFF / caminho avulso)
         std::vector<int> variants;             // variantes existentes em pack/<pasta>/
+        // O que o SERVIDOR gravou para o jogador local (autoridade). srvKnown=false: sem registro (padrão).
+        bool             srvKnown    = false;
+        int              srvEst      = 0;      // 0 oculto | 1 original | 2 variante
+        int              srvVar      = 0;
     };
     struct UiState
     {
-        bool                skinReady = false; // molde instalado (/skin7 apply): sem isso nada é aplicado
+        bool                skinReady = false; // molde instalado e válido (InstalledOurs): sem isso nada é aplicado
+        bool                dffOk     = false; // SAMP/skins/skin.dff existe e foi validado
+        bool                online    = false; // conectado ao servidor (só então dá para confirmar)
+        bool                serverSynced = false; // já chegou o snapshot (RPC 232) do servidor nesta sessão
         bool                pending   = false; // há prévia não confirmada
+        bool                awaiting  = false; // confirmado localmente; aguardando o eco do servidor
         uint32_t            reqId     = 0;     // último pedido da UI já processado
         bool                reqOk     = true;  // ... e se funcionou (verificado no estado real, não pelo texto)
         std::string         msg;               // motivo quando reqOk == false
+        std::string         prepMsg;           // por que a preparação automática não rodou/falhou (vazio = sem problema)
+        std::string         notice;            // evento assíncrono (confirmado/recusado pelo servidor, conexão perdida...)
+        uint32_t            noticeSeq = 0;     // muda a cada notice novo: a UI mostra cada um 1x
         std::vector<UiSlot> slots;             // um por SkinSlots::kSlots, na mesma ordem
     };
     static void     UiSetActive(bool on);               // UI aberta: o estado passa a ser republicado a cada comando
-    static uint32_t UiRequest(const std::string& op);   // devolve o id do pedido (aparece em UiState::reqId)
+    static uint32_t UiRequest(const std::string& op);   // id do pedido (aparece em UiState::reqId); 0 = fila cheia, NÃO enfileirado
     static uint32_t UiVersion();                        // muda a cada republicação (evita copiar sem necessidade)
     static bool     UiGetState(UiState& out);           // false enquanto nunca foi publicado
 };

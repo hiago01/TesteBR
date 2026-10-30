@@ -26,6 +26,7 @@
 #include <atomic>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 typedef unsigned short PLAYERID;   // igual ao typedef de net/netgame.h
 class RakClientInterface;
@@ -39,6 +40,14 @@ extern std::atomic<int> g_active;          // quantos peds estao com corp ativa 
 void Register(RakClientInterface* rak);    // RegisterScriptRPCs()
 void Unregister(RakClientInterface* rak);
 void ClearAll();                           // nova conexao
+
+// Espelho do ULTIMO snapshot (RPC 232) que o servidor mandou para o JOGADOR LOCAL: a autoridade do estado definitivo.
+// Thread-safe (escrito pela thread de rede, lido pela thread do jogo). `ver` muda a cada snapshot recebido e na nova conexao.
+// Retorna false enquanto o servidor nunca mandou o snapshot desta sessao (o provador nao pode afirmar o que esta salvo).
+// out = (id, estado, variante) dos slots COM registro (slot ausente = padrao).
+struct LocalSlot { uint8_t id; uint8_t est; uint16_t var; };
+bool LocalSlots(std::vector<LocalSlot>& out, uint32_t& ver);
+void SetLocalPreview(bool on);              // /provador: true enquanto há prévia (o ped local ignora os slots do servidor)
 
 void OnPlayerStreamIn(PLAYERID id);        // depois de WorldPlayerAdd (o Process tambem reaplica sozinho)
 void OnPlayerStreamOut(PLAYERID id);       // ANTES de destruir o ped: solta a corp e o cache do slot

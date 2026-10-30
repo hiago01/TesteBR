@@ -184,6 +184,14 @@ std::mutex       s_qMutex;
 std::vector<Cmd> s_q;
 Look             s_localLook;          // espelho do seu proprio visual (protegido por s_qMutex): base dos comandos /rosto, /cabelo...
 
+// Espelho do snapshot 232 do JOGADOR LOCAL (autoridade do servidor) para o /provador. Protegido por s_srvMutex.
+std::atomic<bool>                   s_localPreview{false};   // prévia do /provador ativa: não aplicar slots do servidor no ped local
+bool                                s_localPreviewSeen = false;   // só a thread do jogo (Process)
+std::mutex                          s_srvMutex;
+std::vector<LocalSlot>              s_srvSlots;
+bool                                s_srvHave = false;
+uint32_t                            s_srvVer  = 0;
+
 std::mutex  s_infoMutex;
 std::string s_info = "nada aplicado (use /corp, /rosto, /cabelo, /pele)";
 
@@ -717,8 +725,11 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
     }
 
     // 3) slots do /skin7 (RPC 232): valem POR CIMA da base. Oculto = male01; variante = pack/<pasta>/<n>.png; original = textures/<Nome>.png
+    // Prévia do /provador ativa no JOGADOR LOCAL: os slots do servidor NÃO são aplicados por cima (senão a variante já salva
+    // ganharia da prévia, que vive no molde). Ao confirmar/cancelar a flag cai e o ped é refeito com o snapshot do servidor.
+    const bool previewSuspend = s_localPreview.load() && pNetGame && pNetGame->GetPlayerPool() && id == pNetGame->GetPlayerPool()->GetLocalPlayerID();
     int nSlot = 0, nSlotMiss = 0;
-    if (!look.slots.empty()) {
+    if (!look.slots.empty() && !previewSuspend) {
         if (!byIndex) {
             FLog("[CORPTEX] AVISO: slots do /skin7 exigem o modo indice (contagem de materiais igual ao DFF): ignorados");
         } else {
@@ -813,6 +824,17 @@ void ScrLookSlots(RPCParameters* rpcParams)
     if (!LookSlots::Parse(bs, id, st, err)) { FLog("[CORPTEX] RPC %d ignorado: %s", RPC_CorpSlots, err.c_str()); return; }
     if (id >= MAX_PLAYERS) { FLog("[CORPTEX] RPC %d: playerid %d invalido", RPC_CorpSlots, (int)id); return; }
     FLog("[CORPTEX] RPC %d recebido: jogador %d, %zu slot(s)", RPC_CorpSlots, (int)id, st.size());
+    {
+        CPlayerPool* pool = pNetGame ? pNetGame->GetPlayerPool() : nullptr;
+        if (pool && id == pool->GetLocalPlayerID())      // eco do servidor para o dono: autoridade do /provador
+        {
+            std::lock_guard<std::mutex> g(s_srvMutex);
+            s_srvSlots.clear();
+            for (const LookSlots::St& x : st) s_srvSlots.push_back(LocalSlot{x.id, x.est, x.var});
+            s_srvHave = true;
+            ++s_srvVer;
+        }
+    }
     Look l; l.slots = std::move(st);
     Push(Cmd::Slots, (PLAYERID)id, l);
 }
@@ -820,10 +842,26 @@ void ScrLookSlots(RPCParameters* rpcParams)
 } // namespace
 
 void Register(RakClientInterface* rak)   { rak->RegisterAsRemoteProcedureCall(&RPC_CorpTex, ScrCorpTex); rak->RegisterAsRemoteProcedureCall(&RPC_CorpSlots, ScrLookSlots); }
-void Unregister(RakClientInterface* rak) { rak->UnregisterAsRemoteProcedureCall(&RPC_CorpTex); rak->UnregisterAsRemoteProcedureCall(&RPC_CorpSlots); }
+void Unregister(RakClientInterface* rak)
+{
+    rak->UnregisterAsRemoteProcedureCall(&RPC_CorpTex); rak->UnregisterAsRemoteProcedureCall(&RPC_CorpSlots);
+    std::lock_guard<std::mutex> g(s_srvMutex);        // desconectou: o snapshot do servidor deixa de valer
+    s_srvSlots.clear(); s_srvHave = false; ++s_srvVer;
+}
+
+void SetLocalPreview(bool on) { s_localPreview.store(on); }
+
+bool LocalSlots(std::vector<LocalSlot>& out, uint32_t& ver)
+{
+    std::lock_guard<std::mutex> g(s_srvMutex);
+    out = s_srvSlots;
+    ver = s_srvVer;
+    return s_srvHave;
+}
 
 void ClearAll()
 {
+    { std::lock_guard<std::mutex> g(s_srvMutex); s_srvSlots.clear(); s_srvHave = false; ++s_srvVer; }   // nova conexao: nada vale da sessao anterior
     { std::lock_guard<std::mutex> l(s_qMutex); s_q.clear(); s_localLook = Look{}; }
     Push(Cmd::Release, 0xFFFF, Look{});       // 0xFFFF = todos (executado no Process, na thread do jogo)
 }
@@ -865,6 +903,16 @@ void Process()
         }
     }
 
+    {   // a prévia do /provador começou/terminou: refaz o ped local (com ou sem os slots do servidor)
+        const bool pv = s_localPreview.load();
+        if (pv != s_localPreviewSeen) {
+            s_localPreviewSeen = pv;
+            if (pNetGame && pNetGame->GetPlayerPool()) {
+                const PLAYERID me = pNetGame->GetPlayerPool()->GetLocalPlayerID();
+                if (me < MAX_PLAYERS) s_tried[me].valid = false;
+            }
+        }
+    }
     for (size_t i = 0; i < s_wantIds.size(); ++i) Reconcile(s_wantIds[i]);   // ped novo, modelo trocado, clump recriado...
 
     const uint64_t now = NowMs();

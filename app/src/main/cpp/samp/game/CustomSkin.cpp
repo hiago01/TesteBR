@@ -26,6 +26,7 @@
 #include "DffPreflight.h"
 #include "SkinImageUtil.h"
 #include "SkinSlots.h"
+#include "ProvadorModel.h"
 
 #ifndef CUSTOMSKIN_HOST_STUBS
 #include "../vendor/stb/stb_image.h"      // a implementação (STB_IMAGE_IMPLEMENTATION) está em sprite2d.cpp
@@ -33,6 +34,8 @@
 #include "playerped.h"
 #include "Streaming.h"
 #include "Textures/TextureDatabaseRuntime.h"   // banco de texturas do jogo (fluxo Android)
+#include "Entity/PlayerPedGta.h"               // modelo do ped local (LocalPedModel)
+#include "CorpTex.h"                           // espelho do snapshot 232 do servidor (autoridade do /provador)
 extern CNetGame* pNetGame;
 #else
 extern void* g_hostModelInfo;                // definidos pelo teste de host
@@ -42,6 +45,14 @@ extern void     (*g_hostInstall)(RpClump*);  // instala (destrói o molde antigo
 extern RpClump* (*g_hostTemplate)();         // molde instalado
 extern bool     (*g_hostCollect)(RpClump*, std::vector<RpMaterial*>&);
 extern int   g_hostDestroyedTextures;
+extern bool                        g_hostOnline;        // simulação da rede para o teste de host
+extern bool                        g_hostSrvHave;
+extern uint32_t                    g_hostSrvVer;
+extern ProvadorModel::SrvTable     g_hostSrv;
+extern int                         g_hostLocalModel;
+extern std::vector<std::string>    g_hostChat;
+extern int                         g_hostWearCalls;
+extern bool                        g_hostSuspend;       // CorpTex::SetLocalPreview
 #endif
 
 // ---------------------------------------------------------------------------
@@ -148,6 +159,34 @@ namespace
         std::unordered_map<std::string, int> slotVar;
         std::vector<RwTexture*>              tex;               // 1 ref extra por material (nullptr = sem textura)
     } s_bak;
+
+    // Pedido confirmado localmente que ainda espera o eco do servidor (RPC 232). O backup da prévia continua vivo até lá:
+    // se o servidor não gravar o que foi pedido, volta-se exatamente ao estado anterior (RestoreBackup).
+    struct Awaiting
+    {
+        bool                            active = false;
+        uint64_t                        startMs = 0;
+        uint64_t                        lastEchoMs = 0;
+        uint32_t                        verAtCommit = 0;
+        std::vector<ProvadorModel::Op>  ops;
+    } s_await;
+    constexpr uint64_t kAwaitSettleMs = 1500;   // sem novo eco por este tempo (e fila vazia) = o servidor terminou
+    constexpr uint64_t kAwaitMaxMs    = 9000;
+    constexpr uint64_t kPrepRetryMs   = 3000;   // a preparação automática não repete antes disso
+    constexpr int      kPrepMaxAuto   = 3;      // tentativas automáticas falhas antes de desistir (PREPARAR manual continua valendo)
+
+    bool        s_prepGiveUp   = false;
+    int         s_prepAutoFail = 0;
+    uint64_t    s_prepLastMs   = 0;
+    std::string s_prepWhy;
+    bool        s_moldStale    = false;         // o molde pode divergir do servidor (rollback/queda): próxima preparação reinstala
+    bool        s_wasOnline    = false;
+    uint64_t    s_lastSyncMs   = 0;
+    uint32_t    s_srvSeenVer   = 0;
+    std::string s_notice;                       // evento assíncrono para a UI mostrar 1x
+    uint32_t    s_noticeSeq    = 0;
+    std::unordered_map<std::string, std::vector<int>> s_varCache;   // pasta -> variantes (evita varrer o pack a cada publicação)
+    bool        s_varCacheOn   = false;
 
     std::mutex                s_uiMutex;
     CCustomSkin::UiState      s_uiState;                        // cópia publicada para a UI
@@ -274,6 +313,25 @@ namespace
         FLog("[SKIN7] apply: DeleteRwObject ok");
         CHook::CallFunction<void>(g_libGTASA + OFF_PED_SET_CLUMP, modelInfo, clump);
         FLog("[SKIN7] apply: SetClump ok");
+    }
+
+    // ---- rede / ped local (real) -------------------------------------------
+    bool Online() { return pNetGame && pNetGame->GetGameState() == GAMESTATE_CONNECTED; }
+    void SendChat(const char* c) { if (pNetGame) pNetGame->SendChatCommand(c); }
+    void PreviewSuspend(bool on) { CorpTex::SetLocalPreview(on); }
+    bool SrvSnapshot(ProvadorModel::SrvTable& t, uint32_t& ver)
+    {
+        std::vector<CorpTex::LocalSlot> v;
+        const bool have = CorpTex::LocalSlots(v, ver);
+        t = ProvadorModel::FromSnapshot(v);
+        return have;
+    }
+    int LocalPedModel()
+    {
+        if (!pNetGame || !pNetGame->GetPlayerPool()) return -1;
+        CLocalPlayer* lp = pNetGame->GetPlayerPool()->GetLocalPlayer();
+        if (!lp || !lp->GetPlayerPed() || !lp->GetPlayerPed()->m_pPed) return -1;
+        return (int)static_cast<CPlayerPedGta*>(lp->GetPlayerPed()->m_pPed)->m_nModelIndex;
     }
 
     RpClump* TemplateClump()
@@ -420,7 +478,12 @@ namespace
     // ---- simulação para teste no host -------------------------------------
     void* ModelInfoOf(int) { return g_hostModelInfo; }
     bool  StreamedModelLoaded(int) { return g_hostModelLoaded; }
-    bool  WearLocal(int, std::string& err) { err = "host"; return false; }
+    bool  WearLocal(int, std::string& err) { ++g_hostWearCalls; err = ""; return true; }
+    bool  Online() { return g_hostOnline; }
+    void  SendChat(const char* c) { g_hostChat.push_back(c); }
+    void  PreviewSuspend(bool on) { g_hostSuspend = on; }
+    bool  SrvSnapshot(ProvadorModel::SrvTable& t, uint32_t& ver) { t = g_hostSrv; ver = g_hostSrvVer; return g_hostSrvHave; }
+    int   LocalPedModel() { return g_hostLocalModel; }
 
     RpClump* ReadClumpWithEngine(std::vector<uint8_t>&, std::string&) { return g_hostRead(); }
     void InstallClump(void*, RpClump* c)
@@ -660,6 +723,7 @@ namespace
         for (RwTexture*& t : s_bak.tex) { TexRelease(t); t = nullptr; }
         s_bak = UiBackup();
         s_lookPrevQ.clear();                                  // cancelar / molde novo: a prévia nunca chegou ao servidor
+        PreviewSuspend(false);                                // o ped local volta a mostrar o snapshot do servidor
     }
 
     // ---- listas de índices: "all", "5", "3-7", "1,4,9-12" ----------------
@@ -1365,7 +1429,7 @@ namespace
     void LookFlush()
     {
         if (s_lookQ.empty() && !s_lookResetQ) return;
-        if (!pNetGame || pNetGame->GetGameState() != GAMESTATE_CONNECTED)
+        if (!Online())
         {
             s_lookQ.clear(); s_lookPrevQ.clear(); s_lookResetQ = false;      // nunca vaza pedido para outra sessão
             return;
@@ -1386,7 +1450,7 @@ namespace
             if (op.est == 2) std::snprintf(buf, sizeof(buf), "/lookx set %d 2 %d", op.slotId, op.var);
             else             std::snprintf(buf, sizeof(buf), "/lookx set %d %d", op.slotId, op.est);
         }
-        pNetGame->SendChatCommand(buf);
+        SendChat(buf);
         s_lookLastSendMs = now;
         FLog("[SKIN7] lookx -> %s (restam %zu na fila)", buf, s_lookQ.size() + (s_lookResetQ ? 1u : 0u));
     }
@@ -1647,10 +1711,15 @@ namespace
         return ran;
     }
 
-    // ---- interface /provador: prévia, confirmar, cancelar e estado publicado ---------------------------
+    // ---- interface /provador: preparação, prévia, confirmar, cancelar e estado publicado -----------------
     // O resto do /skin7 não muda: "prev" chama o MESMO DoSlot (texturas, exclusividade por categoria, ocultação).
-    // Aqui só entram (a) o backup/restauração e (b) a verificação do resultado no ESTADO REAL, para a UI nunca
-    // mostrar sucesso que não aconteceu.
+    // Aqui entram (a) a preparação automática do molde, (b) backup/restauração, (c) a confirmação pelo SERVIDOR
+    // (autoridade) e (d) a verificação do resultado no ESTADO REAL, para a UI nunca mostrar sucesso que não aconteceu.
+    bool AutoReady();                 // definidas mais abaixo (mesmo namespace)
+    std::string AutoWhy();
+
+    void Notice(const std::string& t) { s_notice = t; ++s_noticeSeq; FLog("[SKIN7] provador: %s", t.c_str()); }
+
     bool BeginBackup()
     {
         if (s_bak.active) return true;
@@ -1675,7 +1744,8 @@ namespace
             mats.size() != s_enabledTex.size() || s_bak.tex.size() != s_enabledTex.size() || s_bak.hidden.size() != s_enabledTex.size())
         {
             DiscardBackup();
-            note = "ERRO: o molde mudou durante a prévia; nada foi restaurado (rode /skin7 apply de novo se algo ficou errado)";
+            s_moldStale = true;
+            note = "ERRO: o molde mudou durante a prévia; nada foi restaurado (a próxima preparação reinstala o molde)";
             return false;
         }
         const uint64_t now = NowMs();
@@ -1710,19 +1780,203 @@ namespace
         if (what == "off") return allHidden;
         if (what == "on")  return allVisible;
         if (!allVisible) return false;
-        const auto it = s_matPack.find(idx[0]);
-        return it != s_matPack.end() && it->second == std::string(sl.folder) + "/" + what;
+        const std::string want = std::string(sl.folder) + "/" + what;
+        for (int i : idx)                                 // TODOS os materiais do slot (antes só o primeiro era conferido)
+        {
+            const auto it = s_matPack.find(i);
+            if (it == s_matPack.end() || it->second != want) return false;
+        }
+        return true;
+    }
+
+    // Variantes do pack por pasta, com cache (a varredura da pasta custa; o pack não muda com o jogo aberto).
+    const std::vector<int>& CachedVariants(const std::string& folder)
+    {
+        if (!s_varCacheOn) { s_varCache.clear(); s_varCacheOn = true; }
+        auto it = s_varCache.find(folder);
+        if (it == s_varCache.end()) it = s_varCache.emplace(folder, PackVariants(folder)).first;
+        return it->second;
+    }
+
+    // ---- molde: reconstrução a partir do servidor ------------------------------------------------------
+    // Restaura no molde (que acabou de ser reinstalado = DFF puro) o que o SERVIDOR tem gravado para o jogador local.
+    // Nunca envia nada ao servidor (s_lookSuppress, como o autoexec).
+    void SyncMoldFromServer()
+    {
+        ProvadorModel::SrvTable t;
+        uint32_t ver = 0;
+        const bool have = SrvSnapshot(t, ver);
+        s_srvSeenVer = ver;
+        if (!have) return;                                // sem snapshot: molde puro = padrão
+        int applied = 0, failed = 0;
+        s_lookSuppress = true;
+        for (int id = 1; id <= SkinSlots::kCount; ++id)
+        {
+            const ProvadorModel::Srv& v = (size_t)id < t.size() ? t[(size_t)id] : ProvadorModel::Srv();
+            if (!v.known) continue;
+            const SkinSlots::Slot& sl = SkinSlots::kSlots[id - 1];
+            if (SlotMaterials(sl).empty()) continue;
+            std::string what = v.est == 0 ? "off" : (v.est == 1 ? "on" : std::to_string((int)v.var));
+            DoSlot(std::string(sl.name) + " " + what);
+            const std::vector<int> idx = SlotMaterials(sl);
+            if (SlotMatches(sl, idx, what)) ++applied; else { ++failed; FLog("[SKIN7] sync: slot %s=%s do servidor NAO aplicado localmente: %s", sl.name, what.c_str(), LastInfo().c_str()); }
+        }
+        s_lookSuppress = false;
+        FLog("[SKIN7] sync do molde com o servidor: %d slot(s) aplicados, %d falha(s)", applied, failed);
+    }
+
+    // Instala o molde (DFF puro) e leva o estado do servidor para ele. Chamado só quando o molde não é nosso/está suspeito.
+    bool PrepareMold(bool autoMode, std::string& why)
+    {
+        DiscardBackup();
+        s_await = Awaiting();
+        s_lookQ.clear(); s_lookPrevQ.clear();
+        s_varCacheOn = false;
+        std::fill(s_hidden.begin(), s_hidden.end(), 0);   // molde novo = DFF puro (DoApply reaproveitaria o oculto antigo)
+        s_matPack.clear(); s_slotVar.clear();
+        DoApply();
+        if (!InstalledOurs())
+        {
+            why = LastInfo();
+            s_prepWhy = why;
+            return false;
+        }
+        s_moldStale = false;
+        s_prepWhy.clear();
+        SyncMoldFromServer();
+        // Peds que já existem são clones do molde ANTIGO e não enxergam o novo: recria o ped local (mesmo caminho do /skin7 wear).
+        // Só se ele já usa o modelo 7 (nunca força a skin do jogador).
+        const int lm = LocalPedModel();
+        if (lm == CCustomSkin::kTargetModelId)
+        {
+            std::string e;
+            if (!WearLocal(CCustomSkin::kTargetModelId, e)) FLog("[SKIN7] prepare: nao consegui recriar o ped local: %s", e.c_str());
+        }
+        else FLog("[SKIN7] prepare: ped local usa o modelo %d (nao %d): molde instalado, ped nao recriado", lm, CCustomSkin::kTargetModelId);
+        (void)autoMode;
+        return true;
+    }
+
+    // Preparação AUTOMÁTICA ao abrir o /provador (e antes de uma prévia): verifica InstalledOurs() e só instala se preciso.
+    //   * molde nosso e íntegro  -> não faz nada (sem reinstalações repetidas)
+    //   * força=false (automática): respeita .applying (crash anterior), espera o modelo 7 carregar, intervalo mínimo entre
+    //     tentativas e no máximo kPrepMaxAuto falhas; depois só o botão PREPARAR (força=true) tenta de novo.
+    bool EnsurePrepared(bool force, std::string& why)
+    {
+        if (!s_loadedOk && !DoLoad(false)) { why = LastInfo(); s_prepWhy = why; return false; }   // sem skin.dff / arquivo inválido
+        if (InstalledOurs() && !s_moldStale && !force) return true;
+        if (!force)
+        {
+            if (s_prepGiveUp) { why = s_prepWhy; return false; }
+            const uint64_t now = NowMs();
+            if (s_prepLastMs && now - s_prepLastMs < kPrepRetryMs) { why = s_prepWhy.empty() ? "preparando..." : s_prepWhy; return false; }
+            s_prepLastMs = now;
+            if (!AutoReady()) { why = "aguardando o modelo 7: " + AutoWhy(); s_prepWhy = why; return false; }
+            const std::string marker = SkinDir() + ".applying";
+            if (FileExists(marker))
+            {
+                s_prepGiveUp = true;
+                s_prepWhy = "a tentativa anterior de instalar a skin não terminou (SAMP/skins/.applying); toque PREPARAR";
+                why = s_prepWhy;
+                return false;
+            }
+            if (FILE* f = std::fopen(marker.c_str(), "wb")) { std::fputs("applying\n", f); std::fclose(f); }
+            FLog("[SKIN7] provador: preparação automática (molde nosso=%d, obsoleto=%d)", InstalledOurs() ? 1 : 0, s_moldStale ? 1 : 0);
+            if (PrepareMold(true, why))
+            {
+                s_prepAutoFail = 0; s_prepGiveUp = false;
+                s_markerClearAtMs = NowMs() + 15000;          // sobreviveu 15 s => apaga o marcador (igual ao auto-apply)
+                return true;
+            }
+            std::remove(marker.c_str());                      // falhou sem crashar: não trava a próxima partida
+            if (++s_prepAutoFail >= kPrepMaxAuto) { s_prepGiveUp = true; s_prepWhy = why + " (use PREPARAR)"; why = s_prepWhy; }
+            return false;
+        }
+        FLog("[SKIN7] provador: PREPARAR manual");
+        s_prepGiveUp = false; s_prepAutoFail = 0;
+        return PrepareMold(false, why);
+    }
+
+    // ---- confirmação pelo servidor -----------------------------------------------------------------------
+    void FinishAwait(bool confirmed, const std::string& why)
+    {
+        s_await = Awaiting();
+        if (confirmed)
+        {
+            DiscardBackup();                                  // o estado atual passa a ser o definitivo (o servidor gravou)
+            Notice("Aparência salva no servidor");
+            return;
+        }
+        std::string note;
+        RestoreBackup(note);                                  // volta EXATAMENTE ao estado anterior à prévia
+        s_moldStale = true;                                   // o servidor pode ter aceitado só parte: a próxima preparação reinstala
+        if (Online()) { SendChat("/lookx sync"); s_lastSyncMs = NowMs(); }
+        Notice(why);
+    }
+
+    void TickAwait()
+    {
+        if (!s_await.active) return;
+        const uint64_t now = NowMs();
+        if (!s_bak.active) { s_await = Awaiting(); return; }  // o backup foi descartado por fora (ex.: /skin7 apply)
+        if (!Online()) { FinishAwait(false, "Conexão perdida antes do servidor confirmar: alteração cancelada"); return; }
+
+        ProvadorModel::SrvTable cur;
+        uint32_t ver = 0;
+        const bool have = SrvSnapshot(cur, ver);
+        if (have && ver != s_await.verAtCommit)
+        {
+            s_await.verAtCommit = ver;
+            s_await.lastEchoMs  = now;
+            // O que o servidor TERÁ depois de processar os pedidos em ordem (Look_PutSlot), só nos slots pedidos
+            // (os demais podem ter sido mexidos pela exclusividade do grupo ou por outro caminho).
+            const ProvadorModel::SrvTable want = ProvadorModel::Simulate(ProvadorModel::NewTable(), s_await.ops);
+            bool ok = true;
+            for (const ProvadorModel::Op& o : s_await.ops)
+                if ((size_t)o.slotId >= cur.size() || cur[(size_t)o.slotId] != want[(size_t)o.slotId]) { ok = false; break; }
+            if (ok) { FinishAwait(true, std::string()); return; }
+        }
+        const uint64_t last = std::max(s_lookLastSendMs, std::max(s_await.lastEchoMs, s_await.startMs));
+        const bool queueDone = s_lookQ.empty() && !s_lookResetQ;
+        if ((queueDone && now - last > kAwaitSettleMs) || now - s_await.startMs > kAwaitMaxMs)
+            FinishAwait(false, "O servidor não confirmou a alteração: aparência anterior restaurada");
+    }
+
+    // Caiu a conexão: nada da prévia nem do que esperava confirmação pode vazar para outra sessão.
+    void OnWentOffline()
+    {
+        const bool hadAwait = s_await.active;
+        s_await = Awaiting();
+        s_lookQ.clear(); s_lookPrevQ.clear(); s_lookResetQ = false;
+        if (s_bak.active)
+        {
+            std::string note;
+            RestoreBackup(note);
+            if (hadAwait) s_moldStale = true;
+            Notice("Conexão perdida: prévia cancelada");
+        }
+        PreviewSuspend(false);
     }
 
     void PublishUiState()
     {
         CCustomSkin::UiState st;
         st.skinReady = InstalledOurs();
-        st.pending   = s_bak.active && s_bak.changed;
+        st.dffOk     = s_loadedOk;
+        st.online    = Online();
+        ProvadorModel::SrvTable srv;
+        uint32_t srvVer = 0;
+        st.serverSynced = SrvSnapshot(srv, srvVer);
+        st.pending   = s_bak.active && s_bak.changed && !s_await.active;
+        st.awaiting  = s_await.active;
         st.reqId     = s_uiReqId;
         st.reqOk     = s_uiReqOk;
         st.msg       = s_uiReqMsg;
+        st.prepMsg   = st.skinReady ? std::string() : s_prepWhy;
+        st.noticeSeq = s_noticeSeq;
+        st.notice    = s_notice;
         st.slots.resize((size_t)SkinSlots::kCount);
+        const std::vector<int> covered = st.skinReady ? CoveredByGarments() : std::vector<int>();
         for (int k = 0; k < SkinSlots::kCount; ++k)
         {
             const SkinSlots::Slot& sl = SkinSlots::kSlots[k];
@@ -1730,24 +1984,43 @@ namespace
             u.index = k;
             const std::vector<int> idx = SlotMaterials(sl);
             u.hasMaterial = !idx.empty();
-            if (idx.empty()) continue;
-            bool vis = true, any = false;
-            for (int i : idx) { if ((size_t)i < s_hidden.size() && s_hidden[(size_t)i]) vis = false; else any = true; }
-            u.visible  = vis;
-            u.partial  = any && !vis;
-            u.variants = PackVariants(sl.folder);
-            const auto it = s_matPack.find(idx[0]);
-            if (it != s_matPack.end())
+            const ProvadorModel::Srv& sv = (size_t)(k + 1) < srv.size() ? srv[(size_t)(k + 1)] : ProvadorModel::Srv();
+            u.srvKnown = sv.known; u.srvEst = sv.est; u.srvVar = sv.var;
+            if (idx.empty()) { u.state = ProvadorModel::kUnavailable; continue; }
+
+            ProvadorModel::Counts c;
+            c.total = (int)idx.size();
+            bool first = true;
+            int variant = ProvadorModel::kNoPack;
+            bool differsFromBackup = false;
+            for (int i : idx)
             {
-                const std::string pre = std::string(sl.folder) + "/";
-                if (it->second.size() > pre.size() && it->second.compare(0, pre.size(), pre) == 0)
+                const bool h = (size_t)i < s_hidden.size() && s_hidden[(size_t)i];
+                if (h)
                 {
-                    const std::string tail = it->second.substr(pre.size());
-                    bool digits = !tail.empty() && tail.size() <= 6;
-                    for (char c : tail) if (!std::isdigit((unsigned char)c)) digits = false;
-                    if (digits) u.variant = std::atoi(tail.c_str());
+                    ++c.hidden;
+                    if (std::find(covered.begin(), covered.end(), i) != covered.end()) ++c.hiddenCover;
+                }
+                const auto it = s_matPack.find(i);
+                const int vi = it != s_matPack.end() ? ProvadorModel::VariantOf(it->second.c_str(), sl.folder) : ProvadorModel::kNoPack;
+                if (first) { variant = vi; first = false; }
+                else if (vi != variant) variant = ProvadorModel::kMixed;
+                if (s_bak.active)
+                {
+                    const bool hb = (size_t)i < s_bak.hidden.size() && s_bak.hidden[(size_t)i];
+                    const auto ib = s_bak.matPack.find(i);
+                    const std::string pb = ib != s_bak.matPack.end() ? ib->second : std::string();
+                    const std::string pc = it != s_matPack.end() ? it->second : std::string();
+                    if (hb != h || pb != pc) differsFromBackup = true;
                 }
             }
+            c.variant = variant;
+            u.state     = ProvadorModel::Classify(c);
+            u.visible   = c.hidden == 0;
+            u.partial   = c.hidden > 0 && c.hidden < c.total;
+            u.previewed = s_bak.active && differsFromBackup;
+            u.variants  = CachedVariants(sl.folder);
+            u.variant   = variant >= 0 ? variant : -1;
         }
         {
             std::lock_guard<std::mutex> lock(s_uiMutex);
@@ -1756,7 +2029,7 @@ namespace
         ++s_uiVersion;
     }
 
-    // "ui <id> <refresh | prev <slot> <n|on|off> | commit | cancel>"  (só chega aqui via CCustomSkin::UiRequest)
+    // "ui <id> <refresh | prepare | sync | prev <slot> <n|on|off> | commit | cancel>"  (só chega aqui via CCustomSkin::UiRequest)
     void DoUi(const std::string& rest)
     {
         std::istringstream in(rest);
@@ -1768,7 +2041,21 @@ namespace
 
         if (op == "refresh")
         {
-            if (!s_loadedOk) DoLoad(false);              // para a lista de slots já refletir o DFF
+            s_varCacheOn = false;                        // relê o pack
+            std::string why;
+            if (!EnsurePrepared(false, why)) FLog("[SKIN7] provador: skin nao preparada: %s", why.c_str());
+            if (Online() && NowMs() - s_lastSyncMs > 1100) { SendChat("/lookx sync"); s_lastSyncMs = NowMs(); }   // estado salvo (servidor = autoridade)
+        }
+        else if (op == "prepare")
+        {
+            std::string why;
+            if (s_await.active) fail("aguardando o servidor confirmar");
+            else if (!EnsurePrepared(true, why)) fail(why);
+        }
+        else if (op == "sync")
+        {
+            if (!Online()) fail("sem conexão com o servidor");
+            else { SendChat("/lookx sync"); s_lastSyncMs = NowMs(); }
         }
         else if (op == "prev")
         {
@@ -1777,9 +2064,11 @@ namespace
             const SkinSlots::Slot* sl = SkinSlots::Find(name.c_str());
             bool numeric = !what.empty();
             for (char c : what) if (!std::isdigit((unsigned char)c)) numeric = false;
+            std::string why;
             if (!sl || (what != "on" && what != "off" && !numeric)) fail("pedido inválido");
-            else if (!s_loadedOk && !DoLoad(false))      fail(LastInfo());
-            else if (!InstalledOurs())                   fail("skin não instalada: use PREPARAR (ou /skin7 apply)");
+            else if (s_await.active)                     fail("aguardando o servidor confirmar o pedido anterior");
+            else if (!EnsurePrepared(false, why))        fail(why.empty() ? std::string("skin não preparada") : why);
+            else if (!InstalledOurs())                   fail("skin não instalada: use PREPARAR");
             else
             {
                 const std::vector<int> idx = SlotMaterials(*sl);
@@ -1790,20 +2079,44 @@ namespace
                     s_lookInPrev = true;                 // prévia: só vai ao servidor no commit
                     DoSlot(name + " " + what);           // o mesmo caminho do /skin7 slot (inclui a exclusividade)
                     s_lookInPrev = false;
-                    if (SlotMatches(*sl, idx, what)) s_bak.changed = true;
+                    if (SlotMatches(*sl, idx, what)) { s_bak.changed = true; PreviewSuspend(true); }
                     else fail(LastInfo());
                 }
             }
         }
         else if (op == "commit")
         {
-            LookCommitPrev();                            // /lookx do que foi confirmado
-            DiscardBackup();                             // o estado atual passa a ser o definitivo
+            if (s_await.active) fail("aguardando o servidor confirmar");
+            else if (!s_bak.active || !s_bak.changed) { DiscardBackup(); }             // nada a confirmar
+            else if (!Online()) fail("sem conexão com o servidor: a prévia não foi salva (cancele ou reconecte)");
+            else
+            {
+                LookCommitPrev();                        // /lookx do que foi confirmado -> fila de envio (debounce em LookFlush)
+                s_await = Awaiting();
+                for (const LookOp& q : s_lookQ) s_await.ops.push_back(ProvadorModel::Op{q.slotId, q.est, q.var});
+                if (s_await.ops.empty())                 // nada que o protocolo carregue (ex.: caminho avulso): fica só local
+                {
+                    DiscardBackup();
+                    Notice("Aplicado só neste aparelho (nada a enviar ao servidor)");
+                }
+                else
+                {
+                    ProvadorModel::SrvTable cur; uint32_t ver = 0;
+                    SrvSnapshot(cur, ver);
+                    s_await.active = true;
+                    s_await.startMs = NowMs();
+                    s_await.verAtCommit = ver;
+                }
+            }
         }
         else if (op == "cancel")
         {
-            std::string note;
-            if (!RestoreBackup(note)) fail(note);
+            if (s_await.active) fail("aguardando o servidor confirmar");
+            else
+            {
+                std::string note;
+                if (!RestoreBackup(note)) fail(note);
+            }
         }
         else fail("pedido desconhecido: " + op);
     }
@@ -1837,10 +2150,12 @@ namespace
         else                      SetInfo("comando desconhecido: " + cmd);
     }
 
-    void PushCmd(const std::string& c)
+    bool PushCmd(const std::string& c)
     {
         std::lock_guard<std::mutex> lock(s_cmdMutex);
-        if (s_cmds.size() < 64) s_cmds.push_back(c);
+        if (s_cmds.size() >= 64) return false;          // fila cheia: o chamador precisa saber (antes o pedido sumia em silêncio)
+        s_cmds.push_back(c);
+        return true;
     }
 
     // ---- aplicação automática ---------------------------------------------
@@ -1916,7 +2231,7 @@ void CCustomSkin::UiSetActive(bool on) { s_uiWanted.store(on); }
 uint32_t CCustomSkin::UiRequest(const std::string& op)
 {
     const uint32_t id = ++s_uiNextId;
-    PushCmd("ui " + std::to_string(id) + " " + op);
+    if (!PushCmd("ui " + std::to_string(id) + " " + op)) return 0;
     return id;
 }
 uint32_t CCustomSkin::UiVersion() { return s_uiVersion.load(); }
@@ -1936,7 +2251,34 @@ void CCustomSkin::Process()
         cmds.swap(s_cmds);
     }
     for (const std::string& c : cmds) Execute(c);
-    if (!cmds.empty() && s_uiWanted.load()) PublishUiState();   // interface /provador aberta: estado real após cada comando
+
+    // ---- /provador: conexão, molde trocado por fora, confirmação do servidor ----
+    bool uiDirty = !cmds.empty();
+    const bool online = Online();
+    if (s_wasOnline && !online) { OnWentOffline(); uiDirty = true; }
+    s_wasOnline = online;
+    if (s_bak.active && !InstalledOurs())                       // o jogo/outro comando trocou o molde: as texturas do backup não valem
+    {
+        const bool hadAwait = s_await.active;
+        s_await = Awaiting();
+        DiscardBackup();
+        s_moldStale = true;
+        Notice(hadAwait ? "O molde mudou antes do servidor confirmar" : "O molde mudou: prévia descartada");
+        uiDirty = true;
+    }
+    if (s_await.active)
+    {
+        const uint32_t seq = s_noticeSeq;
+        TickAwait();
+        if (seq != s_noticeSeq || !s_await.active) uiDirty = true;
+    }
+    if (s_uiWanted.load())
+    {
+        ProvadorModel::SrvTable t; uint32_t ver = 0;
+        SrvSnapshot(t, ver);
+        if (ver != s_srvSeenVer) { s_srvSeenVer = ver; uiDirty = true; }   // chegou snapshot do servidor (RPC 232)
+        if (uiDirty) PublishUiState();                          // interface /provador aberta: estado real
+    }
     LookFlush();                                                // /lookx set|reset ao servidor (debounce 300 ms)
 
     if (kAutoApply && !s_autoTried)

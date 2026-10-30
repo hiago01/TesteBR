@@ -3,6 +3,7 @@
 #include "../../game/game.h"
 #include "../../game/CustomSkin.h"
 #include "../../game/SkinSlots.h"
+#include "../../game/ProvadorModel.h"
 #include "../../net/netgame.h"
 #include "provador.h"
 
@@ -44,6 +45,8 @@ namespace
 
 	// ---- estado da tela (so a thread de desenho usa) ----
 	typedef CCustomSkin::UiSlot  SlotState;
+	using ProvadorModel::kUnavailable; using ProvadorModel::kDefault; using ProvadorModel::kEquipped;
+	using ProvadorModel::kDisabled; using ProvadorModel::kCovered;
 
 	int                  g_cat = 0;                 // categoria (SkinSlots::kUiCategories)
 	int                  g_sel = -1;                // slot selecionado (indice em SkinSlots::kSlots)
@@ -53,6 +56,8 @@ namespace
 	CCustomSkin::UiState g_st;                      // ultimo estado REAL publicado pelo CCustomSkin
 	bool                 g_haveSt = false;
 	uint32_t             g_stVer  = 0;
+	bool                 g_noticeInit = false;
+	uint32_t             g_noticeSeq = 0;           // último aviso assíncrono já mostrado (confirmado/recusado pelo servidor, queda...)
 	uint32_t             g_inflight   = 0;          // id do pedido aguardando resposta (0 = nenhum)
 	int64_t              g_inflightAt = 0;
 	std::string          g_okToast;                 // mostrada se o pedido em andamento der certo
@@ -83,6 +88,8 @@ namespace
 	const ImColor cBlueBg(52, 140, 235, 46);
 	const ImColor cRed   (232, 92, 84, 255);
 	const ImColor cOff   (30, 35, 43, 235);
+	const ImColor cAmber (240, 176, 56, 255);       // prévia (ainda não confirmada)
+	const ImColor cAmberBg(240, 176, 56, 46);
 
 	void Toast(const std::string& msg, bool err)
 	{
@@ -143,7 +150,7 @@ namespace
 			const SlotState* u = StateOf(k);
 			if (!u || !u->hasMaterial) continue;
 			if (firstOk < 0) firstOk = k;
-			if (u->visible) { g_sel = k; break; }
+			if (u->state == kEquipped) { g_sel = k; break; }
 		}
 		if (g_sel < 0) g_sel = firstOk;
 		g_scrollList = 0.0f;
@@ -152,9 +159,10 @@ namespace
 
 	void Request(const std::string& op, const char* okToast)
 	{
-		g_inflight   = CCustomSkin::UiRequest(op);
+		g_inflight   = CCustomSkin::UiRequest(op);       // 0 = fila cheia: o pedido NÃO foi enfileirado
 		g_inflightAt = NowMs();
 		g_okToast    = okToast ? okToast : "";
+		if (!g_inflight) Toast("Sistema de skin ocupado, tente de novo", true);
 	}
 
 	void PreviewSlot(int k, const std::string& what)
@@ -173,16 +181,16 @@ namespace
 		if (!u || k < 0) return "Selecione um item na lista";
 		std::string s = SlotLabel(SlotAt(k).name) + " (" + SlotAt(k).name + ")";
 		if (!u->hasMaterial) return s + "  -  indisponível no modelo";
-		if (u->variants.empty()) s += "  -  sem variantes no pack";
-		else
+		switch (u->state)
 		{
-			const int pos = VariantPos(*u);
-			if (u->variant >= 0 && pos >= 0)
-				s += "  -  variante " + std::to_string(u->variant) + " (" + std::to_string(pos + 1) + " de " + std::to_string(u->variants.size()) + ")";
-			else if (u->variant >= 0) s += "  -  variante " + std::to_string(u->variant);
-			else s += "  -  textura original (" + std::to_string(u->variants.size()) + " variantes)";
+			case kEquipped: s += "  -  EQUIPADO, variante " + std::to_string(u->variant); break;
+			case kDisabled: s += "  -  desligado"; break;
+			case kCovered:  s += "  -  coberto por outra peça"; break;
+			default:        s += u->variants.empty() ? "  -  sem variantes no pack" : "  -  padrão, nada equipado (" + std::to_string(u->variants.size()) + " variantes)"; break;
 		}
-		return s + (u->visible ? "  -  ATIVO" : "  -  desligado");
+		if (u->previewed) s += "  -  PRÉVIA";
+		else if (u->srvKnown) s += std::string("  -  servidor: ") + ProvadorModel::SrvWord(ProvadorModel::Srv{true, (uint8_t)u->srvEst, (uint16_t)u->srvVar}) + (u->srvEst == 2 ? " " + std::to_string(u->srvVar) : std::string());
+		return s;
 	}
 }
 
@@ -270,7 +278,7 @@ void Provador::draw(ImGuiRenderer* r)
 	if (g_resetView.exchange(false))
 	{
 		g_drag = Drag();
-		g_cat = 0; g_sel = -1; g_haveSt = false; g_stVer = ~0u;
+		g_cat = 0; g_sel = -1; g_haveSt = false; g_stVer = ~0u; g_noticeInit = false;
 		g_toastUntil = 0; g_okToast.clear(); g_afterPrepare = false;
 		RebuildCategory();
 		Request("refresh", nullptr);
@@ -288,6 +296,12 @@ void Provador::draw(ImGuiRenderer* r)
 				g_haveSt = true;
 				g_stVer = v;
 				if (g_sel < 0 || StateOf(g_sel) == nullptr) SelectDefault();
+				if (!g_noticeInit) { g_noticeInit = true; g_noticeSeq = g_st.noticeSeq; }   // avisos antigos (de antes de abrir) não aparecem
+				else if (g_st.noticeSeq != g_noticeSeq)                                      // servidor confirmou/recusou, conexão caiu...
+				{
+					g_noticeSeq = g_st.noticeSeq;
+					if (!g_st.notice.empty()) Toast(g_st.notice, g_st.notice.find("salva") == std::string::npos);
+				}
 				if (g_inflight && g_st.reqId == g_inflight)
 				{
 					g_inflight = 0;
@@ -311,9 +325,12 @@ void Provador::draw(ImGuiRenderer* r)
 	}
 
 	const SlotState* selU = StateOf(g_sel);
-	const bool ready   = g_haveSt && g_st.skinReady;
-	const bool pending = g_haveSt && g_st.pending;
-	const bool busy    = g_inflight != 0;
+	const bool ready    = g_haveSt && g_st.skinReady;
+	const bool pending  = g_haveSt && g_st.pending;
+	const bool awaiting = g_haveSt && g_st.awaiting;
+	const bool online   = g_haveSt && g_st.online;
+	const bool dffOk    = !g_haveSt || g_st.dffOk;
+	const bool busy     = g_inflight != 0 || awaiting;      // esperando o servidor = nada novo pode ser pedido
 
 	// ---- layout (unidades de projeto: altura 540 -> k) ----
 	const float m     = 8.0f * k;
@@ -437,10 +454,9 @@ void Provador::draw(ImGuiRenderer* r)
 		{
 			case K_BACK: Provador::Close(); return true;
 			case K_PREPARE:
-				if (busy) break;
-				CCustomSkin::RequestApply();         // o mesmo /skin7 apply
+				if (busy || !dffOk) break;
 				g_afterPrepare = true;
-				Request("refresh", nullptr);
+				Request("prepare", nullptr);         // instala o molde (= /skin7 apply) e leva o estado do servidor para ele
 				break;
 			case K_CAT:
 				if (h.idx != g_cat) { g_cat = h.idx; RebuildCategory(); SelectDefault(); }
@@ -453,7 +469,7 @@ void Provador::draw(ImGuiRenderer* r)
 				if (!u || !u->hasMaterial) { Toast("Este item não existe no modelo carregado", true); break; }
 				g_sel = k2; g_scrollVar = 0.0f;
 				if (!ready) { Toast("Skin não instalada: toque em PREPARAR", true); break; }
-				if (busy || u->visible) break;       // ja visivel: so seleciona
+				if (busy || u->state == kEquipped) break;   // ja equipado: so seleciona (visivel != equipado)
 				if (!u->variants.empty()) PreviewSlot(k2, std::to_string(u->variant >= 0 ? u->variant : u->variants.front()));
 				else PreviewSlot(k2, "on");
 				break;
@@ -463,7 +479,7 @@ void Provador::draw(ImGuiRenderer* r)
 				if (!selU || h.idx < 0 || h.idx >= nVars || busy) break;
 				if (!ready) { Toast("Skin não instalada: toque em PREPARAR", true); break; }
 				const int v = selU->variants[(size_t)h.idx];
-				if (selU->visible && selU->variant == v) break;
+				if (selU->state == kEquipped && selU->variant == v) break;
 				PreviewSlot(g_sel, std::to_string(v));
 				break;
 			}
@@ -479,11 +495,12 @@ void Provador::draw(ImGuiRenderer* r)
 			}
 			case K_TOGGLE:
 				if (!canToggle || busy) break;
-				PreviewSlot(g_sel, selU->visible ? "off" : "on");
+				PreviewSlot(g_sel, (selU->state == kDisabled || selU->state == kCovered) ? "on" : "off");
 				break;
 			case K_APPLY:
 				if (!pending || busy) break;
-				Request("commit", "Aplicado");
+				if (!online) { Toast("Sem conexão com o servidor: não é possível aplicar", true); break; }
+				Request("commit", "Enviado ao servidor...");
 				break;
 			case K_CANCEL:
 				if (!pending || busy) break;
@@ -607,9 +624,12 @@ void Provador::draw(ImGuiRenderer* r)
 		ImColor stc = cDim;
 		if (!u)           st = "...";
 		else if (!avail)  st = "indisponível";
-		else if (u->visible) { st = u->variant >= 0 ? "ATIVO " + std::to_string(u->variant) : std::string("ATIVO"); stc = cBlue; }
-		else if (u->partial) st = "parcial";                 // ex.: pele das pernas parcialmente coberta por uma bermuda
-		else              st = "desligado";
+		else if (u->state == kEquipped) { st = "EQUIPADO " + std::to_string(u->variant); stc = cBlue; }
+		else if (u->state == kCovered)  st = "coberto";
+		else if (u->state == kDisabled) st = "desligado";
+		else if (u->partial)            st = "parcial";      // ex.: pele das pernas parcialmente coberta por uma bermuda
+		else                            st = "padrão";       // visível com a textura original = nada equipado
+		if (u && avail && u->previewed) { st += " *"; stc = cAmber; }
 		const ImVec2 ts = r->calculateTextSize(st, fsS);
 		r->drawText(ImVec2(panX + panW - pad - ts.x, ry + (rowH - ts.y) * 0.5f), stc, st, false, fsS);
 	}
@@ -631,9 +651,10 @@ void Provador::draw(ImGuiRenderer* r)
 			const float cyp = varTop + (i / cols) * (cellH + cellGap) - g_scrollVar;
 			if (cyp + cellH < varTop || cyp > varBot) continue;
 			const int v = selU->variants[(size_t)i];
-			const bool cur = selU->visible && selU->variant == v;
-			r->drawRect(ImVec2(cxp, cyp), ImVec2(cxp + cellW, cyp + cellH), cur ? cBlueBg : cPanel2, true);
-			r->drawRect(ImVec2(cxp, cyp), ImVec2(cxp + cellW, cyp + cellH), cur ? cBlue : cLine, false);
+			const bool cur = selU->state == kEquipped && selU->variant == v;
+			const bool pv  = cur && selU->previewed;
+			r->drawRect(ImVec2(cxp, cyp), ImVec2(cxp + cellW, cyp + cellH), pv ? cAmberBg : (cur ? cBlueBg : cPanel2), true);
+			r->drawRect(ImVec2(cxp, cyp), ImVec2(cxp + cellW, cyp + cellH), pv ? cAmber : (cur ? cBlue : cLine), false);
 			const std::string t = std::to_string(v);
 			const ImVec2 ts = r->calculateTextSize(t, fs);
 			r->drawText(ImVec2(cxp + (cellW - ts.x) * 0.5f, cyp + (cellH - ts.y) * 0.5f), cur ? cText : cDim, t, false, fs);
@@ -648,8 +669,11 @@ void Provador::draw(ImGuiRenderer* r)
 		std::string msg; ImColor mc = cDim;
 		if (NowMs() < g_toastUntil) { msg = g_toast; mc = g_toastErr ? cRed : cBlue; }
 		else if (!g_haveSt) msg = "Carregando...";
-		else if (!ready) { msg = "Skin não instalada (equivale a /skin7 apply)"; mc = cRed; }
-		else if (pending) { msg = "PRÉVIA: toque APLICAR para confirmar"; mc = cBlue; }
+		else if (!dffOk) { msg = "skin.dff não encontrado em SAMP/skins"; mc = cRed; }
+		else if (!ready) { msg = g_st.prepMsg.empty() ? "Preparando a skin..." : g_st.prepMsg; mc = g_st.prepMsg.empty() ? cDim : cRed; }
+		else if (awaiting) { msg = "Salvando no servidor..."; mc = cAmber; }
+		else if (!online) { msg = "Sem conexão com o servidor: só visualização"; mc = cRed; }
+		else if (pending) { msg = "PRÉVIA (não salva): toque APLICAR para confirmar"; mc = cAmber; }
 		r->pushClipRect(ImVec2(cx0, rowAY), ImVec2(cx1, rowAY + rowAH), true);
 		r->drawText(ImVec2(cx0 + pad, rowAY + (rowAH - fsS) * 0.5f), mc, msg, false, fsS);
 		r->popClipRect();
@@ -657,7 +681,7 @@ void Provador::draw(ImGuiRenderer* r)
 
 	if (!ready)
 	{
-		button(prepA, prepB, busy ? "PREPARANDO..." : "PREPARAR (/skin7 apply)", !busy, true, fs);
+		button(prepA, prepB, busy ? "PREPARANDO..." : (dffOk ? "PREPARAR (tentar de novo)" : "skin.dff ausente"), !busy && dffOk, true, fs);
 	}
 	else
 	{
@@ -666,10 +690,10 @@ void Provador::draw(ImGuiRenderer* r)
 		r->popClipRect();
 		button(prevA, prevB, "<", canStep && !busy, false, 16.0f * k);
 		button(nextA, nextB, ">", canStep && !busy, false, 16.0f * k);
-		button(togA, togB, (selU && selU->visible) ? "DESLIGAR" : "LIGAR", canToggle && !busy, false, fsS);
+		button(togA, togB, (selU && (selU->state == kDisabled || selU->state == kCovered)) ? "LIGAR" : "DESLIGAR", canToggle && !busy, false, fsS);
 	}
 
-	button(apA, apB, "APLICAR", pending && !busy, true, fs);
+	button(apA, apB, awaiting ? "SALVANDO..." : "APLICAR", pending && online && !busy, true, fs);
 	button(caA, caB, "CANCELAR", pending && !busy, false, fs);
 	button(bkA, bkB, "VOLTAR", true, false, fs);
 }
