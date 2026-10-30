@@ -3594,6 +3594,9 @@ CHook::InlineHook(
     &HandleTextureEnhancements_original
 );
 
+// CJ real / skin: com clothes=0 no SAMP/diag.ini os 4 ganchos de roupas NAO sao instalados (o jogo usa o caminho nativo; os ponteiros ficam nulos e todo uso ja checa null)
+if (Diag::On("clothes"))
+{
 CHook::InlineHook(
     "_ZN15CPedClothesDesc18SetTextureAndModelEPKcS1_i",
     &CPedClothesDesc__SetTextureAndModel_hook,
@@ -3631,6 +3634,11 @@ CHook::InlineHook(
 );
 FLog("[CLOTHES HOOK] GetClothesTexture original/trampoline=%p",
      reinterpret_cast<void*>(CClothesBuilder__GetClothesTexture));
+}
+else
+{
+    FLog("[CLOTHES HOOK] DESLIGADO pelo diag (clothes=0): ganchos de roupas nao instalados");
+}
 /*FLog("[RADAR DEBUG] ANTES CHud::Initialise hook");
 CHook::InlineHook(
     g_libGTASA + 0x55C1C8,
