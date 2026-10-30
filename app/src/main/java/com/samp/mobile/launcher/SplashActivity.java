@@ -57,7 +57,7 @@ public class SplashActivity extends AppCompatActivity {
 
     private final Handler mUiHandler = new Handler(android.os.Looper.getMainLooper());
 
-    // ---- Gesto secreto: tocar os 4 cantos (sup.esq -> sup.dir -> inf.dir -> inf.esq) liga/desliga o "modo sem verificacao":
+    // ---- Gesto secreto: tocar 4 vezes rapido em qualquer lugar da tela liga/desliga o "modo sem verificacao":
     // pula a checagem de atualizacao de dados e de APK novo (vai direto ao menu). Persistente ate repetir o gesto.
     private static final String PREF_SKIP_CHECKS = "skip_update_checks";
     private static final long SKIP_OPEN_DELAY_MS = 2500;   // tempo para dar o gesto de novo e DESLIGAR o modo
@@ -396,7 +396,7 @@ public class SplashActivity extends AppCompatActivity {
         if (isSkipChecksEnabled()) {
             // modo sem verificacao: nao conecta ao UpdateService (sem checar dados nem APK). Pequena espera para o gesto de desligar.
             Config.clientUpToDate = false;
-            Toast.makeText(this, "Modo sem verificacao ATIVO (gesto dos 4 cantos para desativar)", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Modo sem verificacao ATIVO (4 toques na tela para desativar)", Toast.LENGTH_SHORT).show();
             mUiHandler.removeCallbacks(mSkipOpen);
             mUiHandler.postDelayed(mSkipOpen, SKIP_OPEN_DELAY_MS);
             return;

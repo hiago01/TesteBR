@@ -5,27 +5,24 @@ import com.samp.mobile.launcher.util.SecretGesture;
 public class SecretGestureTest {
     static int fail = 0, n = 0;
     static void check(boolean c, String m) { n++; if (!c) { fail++; System.out.println("FALHOU: " + m); } else System.out.println("PASS " + m); }
-    static final float W = 2400, H = 1080;
-    static final float[][] C = { {50, 50}, {W - 50, 50}, {W - 50, H - 50}, {50, H - 50} };   // TL TR BR BL
-    static boolean tap(SecretGesture g, int c, long t) { return g.onTap(C[c][0], C[c][1], W, H, t); }
+    static boolean tap(SecretGesture g, long t) { return g.onTap(500, 500, 2400, 1080, t); }
 
     public static void main(String[] a) {
         SecretGesture g = new SecretGesture();
-        check(!tap(g, 0, 1000) && !tap(g, 1, 1500) && !tap(g, 2, 2000) && tap(g, 3, 2500), "TL TR BR BL rapido completa");
-        check(!tap(g, 0, 10000), "depois de completar reinicia (1 toque nao completa)");
+        check(!tap(g, 0) && !tap(g, 300) && !tap(g, 600) && tap(g, 900), "4 toques rapidos completam");
+        check(!tap(g, 5000), "depois de completar reinicia (1 toque nao completa)");
         g.reset();
-        check(!tap(g, 0, 0) && !tap(g, 1, 500) && !tap(g, 3, 1000) && !tap(g, 2, 1500) && !tap(g, 3, 2000), "ordem errada nao completa");
+        check(!tap(g, 0) && !tap(g, 300) && !tap(g, 600), "3 toques nao completam");
         g.reset();
-        check(!tap(g, 0, 0) && !tap(g, 1, 500) && !tap(g, 2, 4000) && !tap(g, 3, 4500), "passo lento (>3s) reinicia");
+        check(!tap(g, 0) && !tap(g, 300) && !tap(g, 2000) && !tap(g, 2300), "pausa maior que o limite reinicia (so 2 apos a pausa)");
         g.reset();
-        check(!tap(g, 0, 0) && !tap(g, 1, 2500) && !tap(g, 2, 5000) && !tap(g, 3, 8500), "total maior que 8 s nao completa");
+        check(!tap(g, 0) && !tap(g, 1200) && !tap(g, 2400) && tap(g, 3600), "limite de 1,2 s entre toques ainda completa");
         g.reset();
-        check(!g.onTap(W / 2, H / 2, W, H, 0) && !tap(g, 1, 100) && !tap(g, 2, 200) && !tap(g, 3, 300), "toque no meio / sem comecar no TL nao completa");
+        check(!tap(g, 0) && !tap(g, 1201) && !tap(g, 2402) && !tap(g, 3603), "1,201 s entre toques reinicia sempre");
         g.reset();
-        check(!tap(g, 0, 0) && !tap(g, 0, 500) && !tap(g, 1, 900) && !tap(g, 2, 1300) && tap(g, 3, 1700), "TL repetido recomeca e completa");
+        check(!tap(g, 0) && !tap(g, 1000) && !tap(g, 2000) && tap(g, 3000), "toques espacados 1 s dentro do total completam");
         g.reset();
-        check(!tap(g, 0, 0) && !g.onTap(W / 2, H / 2, W, H, 300) && !tap(g, 1, 600) && !tap(g, 2, 900) && !tap(g, 3, 1200), "toque no meio no meio da sequencia reinicia");
-        check(!g.onTap(0, 0, 0, 0, 0), "tela de tamanho 0 nao quebra");
+        check(!g.onTap(0, 0, 0, 0, 0) && !g.onTap(-5, -5, 0, 0, 100) && !g.onTap(1, 1, 0, 0, 200) && g.onTap(1, 1, 0, 0, 300), "posicao/tamanho ignorados (qualquer lugar)");
         System.out.println(n + " verificacoes, " + fail + " falhas");
         if (fail != 0) System.exit(1);
     }
