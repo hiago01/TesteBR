@@ -49,6 +49,9 @@ namespace
 	// O resto usa a tabela nativa MobileSettings::settings e o salvar nativo (Menu_SaveSettings).
 	// draw/bright: -1 = ainda nao definido (na 1a vez assume o valor que o motor esta usando agora, sem mudar o visual).
 	struct Cfg { int stream = 50; int draw = -1; int bright = -1; } g_cfg;   // stream: 0..100 (%) -> BASS 0..10000 (50 = padrao original)
+	// Pedido de preset grafico vindo do LAUNCHER ([maximo] preset_request / preset_request_id). O jogo aplica uma unica vez por id
+	// e grava preset_done_id. Sem pedido (id <= 0) ou ja feito: nada muda.
+	int g_reqPreset = -1, g_reqId = 0, g_doneId = 0;
 	bool g_cfgLoaded = false;
 	bool g_dirty     = false;
 
@@ -66,8 +69,10 @@ namespace
 	//    SetMusicMasterVolume / SetRadioAutoRetuneOnOff em `AudioEngine`;
 	//  * DisplayScreen::DisplayScreen monta, nesta ordem: brilho(16), efeitos visuais(0),
 	//    resolucao(1), distancia de desenho(2), sombras(5), reflexos de carros(7), legendas(24).
-	enum { N_VFX = 0, N_RES = 1, N_DRAW = 2, N_SHADOW = 5, N_REFL = 7, N_FX = 11, N_MUSIC = 12,
-	       N_RETUNE = 13, N_BRIGHT = 16, N_SUBT = 24, N_COUNT = 37 };
+	//  * ControlsScreen::ControlsScreen (toque) monta, nesta ordem: layout dos botoes(9 "FEC_TOU"), direcao por toque(3 "FEC_STE"),
+	//    acelerometro(8), inverter olhar(15), moto analogica(18), sensibilidade analogica(23 "MOB_ANA", faixa 20..45), auto subir(35).
+	enum { N_VFX = 0, N_RES = 1, N_DRAW = 2, N_STEER = 3, N_SHADOW = 5, N_REFL = 7, N_ACCEL = 8, N_TLAYOUT = 9, N_FX = 11, N_MUSIC = 12,
+	       N_RETUNE = 13, N_INVERT = 15, N_BRIGHT = 16, N_BIKE = 18, N_ANALOG = 23, N_SUBT = 24, N_CLIMB = 35, N_COUNT = 37 };
 
 	uint8_t* NativeBase()
 	{
@@ -98,6 +103,14 @@ namespace
 		if (idx == N_FX || idx == N_MUSIC || idx == N_RETUNE)
 		{
 			static auto fn = (void(*)())dlsym(CHook::lib, "_Z23Menu_ApplyAudioSettingsv");
+			if (fn) fn();
+		}
+		else if (idx == N_TLAYOUT)
+		{
+			// igual ao SelectScreen::SettingSelection::HandleInput nativo: ao mudar o layout, refaz os botoes de toque
+			// (CTouchInterface::SetupLayoutObjects, estatica, sem argumentos). O modo de direcao (idx 3) o proprio
+			// CTouchInterface::Update reaplica todo frame via SetupSteeringMode.
+			static auto fn = (void(*)())dlsym(CHook::lib, "_ZN15CTouchInterface18SetupLayoutObjectsEv");
 			if (fn) fn();
 		}
 	}
@@ -176,14 +189,17 @@ namespace
 
 	void LoadCfg()
 	{
-		g_cfgLoaded = true;
 		const std::string path = IniPath();
-		if (path.empty()) return;
+		if (path.empty()) return;          // armazenamento ainda nao pronto: tenta de novo no proximo frame
+		g_cfgLoaded = true;
 
 		CSimpleIniA ini;
 		ini.SetUnicode();
 		if (ini.LoadFile(path.c_str()) < 0) return;
 
+		g_reqPreset = (int)ini.GetLongValue("maximo", "preset_request", -1);
+		g_reqId     = (int)ini.GetLongValue("maximo", "preset_request_id", 0);
+		g_doneId    = (int)ini.GetLongValue("maximo", "preset_done_id", 0);
 		g_skid.store(ini.GetLongValue("maximo", "skidmarks", 1) != 0);
 		g_cfg.stream = std::clamp((int)ini.GetLongValue("maximo", "vol_stream", 50), 0, 100);
 		long d = ini.GetLongValue("maximo", "draw_dist", -1), b = ini.GetLongValue("maximo", "brightness", -1);
@@ -205,6 +221,7 @@ namespace
 
 		ini.SetLongValue("maximo", "skidmarks", g_skid.load() ? 1 : 0);
 		ini.SetLongValue("maximo", "vol_stream", g_cfg.stream);
+		if (g_doneId > 0) ini.SetLongValue("maximo", "preset_done_id", g_doneId);
 		if (g_cfg.draw >= 0)   ini.SetLongValue("maximo", "draw_dist", g_cfg.draw);
 		if (g_cfg.bright >= 0) ini.SetLongValue("maximo", "brightness", g_cfg.bright);
 		if (pSettings)
@@ -299,7 +316,7 @@ bool MaximoMenu::HandleRawTouch(int type, int num, int x, int y)
 namespace
 {
 	enum { K_INFO = 0, K_TOGGLE, K_SLIDER, K_ACTION, K_CHOICE };
-	enum { ID_NONE = 0, ID_SKID, ID_FPSCOUNT, ID_STREAM, ID_NATIVE, ID_RESUME, ID_QUIT, ID_PRESET };
+	enum { ID_NONE = 0, ID_SKID, ID_FPSCOUNT, ID_STREAM, ID_NATIVE, ID_RESUME, ID_QUIT, ID_PRESET, ID_CTLRESET };
 
 	struct Row { const char* label; int kind; int id; int nidx = -1; };
 
@@ -379,6 +396,17 @@ namespace
 	const Page kPageSair = { "Sair", {
 		{ "Voltar ao jogo",               K_ACTION, ID_RESUME },
 		{ "Sair do jogo",                 K_ACTION, ID_QUIT },
+	}};
+	// Mesma ordem/itens da tela nativa "Redefinir controles" (ControlsScreen, entrada por toque).
+	const Page kPageControles = { "Controles", {
+		{ "Layout dos botões (toque)",   K_CHOICE, ID_NATIVE, N_TLAYOUT },
+		{ "Direção por toque",           K_CHOICE, ID_NATIVE, N_STEER },
+		{ "Acelerômetro",                K_CHOICE, ID_NATIVE, N_ACCEL },
+		{ "Inverter olhar",              K_TOGGLE, ID_NATIVE, N_INVERT },
+		{ "Direção analógica da moto",   K_TOGGLE, ID_NATIVE, N_BIKE },
+		{ "Sensibilidade analógica",     K_SLIDER, ID_NATIVE, N_ANALOG },
+		{ "Subir automaticamente",       K_TOGGLE, ID_NATIVE, N_CLIMB },
+		{ "Restaurar padrões",           K_ACTION, ID_CTLRESET },
 	}};
 	const Page kPageNativa = { "", {
 		{ "Indisponível: o menu nativo foi desativado", K_INFO, ID_NONE },
@@ -473,6 +501,13 @@ void MaximoMenu::draw(ImGuiRenderer* r)
 		ApplyStream(g_cfg.stream);
 		InitFromEngine();
 		if (g_cfg.draw >= 0) ApplyDraw(g_cfg.draw);     // aplica a distancia salva (ou a atual do motor, se nunca mexeu)
+		if (g_reqId > 0 && g_reqId != g_doneId && g_reqPreset >= 0 && g_reqPreset < P_COUNT)
+		{
+			FLog("[MaximoMenu] aplicando preset %d pedido pelo launcher (id %d)", g_reqPreset, g_reqId);
+			ApplyPreset(g_reqPreset);
+			g_doneId = g_reqId;
+			SaveCfg();                                  // grava gta_sa.set + preset_done_id agora
+		}
 	}
 	if (g_applied) KeepSettings();                      // todo frame, menu aberto ou fechado
 
@@ -510,6 +545,7 @@ void MaximoMenu::draw(ImGuiRenderer* r)
 		case T_AUDIO: page = &kPageAudio; break;
 		case T_SAIR:  page = &kPageSair; break;
 		case T_CONFIG: page = kSubs[std::clamp(g_sub, 0, 2)]; break;
+		case T_CONTROLES: page = &kPageControles; break;
 		default:      page = &kPageNativa; break;
 	}
 	const int nRows = (int)page->rows.size();
@@ -602,6 +638,13 @@ void MaximoMenu::draw(ImGuiRenderer* r)
 					}
 					else if (row.kind == K_ACTION)
 					{
+						if (row.id == ID_CTLRESET)
+						{
+							// valor padrao da propria tabela (+0x14), igual ao "Restaurar padroes" nativo
+							static const int kIdx[] = { N_TLAYOUT, N_STEER, N_ACCEL, N_INVERT, N_BIKE, N_ANALOG, N_CLIMB };
+							for (int i : kIdx) { int32_t* d = NativeField(i, 0x14); if (d) NativeSet(i, *d); }
+							g_dirty = true;
+						}
 						if (row.id == ID_RESUME) { g_open.store(false); if (g_dirty) SaveCfg(); g_drag = Drag(); return; }
 						if (row.id == ID_QUIT)
 						{
@@ -698,6 +741,9 @@ void MaximoMenu::draw(ImGuiRenderer* r)
 			const char* s = buf;
 			if (row.id == ID_PRESET) s = (v >= 0 && v < P_COUNT) ? kPresets[v].name : "Personalizada";
 			else if (row.nidx == N_SHADOW && v == 2) s = "Avançado";
+			else if (row.nidx == N_TLAYOUT) s = (v == 0) ? "Clássico" : "Alternativo";
+			else if (row.nidx == N_STEER)   s = (v == 0) ? "Analógico" : (v == 1) ? "Botões" : "Inclinação";
+			else if (row.nidx == N_ACCEL)   s = (v == 0) ? "Desligado" : (v == 1) ? "Ligado" : "Ligado (invertido)";
 			else if (v >= mx) s = "Máximo";
 			else if (v <= mn) s = "Mínimo";
 			else snprintf(buf, sizeof(buf), "Nível %d", v);
@@ -716,7 +762,7 @@ void MaximoMenu::draw(ImGuiRenderer* r)
 
 			char buf[24];
 			// escala 0..100 mostra o valor do jogo direto; outras escalas viram porcentagem
-			snprintf(buf, sizeof(buf), "%d%%", (mx == 100) ? v : (int)std::lround(100.0f * (v - mn) / (mx - mn)));
+			snprintf(buf, sizeof(buf), "%d%%", (mx == 100 || row.nidx == N_ANALOG) ? v : (int)std::lround(100.0f * (v - mn) / (mx - mn)));
 			const ImVec2 ts = r->calculateTextSize(buf, fs);
 			r->drawText(ImVec2(trackX - 10.0f * k - ts.x, ty), cText, buf, false, fs);
 		}

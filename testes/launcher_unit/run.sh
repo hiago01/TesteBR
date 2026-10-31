@@ -13,6 +13,7 @@ java -cp out test.QueryTest
 java -cp out test.PackTest
 java -cp out test.RepairTest
 java -cp out test.IniFixTest
+java -cp out test.GraphicsPresetTest
 # Conferencia com o INIReader REAL do jogo (vendor/inih): o settings.ini ajustado precisa dar androidkeyboard=1 de verdade.
 if command -v g++ >/dev/null 2>&1; then
   V=../../app/src/main/cpp/samp/vendor/inih

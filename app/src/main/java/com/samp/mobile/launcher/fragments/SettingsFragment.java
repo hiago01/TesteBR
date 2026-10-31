@@ -45,7 +45,8 @@ public class SettingsFragment extends Fragment {
     EditText mNickName;
     SwitchCompat mKeyboardSwitch;
     SwitchCompat mVoiceSwitch;
-    SwitchCompat mModifySwitch;
+    SeekBar mPresetSeekBar;
+    TextView mPresetText;
     SwitchCompat mFPSSwitch;
     SwitchCompat mMonetSwitch;
     SeekBar mMessagesSeekBar;
@@ -71,7 +72,8 @@ public class SettingsFragment extends Fragment {
         mFPSSwitch = view.findViewById(R.id.fps_switch);
         mMonetSwitch = view.findViewById(R.id.monet_switch);
         mVoiceSwitch = view.findViewById(R.id.voice_switch);
-        mModifySwitch = view.findViewById(R.id.modify_switch);
+        mPresetSeekBar = view.findViewById(R.id.preset_seekbar);
+        mPresetText = view.findViewById(R.id.preset_name);
         mMessagesSeekBar = view.findViewById(R.id.messages_seekbar);
         mMessagesText = view.findViewById(R.id.messages_count);
         mFPSSeekBar = view.findViewById(R.id.fps_seekbar);
@@ -131,10 +133,41 @@ public class SettingsFragment extends Fragment {
         View nickCard = view.findViewById(R.id.settings_nick_card);
         if (nickCard != null) nickCard.setVisibility(View.GONE);
 
-        mModifySwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+        // "Modified data" removido da tela: fica sempre desligado.
+        new SharedPreferenceCore().setBoolean(requireContext().getApplicationContext(), "MODIFIED_DATA", false);
+
+        // Qualidade grafica (preset): padrao = Minima. O jogo aplica na proxima vez que abrir (ver GraphicsPreset).
+        mPresetSeekBar.setMax(com.samp.mobile.launcher.pack.GraphicsPreset.MAX);
+        final int savedPreset = com.samp.mobile.launcher.pack.GraphicsPreset.clamp(new SharedPreferenceCore().getInt(
+                requireContext().getApplicationContext(), "GFX_PRESET", com.samp.mobile.launcher.pack.GraphicsPreset.DEFAULT));
+        mPresetSeekBar.setProgress(savedPreset);
+        mPresetText.setText(com.samp.mobile.launcher.pack.GraphicsPreset.name(savedPreset));
+        mPresetSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
-            public void onCheckedChanged(CompoundButton compoundButton, boolean b) {
-                new SharedPreferenceCore().setBoolean(requireContext().getApplicationContext(), "MODIFIED_DATA", b);
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                mPresetText.setText(com.samp.mobile.launcher.pack.GraphicsPreset.name(progress));
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) { }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                android.content.Context app = requireContext().getApplicationContext();
+                int p = com.samp.mobile.launcher.pack.GraphicsPreset.clamp(seekBar.getProgress());
+                SharedPreferenceCore sp = new SharedPreferenceCore();
+                int id = sp.getInt(app, "GFX_PRESET_ID", 1) + 1;     // novo id = o jogo aplica de novo
+                sp.setInt(app, "GFX_PRESET", p);
+                sp.setInt(app, "GFX_PRESET_ID", id);
+                try {
+                    if (mWini != null) {
+                        mWini.put("maximo", "preset_request", p);
+                        mWini.put("maximo", "preset_request_id", id);
+                        mWini.store();
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
             }
         });
 
@@ -293,7 +326,6 @@ public class SettingsFragment extends Fragment {
         com.samp.mobile.launcher.util.FixedSettings.apply(getActivity());
         mKeyboardSwitch.setChecked(false);
         mVoiceSwitch.setChecked(true);
-        mModifySwitch.setChecked(new SharedPreferenceCore().getBoolean(requireContext().getApplicationContext(), "MODIFIED_DATA"));
         autoCompleteTextView.setSelection(titles.length - 1);
 
         int fps = new SharedPreferenceCore().getInt(getContext(), "FPS_LIMIT");

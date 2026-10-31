@@ -252,9 +252,9 @@ public class PackTest {
         r("gpu: Player e Menu (caixa mista) -> core", GameFilePolicy.gpuOf("Menu/a.etc.txd") == 0 && GameFilePolicy.gpuOf("PLAYER/b.pvr.x") == 0, "");
         r("wantedForDevice: aparelho dxt pega core+dxt, nao etc", GameFilePolicy.wantedForDevice("texdb/a.dxt.x", 1)
                 && GameFilePolicy.wantedForDevice("a.txt", 1) && !GameFilePolicy.wantedForDevice("texdb/a.etc.x", 1), "");
-        r("protegidos: lista do requisito", GameFilePolicy.isProtected("CINFO.BIN") && GameFilePolicy.isProtected("models/MINFO.BIN")
+        r("protegidos: lista atual (svconfig.ini e baixado)", GameFilePolicy.isProtected("CINFO.BIN") && GameFilePolicy.isProtected("models/MINFO.BIN")
                 && GameFilePolicy.isProtected("SAMP/settings.ini") && GameFilePolicy.isProtected("settings.ini")
-                && GameFilePolicy.isProtected("SAMP/sampvoice/svconfig.ini") && GameFilePolicy.isProtected("a/b/.DS_Store")
+                && !GameFilePolicy.isProtected("SAMP/sampvoice/svconfig.ini") && GameFilePolicy.isProtected("a/b/.DS_Store")
                 && GameFilePolicy.isProtected("x/Thumbs.db") && GameFilePolicy.isProtected("samp_log.txt")
                 && GameFilePolicy.isProtected("gta_sa.set") && GameFilePolicy.isProtected("gtasatelem.set")
                 && GameFilePolicy.isProtected("lista.txt") && GameFilePolicy.isProtected("files.json"), "");

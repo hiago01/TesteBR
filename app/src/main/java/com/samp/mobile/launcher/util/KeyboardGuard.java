@@ -103,8 +103,22 @@ public final class KeyboardGuard {
                 text = read(ini);
             }
             r.iniOk = text != null && IniFix.asBool(IniFix.read(text, "gui", "androidkeyboard"), false) == want;
+            if (r.iniOk) writeGraphicsRequest(app, ini, text, r);
         }
         return r;
+    }
+
+    /** Grava em [maximo] o preset grafico pedido no launcher (padrao: Minima). O jogo aplica 1x por id (ver GraphicsPreset). */
+    private static void writeGraphicsRequest(Context app, File ini, String text, Report r) {
+        try {
+            SharedPreferenceCore p = new SharedPreferenceCore();
+            int preset = com.samp.mobile.launcher.pack.GraphicsPreset.clamp(p.getInt(app, "GFX_PRESET", com.samp.mobile.launcher.pack.GraphicsPreset.DEFAULT));
+            int id = p.getInt(app, "GFX_PRESET_ID", 1);
+            String out = com.samp.mobile.launcher.pack.GraphicsPreset.request(text, preset, id);
+            if (!out.equals(text) && !write(ini, out)) r.notes.add("falha ao gravar o preset grafico no settings.ini");
+        } catch (RuntimeException e) {
+            r.notes.add("preset grafico nao gravado: " + e);
+        }
     }
 
     private static void analyzeIme(Context app, Report r) {
