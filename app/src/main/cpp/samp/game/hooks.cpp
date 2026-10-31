@@ -11,6 +11,11 @@
 #include "camerazoom.h"
 #include "../net/netgame.h"
 #include "../gui/gui.h"
+#include "../gui/samp_widgets/hudstate.h"
+#include "../gui/samp_widgets/minimaptap_logic.h"
+#include "../gui/samp_widgets/worldmap.h"
+#include "RW/RenderWare.h"
+#include <chrono>
 #include "Textures/TextureDatabase.h"
 #include "Textures/TextureDatabaseEntry.h"
 #include "Textures/TextureDatabaseRuntime.h"
@@ -929,6 +934,30 @@ void CSkidmarks__Render_hook()
 	CSkidmarks__Render();
 }
 
+// Toque no MINIMAPA (disco do radar do HUD) abre o /mapa. O dedo que comeca no minimapa e do minimapa (nao gira a camera).
+static bool MiniMapTouch(int type, int num, int posX, int posY)
+{
+	static MiniMapTap::Tracker s_trk;
+	using namespace std::chrono;
+	const int64_t now = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+	const ImVec2 scr = pUI ? pUI->displaySize() : ImVec2(0, 0);
+	const float gw = RsGlobal ? (float)RsGlobal->maximumWidth : 0.0f, gh = RsGlobal ? (float)RsGlobal->maximumHeight : 0.0f;
+	bool valid = (scr.x > 1.0f && scr.y > 1.0f && gw > 1.0f && gh > 1.0f) && (now - MiniMapTap::gStamp.load()) <= MiniMapTap::kFreshMs;
+	bool blocked = !pNetGame || (pUI && ((pUI->keyboard() && pUI->keyboard()->visible()) || (pUI->dialog() && pUI->dialog()->visible()) ||
+	               (pUI->spawn() && pUI->spawn()->visible()) || (pUI->splashscreen() && pUI->splashscreen()->visible()) ||
+	               (pUI->playertablist() && pUI->playertablist()->visible())));
+	if (blocked) valid = false;
+	// toque (px da tela) -> unidades do jogo (mesmo espaco do retangulo do radar)
+	const float ux = (float)posX * gw / std::max(1.0f, scr.x), uy = (float)posY * gh / std::max(1.0f, scr.y);
+	const MiniMapTap::Rect r{ MiniMapTap::gL.load(), MiniMapTap::gT.load(), MiniMapTap::gR.load(), MiniMapTap::gB.load() };
+	if (valid) valid = MiniMapTap::RectOk(r, gw, gh);
+	extern volatile bool g_bTouchCancel;
+	bool open = false;
+	const bool mine = s_trk.OnTouch(type, num, ux, uy, valid, r, now, g_bTouchCancel, open);
+	if (open) WorldMapWidget::Open();
+	return mine;
+}
+
 void (*AND_TouchEvent)(int type, int num, int posX, int posY);
 void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 {
@@ -979,6 +1008,12 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 			return;
 		// Botao P2 (passageiro): idem, o dedo que comeca nele nao vai para o jogo
 		if (pUI->passengerbutton() && pUI->passengerbutton()->onRawTouch(type, num, posX, posY))
+			return;
+		// Minimapa: tocar abre o /mapa
+		if (MiniMapTouch(type, num, posX, posY))
+			return;
+		// Botao de pulo proprio (hud_crouch): idem
+		if (pUI->jumpbutton() && pUI->jumpbutton()->onRawTouch(type, num, posX, posY))
 			return;
 
 		switch (type)
@@ -2542,6 +2577,14 @@ void InjectHooks()
     CHook::Write(g_libGTASA+0xCE8538, &COcclusion::NumOccludersOnMap);
 }
 
+// CPlayerPed::HandleSprintEnergy(bool sprinting, float rate) -> bool "pode correr". Original: gasta/recupera m_fTimeCanRun e
+// devolve false quando zera (personagem cansado). Aqui: sempre true; o gasto vira a energia da HUD (so o jogador local).
+static bool CPlayerPed__HandleSprintEnergy_hook(void* thiz, bool sprinting, float rate)
+{
+    if (!CWorld::PlayerInFocus) Hud::StaminaTick(sprinting);
+    return true;
+}
+
 void InstallSpecialHooks()
 {
     InjectHooks();
@@ -2558,6 +2601,8 @@ void InstallSpecialHooks()
     CHook::InlineHook("_ZN14MainMenuScreen6UpdateEf", &MainMenuScreen__Update_hook, &MainMenuScreen__Update);
 
     CHook::RET("_ZN4CPed31RemoveWeaponWhenEnteringVehicleEi"); // CPed::RemoveWeaponWhenEnteringVehicle
+    // Stamina NATIVA desligada (nao cansa, nunca bloqueia a corrida): a energia passa a ser a da HUD (game/stamina.h).
+    CHook::Redirect("_ZN10CPlayerPed18HandleSprintEnergyEbf", &CPlayerPed__HandleSprintEnergy_hook);
     CHook::RET("_ZN8CClothes4InitEv");                                    // CClothes::Init
     CHook::RET("_ZN8CClothes13RebuildPlayerEP10CPlayerPedb");              // CClothes::RebuildPlayer
     CHook::RET("_ZNK35CPedGroupDefaultTaskAllocatorRandom20AllocateDefaultTasksEP9CPedGroupP4CPed"); // AllocateDefaultTasks

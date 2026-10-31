@@ -57,10 +57,11 @@ public class SplashActivity extends AppCompatActivity {
 
     private final Handler mUiHandler = new Handler(android.os.Looper.getMainLooper());
 
-    // ---- Gesto secreto: tocar 4 vezes rapido em qualquer lugar da tela liga/desliga o "modo sem verificacao":
-    // pula a checagem de atualizacao de dados e de APK novo (vai direto ao menu). Persistente ate repetir o gesto.
+    // ---- Gesto secreto na Splash: 4 toques rapidos em qualquer lugar LIGAM o "modo sem verificacao" (pula a checagem de
+    // atualizacao de dados e de APK novo, vai direto ao menu); com ele ligado, 3 toques DESLIGAM. Vale so para ESTA abertura:
+    // o modo nunca fica gravado para as proximas (ver onCreate).
     private static final String PREF_SKIP_CHECKS = "skip_update_checks";
-    private static final long SKIP_OPEN_DELAY_MS = 2500;   // tempo para dar o gesto de novo e DESLIGAR o modo
+    private static final long SKIP_OPEN_DELAY_MS = 3500;   // tempo para dar os 3 toques e DESLIGAR o modo antes de abrir o menu
     private final SecretGesture mSecretGesture = new SecretGesture();
     private final Runnable mSkipOpen = new Runnable() {
         @Override public void run() { if (!isFinishing() && !isDestroyed()) openMain(); }
@@ -77,15 +78,17 @@ public class SplashActivity extends AppCompatActivity {
         if (ev.getActionMasked() == android.view.MotionEvent.ACTION_UP && mInHandler != null
                 && getResources().getBoolean(R.bool.secret_gesture_enabled)) {
             final View root = getWindow().getDecorView();
-            if (mSecretGesture.onTap(ev.getRawX(), ev.getRawY(), root.getWidth(), root.getHeight(), android.os.SystemClock.uptimeMillis())) {
+            // 4 toques ATIVAM o modo sem verificacao; com ele ligado, 3 toques DESLIGAM.
+            final int target = isSkipChecksEnabled() ? SecretGesture.TAPS_OFF : SecretGesture.TAPS;
+            if (mSecretGesture.onTap(ev.getRawX(), ev.getRawY(), root.getWidth(), root.getHeight(), android.os.SystemClock.uptimeMillis(), target)) {
                 final boolean on = !isSkipChecksEnabled();
                 try { getSharedPreferences("com.samp.mobile", MODE_PRIVATE).edit().putBoolean(PREF_SKIP_CHECKS, on).apply(); }
                 catch (RuntimeException ignored) { }
-                Toast.makeText(this, on ? "Modo sem verificacao: ATIVADO (nao checa atualizacao/APK). Repita o gesto para desativar."
+                Toast.makeText(this, on ? "Modo sem verificacao: ATIVADO (nao checa atualizacao/APK). 3 toques para desativar."
                                         : "Modo sem verificacao: DESATIVADO", Toast.LENGTH_LONG).show();
                 mUiHandler.removeCallbacks(mSkipOpen);
                 mUiHandler.removeCallbacks(mLoadTimeout);
-                if (on) mUiHandler.postDelayed(mSkipOpen, 800);   // sai ja para o menu
+                if (on) mUiHandler.postDelayed(mSkipOpen, SKIP_OPEN_DELAY_MS);   // sai para o menu depois de dar tempo dos 3 toques que desligam
                 else restartStartup();                            // volta a checar
             }
         }

@@ -12,6 +12,8 @@
 #include "sprite2d.h"
 #include "../vendor/armhook/patch.h"
 #include "Scene.h"
+#include "../gui/samp_widgets/minimaptap_logic.h"
+#include <chrono>
 #include "RW/RenderWare.h"
 #include "../gui/gui.h"
 
@@ -1141,6 +1143,14 @@ if (thiz)
 
     if (offset == 0xC1FA30)
     {
+
+     // minimapa: guarda o retangulo do disco do radar (toque no minimapa abre o /mapa; ver game/hooks.cpp)
+     {
+         using namespace std::chrono;
+         MiniMapTap::gL.store(std::min(posn.left, posn.right));   MiniMapTap::gR.store(std::max(posn.left, posn.right));
+         MiniMapTap::gT.store(std::min(posn.top, posn.bottom));   MiniMapTap::gB.store(std::max(posn.top, posn.bottom));
+         MiniMapTap::gStamp.store(duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
+     }
 
      CRect radarRect = posn;
 

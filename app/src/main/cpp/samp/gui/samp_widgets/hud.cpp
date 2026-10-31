@@ -6,6 +6,10 @@
 #include "../../net/localplayer.h"
 #include "../../vendor/stb/stb_image.h"   // implementacao (STB_IMAGE_IMPLEMENTATION) esta em game/sprite2d.cpp
 #include "hudatlas.h"
+#include "../../game/stamina.h"
+
+#include <chrono>
+#include <mutex>
 
 #include <algorithm>
 #include <cmath>
@@ -26,6 +30,32 @@ namespace Hud
 {
 	Data g;
 
+	namespace
+	{
+		std::mutex g_stMutex;
+		Stamina    g_st;
+		long long  g_stLastMs = 0;
+		int        g_stServerPending = -1;   // energia vinda do servidor, ainda nao consumida pelo StaminaTick
+	}
+
+	void StaminaTick(bool sprinting)
+	{
+		using namespace std::chrono;
+		const long long now = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+		std::lock_guard<std::mutex> lk(g_stMutex);
+		const float dt = g_stLastMs == 0 ? 0.0f : (float)(now - g_stLastMs) / 1000.0f;
+		g_stLastMs = now;
+		if (g_stServerPending >= 0) { g_st.OnServer(g_stServerPending); g_stServerPending = -1; }
+		g_st.Tick(sprinting, dt);
+		g.energy.store(g_st.Percent());
+	}
+
+	bool CanSprint()
+	{
+		std::lock_guard<std::mutex> lk(g_stMutex);
+		return g_st.CanSprint();
+	}
+
 	void OnMoneyGiven(int amount)
 	{
 		g.money.fetch_add(amount);
@@ -44,6 +74,10 @@ namespace Hud
 		g.hunger.store(std::min<int>(hunger, 100));
 		g.thirst.store(std::min<int>(thirst, 100));
 		g.energy.store(std::min<int>(energy, 100));
+		{
+			std::lock_guard<std::mutex> lk(g_stMutex);
+			g_stServerPending = std::min<int>(energy, 100);   // vira o valor local so se mudou (ver Stamina::OnServer)
+		}
 
 		if (flags & 2)
 		{
@@ -62,6 +96,12 @@ namespace Hud
 		g.hunger.store(100);
 		g.thirst.store(100);
 		g.energy.store(100);
+		{
+			std::lock_guard<std::mutex> lk(g_stMutex);
+			g_st.Reset();
+			g_stServerPending = -1;
+			g_stLastMs = 0;
+		}
 		g.money.store(0);
 		g.moneyFromServer.store(false);
 		g.slotA.store(0);
@@ -133,7 +173,7 @@ namespace Hud
 			const int v = atoi(a[2].c_str());
 			if (a[1] == "fome")     { g.hunger.store(std::clamp(v, 0, 100)); return "[HUD] fome ok"; }
 			if (a[1] == "sede")     { g.thirst.store(std::clamp(v, 0, 100)); return "[HUD] sede ok"; }
-			if (a[1] == "energia")  { g.energy.store(std::clamp(v, 0, 100)); return "[HUD] energia ok"; }
+			if (a[1] == "energia")  { std::lock_guard<std::mutex> lk(g_stMutex); g_st.value = (float)std::clamp(v, 0, 100); g_st.tired = g_st.value <= 0.0f; g.energy.store(std::clamp(v, 0, 100)); return "[HUD] energia ok"; }
 			if (a[1] == "dinheiro") { g.money.store(v); g.moneyFromServer.store(true); return "[HUD] dinheiro ok"; }
 			if (a[1] == "extra")    { g.extra.store(v); return "[HUD] extra ok"; }
 			if (a[1] == "pessoa")

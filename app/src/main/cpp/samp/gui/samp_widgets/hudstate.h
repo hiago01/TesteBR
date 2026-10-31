@@ -51,6 +51,11 @@ namespace Hud
 	void OnServerPacket(uint8_t flags, uint8_t hunger, uint8_t thirst, uint8_t energy,
 						int32_t money, uint16_t slotA, uint16_t slotB, int32_t extra);
 
+	// Folego do jogador local (game/stamina.h): a energia da HUD cai correndo e sobe andando/parado.
+	// StaminaTick e chamado pelo hook de CPlayerPed::HandleSprintEnergy (so jogador local); CanSprint() e lido por game/movemode.cpp.
+	void StaminaTick(bool sprinting);
+	bool CanSprint();
+
 	// Nova conexao: volta tudo ao padrao.
 	void Reset();
 
