@@ -126,6 +126,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
     }
 
     public void exitGame(){
+        markGameRunning(false);
         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(false);
 
         finishAndRemoveTask();
@@ -240,6 +241,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
 
         // CHAVE GERAL do teclado: false = teclado do ANDROID em todo o projeto (chat + dialogos, View Java CustomKeyboard);
         // true = teclado NATIVO (C++/ImGui). O lado C++ tem a chave Keyboard::kNativeEnabled (keyboard.h): mantenha as duas iguais.
+        markGameRunning(true);   // se o processo cair, o launcher avisa na proxima abertura (ver MainActivity)
         mKeyboard = NATIVE_KEYBOARD ? null : new CustomKeyboard(this);
 
         mDialog = new DialogManager(this);
@@ -272,6 +274,13 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         }
 
         requestMicrophoneIfNeeded();
+    }
+
+    public static final String PREF_GAME_RUNNING = "game_running";
+
+    private void markGameRunning(boolean running) {
+        try { getSharedPreferences("com.samp.mobile", MODE_PRIVATE).edit().putBoolean(PREF_GAME_RUNNING, running).commit(); }
+        catch (RuntimeException ignored) { }
     }
 
     private static final int REQ_RECORD_AUDIO = 77;
@@ -374,6 +383,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
     @Override
     public void onDestroy() {
         Log.i(TAG, "**** onDestroy");
+        if (isFinishing()) markGameRunning(false);   // saida normal (o Android so recria o launcher se o processo cair)
         if (mLoadingScreen != null) mLoadingScreen.release();
         if (mMusicCard != null) mMusicCard.dismiss();
         MaximoMusic.get(this).release(); // a Activity do jogo acabou: libera o MediaPlayer

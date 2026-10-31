@@ -2,6 +2,7 @@ package com.samp.mobile.launcher;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.os.Build;
@@ -156,6 +157,15 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "Use original launcher! No remake", Toast.LENGTH_LONG).show();
             return;
         }
+
+        // O jogo terminou sem passar pela saida normal (queda do app, morte do processo): avisa e limpa o marcador.
+        try {
+            SharedPreferences sp = getSharedPreferences("com.samp.mobile", MODE_PRIVATE);
+            if (sp.getBoolean(com.samp.mobile.game.SAMP.PREF_GAME_RUNNING, false)) {
+                sp.edit().putBoolean(com.samp.mobile.game.SAMP.PREF_GAME_RUNNING, false).commit();
+                Toast.makeText(this, "O jogo foi encerrado inesperadamente. Se repetir, abra Solucoes de problemas (engrenagem).", Toast.LENGTH_LONG).show();
+            }
+        } catch (RuntimeException ignored) { }
 
         mQueue = Volley.newRequestQueue(getApplicationContext());
         mQueryExecutor = Executors.newSingleThreadExecutor();

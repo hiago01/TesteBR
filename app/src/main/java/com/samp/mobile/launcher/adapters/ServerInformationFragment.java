@@ -173,7 +173,7 @@ public class ServerInformationFragment extends Dialog {
         }
         com.samp.mobile.launcher.util.MaximoMusic.get(activity).enterGameMode();
         activity.startActivity(new Intent(activity, SAMP.class));
-        activity.finish();
+        // NAO fecha o launcher: ele fica na pilha, atras do jogo. Se o jogo cair, o Android recria esta tela (home do launcher).
     }
 
 }

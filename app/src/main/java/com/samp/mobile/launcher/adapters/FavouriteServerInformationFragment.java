@@ -186,15 +186,13 @@ public class FavouriteServerInformationFragment extends Dialog {
                     }
                     else {
                         com.samp.mobile.launcher.util.MaximoMusic.get(act).enterGameMode();
-                        act.startActivity(new Intent(act, SAMP.class));
-                        act.finish();
+                        act.startActivity(new Intent(act, SAMP.class));   // launcher continua na pilha (volta nele se o jogo cair)
                         dismiss();
                     }
                 }
                 else {
                     com.samp.mobile.launcher.util.MaximoMusic.get(act).enterGameMode();
-                        act.startActivity(new Intent(act, SAMP.class));
-                    act.finish();
+                        act.startActivity(new Intent(act, SAMP.class));   // launcher continua na pilha (volta nele se o jogo cair)
                     dismiss();
                 }
             }
