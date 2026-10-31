@@ -60,6 +60,14 @@ public final class GameFilePolicy {
         return JUNK_BASENAMES.contains(base);
     }
 
+    /** Lixo de SO que nunca deve ser instalado (.DS_Store, Thumbs.db, desktop.ini, .htaccess). */
+    public static boolean isJunk(String relPath) {
+        if (relPath == null) return true;
+        String l = relPath.toLowerCase(Locale.ROOT);
+        int slash = l.lastIndexOf('/');
+        return JUNK_BASENAMES.contains(slash >= 0 ? l.substring(slash + 1) : l);
+    }
+
     public static boolean isProtected(String relPath) {
         return isInternal(relPath) || (protectGenerated && isGenerated(relPath));
     }

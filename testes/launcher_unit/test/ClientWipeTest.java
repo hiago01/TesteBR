@@ -13,14 +13,15 @@ public class ClientWipeTest {
         File root = Files.createTempDirectory("wipe").toFile();
         String[] gone = { "texdb/gta3/gta3.txt", "texdb/touch.img", "SAMP/dff/x.dff", "SAMP/col/y.col", "CINFO.BIN", "CINFO.BIN.bak-1", "cinfo.bin", "models/minfo.bin",
                 "SAMP/cinfo.sig", "SAMP/col_index.txt", "installed.json", ".downloads/core.zip.part", ".staging/a/b.bin", ".backup/c", "lista.txt", "files.json", "gta3.img" };
-        String[] kept = { "settings.ini", "SAMP/settings.ini", "gta_sa.set", "gtasatelem.set", "SAMP/favorites.json", "SAMP/sampvoice/svconfig.ini", "SAMP/diag.ini", "samp_log.txt", "SAMP/SVLOG.TXT" };
+        String[] kept = { "settings.ini", "SAMP/settings.ini", "gta_sa.set", "gtasatelem.set", "SAMP/favorites.json", "SAMP/sampvoice/svconfig.ini", "samp_log.txt", "SAMP/SVLOG.TXT" };
         for (String s : gone) put(root, s);
         for (String s : kept) put(root, s);
         ClientWipe.Result r = ClientWipe.wipe(root);
         boolean allGone = true; for (String s : gone) if (new File(root, s).exists()) { allGone = false; System.out.println("  restou: " + s); }
         boolean allKept = true; for (String s : kept) if (!new File(root, s).exists()) { allKept = false; System.out.println("  sumiu: " + s); }
         check(allGone, "apaga jogo, caches, installed.json e pastas do instalador");
-        check(allKept, "mantem configuracoes, favoritos, log e diag.ini (sem diferenciar caixa)");
+        check(allKept, "mantem configuracoes, favoritos e log (sem diferenciar caixa)");
+        check(!ClientWipe.isKept("SAMP/diag.ini"), "diag.ini NAO e mantido (vem do servidor)");
         check(r.deleted == gone.length && r.kept == kept.length && r.failed == 0, "contagem " + r);
         check(!new File(root, "texdb").exists() && !new File(root, ".downloads").exists(), "pastas vazias removidas");
         check(new File(root, "SAMP").isDirectory(), "pasta com arquivo mantido continua");

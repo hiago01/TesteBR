@@ -495,10 +495,9 @@ public class UpdateService extends Service {
             FilesData fileData = new FilesData(o.getString("name"), o.getLong("size"), o.getString("path"), o.optString("url", ""));
             String name = fileData.getName();
             String path = fileData.getPath();
-            // Arquivos gerados pelo jogo/launcher no celular: nunca baixar nem sobrescrever (lista do requisito + nomes do original).
-            if (name.equals("samp_log.txt") || name.equals("svlog.txt") || name.equals("gtasatelem.set")
-                    || name.equals("GTASAMP10.b") || name.equals(".htaccess") || name.equals("gta_sa.set")
-                    || name.equals("settings.ini") || GameFilePolicy.isInternal(path) || GameFilePolicy.isGenerated(path)) {
+            // TESTE (etapa 0): TUDO que esta no files.json e instalado, inclusive caches/configs/diag.ini. So fica de fora
+            // o interno do launcher (installed.json, .staging...) e lixo de SO (.DS_Store, Thumbs.db, .htaccess).
+            if (GameFilePolicy.isInternal(path) || GameFilePolicy.isJunk(path)) {
                 continue;
             }
             // A pasta SAMP/ vem do samp.json (nada dela e ignorado); o files.json so e usado para ela se nao houver samp.json.
