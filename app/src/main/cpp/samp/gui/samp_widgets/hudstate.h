@@ -39,6 +39,7 @@ namespace Hud
 		std::atomic<int>   slotB{0};               // pilula "pessoa": maximo (0 = nao mostra "/max")
 		std::atomic<int>   extra{0};               // pilula "estrela"
 		std::atomic<float> scale{1.0f};            // multiplicador de tamanho (/hud escala)
+		std::atomic<bool>  lights{true};           // luzes de natal sobre o logo (/hud luzes on|off)
 	};
 
 	extern Data g;

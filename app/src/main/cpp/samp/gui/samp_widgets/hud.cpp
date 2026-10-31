@@ -159,6 +159,13 @@ namespace Hud
 
 		if (a[0] == "reset") { Reset(); return "[HUD] resetada"; }
 
+		if (a[0] == "luzes")
+		{
+			if (a.size() >= 2 && a[1] == "off") { g.lights.store(false); return "[HUD] luzes de natal desligadas"; }
+			if (a.size() >= 2 && a[1] == "on")  { g.lights.store(true);  return "[HUD] luzes de natal ligadas"; }
+			return "[HUD] uso: /hud luzes on|off";
+		}
+
 		if (a[0] == "escala" && a.size() >= 2)
 		{
 			float v = (float)atof(a[1].c_str());
@@ -185,7 +192,7 @@ namespace Hud
 			}
 		}
 
-		return "[HUD] uso: /hud | on | off | teste | reset | escala <0.5-2.5> | "
+		return "[HUD] uso: /hud | on | off | teste | reset | escala <0.5-2.5> | luzes on|off | "
 			   "set fome|sede|energia <0-100> | set dinheiro|extra <n> | set pessoa <a> [max]";
 	}
 }
@@ -292,6 +299,7 @@ namespace
 	constexpr float kMargin   = 30.0f;    // distancia da borda direita
 	constexpr float kTop      = 8.0f;     // distancia do topo (logo)
 	constexpr float kLogoH    = 66.0f;    // altura do logo
+	constexpr bool  kChristmasLights = true;   // chave geral das luzes de natal sobre o logo
 	constexpr float kLogoTop  = 8.0f;     // distancia do topo da tela ao logo (logo centralizado na horizontal)
 	constexpr float kLogoGap  = 8.0f;     // logo -> linha 1
 	constexpr float kRadius   = 20.0f;    // raio dos circulos
@@ -395,6 +403,90 @@ namespace
 		return ImColor((int)(a.Value.x * 255.0f * (1.0f - t) + b.Value.x * 255.0f * t),
 					   (int)(a.Value.y * 255.0f * (1.0f - t) + b.Value.y * 255.0f * t),
 					   (int)(a.Value.z * 255.0f * (1.0f - t) + b.Value.z * 255.0f * t), 255);
+	}
+
+	// Pisca-pisca de natal sobre o logo: 3 festoes de fio verde com lampadas coloridas que acendem em ondas.
+	// a/b = caixa do logo; S = escala da HUD. So desenha primitivas (linha/poligono), sem textura.
+	void DrawChristmasLights(ImGuiRenderer* r, const ImVec2& a, const ImVec2& b, float S)
+	{
+		using namespace std::chrono;
+		const double t = (double)duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count() / 1000.0;
+
+		static const ImColor kBulb[5] = {
+			ImColor(235,  40,  45, 255),   // vermelho
+			ImColor( 60, 210,  80, 255),   // verde
+			ImColor(255, 200,  40, 255),   // amarelo
+			ImColor( 60, 150, 255, 255),   // azul
+			ImColor(255, 255, 255, 255),   // branco
+		};
+
+		const float w      = b.x - a.x;
+		const float lh     = b.y - a.y;
+		const float ext    = w * 0.04f;                 // o fio passa um pouco das bordas do logo
+		const float x0     = a.x - ext, x1 = b.x + ext;
+		const float yAnch  = a.y + lh * 0.06f;          // onde o fio prende
+		const float sag    = lh * 0.20f;                // quanto o festao cai
+		constexpr int kSwags = 3;
+		constexpr int kPerSwag = 6;                     // lampadas por festao
+		constexpr int kSeg = 14;                        // segmentos do fio por festao
+
+		const ImColor wire(18, 70, 30, 255);
+		const float wireW = std::max(1.2f, 1.7f * S);
+		const float swagW = (x1 - x0) / (float)kSwags;
+
+		int idx = 0;
+		for (int s = 0; s < kSwags; s++)
+		{
+			const float sx0 = x0 + swagW * (float)s;
+
+			// fio (parabola: cai no meio de cada festao)
+			ImVec2 pts[kSeg + 1];
+			for (int i = 0; i <= kSeg; i++)
+			{
+				const float u = (float)i / (float)kSeg;
+				pts[i] = ImVec2(sx0 + swagW * u, yAnch + sag * 4.0f * u * (1.0f - u));
+			}
+			r->drawPolyline(pts, kSeg + 1, wire, false, wireW);
+
+			// lampadas penduradas no fio
+			for (int k = 0; k < kPerSwag; k++, idx++)
+			{
+				const float u  = ((float)k + 0.5f) / (float)kPerSwag;
+				const float px = sx0 + swagW * u;
+				const float py = yAnch + sag * 4.0f * u * (1.0f - u);
+
+				// brilho 0.30..1.0, onda que anda pela fileira
+				const double ph = t * 1.6 + (double)idx * 0.55;
+				const float  br = 0.30f + 0.70f * (0.5f + 0.5f * (float)std::sin(ph * 2.0 * kPi * 0.5));
+				const ImColor base = kBulb[(idx + (int)(t * 0.5)) % 5];
+
+				const float bw = 3.4f * S;      // meia largura da lampada
+				const float bh = 5.2f * S;      // altura da lampada
+				const float cy = py + 2.0f * S + bh * 0.5f;
+
+				// soquete
+				r->drawRect(ImVec2(px - 1.6f * S, py), ImVec2(px + 1.6f * S, py + 2.4f * S), ImColor(30, 30, 30, 255), true);
+
+				// halo
+				const ImColor glow((int)(base.Value.x * 255), (int)(base.Value.y * 255), (int)(base.Value.z * 255), (int)(70.0f * br));
+				FillCircle(r, ImVec2(px, cy), bw * 2.3f, glow);
+
+				// corpo da lampada (oval) + ponto de luz
+				constexpr int N = 14;
+				ImVec2 oval[N];
+				for (int i = 0; i < N; i++)
+				{
+					const float ang = 2.0f * kPi * (float)i / (float)N;
+					oval[i] = ImVec2(px + std::cos(ang) * bw, cy + std::sin(ang) * bh * 0.5f);
+				}
+				const ImColor body((int)(base.Value.x * 255 * (0.35f + 0.65f * br)),
+								   (int)(base.Value.y * 255 * (0.35f + 0.65f * br)),
+								   (int)(base.Value.z * 255 * (0.35f + 0.65f * br)), 255);
+				r->drawConvexPolyFilled(oval, N, body);
+				FillCircle(r, ImVec2(px - bw * 0.25f, cy - bh * 0.15f), bw * 0.32f,
+						   ImColor(255, 255, 255, (int)(170.0f * br)));
+			}
+		}
 	}
 
 	// Circulo de status (vida / colete / fome / energia / sede): cor + icone + anel de nivel.
@@ -538,6 +630,15 @@ void HudInfo::draw(ImGuiRenderer* r)
 			const ImVec2 ts = r->calculateTextSize(std::string("MAXIMO RP"), lfs);
 			r->drawText(ImVec2((screen.x - ts.x) * 0.5f, a.y + (lh - ts.y) * 0.5f), kWhite, std::string("MAXIMO RP"), true, lfs);
 		}
+	}
+
+	// luzes de natal sobre o logo (desligar: /hud luzes off ou kChristmasLights = false)
+	if (kChristmasLights && Hud::g.lights.load())
+	{
+		const float lh = kLogoH * S;
+		const float lw = lh * ((float)HudAtlas::kLogo.w / (float)HudAtlas::kLogo.h);
+		const float lx = (screen.x - lw) * 0.5f;
+		DrawChristmasLights(r, ImVec2(lx, kLogoTop * S), ImVec2(lx + lw, kLogoTop * S + lh), S);
 	}
 
 	// ------------------------------------------------------------------ linha 1: status
