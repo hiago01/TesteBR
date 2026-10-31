@@ -83,6 +83,7 @@ void ReadSettingFile()
 	fclose(fp);*/
 
 	pSettings = new CSettings();
+	CrashReport::SetIdentity(pSettings->Get().szNickName, pSettings->Get().szHost, pSettings->Get().iPort);   // ja identifica o jogador em crashes antes de conectar
 
 	firebase::crashlytics::SetUserId(pSettings->Get().szNickName);
 }

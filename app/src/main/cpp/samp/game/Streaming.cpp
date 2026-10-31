@@ -246,14 +246,16 @@ static int CdStreamRead_guard(int channel, void* buf, uint32_t offset, uint32_t 
                 int bad = 0;
                 for (int32 m = 0; m < (int32)RESOURCE_ID_TOTAL; m++) {
                     const CStreamingInfo& q = CStreaming::ms_aInfoForModel[m];
-                    if (q.m_nCdSize == 0) continue;
-                    if (q.m_nImgId >= TOTAL_IMG_ARCHIVES || q.m_nCdSize > 0x40000 || q.m_nLoadState == LOADSTATE_READING) {
+                    // CAUSA PROVAVEL (logs 3x de 2026-10-31): modelo PEDIDO/lendo mas SEM entrada no IMG (cdSize==0) -> o nativo
+                    // usa posn/setores nao inicializados da pilha (varia a cada execucao = ponteiro). Lista esses modelos.
+                    const bool noImgEntry = q.m_nCdSize == 0 && (q.m_nLoadState == LOADSTATE_REQUESTED || q.m_nLoadState == LOADSTATE_READING);
+                    if (noImgEntry || (q.m_nCdSize != 0 && (q.m_nImgId >= TOTAL_IMG_ARCHIVES || q.m_nCdSize > 0x40000 || q.m_nLoadState == LOADSTATE_READING))) {
                         if (bad++ < 40)
                             FLog("[STREAM][BAD] varredura: modelId=%d imgId=%u cdPosn=0x%X cdSize=%u loadState=%d", (int)m,
                                  (unsigned)q.m_nImgId, (unsigned)q.m_nCdPosn, (unsigned)q.m_nCdSize, (int)q.m_nLoadState);
                     }
                 }
-                FLog("[STREAM][BAD] varredura: %d modelos suspeitos (imgId>=%d, tamanho>0x40000 ou READING)", bad, (int)TOTAL_IMG_ARCHIVES);
+                FLog("[STREAM][BAD] varredura: %d modelos suspeitos (pedido SEM entrada no IMG, imgId>=%d, tamanho>0x40000 ou READING)", bad, (int)TOTAL_IMG_ARCHIVES);
                 CrashReport::Mark("scan-bad", bad, (int)arch);
             }
         }
