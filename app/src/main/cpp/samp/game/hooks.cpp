@@ -2558,6 +2558,9 @@ void InstallSpecialHooks()
     CHook::InlineHook("_ZN14MainMenuScreen6UpdateEf", &MainMenuScreen__Update_hook, &MainMenuScreen__Update);
 
     CHook::RET("_ZN4CPed31RemoveWeaponWhenEnteringVehicleEi"); // CPed::RemoveWeaponWhenEnteringVehicle
+    CHook::RET("_ZN8CClothes4InitEv");                                    // CClothes::Init
+    CHook::RET("_ZN8CClothes13RebuildPlayerEP10CPlayerPedb");              // CClothes::RebuildPlayer
+    CHook::RET("_ZNK35CPedGroupDefaultTaskAllocatorRandom20AllocateDefaultTasksEP9CPedGroupP4CPed"); // AllocateDefaultTasks
 
     CHook::InstallPLT(g_libGTASA + 0x840708, &RLEDecompress_hook, &RLEDecompress);
 
