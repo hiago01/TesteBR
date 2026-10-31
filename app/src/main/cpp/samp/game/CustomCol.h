@@ -21,6 +21,7 @@
 // LOG (samp_log.txt): prefixos [COL] e [CINFO]
 // ---------------------------------------------------------------------------
 
+#include "CustomImg.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -64,6 +65,7 @@ namespace CustomCol
     inline bool Exists(const std::string& p) { return ::access(p.c_str(), F_OK) == 0; }
     inline bool Marker(const char* rel)
     {
+        if (!CustomImg::kCustomContent && !strcmp(rel,"col_off.on")) return true;   // chave mestra desligada: COL original (a assinatura do CINFO muda e o guard renomeia o cache antigo uma vez)
         const std::string r = Root();
         return !r.empty() && Exists(r + "SAMP/" + rel);
     }

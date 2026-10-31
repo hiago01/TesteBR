@@ -61,8 +61,12 @@ namespace CustomImg
     }
 
     // Sem raiz de storage nao da para checar: assume que existe (comportamento igual ao dos outros IMGs).
+    // CHAVE MESTRA: false = nenhum conteudo custom (touch.img, banco touch, mistura de COL, CINFO.BIN) e' usado; jogo 100% original.
+    constexpr bool kCustomContent = false;
+
     inline bool ImgPresent()
     {
+        if (!kCustomContent) return false;
         const std::string r = Root();
         if (r.empty()) return true;
         return ::access((r + "texdb/touch.img").c_str(), R_OK) == 0;
@@ -70,6 +74,7 @@ namespace CustomImg
 
     inline bool DbPresent()
     {
+        if (!kCustomContent) return false;
         const std::string r = Root();
         if (r.empty()) return true;
         struct stat st {};

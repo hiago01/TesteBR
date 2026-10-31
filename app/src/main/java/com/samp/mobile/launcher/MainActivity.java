@@ -3,6 +3,9 @@ package com.samp.mobile.launcher;
 import android.Manifest;
 import android.app.Activity;
 import android.content.SharedPreferences;
+import java.io.ByteArrayOutputStream;
+import java.io.FileInputStream;
+import com.google.firebase.crashlytics.FirebaseCrashlytics;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.os.Build;
@@ -166,6 +169,8 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, "O jogo foi encerrado inesperadamente. Se repetir, abra Solucoes de problemas (engrenagem).", Toast.LENGTH_LONG).show();
             }
         } catch (RuntimeException ignored) { }
+
+        reportLastCrash();
 
         mQueue = Volley.newRequestQueue(getApplicationContext());
         mQueryExecutor = Executors.newSingleThreadExecutor();
@@ -850,5 +855,46 @@ public class MainActivity extends AppCompatActivity {
         } else {
             confirmExit();
         }
+    }
+
+    /**
+     * Relatorio de crash por jogador: se o jogo gravou SAMP/last_crash.txt (ver crashreport.h), envia ao Crashlytics como
+     * evento nao-fatal com nick, servidor, aparelho, Android, GPU e versao, e renomeia o arquivo para nao reenviar.
+     * Tambem religa a coleta (exitGame/Splash a desligavam e nunca religavam).
+     */
+    private void reportLastCrash() {
+        try {
+            FirebaseCrashlytics cl = FirebaseCrashlytics.getInstance();
+            cl.setCrashlyticsCollectionEnabled(true);
+            File f = new File(getExternalFilesDir(null), "SAMP/last_crash.txt");
+            if (!f.exists() || f.length() == 0 || f.length() > 16384) { if (f.exists() && f.length() > 16384) f.delete(); return; }
+            ByteArrayOutputStream bo = new ByteArrayOutputStream();
+            try (FileInputStream in = new FileInputStream(f)) {
+                byte[] b = new byte[2048]; int n;
+                while ((n = in.read(b)) > 0) bo.write(b, 0, n);
+            }
+            String txt = bo.toString("UTF-8");
+            String nick = "", server = "", sig = "", pc = "";
+            for (String line : txt.split("\n")) {
+                if (line.startsWith("nick=")) nick = line.substring(5);
+                else if (line.startsWith("server=")) server = line.substring(7);
+                else if (line.startsWith("signal=")) sig = line.substring(7);
+                else if (line.startsWith("pc_gta=")) pc = line.substring(7);
+            }
+            if (!nick.isEmpty()) cl.setUserId(nick);
+            cl.setCustomKey("player", nick);
+            cl.setCustomKey("server", server);
+            cl.setCustomKey("signal", sig);
+            cl.setCustomKey("pc_gta", pc);
+            cl.setCustomKey("device", Build.MANUFACTURER + " " + Build.MODEL);
+            cl.setCustomKey("android", Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")");
+            cl.setCustomKey("abi", Build.SUPPORTED_ABIS.length > 0 ? Build.SUPPORTED_ABIS[0] : "?");
+            cl.log(txt);
+            cl.recordException(new RuntimeException("NativeCrash sig=" + sig + " pc_gta=" + pc + " player=" + nick));
+            cl.sendUnsentReports();
+            File done = new File(f.getParentFile(), "last_crash_enviado.txt");
+            if (done.exists()) done.delete();
+            f.renameTo(done);
+        } catch (Throwable ignored) { }
     }
 }

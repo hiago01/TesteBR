@@ -22,6 +22,7 @@
 #include "settings.h"
 
 #include "crashlytics.h"
+#include "crashreport.h"
 
 /*
 Peerapol Unarak
@@ -125,6 +126,7 @@ extern uintptr_t g_dwLastRetAddrCrash;
 void handler(int signum, siginfo_t *info, void* contextPtr)
 {
 	ucontext* context = (ucontext_t*)contextPtr;
+	CrashReport::Write(signum, info, contextPtr);   // 1o: grava o relatorio (o handler anterior encerra o processo)
 
 	if (act_old.sa_sigaction)
 	{
@@ -146,6 +148,7 @@ void handler(int signum, siginfo_t *info, void* contextPtr)
 void handler1(int signum, siginfo_t *info, void* contextPtr)
 {
 	ucontext* context = (ucontext_t*)contextPtr;
+	CrashReport::Write(signum, info, contextPtr);   // 1o: grava o relatorio (o handler anterior encerra o processo)
 
 	if (act1_old.sa_sigaction)
 	{
@@ -167,6 +170,7 @@ void handler1(int signum, siginfo_t *info, void* contextPtr)
 void handler2(int signum, siginfo_t *info, void* contextPtr)
 {
 	ucontext* context = (ucontext_t*)contextPtr;
+	CrashReport::Write(signum, info, contextPtr);   // 1o: grava o relatorio (o handler anterior encerra o processo)
 
 	if (act2_old.sa_sigaction)
 	{
@@ -188,6 +192,7 @@ void handler2(int signum, siginfo_t *info, void* contextPtr)
 void handler3(int signum, siginfo_t *info, void* contextPtr)
 {
 	ucontext* context = (ucontext_t*)contextPtr;
+	CrashReport::Write(signum, info, contextPtr);   // 1o: grava o relatorio (o handler anterior encerra o processo)
 
 	if (act3_old.sa_sigaction)
 	{
@@ -208,6 +213,7 @@ void handler3(int signum, siginfo_t *info, void* contextPtr)
 
 static void ReportLoadingStage(int stage)
 {
+	CrashReport::Mark("stage", stage);
 	if (pJavaWrapper) pJavaWrapper->SetLoadingStage(stage);
 }
 
@@ -261,6 +267,10 @@ void DoInitStuff()
 	{
 		//ReadSettingFile();
 
+		CrashReport::SetIdentity(pSettings->Get().szNickName, pSettings->Get().szHost, pSettings->Get().iPort);
+		firebase::crashlytics::SetCustomKey("player", pSettings->Get().szNickName);
+		firebase::crashlytics::SetCustomKey("server", pSettings->Get().szHost);
+		CrashReport::Mark("connect", pSettings->Get().iPort);
 		pNetGame = new CNetGame(pSettings->Get().szHost, pSettings->Get().iPort, pSettings->Get().szNickName, pSettings->Get().szPassword/*g_pass*/);/*cryptor::create("H0ND4").decrypt()*//*""*/
 		bNetworkInited = true;
 		ReportLoadingStage(LOADING_STAGE_NET_CREATED);

@@ -3,6 +3,7 @@
 //
 
 #include "Diag.h"
+#include "../crashreport.h"
 #include "Streaming.h"
 #include "../vendor/armhook/patch.h"
 #include "StreamingInfo.h"
@@ -234,17 +235,12 @@ static int CdStreamRead_guard(int channel, void* buf, uint32_t offset, uint32_t 
         if (s_logged++ < 30)
         {
             const char* nm = (arch < TOTAL_IMG_ARCHIVES && CStreaming::ms_files[arch].m_szName[0]) ? CStreaming::ms_files[arch].m_szName : "?";
-            FLog("[CDSTREAM] LEITURA RECUSADA: IMG #%u ('%s') sem arquivo aberto | canal=%d posn=0x%X setores=%u | antes isto derrubava o jogo",
+            FLog("[CDSTREAM] LEITURA SEM ARQUIVO (so registra): IMG #%u ('%s') sem arquivo aberto | canal=%d posn=0x%X setores=%u",
                  arch, nm, channel, offset & 0xFFFFFF, sectors);
         }
-        uint8_t* chans = *reinterpret_cast<uint8_t**>(g_libGTASA + 0x8EAA18);
-        if (chans && channel >= 0)
-        {
-            uint8_t* c = chans + (size_t)channel * 0x30;
-            *reinterpret_cast<int32_t*>(c + 0x4)  = 0;      // nada a ler
-            *reinterpret_cast<int32_t*>(c + 0x14) = 0xFE;   // erro de leitura (o mesmo que a thread grava quando OS_FileRead falha)
-        }
-        return 1;
+        // NAO recusa mais a leitura: devolver erro fazia o jogo repetir para sempre (travava no Splash, samp_log 2026-10-31).
+        // Agora so registra (log + migalha do relatorio de crash) e deixa seguir; a protecao de verdade e StreamInfoBad na origem.
+        CrashReport::Mark("cdread-nofile", (int)arch, (int)(offset & 0xFFFFFF));
     }
     return CdStreamRead_orig(channel, buf, offset, sectors);
 }
@@ -690,6 +686,7 @@ static bool StreamInfoBad(int32 modelId, const char* where)
     static int s_logged = 0;
     if (modelId < 0 || modelId >= (int32)RESOURCE_ID_TOTAL)
     {
+        CrashReport::Mark("stream-bad", modelId, 0);
         if (s_logged++ < 40) FLog("[STREAM][BAD] %s: modelId=%d FORA do intervalo (0..%d)", where, modelId, (int)RESOURCE_ID_TOTAL - 1);
         return true;
     }
@@ -697,6 +694,7 @@ static bool StreamInfoBad(int32 modelId, const char* where)
     if (inf.m_nCdSize == 0) return false;   // sem entrada em IMG: o proprio fluxo ja trata
     if (inf.m_nImgId >= TOTAL_IMG_ARCHIVES || inf.m_nCdSize > 0x40000)
     {
+        CrashReport::Mark("stream-bad", modelId, (int)inf.m_nImgId);
         if (s_logged++ < 40)
         {
             FLog("[STREAM][BAD] %s: modelId=%d imgId=%u cdPosn=0x%X cdSize=%u loadState=%d nextOnCd=%d",
@@ -714,6 +712,7 @@ void CStreaming::RequestModelStream(int32 chIdx) {
     if (modelId == MODEL_INVALID)
         return;
 
+    CrashReport::Mark("stream", modelId, (modelId >= 0 && modelId < (int32)RESOURCE_ID_TOTAL) ? (int)GetInfo(modelId).m_nImgId : -1);
     if (StreamInfoBad(modelId, "primeiro modelo")) { if (modelId >= 0 && modelId < (int32)RESOURCE_ID_TOTAL) RemoveModel(modelId); return; }
 
     tStreamingChannel& ch = ms_channel[chIdx];
