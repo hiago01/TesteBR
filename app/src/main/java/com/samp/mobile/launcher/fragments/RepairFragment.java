@@ -23,6 +23,7 @@ import androidx.fragment.app.Fragment;
 import com.samp.mobile.R;
 import com.samp.mobile.launcher.config.AppEndpoints;
 import com.samp.mobile.launcher.pack.AtomicInstaller;
+import com.samp.mobile.launcher.pack.ClientWipe;
 import com.samp.mobile.launcher.pack.InstalledState;
 import com.samp.mobile.launcher.pack.CancelToken;
 import com.samp.mobile.launcher.pack.FileDownloader;
@@ -57,7 +58,7 @@ public class RepairFragment extends Fragment {
 
     private TextView status, detail, cancelBtn;
     private ProgressBar bar;
-    private View bVerify, bFull, bExport, bClean;
+    private View bVerify, bFull, bExport, bClean, bReinstall;
 
     // estado da ultima execucao (so lido/escrito na thread de fundo ou depois de postar na UI)
     private volatile List<RepairEngine.Entry> lastEntries;
@@ -83,9 +84,11 @@ public class RepairFragment extends Fragment {
         bFull = v.findViewById(R.id.repair_btn_full);
         bExport = v.findViewById(R.id.repair_btn_export);
         bClean = v.findViewById(R.id.repair_btn_clean);
+        bReinstall = v.findViewById(R.id.repair_btn_reinstall);
 
         bVerify.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View x) { startVerify(); } });
         bFull.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View x) { confirmFull(); } });
+        bReinstall.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View x) { confirmReinstall(); } });
         bExport.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View x) { startExport(); } });
         bClean.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View x) { startClean(); } });
         cancelBtn.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View x) { cancel.cancel(); setStatus("Cancelando..."); } });
@@ -115,7 +118,7 @@ public class RepairFragment extends Fragment {
         cancel.cancel();
         status = detail = cancelBtn = null;
         bar = null;
-        bVerify = bFull = bExport = bClean = null;
+        bVerify = bFull = bExport = bClean = bReinstall = null;
         super.onDestroyView();
     }
 
@@ -177,6 +180,43 @@ public class RepairFragment extends Fragment {
                 .setPositiveButton(R.string.mx_repair_yes, new android.content.DialogInterface.OnClickListener() {
                     @Override public void onClick(android.content.DialogInterface d, int w) { startFull(); }
                 }).show();
+    }
+
+    private void confirmReinstall() {
+        if (BUSY.get()) return;
+        Activity a = getActivity();
+        if (a == null || a.isFinishing()) return;
+        new AlertDialog.Builder(a)
+                .setTitle(R.string.mx_repair_reinstall_title)
+                .setMessage(R.string.mx_repair_reinstall_msg)
+                .setNegativeButton(R.string.mx_repair_no, null)
+                .setPositiveButton(R.string.mx_repair_yes, new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int w) { startReinstall(); }
+                }).show();
+    }
+
+    /**
+     * Apaga o jogo instalado (ClientWipe: mantem so configuracoes/favoritos/logs; installed.json e downloads parciais saem)
+     * e reabre o launcher pela Splash, que ao nao achar instalacao baixa tudo de novo do /filestestes/ (mesmo fluxo da 1a vez).
+     */
+    private void startReinstall() {
+        run(new Job() {
+            @Override public void run(File base) throws PackException {
+                post("Apagando o jogo instalado...", "");
+                ClientWipe.Result res = ClientWipe.wipe(base);
+                if (res.failed > 0) throw new PackException("não foi possível apagar " + res.failed + " arquivo(s). Nada foi reinstalado; tente de novo.");
+                post("Reiniciando o launcher...", "Removidos: " + res.deleted + " arquivo(s). A instalação nova começa em seguida.");
+                ui.postDelayed(new Runnable() { @Override public void run() {
+                    Activity a = getActivity();
+                    if (a == null || a.isFinishing()) return;
+                    com.samp.mobile.launcher.config.Config.clientUpToDate = false;
+                    Intent i = new Intent(a, com.samp.mobile.launcher.SplashActivity.class);
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                    a.startActivity(i);
+                    a.finish();
+                } }, 800);
+            }
+        });
     }
 
     private void startFull() {
@@ -399,7 +439,7 @@ public class RepairFragment extends Fragment {
 
     private void setBusyUi(boolean busy) {
         if (bVerify == null) return;
-        for (View v : new View[]{bVerify, bFull, bExport, bClean}) { v.setEnabled(!busy); v.setAlpha(busy ? 0.5f : 1f); }
+        for (View v : new View[]{bVerify, bFull, bExport, bClean, bReinstall}) { v.setEnabled(!busy); v.setAlpha(busy ? 0.5f : 1f); }
         cancelBtn.setVisibility(busy ? View.VISIBLE : View.GONE);
         bar.setVisibility(busy ? View.VISIBLE : View.GONE);
         if (!busy) bar.setProgress(0);

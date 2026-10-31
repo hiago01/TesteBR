@@ -83,6 +83,13 @@
             </LinearLayout>
 
             <LinearLayout
+                android:id="@+id/repair_btn_reinstall"
+                style="@style/MxRepairAction">
+                <TextView style="@style/MxRepairActionTitle" android:text="@string/mx_repair_reinstall" />
+                <TextView style="@style/MxRepairActionHint" android:text="@string/mx_repair_reinstall_hint" />
+            </LinearLayout>
+
+            <LinearLayout
                 android:id="@+id/repair_btn_export"
                 style="@style/MxRepairAction">
                 <TextView style="@style/MxRepairActionTitle" android:text="@string/mx_repair_export" />

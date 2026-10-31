@@ -8,6 +8,10 @@
     <string name="mx_repair_verify_hint">Confere cada arquivo (tamanho e SHA-256) e mostra o que está errado</string>
     <string name="mx_repair_full">REPARAR TEXDB/SAMP DO ZERO</string>
     <string name="mx_repair_full_hint">Baixa de novo todos os arquivos. Use Wi-Fi. Suas configurações são mantidas</string>
+    <string name="mx_repair_reinstall">REINSTALAR DO ZERO</string>
+    <string name="mx_repair_reinstall_hint">Apaga o jogo instalado e baixa tudo de novo do servidor (filestestes). Configurações e favoritos são mantidos</string>
+    <string name="mx_repair_reinstall_title">Reinstalar do zero?</string>
+    <string name="mx_repair_reinstall_msg">Todos os arquivos do jogo serão APAGADOS e o launcher vai baixar a instalação completa de novo. Pode consumir bastante dados e tempo (use Wi-Fi). Suas configurações, favoritos e logs são mantidos. Continuar?</string>
     <string name="mx_repair_export">EXPORTAR RELATÓRIO</string>
     <string name="mx_repair_export_hint">Gera um texto com dados do aparelho e do log para enviar ao suporte</string>
     <string name="mx_repair_clean">LIMPAR TEMPORÁRIOS</string>
