@@ -292,6 +292,7 @@ namespace
 	constexpr float kMargin   = 30.0f;    // distancia da borda direita
 	constexpr float kTop      = 8.0f;     // distancia do topo (logo)
 	constexpr float kLogoH    = 66.0f;    // altura do logo
+	constexpr float kLogoTop  = 8.0f;     // distancia do topo da tela ao logo (logo centralizado na horizontal)
 	constexpr float kLogoGap  = 8.0f;     // logo -> linha 1
 	constexpr float kRadius   = 20.0f;    // raio dos circulos
 	constexpr float kCircGap  = 11.0f;    // espaco entre circulos da linha 1
@@ -522,8 +523,10 @@ void HudInfo::draw(ImGuiRenderer* r)
 	{
 		const float lh = kLogoH * S;
 		const float lw = lh * ((float)HudAtlas::kLogo.w / (float)HudAtlas::kLogo.h);
-		const ImVec2 a(right - lw, kTop * S);
-		const ImVec2 b(right, kTop * S + lh);
+		// logo SEPARADO da HUD: centralizado no topo da tela (os circulos continuam na direita, no mesmo lugar)
+		const float lx = (screen.x - lw) * 0.5f;
+		const ImVec2 a(lx, kLogoTop * S);
+		const ImVec2 b(lx + lw, kLogoTop * S + lh);
 
 		if (tex)
 		{
@@ -533,7 +536,7 @@ void HudInfo::draw(ImGuiRenderer* r)
 		{
 			const float lfs = lh * 0.55f;
 			const ImVec2 ts = r->calculateTextSize(std::string("MAXIMO RP"), lfs);
-			r->drawText(ImVec2(right - ts.x, a.y + (lh - ts.y) * 0.5f), kWhite, std::string("MAXIMO RP"), true, lfs);
+			r->drawText(ImVec2((screen.x - ts.x) * 0.5f, a.y + (lh - ts.y) * 0.5f), kWhite, std::string("MAXIMO RP"), true, lfs);
 		}
 	}
 
