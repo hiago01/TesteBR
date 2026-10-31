@@ -166,7 +166,6 @@ public class MainActivity extends AppCompatActivity {
             SharedPreferences sp = getSharedPreferences("com.samp.mobile", MODE_PRIVATE);
             if (sp.getBoolean(com.samp.mobile.game.SAMP.PREF_GAME_RUNNING, false)) {
                 sp.edit().putBoolean(com.samp.mobile.game.SAMP.PREF_GAME_RUNNING, false).commit();
-                Toast.makeText(this, "O jogo foi encerrado inesperadamente. Se repetir, abra Solucoes de problemas (engrenagem).", Toast.LENGTH_LONG).show();
             }
         } catch (RuntimeException ignored) { }
 
@@ -900,15 +899,27 @@ public class MainActivity extends AppCompatActivity {
                 cl.recordException(new RuntimeException("ArquivosDoJogo models=" + fbModels + " txd=" + fbTxd + " removed=" + removed + " missing=" + list));
             } catch (Throwable ignored) { }
 
-            StringBuilder msg = new StringBuilder("O jogo abriu, mas alguns arquivos parecem faltar ou estar corrompidos e foram contornados:\n");
-            if (fbModels > 0) msg.append("\n- ").append(fbModels).append(" modelo(s) substituido(s) por outro parecido");
-            if (fbTxd > 0) msg.append("\n- ").append(fbTxd).append(" textura(s) substituida(s)");
-            if (removed > 0) msg.append("\n- ").append(removed).append(" item(ns) removido(s) da carga");
-            if (missing > 0) msg.append("\n- ").append(missing).append(" arquivo(s) de dados ausente(s): ").append(list);
-            msg.append("\n\nAlguns objetos podem aparecer errados. Se notar problemas, abra Solucoes de problemas (engrenagem) e use Reinstalar.");
-            if (!isFinishing()) {
-                new AlertDialog.Builder(this).setTitle("Arquivos do jogo incompletos").setMessage(msg.toString())
-                        .setPositiveButton("Entendi", null).show();
+            StringBuilder msg = new StringBuilder(getString(R.string.mx_health_intro)).append("\n");
+            if (fbModels > 0) msg.append("\n").append(getString(R.string.mx_health_models, fbModels));
+            if (fbTxd > 0) msg.append("\n").append(getString(R.string.mx_health_txd, fbTxd));
+            if (removed > 0) msg.append("\n").append(getString(R.string.mx_health_removed, removed));
+            if (missing > 0) msg.append("\n").append(getString(R.string.mx_health_missing, missing, list));
+            if (!isFinishing() && !isDestroyed()) {
+                View v = getLayoutInflater().inflate(R.layout.mx_dialog_health, null);
+                ((android.widget.TextView) v.findViewById(R.id.mx_health_msg)).setText(msg.toString());
+                final AlertDialog dlg = new AlertDialog.Builder(this).setView(v).create();
+                v.findViewById(R.id.mx_health_btn).setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View view) { dlg.dismiss(); }
+                });
+                dlg.show();
+                if (dlg.getWindow() != null) {
+                    dlg.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
+                    int w = Math.min((int) (400 * getResources().getDisplayMetrics().density),
+                            (int) (getResources().getDisplayMetrics().widthPixels * 0.9f));
+                    int h = (int) (getResources().getDisplayMetrics().heightPixels * 0.9f);
+                    dlg.getWindow().setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+                    dlg.getWindow().getDecorView().setMinimumHeight(0);
+                }
             }
         } catch (Throwable ignored) { }
     }
