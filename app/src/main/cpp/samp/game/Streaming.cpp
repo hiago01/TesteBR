@@ -680,12 +680,41 @@ int32 CStreaming::GetNextFileOnCd(uint32 streamLastPosn, bool bNotPriority) {
     return MODEL_INVALID;
 }
 
+
+// Valida o streaming info ANTES de usa-lo em RequestModelStream. Causa dos logs de 2026-10-31: GetCdPosn() faz
+// ms_files[m_nImgId].m_StreamHandle com ms_files de TOTAL_IMG_ARCHIVES(=8) posicoes; um info com m_nImgId>=8 (ou modelId fora de
+// RESOURCE_ID_TOTAL) le memoria alheia (valores 0x49xxxxxx = ponteiros) e o posn/tamanho enviados ao CdStreamRead saem lixo.
+// Aqui o modelo problematico e IDENTIFICADO no log e removido da fila (nao entra em loop).
+static bool StreamInfoBad(int32 modelId, const char* where)
+{
+    static int s_logged = 0;
+    if (modelId < 0 || modelId >= (int32)RESOURCE_ID_TOTAL)
+    {
+        if (s_logged++ < 40) FLog("[STREAM][BAD] %s: modelId=%d FORA do intervalo (0..%d)", where, modelId, (int)RESOURCE_ID_TOTAL - 1);
+        return true;
+    }
+    const CStreamingInfo& inf = CStreaming::ms_aInfoForModel[modelId];
+    if (inf.m_nCdSize == 0) return false;   // sem entrada em IMG: o proprio fluxo ja trata
+    if (inf.m_nImgId >= TOTAL_IMG_ARCHIVES || inf.m_nCdSize > 0x40000)
+    {
+        if (s_logged++ < 40)
+        {
+            FLog("[STREAM][BAD] %s: modelId=%d imgId=%u cdPosn=0x%X cdSize=%u loadState=%d nextOnCd=%d",
+                 where, modelId, (unsigned)inf.m_nImgId, (unsigned)inf.m_nCdPosn, (unsigned)inf.m_nCdSize, (int)inf.m_nLoadState, (int)inf.m_nNextIndexOnCd);
+        }
+        return true;
+    }
+    return false;
+}
+
 // Starts reading at most 16 models at a time.
 // Removes all unused (if not IsRequiredToBeKept()) IFP/TXDs models as well.
 void CStreaming::RequestModelStream(int32 chIdx) {
     int32 modelId = GetNextFileOnCd(CdStreamGetLastPosn(), true);
     if (modelId == MODEL_INVALID)
         return;
+
+    if (StreamInfoBad(modelId, "primeiro modelo")) { if (modelId >= 0 && modelId < (int32)RESOURCE_ID_TOTAL) RemoveModel(modelId); return; }
 
     tStreamingChannel& ch = ms_channel[chIdx];
     size_t posn = 0;
@@ -737,6 +766,7 @@ void CStreaming::RequestModelStream(int32 chIdx) {
         if (modelId == MODEL_INVALID) {
             break;
         }
+        if (StreamInfoBad(modelId, "cadeia do diretorio")) break;   // nao le nada alem do que ja estava valido
         streamingInfo = &GetInfo(modelId);
 
         if (!streamingInfo->IsRequested())
