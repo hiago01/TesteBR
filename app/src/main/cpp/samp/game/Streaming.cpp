@@ -317,6 +317,73 @@ static int CdStreamRead_guard(int channel, void* buf, uint32_t offset, uint32_t 
     return CdStreamRead_orig(channel, buf, offset, sectors);
 }
 
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// CONTORNO "SEMPRE ABRE": modelo PEDIDO sem entrada em nenhum IMG (cdSize==0) fazia o RequestModelStream NATIVO ler posn/setores
+// nao inicializados e derrubar o jogo (SIGSEGV 0x8; logs de 2026-10-31: modelos 7 male01, 280 lapd1, 596 copcarla).
+// Antes de cada RequestModelStream, os modelos pedidos sem entrada recebem os dados de um modelo "doador" valido do mesmo tipo
+// (skin -> outra skin, veiculo -> outro veiculo): o jogo abre e o modelo aparece com a aparencia do doador. Outros tipos sao
+// retirados da fila (ficam sem o modelo, mas sem derrubar). Cada caso vai para o samp_log como [FALLBACK].
+// ---------------------------------------------------------------------------------------------------------------------------
+static void (*RequestModelStream_orig)(int) = nullptr;
+
+static int32 FindDonor(ModelInfoType wanted, int32 from, int32 to)
+{
+    for (int32 id = from; id <= to; id++) {
+        CBaseModelInfo* mi = CModelInfo::GetModelInfo(id);
+        if (!mi || mi->GetModelType() != wanted) continue;
+        const CStreamingInfo& d = CStreaming::ms_aInfoForModel[id];
+        if (d.m_nCdSize == 0 || d.m_nCdSize > 0x40000 || d.m_nImgId >= TOTAL_IMG_ARCHIVES) continue;
+        return id;
+    }
+    return -1;
+}
+
+static void SanitizeRequested()
+{
+    if (!CStreaming::ms_pStartRequestedList || !CStreaming::ms_pEndRequestedList) return;
+    int32 bad[32]; int nBad = 0;
+    for (auto info = CStreaming::ms_pStartRequestedList->GetNext(); info && info != CStreaming::ms_pEndRequestedList; info = info->GetNext()) {
+        if (info->m_nCdSize != 0) continue;
+        const int32 id = (int32)(info - CStreaming::ms_aInfoForModel);
+        if (id < 0 || id >= (int32)RESOURCE_ID_TOTAL) continue;
+        if (nBad < 32) bad[nBad++] = id;
+    }
+    static int32 s_donorPed = -2, s_donorVeh = -2;
+    static int s_logged = 0;
+    for (int n = 0; n < nBad; n++) {
+        const int32 id = bad[n];
+        CStreamingInfo& inf = CStreaming::ms_aInfoForModel[id];
+        CBaseModelInfo* mi = (id < 20000) ? CModelInfo::GetModelInfo(id) : nullptr;
+        int32 donor = -1;
+        if (mi) {
+            if (mi->GetModelType() == ModelInfoType::MODEL_INFO_PED) {
+                if (s_donorPed == -2) s_donorPed = FindDonor(ModelInfoType::MODEL_INFO_PED, 1, 311);
+                donor = s_donorPed;
+            } else if (mi->GetModelType() == ModelInfoType::MODEL_INFO_VEHICLE) {
+                if (s_donorVeh == -2) s_donorVeh = FindDonor(ModelInfoType::MODEL_INFO_VEHICLE, 400, 611);
+                donor = s_donorVeh;
+            }
+        }
+        if (donor >= 0) {
+            const CStreamingInfo& d = CStreaming::ms_aInfoForModel[donor];
+            inf.m_nImgId = d.m_nImgId; inf.m_nCdPosn = d.m_nCdPosn; inf.m_nCdSize = d.m_nCdSize; inf.m_nNextIndexOnCd = -1;
+            CrashReport::Mark("fallback", id, donor);
+            if (s_logged++ < 40) FLog("[FALLBACK] modelo %d sem entrada no IMG -> usando os dados do modelo %d (mesmo tipo); jogo segue", (int)id, (int)donor);
+        } else {
+            CrashReport::Mark("fallback-rm", id, 0);
+            if (s_logged++ < 40) FLog("[FALLBACK] modelo %d sem entrada no IMG e sem doador do mesmo tipo -> retirado da fila", (int)id);
+            CStreaming::RemoveModel(id);
+        }
+    }
+}
+
+static void RequestModelStream_safe(int chIdx)
+{
+    SanitizeRequested();
+    RequestModelStream_orig(chIdx);
+}
+
 void CStreaming::InjectHooks() {
 
     CHook::Write(g_libGTASA + 0x84DA38, &ms_pEndRequestedList);
@@ -343,7 +410,8 @@ void CStreaming::InjectHooks() {
     CHook::Write(g_libGTASA + 0x84DBD0, &CStreaming::ms_aInfoForModel);
 
     CHook::Redirect("_ZN10CStreaming13InitImageListEv", &CStreaming::InitImageList);
-    CHook::InlineHook("_Z12CdStreamReadiPvjj", &CdStreamRead_guard, &CdStreamRead_orig);   // guarda contra IMG nao aberto (ver acima)
+    CHook::InlineHook("_Z12CdStreamReadiPvjj", &CdStreamRead_guard, &CdStreamRead_orig);
+    CHook::InlineHook("_ZN10CStreaming18RequestModelStreamEi", &RequestModelStream_safe, &RequestModelStream_orig);   // contorno: modelo sem entrada no IMG nao derruba   // guarda contra IMG nao aberto (ver acima)
     // touch.img: ignora o cache posicional MODELS\MINFO.BIN (ver CustomImg.h) para o diretorio dos IMGs ser ligado pelo NOME
     // SEMPRE: ignora o cache posicional MINFO.BIN (evita travar com cache velho mesmo sem touch.img) - nao e funcionalidade, e protecao
     // CINFO.BIN (cache de colisao): invalida o cache velho antes do CColAccel::startCache (ver CustomCol.h)
