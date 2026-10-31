@@ -215,6 +215,40 @@ void CStreaming::RemoveBuildingsNotInArea(eAreaCodes areaCode) {
 
 }
 
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// GUARDA do CdStreamRead (diagnostico + protecao). A CdStreamThread le o IMG por gCdFiles[offset>>24]; quando esse arquivo nao
+// esta aberto (ponteiro NULL) ela chama OS_FileSetPosition(NULL) e o jogo cai com SIGSEGV "Fault address 0x8" (samp_log de
+// 2026-10-31: libGTASA+0x31BF44 <- CdStreamThread+0x...). Aqui a leitura e recusada do jeito que o proprio jogo trata uma
+// falha de leitura (status 0xFE, 0 setores) e o log diz QUAL IMG/posicao pediu. Enderecos conferidos no desassembly do
+// libGTASA 2.10 arm64: gCdFiles = +0x8EAA40 (32 ponteiros), ponteiro dos canais = +0x8EAA18 (0x30 bytes cada; +4 setores, +0x14 status).
+// ---------------------------------------------------------------------------------------------------------------------------
+static int (*CdStreamRead_orig)(int, void*, uint32_t, uint32_t) = nullptr;
+static int CdStreamRead_guard(int channel, void* buf, uint32_t offset, uint32_t sectors)
+{
+    const uint32_t arch = offset >> 24;
+    void* file = (arch < 32) ? *reinterpret_cast<void**>(g_libGTASA + 0x8EAA40 + arch * 8) : nullptr;
+    if (!file)
+    {
+        static int s_logged = 0;
+        if (s_logged++ < 30)
+        {
+            const char* nm = (arch < TOTAL_IMG_ARCHIVES && CStreaming::ms_files[arch].m_szName[0]) ? CStreaming::ms_files[arch].m_szName : "?";
+            FLog("[CDSTREAM] LEITURA RECUSADA: IMG #%u ('%s') sem arquivo aberto | canal=%d posn=0x%X setores=%u | antes isto derrubava o jogo",
+                 arch, nm, channel, offset & 0xFFFFFF, sectors);
+        }
+        uint8_t* chans = *reinterpret_cast<uint8_t**>(g_libGTASA + 0x8EAA18);
+        if (chans && channel >= 0)
+        {
+            uint8_t* c = chans + (size_t)channel * 0x30;
+            *reinterpret_cast<int32_t*>(c + 0x4)  = 0;      // nada a ler
+            *reinterpret_cast<int32_t*>(c + 0x14) = 0xFE;   // erro de leitura (o mesmo que a thread grava quando OS_FileRead falha)
+        }
+        return 1;
+    }
+    return CdStreamRead_orig(channel, buf, offset, sectors);
+}
+
 void CStreaming::InjectHooks() {
 
     CHook::Write(g_libGTASA + 0x84DA38, &ms_pEndRequestedList);
@@ -241,6 +275,7 @@ void CStreaming::InjectHooks() {
     CHook::Write(g_libGTASA + 0x84DBD0, &CStreaming::ms_aInfoForModel);
 
     CHook::Redirect("_ZN10CStreaming13InitImageListEv", &CStreaming::InitImageList);
+    CHook::InlineHook("_Z12CdStreamReadiPvjj", &CdStreamRead_guard, &CdStreamRead_orig);   // guarda contra IMG nao aberto (ver acima)
     // touch.img: ignora o cache posicional MODELS\MINFO.BIN (ver CustomImg.h) para o diretorio dos IMGs ser ligado pelo NOME
     // SEMPRE: ignora o cache posicional MINFO.BIN (evita travar com cache velho mesmo sem touch.img) - nao e funcionalidade, e protecao
     // CINFO.BIN (cache de colisao): invalida o cache velho antes do CColAccel::startCache (ver CustomCol.h)
