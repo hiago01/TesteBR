@@ -269,11 +269,69 @@ void DoInitStuff()
 	}
 }
 
+static jobject g_dlgKbActivity = nullptr;
+static Widget* g_dlgKbTarget  = nullptr;
+
 extern "C" {
 	JNIEXPORT void JNICALL Java_com_samp_mobile_game_SAMP_initializeSAMP(JNIEnv *pEnv, jobject thiz)
 	{
 		pJavaWrapper = new CJavaWrapper(pEnv, thiz);
 
+	}
+
+	// ---- Teclado NATIVO para os campos dos dialogos (tela Java). O texto digitado volta por onDialogKeyboardResult(byte[]);
+	//      o fechamento (enviou ou voltou) por onDialogKeyboardClosed(). Retorna o Y do topo do teclado (px) ou -1.
+	namespace
+	{
+		struct DialogKbTarget : public Widget
+		{
+			virtual void keyboardEvent(const std::string& input) override
+			{
+				JNIEnv* env = nullptr;
+				if (!javaVM || javaVM->GetEnv((void**)&env, JNI_VERSION_1_6) != JNI_OK || !env || !g_dlgKbActivity) return;
+				jclass cls = env->GetObjectClass(g_dlgKbActivity);
+				jmethodID mid = cls ? env->GetMethodID(cls, "onDialogKeyboardResult", "([B)V") : nullptr;
+				if (mid)
+				{
+					jbyteArray arr = env->NewByteArray((jsize)input.size());
+					env->SetByteArrayRegion(arr, 0, (jsize)input.size(), (const jbyte*)input.data());
+					env->CallVoidMethod(g_dlgKbActivity, mid, arr);
+					env->DeleteLocalRef(arr);
+				}
+				if (env->ExceptionCheck()) env->ExceptionClear();
+				if (cls) env->DeleteLocalRef(cls);
+			}
+		};
+	}
+
+	JNIEXPORT jint JNICALL Java_com_samp_mobile_game_SAMP_openDialogKeyboard(JNIEnv *pEnv, jobject thiz, jbyteArray initial, jboolean mask, jbyteArray hint)
+	{
+		if (!pUI || !pUI->keyboard()) return -1;
+		auto toStr = [pEnv](jbyteArray a) {
+			std::string r;
+			if (!a) return r;
+			jsize n = pEnv->GetArrayLength(a);
+			jbyte* e = pEnv->GetByteArrayElements(a, NULL);
+			if (e) { r.assign((const char*)e, (size_t)n); pEnv->ReleaseByteArrayElements(a, e, JNI_ABORT); }
+			return r;
+		};
+		if (!g_dlgKbActivity) g_dlgKbActivity = pEnv->NewGlobalRef(thiz);
+		if (!g_dlgKbTarget) g_dlgKbTarget = new DialogKbTarget();
+		return (jint)pUI->keyboard()->showFor(g_dlgKbTarget, toStr(initial), mask == JNI_TRUE, toStr(hint), []() {
+			JNIEnv* env = nullptr;
+			if (!javaVM || javaVM->GetEnv((void**)&env, JNI_VERSION_1_6) != JNI_OK || !env || !g_dlgKbActivity) return;
+			jclass cls = env->GetObjectClass(g_dlgKbActivity);
+			jmethodID mid = cls ? env->GetMethodID(cls, "onDialogKeyboardClosed", "()V") : nullptr;
+			if (mid) env->CallVoidMethod(g_dlgKbActivity, mid);
+			if (env->ExceptionCheck()) env->ExceptionClear();
+			if (cls) env->DeleteLocalRef(cls);
+		});
+	}
+	// Fecha o teclado nativo SE ele pertence ao dialogo (o dialogo foi enviado/fechado com o teclado aberto).
+	JNIEXPORT void JNICALL Java_com_samp_mobile_game_SAMP_closeDialogKeyboard(JNIEnv *pEnv, jobject thiz)
+	{
+		if (pUI && pUI->keyboard() && pUI->keyboard()->visible() && g_dlgKbTarget && pUI->keyboard()->caller() == g_dlgKbTarget)
+			pUI->keyboard()->hide();
 	}
 	JNIEXPORT void JNICALL Java_com_samp_mobile_game_SAMP_onInputEnd(JNIEnv *pEnv, jobject thiz, jbyteArray str)
 	{

@@ -173,6 +173,7 @@ public class DialogManager {
     }
 
     public void Hide() {
+        closeNativeKeyboard();
         if (this.activity.getCurrentFocus() != null) {
             ((InputMethodManager) this.activity.getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(this.activity.getCurrentFocus().getWindowToken(), 0);
             System.out.println("[Hide] closed input");
@@ -225,6 +226,7 @@ public class DialogManager {
     }
 
     public void loadDialog() {
+        closeNativeKeyboard();
         if (this.activity.getCurrentFocus() != null) {
             ((InputMethodManager) this.activity.getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(this.activity.getCurrentFocus().getWindowToken(), 0);
             System.out.println("[loadDialog] closed input");
@@ -394,6 +396,17 @@ public class DialogManager {
                 dialogManager.SendDialogResponse(response, dialogManager.mCurrentListitem, dialogManager.mCurrentInputtext);
             }
         });
+        // Campo de texto/senha: usa o teclado NATIVO do jogo (o mesmo do chat), nao o teclado do Android.
+        if (com.samp.mobile.game.SAMP.NATIVE_KEYBOARD) {
+        this.mDialogInput.setShowSoftInputOnFocus(false);
+        this.mDialogInput.setCursorVisible(false);
+        this.mDialogInput.setOnTouchListener(new View.OnTouchListener() {
+            @Override public boolean onTouch(View v, android.view.MotionEvent ev) {
+                if (ev.getAction() == android.view.MotionEvent.ACTION_UP) openNativeKeyboard();
+                return true;   // consome: nao da foco nem abre o teclado do sistema
+            }
+        });
+        }
         this.mDialogInput.addTextChangedListener(new TextWatcher() {
             public void afterTextChanged(Editable editable) {
             }
@@ -405,6 +418,51 @@ public class DialogManager {
                 String unused = DialogManager.this.mCurrentInputtext = charSequence.toString();
             }
         });
+    }
+
+    private boolean mNativeKbOpen = false;
+
+    private View cardView() {   // o cartao inteiro (cabecalho + corpo), nao so o corpo
+        View c = mMainLayout.findViewById(R.id.dialog);
+        return c != null ? c : this.mDialogBody;
+    }
+
+    private void openNativeKeyboard() {
+        if (!(this.activity instanceof com.samp.mobile.game.SAMP)) return;
+        try {
+            boolean mask = (this.mDialogStyle == 3);
+            byte[] init = this.mDialogInput.getText().toString().getBytes("windows-1251");
+            byte[] hint = (mask ? "Digite a senha" : "Digite o texto").getBytes("US-ASCII");
+            int top = ((com.samp.mobile.game.SAMP) this.activity).openDialogKeyboard(init, mask, hint);
+            if (top < 0) return;
+            mNativeKbOpen = true;
+            // sobe o dialogo se o campo ficar escondido atras do teclado
+            int[] loc = new int[2];
+            this.mDialogInput.getLocationOnScreen(loc);
+            int bottom = loc[1] + this.mDialogInput.getHeight();
+            int limit = top - (int) (this.activity.getResources().getDisplayMetrics().density * 8);
+            if (bottom > limit) { View card = cardView(); card.setTranslationY(card.getTranslationY() + (limit - bottom)); }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void closeNativeKeyboard() {
+        if (!mNativeKbOpen) return;
+        mNativeKbOpen = false;
+        try { ((com.samp.mobile.game.SAMP) this.activity).closeDialogKeyboard(); } catch (Throwable t) { t.printStackTrace(); }
+        cardView().setTranslationY(0.0f);
+    }
+
+    // chamado pelo SAMP.java (thread da UI)
+    public void onNativeKeyboardResult(byte[] text) {
+        try { this.mDialogInput.setText(new String(text, "windows-1251")); }
+        catch (java.io.UnsupportedEncodingException e) { e.printStackTrace(); }   // o TextWatcher atualiza mCurrentInputtext
+    }
+
+    public void onNativeKeyboardClosed() {
+        mNativeKbOpen = false;
+        cardView().setTranslationY(0.0f);
     }
 
     public void setDialogStyle(int i) {

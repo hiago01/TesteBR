@@ -2,12 +2,14 @@
 #include "../gui.h"
 #include "../../game/game.h"
 #include "../../log.h"
+#include "../../java/jniutil.h"
 
 #include <algorithm>
 #include <cmath>
 
 extern CGame* pGame;
 extern UI* pUI;
+extern CJavaWrapper* pJavaWrapper;
 
 using namespace KbCore;
 
@@ -201,6 +203,13 @@ void Keyboard::activateEvent(bool active)
 
 void Keyboard::show(Widget* caller)
 {
+	if (!kNativeEnabled)                       // teclado do Android (CustomKeyboard): o texto volta por onInputEnd -> sendForGB
+	{
+		m_caller = caller;
+		if (pJavaWrapper) pJavaWrapper->ShowKeyboard();
+		return;
+	}
+
 	applyGeometry();
 
 	// rascunho: so volta se for o mesmo campo que o jogador tinha aberto (como o teclado do Android fazia)
@@ -211,14 +220,34 @@ void Keyboard::show(Widget* caller)
 	m_scroll = 0.0f;
 	m_blinkBase = nowMs();
 	m_caller = caller;
+	m_mask = false; m_hint.clear(); m_closeCb = nullptr;      // chat: padrao (showFor sobrescreve depois)
 
 	bool wasVisible = visible();
 	this->setVisible(true);
 	if (!wasVisible) pGame->EnableGameInput(false);
 }
 
+float Keyboard::showFor(Widget* caller, const std::string& initial, bool mask, const std::string& hint, std::function<void()> onClose)
+{
+	if (!kNativeEnabled) return -1.0f;
+	// se ja ha um teclado de outro dono aberto, avisa o dono antigo (para ele restaurar a tela)
+	if (m_closeCb) { auto cb = m_closeCb; m_closeCb = nullptr; cb(); }
+	show(caller);
+	m_core.field.set(initial);
+	m_mask = mask;
+	m_hint = hint;
+	m_closeCb = std::move(onClose);
+	return absolutePosition().y;
+}
+
 void Keyboard::hide()
 {
+	if (!kNativeEnabled)
+	{
+		if (pJavaWrapper) pJavaWrapper->HideKeyboard();
+		m_caller = nullptr;
+		return;
+	}
 	close(true);
 }
 
@@ -227,13 +256,15 @@ void Keyboard::close(bool saveDraft)
 	if (!visible()) { m_caller = nullptr; return; }
 
 	// fechou sem enviar: guarda o que estava digitado (ao enviar, nao guarda)
-	if (saveDraft) { m_draft = m_core.field.text; m_draftOwner = m_caller; }
+	if (saveDraft && !m_mask) { m_draft = m_core.field.text; m_draftOwner = m_caller; }   // senha nunca vira rascunho
 	else           { m_draft.clear();             m_draftOwner = nullptr; }
 
 	this->setVisible(false);
 	pGame->EnableGameInput(true);
 	m_pressed = Hit();
 	m_caller = nullptr;
+	m_mask = false; m_hint.clear();
+	if (m_closeCb) { auto cb = m_closeCb; m_closeCb = nullptr; cb(); }
 }
 
 void Keyboard::send()
@@ -358,7 +389,8 @@ void Keyboard::draw(ImGuiRenderer* renderer)
 	const std::string& raw = m_core.field.text;
 	const float padX = inputH() * 0.14f;
 	const float visW = std::max(10.0f, (fb.x - fa.x) - padX * 2.0f);
-	const std::string before = Latin1ToUtf8(raw.substr(0, std::min(m_core.field.caret, raw.size())));
+	auto disp = [this](const std::string& sub) { return m_mask ? std::string(sub.size(), '*') : Latin1ToUtf8(sub); };
+	const std::string before = disp(raw.substr(0, std::min(m_core.field.caret, raw.size())));
 	const float caretW = before.empty() ? 0.0f : renderer->calculateTextSize(before, fs).x;
 
 	if (m_wantCaretFromTap)
@@ -368,7 +400,7 @@ void Keyboard::draw(ImGuiRenderer* renderer)
 		size_t best = 0; float bestD = 1e9f;
 		for (size_t i = 0; i <= raw.size(); i++)
 		{
-			std::string pre = Latin1ToUtf8(raw.substr(0, i));
+			std::string pre = disp(raw.substr(0, i));
 			float wpx = pre.empty() ? 0.0f : renderer->calculateTextSize(pre, fs).x;
 			float d = std::fabs(wpx - target);
 			if (d < bestD) { bestD = d; best = i; }
@@ -383,9 +415,9 @@ void Keyboard::draw(ImGuiRenderer* renderer)
 	renderer->pushClipRect(ImVec2(fa.x + padX * 0.5f, fa.y), ImVec2(fb.x - padX * 0.5f, fb.y), true);
 	const float textY = fa.y + ((fb.y - fa.y) - fs) * 0.5f;
 	if (raw.empty())
-		renderer->drawText(ImVec2(fa.x + padX, textY), kHint, std::string("Digite a mensagem"), false, fs);
+		renderer->drawText(ImVec2(fa.x + padX, textY), kHint, m_hint.empty() ? std::string("Digite a mensagem") : m_hint, false, fs);
 	else
-		renderer->drawText(ImVec2(fa.x + padX - m_scroll, textY), kWhite, Latin1ToUtf8(raw), false, fs);
+		renderer->drawText(ImVec2(fa.x + padX - m_scroll, textY), kWhite, disp(raw), false, fs);
 
 	if (((now - m_blinkBase) / 450) % 2 == 0)
 	{

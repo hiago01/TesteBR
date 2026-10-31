@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <list>
 #include <string>
 #include <vector>
@@ -14,10 +15,18 @@
 class Keyboard : public Widget
 {
 public:
+	// CHAVE GERAL: false = teclado NATIVO desativado em todo o projeto (chat e dialogos usam o teclado do Android, View Java
+	// CustomKeyboard). Para religar: true aqui + NATIVE_KEYBOARD=true em SAMP.java e DialogManager.java.
+	static constexpr bool kNativeEnabled = false;
+
 	Keyboard();
 
 	void show(Widget* caller);
+	// Variante para campos de DIALOGO (tela Java): texto inicial (bytes Latin-1/cp1251), mascara de senha, dica do campo e
+	// callback chamado quando o teclado fecha (enviou ou voltou). Retorna o Y absoluto do topo do teclado (px).
+	float showFor(Widget* caller, const std::string& initial, bool mask, const std::string& hint, std::function<void()> onClose);
 	void hide();
+	Widget* caller() const { return m_caller; }
 	void send();
 	void sendForGB(JNIEnv *pEnv, jobject thiz, jbyteArray str);   // legado (JNI onInputEnd)
 
@@ -53,6 +62,9 @@ private:
 
 	KbCore::Machine m_core;
 	Widget*     m_caller;
+	bool        m_mask = false;                 // senha: mostra '*'
+	std::string m_hint;                         // dica quando vazio ('' = "Digite a mensagem")
+	std::function<void()> m_closeCb;            // aviso de fechamento (campos de dialogo)
 	Widget*     m_draftOwner;
 	std::string m_draft;
 
