@@ -14,8 +14,6 @@ import android.content.Context;
 import android.text.Editable;
 import android.os.SystemClock;
 import android.view.KeyEvent;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
@@ -244,11 +242,11 @@ public class CustomKeyboard {
     private int imeHeight(boolean[] visible)
     {
         visible[0] = false;
-        View decor = mContext.getWindow().getDecorView();
-        WindowInsetsCompat wi = ViewCompat.getRootWindowInsets(decor);
+        if(android.os.Build.VERSION.SDK_INT < 30) return 0;     // API do sistema (androidx.core antigo nao tem WindowInsetsCompat.Type)
+        android.view.WindowInsets wi = mContext.getWindow().getDecorView().getRootWindowInsets();
         if(wi == null) return 0;
-        visible[0] = wi.isVisible(WindowInsetsCompat.Type.ime());
-        return Math.max(0, wi.getInsets(WindowInsetsCompat.Type.ime()).bottom);
+        visible[0] = wi.isVisible(android.view.WindowInsets.Type.ime());
+        return Math.max(0, wi.getInsets(android.view.WindowInsets.Type.ime()).bottom);
     }
 
     private void startWatch()
