@@ -2,6 +2,7 @@
 #include "game.h"
 #include "util.h"
 #include "movemode.h"
+#include "../gui/samp_widgets/hudstate.h"
 #include "Entity/CPedGTA.h"
 #include "Tasks/TaskManager.h"
 #include "Enums/eTaskType.h"
@@ -17,6 +18,8 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+
+void Hud_MirrorSprintPointer(void* ped, int pct);   // game/hooks.cpp
 
 namespace
 {
@@ -244,13 +247,35 @@ uint32_t CMoveMode::ApplySprint(uint32_t original, int16_t lr, int16_t ud)
 		if (s_btn.OnSample(original != 0, now) && Eligible())
 		{
 			const eMoveMode next = ToggledMode((eMoveMode)g_mode.load());
-			g_mode = (uint8_t)next;
-			FLog("[MOVIMENTO] botao de correr: modo %s", ModeName(next));
+			if (next == eMoveMode::SPRINT && !Hud::CanSprint())
+				FLog("[MOVIMENTO] botao de correr: sem energia, continua andando");   // cansado: so corre depois de recuperar
+			else
+			{
+				g_mode = (uint8_t)next;
+				FLog("[MOVIMENTO] botao de correr: modo %s", ModeName(next));
+			}
 		}
 	}
 
+	// Energia da HUD zerada: derruba a corrida para andar (ver game/stamina.h)
+	if ((eMoveMode)g_mode.load() == eMoveMode::SPRINT && !Hud::CanSprint() && Eligible())
+	{
+		g_mode = (uint8_t)eMoveMode::WALK;
+		FLog("[MOVIMENTO] sem energia: voltou a andar");
+	}
+
+	// ENERGIA (HUD laranja): o jogo NAO chama HandleSprintEnergy na corrida a pe (so moto/nado), entao o gasto e a
+	// recuperacao rodam aqui, todo frame. Correndo = modo SPRINT + stick ativo + a pe. O tick usa o relogio (dt), por isso
+	// chamadas repetidas no mesmo frame nao contam em dobro.
+	const bool eligible = Eligible();
+	const bool sprinting = eligible && StickActive(lr, ud) && (eMoveMode)g_mode.load() == eMoveMode::SPRINT;
+	{
+		const int pct = Hud::StaminaTick(sprinting);
+		if (eligible) Hud_MirrorSprintPointer(GamePool_FindPlayerPed(), pct);
+	}
+
 	if (!StickActive(lr, ud)) return original;
-	if (!Eligible()) return original;
+	if (!eligible) return original;
 
 	// SPRINT: corrida rapida normal do jogo enquanto houver entrada.
 	// WALK/JOG: o botao ja foi tratado acima (o toque troca o modo); aqui ele nao promove a corrida por si so.
