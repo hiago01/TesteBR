@@ -171,6 +171,7 @@ public class MainActivity extends AppCompatActivity {
         } catch (RuntimeException ignored) { }
 
         reportLastCrash();
+        showHealthNotice();
 
         mQueue = Volley.newRequestQueue(getApplicationContext());
         mQueryExecutor = Executors.newSingleThreadExecutor();
@@ -855,6 +856,61 @@ public class MainActivity extends AppCompatActivity {
         } else {
             confirmExit();
         }
+    }
+
+    /**
+     * Aviso de saude dos arquivos: o cliente grava SAMP/health.txt quando precisou contornar arquivos faltando/corrompidos
+     * (modelo/textura sem entrada no IMG, arquivo de dados ausente). Mostra UMA vez por situacao e manda um evento ao Crashlytics.
+     */
+    private void showHealthNotice() {
+        try {
+            File f = new File(getExternalFilesDir(null), "SAMP/health.txt");
+            if (!f.exists() || f.length() == 0 || f.length() > 4096) return;
+            ByteArrayOutputStream bo = new ByteArrayOutputStream();
+            try (FileInputStream in = new FileInputStream(f)) {
+                byte[] b = new byte[1024]; int n;
+                while ((n = in.read(b)) > 0) bo.write(b, 0, n);
+            }
+            String txt = bo.toString("UTF-8");
+            int fbModels = 0, fbTxd = 0, removed = 0, missing = 0; String list = "";
+            for (String line : txt.split("\\n")) {
+                try {
+                    if (line.startsWith("fallback_models=")) fbModels = Integer.parseInt(line.substring(16).trim());
+                    else if (line.startsWith("fallback_txd=")) fbTxd = Integer.parseInt(line.substring(13).trim());
+                    else if (line.startsWith("removed=")) removed = Integer.parseInt(line.substring(8).trim());
+                    else if (line.startsWith("missing=")) missing = Integer.parseInt(line.substring(8).trim());
+                    else if (line.startsWith("missing_list=")) list = line.substring(13).trim();
+                } catch (NumberFormatException ignored) { }
+            }
+            if (fbModels + fbTxd + removed + missing == 0) return;
+
+            SharedPreferences sp = getSharedPreferences("com.samp.mobile", MODE_PRIVATE);
+            String sig = fbModels + "/" + fbTxd + "/" + removed + "/" + missing + "/" + list;
+            if (sig.equals(sp.getString("health_seen", ""))) return;   // ja avisado desta situacao
+            sp.edit().putString("health_seen", sig).apply();
+
+            try {
+                FirebaseCrashlytics cl = FirebaseCrashlytics.getInstance();
+                cl.setCustomKey("health_models", fbModels);
+                cl.setCustomKey("health_txd", fbTxd);
+                cl.setCustomKey("health_removed", removed);
+                cl.setCustomKey("health_missing", list);
+                cl.setCustomKey("device", Build.MANUFACTURER + " " + Build.MODEL);
+                cl.log(txt);
+                cl.recordException(new RuntimeException("ArquivosDoJogo models=" + fbModels + " txd=" + fbTxd + " removed=" + removed + " missing=" + list));
+            } catch (Throwable ignored) { }
+
+            StringBuilder msg = new StringBuilder("O jogo abriu, mas alguns arquivos parecem faltar ou estar corrompidos e foram contornados:\n");
+            if (fbModels > 0) msg.append("\n- ").append(fbModels).append(" modelo(s) substituido(s) por outro parecido");
+            if (fbTxd > 0) msg.append("\n- ").append(fbTxd).append(" textura(s) substituida(s)");
+            if (removed > 0) msg.append("\n- ").append(removed).append(" item(ns) removido(s) da carga");
+            if (missing > 0) msg.append("\n- ").append(missing).append(" arquivo(s) de dados ausente(s): ").append(list);
+            msg.append("\n\nAlguns objetos podem aparecer errados. Se notar problemas, abra Solucoes de problemas (engrenagem) e use Reinstalar.");
+            if (!isFinishing()) {
+                new AlertDialog.Builder(this).setTitle("Arquivos do jogo incompletos").setMessage(msg.toString())
+                        .setPositiveButton("Entendi", null).show();
+            }
+        } catch (Throwable ignored) { }
     }
 
     /**

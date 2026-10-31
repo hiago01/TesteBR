@@ -350,6 +350,7 @@ static void SanitizeRequested()
         if (id < 0 || id >= (int32)RESOURCE_ID_TOTAL) continue;
         if (nBad < 32) bad[nBad++] = id;
     }
+    static int32 s_txdDonor = -2;
     static int32 s_donor[16];
     static bool s_donorInit = false;
     if (!s_donorInit) { for (auto& v : s_donor) v = -2; s_donorInit = true; }
@@ -361,7 +362,18 @@ static void SanitizeRequested()
         CStreamingInfo& inf = CStreaming::ms_aInfoForModel[id];
         CBaseModelInfo* mi = (id < 20000) ? CModelInfo::GetModelInfo(id) : nullptr;
         int32 donor = -1;
-        if (mi) {
+        if (IsModelTXD(id)) {
+            // TEXTURA sem entrada: usa o menor TXD valido como doador (o slot fica 'carregado' e o modelo nao fica esperando para sempre;
+            // sem a textura certa o objeto aparece liso, mas o jogo nao cai nem trava)
+            if (s_txdDonor == -2) {
+                s_txdDonor = -1; uint32 best = 0xFFFFFFFFu;
+                for (int32 t = RESOURCE_ID_TXD; t < RESOURCE_ID_COL; t++) {
+                    const CStreamingInfo& d = CStreaming::ms_aInfoForModel[t];
+                    if (d.m_nCdSize != 0 && d.m_nImgId < TOTAL_IMG_ARCHIVES && d.m_nCdSize < best) { best = d.m_nCdSize; s_txdDonor = t; }
+                }
+            }
+            donor = s_txdDonor;
+        } else if (mi) {
             // doador do MESMO tipo (skin, veiculo, arma, objeto...). Skin/veiculo procuram na faixa propria; os demais em toda a faixa de DFF.
             const int t = (int)mi->GetModelType() & 15;
             if (s_donor[t] == -2) {
@@ -376,9 +388,11 @@ static void SanitizeRequested()
             const CStreamingInfo& d = CStreaming::ms_aInfoForModel[donor];
             inf.m_nImgId = d.m_nImgId; inf.m_nCdPosn = d.m_nCdPosn; inf.m_nCdSize = d.m_nCdSize; inf.m_nNextIndexOnCd = -1;
             CrashReport::Mark("fallback", id, donor);
+            if (IsModelTXD(id)) Health::NoteFallbackTxd(); else Health::NoteFallbackModel();
             if (s_logged++ < 40) FLog("[FALLBACK] modelo %d sem entrada no IMG -> usando os dados do modelo %d (mesmo tipo); jogo segue", (int)id, (int)donor);
         } else {
             CrashReport::Mark("fallback-rm", id, 0);
+            Health::NoteRemoved();
             if (s_logged++ < 40) FLog("[FALLBACK] modelo %d sem entrada no IMG e sem doador do mesmo tipo (ou nao e DFF) -> retirado da fila", (int)id);
             CStreaming::RemoveModel(id);
         }
@@ -406,6 +420,7 @@ static unsigned long long OpenFile_log(const char* path, const char* mode)
         static int s_n = 0;
         if (s_n++ < 40) FLog("[FILE][FALTA] CFileMgr::OpenFile('%s','%s') falhou", path ? path : "(null)", mode ? mode : "(null)");
         CrashReport::Mark("open-fail", 0, 0);
+        Health::NoteMissingFile(path);
     }
     return h;
 }
@@ -484,6 +499,7 @@ int CStreaming::AddImageToList(char const* pFileName, bool bNotPlayerImg) {
 }
 
 void CStreaming::InitImageList() {
+    Health::Reset();   // execucao nova: o aviso de saude so reflete ESTA execucao
     for (auto & ms_file : ms_files) {
         ms_file.m_szName[0] = 0;
         ms_file.m_StreamHandle = 0;

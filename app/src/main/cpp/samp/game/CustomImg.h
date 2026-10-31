@@ -34,6 +34,7 @@
 // ---------------------------------------------------------------------------
 
 #include <string>
+#include <chrono>
 #include <vector>
 #include <cstdio>
 #include <cstring>
@@ -110,7 +111,15 @@ namespace CustomImg
     {
         using Fn = CBaseModelInfo* (*)(const char*, int*);
         static Fn fn = reinterpret_cast<Fn>(CHook::getSym("_ZN10CModelInfo12GetModelInfoEPKcPi"));
+        // estatistica de custo (confirma "sem lentidao"): chamadas, sem-modelo e tempo total, logados de 4000 em 4000 chamadas
+        static unsigned long long s_calls = 0, s_nomodel = 0, s_ns = 0;
+        const auto t0 = std::chrono::steady_clock::now();
         *outMi = fn(name, outId);
+        s_ns += (unsigned long long)std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count();
+        s_calls++;
+        if (!*outMi) s_nomodel++;
+        if (s_calls % 4000 == 0)
+            FLog("[MINFO] ligacao por nome: %llu entradas, %llu sem modelo no IDE, %.1f ms no total", s_calls, s_nomodel, s_ns / 1e6);
     }
 
     inline void InstallAcceleratorBypass()
