@@ -495,9 +495,10 @@ public class UpdateService extends Service {
             FilesData fileData = new FilesData(o.getString("name"), o.getLong("size"), o.getString("path"), o.optString("url", ""));
             String name = fileData.getName();
             String path = fileData.getPath();
-            // TESTE (etapa 0): TUDO que esta no files.json e instalado, inclusive caches/configs/diag.ini. So fica de fora
-            // o interno do launcher (installed.json, .staging...) e lixo de SO (.DS_Store, Thumbs.db, .htaccess).
-            if (GameFilePolicy.isInternal(path) || GameFilePolicy.isJunk(path)) {
+            // Arquivos que o jogo/launcher RECRIA no aparelho (cinfo.sig, MINFO.BIN, settings.ini, favorites.json,
+            // svlog.txt, gta_sa.set...): nunca baixar nem sobrescrever, senao seriam pedidos de novo a cada atualizacao.
+            // NAO estao nessa lista (sao baixados): diag.ini, SAMP/col_index.txt e SAMP/sampvoice/svconfig.ini.
+            if (GameFilePolicy.isInternal(path) || GameFilePolicy.isJunk(path) || GameFilePolicy.isGenerated(path)) {
                 continue;
             }
             // A pasta SAMP/ vem do samp.json (nada dela e ignorado); o files.json so e usado para ela se nao houver samp.json.

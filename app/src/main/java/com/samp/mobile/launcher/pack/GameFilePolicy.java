@@ -22,8 +22,7 @@ public final class GameFilePolicy {
     private static final Set<String> PROTECTED_PATHS = new HashSet<>(Arrays.asList(
             "lista.txt", "files.json",
             "cinfo.bin", "models/minfo.bin",
-            "samp/cinfo.sig", "samp/col_index.txt", "samp/favorites.json", "samp/svlog.txt",
-            "samp/sampvoice/svconfig.ini",
+            "samp/cinfo.sig", "samp/favorites.json", "samp/svlog.txt",
             "settings.ini", "samp/settings.ini",
             "samp_log.txt", "gta_sa.set", "gtasatelem.set",
             "installed.json"));
