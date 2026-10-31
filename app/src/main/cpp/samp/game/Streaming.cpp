@@ -421,6 +421,7 @@ void CStreaming::InjectHooks() {
     CHook::InlineHook("_ZN10CStreaming18RequestModelStreamEi", &RequestModelStream_safe, &RequestModelStream_orig);   // contorno: modelo sem entrada no IMG nao derruba   // guarda contra IMG nao aberto (ver acima)
     // touch.img: ignora o cache posicional MODELS\MINFO.BIN (ver CustomImg.h) para o diretorio dos IMGs ser ligado pelo NOME
     // SEMPRE: ignora o cache posicional MINFO.BIN (evita travar com cache velho mesmo sem touch.img) - nao e funcionalidade, e protecao
+    CustomImg::InstallAcceleratorBypass();   // GetEntry por NOME (ignora MODELS\\MINFO.BIN velho): corrige 'modelo sem entrada no IMG' (logs 2026-10-31: male01/lapd1/copcarla existem no gta3.img mas ficavam com cdSize=0)
     // CINFO.BIN (cache de colisao): invalida o cache velho antes do CColAccel::startCache (ver CustomCol.h)
     // SEMPRE: guarda do CINFO.BIN (invalida cache velho) - protecao, nao e desligavel pelo diag (para testar col: tire os arquivos de SAMP/col)
     CustomCol::InstallCinfoGuard();
