@@ -47,7 +47,8 @@ namespace
 	// ---- configuracao persistida ([maximo] em SAMP/settings.ini) ----
 	// So o que NAO existe no jogo original: marcas de derrapagem e volume dos streams do servidor.
 	// O resto usa a tabela nativa MobileSettings::settings e o salvar nativo (Menu_SaveSettings).
-	struct Cfg { int stream = 50; } g_cfg;   // 0..100 (%) -> BASS 0..10000 (50 = padrao original)
+	// draw/bright: -1 = ainda nao definido (na 1a vez assume o valor que o motor esta usando agora, sem mudar o visual).
+	struct Cfg { int stream = 50; int draw = -1; int bright = -1; } g_cfg;   // stream: 0..100 (%) -> BASS 0..10000 (50 = padrao original)
 	bool g_cfgLoaded = false;
 	bool g_dirty     = false;
 
@@ -106,6 +107,68 @@ namespace
 		if (fn) fn();
 	}
 
+	// ---- DISTANCIA DE RENDERIZACAO ----
+	// Conferido no assembly do libGTASA.so: o jogo SO aplica a opcao (MobileSettings::settings[2], +0x10) dentro de
+	// Menu_SwitchOffToGame (ao sair do menu de pausa NATIVO), com
+	//     CRenderer::ms_lodDistScale = valor * 0.875 * 0.01 + 0.875
+	// e CCamera::Process le esse float. Como o menu nativo foi desativado (MobileMenu::InitForPause bloqueado) e o
+	// menu Maximo RP so gravava o numero na tabela, a opcao nunca chegava ao motor. Agora o proprio menu aplica.
+	float* LodScalePtr()
+	{
+		static float* p = (float*)dlsym(CHook::lib, "_ZN9CRenderer15ms_lodDistScaleE");
+		return p;
+	}
+	float LodScaleFor(int v) { return (float)v * 0.875f * 0.01f + 0.875f; }
+
+	void ApplyDraw(int v)
+	{
+		if (int32_t* nd = NativeField(N_DRAW, 0x10)) *nd = v;     // mantem a tabela nativa coerente (Menu_SaveSettings grava dela)
+		if (float* lp = LodScalePtr()) *lp = LodScaleFor(v);
+	}
+
+	// Primeira vez: assume o que o motor usa agora (draw: inverte a formula; brilho: valor da tabela), sem mudar o visual.
+	void InitFromEngine()
+	{
+		int mn = 0, mx = 100;
+		if (g_cfg.draw < 0)
+		{
+			NativeRange(N_DRAW, mn, mx);
+			if (float* lp = LodScalePtr())
+				g_cfg.draw = std::clamp((int)std::lround((*lp - 0.875f) / (0.875f * 0.01f)), mn, mx);
+			else
+				g_cfg.draw = std::clamp(NativeGet(N_DRAW), mn, mx);
+		}
+		if (g_cfg.bright < 0)
+		{
+			NativeRange(N_BRIGHT, mn, mx);
+			g_cfg.bright = std::clamp(NativeGet(N_BRIGHT), mn, mx);
+		}
+	}
+
+	// Cada frame: se algo do jogo desfez a distancia/brilho escolhidos (a tabela nativa e reescrita por varias rotinas do
+	// motor), restaura e registra no log (SAMP/samp_log.txt) para sabermos quem desfez.
+	void KeepSettings()
+	{
+		static int s_logs = 0;
+		if (g_cfg.draw < 0 || g_cfg.bright < 0) InitFromEngine();
+
+		int32_t* nd = NativeField(N_DRAW, 0x10);
+		float* lp = LodScalePtr();
+		if ((nd && *nd != g_cfg.draw) || (lp && std::fabs(*lp - LodScaleFor(g_cfg.draw)) > 1e-4f))
+		{
+			if (s_logs++ < 12)
+				FLog("[MaximoMenu] distancia de renderizacao desfeita pelo jogo (tabela=%d escala=%.4f) -> restaurando %d",
+					 nd ? (int)*nd : -1, lp ? *lp : -1.0f, g_cfg.draw);
+			ApplyDraw(g_cfg.draw);
+		}
+		int32_t* nb = NativeField(N_BRIGHT, 0x10);
+		if (nb && *nb != g_cfg.bright)
+		{
+			if (s_logs++ < 12) FLog("[MaximoMenu] brilho desfeito pelo jogo (tabela=%d) -> restaurando %d", (int)*nb, g_cfg.bright);
+			*nb = g_cfg.bright;
+		}
+	}
+
 	void ApplyStream(int pct)
 	{
 		g_iBassStreamVolume = std::clamp(pct, 0, 100) * 100;
@@ -123,6 +186,10 @@ namespace
 
 		g_skid.store(ini.GetLongValue("maximo", "skidmarks", 1) != 0);
 		g_cfg.stream = std::clamp((int)ini.GetLongValue("maximo", "vol_stream", 50), 0, 100);
+		long d = ini.GetLongValue("maximo", "draw_dist", -1), b = ini.GetLongValue("maximo", "brightness", -1);
+		int mn = 0, mx = 100;
+		if (d >= 0) { NativeRange(N_DRAW, mn, mx);   g_cfg.draw   = std::clamp((int)d, mn, mx); }
+		if (b >= 0) { NativeRange(N_BRIGHT, mn, mx); g_cfg.bright = std::clamp((int)b, mn, mx); }
 	}
 
 	void SaveCfg()
@@ -138,6 +205,8 @@ namespace
 
 		ini.SetLongValue("maximo", "skidmarks", g_skid.load() ? 1 : 0);
 		ini.SetLongValue("maximo", "vol_stream", g_cfg.stream);
+		if (g_cfg.draw >= 0)   ini.SetLongValue("maximo", "draw_dist", g_cfg.draw);
+		if (g_cfg.bright >= 0) ini.SetLongValue("maximo", "brightness", g_cfg.bright);
 		if (pSettings)
 			ini.SetBoolValue("gui", "fps", pSettings->Get().iFPSCounter);
 
@@ -230,7 +299,7 @@ bool MaximoMenu::HandleRawTouch(int type, int num, int x, int y)
 namespace
 {
 	enum { K_INFO = 0, K_TOGGLE, K_SLIDER, K_ACTION, K_CHOICE };
-	enum { ID_NONE = 0, ID_SKID, ID_FPSCOUNT, ID_STREAM, ID_NATIVE, ID_RESUME, ID_QUIT };
+	enum { ID_NONE = 0, ID_SKID, ID_FPSCOUNT, ID_STREAM, ID_NATIVE, ID_RESUME, ID_QUIT, ID_PRESET };
 
 	struct Row { const char* label; int kind; int id; int nidx = -1; };
 
@@ -240,7 +309,46 @@ namespace
 	const char* const kTabs[6] = { "MAPA", "CONTROLES", "JOGO", "ÁUDIO", "CONFIGURAÇÕES", "SAIR" };
 	enum { T_MAPA, T_CONTROLES, T_JOGO, T_AUDIO, T_CONFIG, T_SAIR };
 
+	// ---- PRESETS DE QUALIDADE GRAFICA ----
+	// Cada preset ajusta: distancia de renderizacao (%), efeitos visuais, sombras e reflexos dos veiculos. NAO mexe em
+	// brilho, resolucao nem marcas de derrapagem. Faixas lidas da tabela do libGTASA: efeitos 0..3, sombras 0..2, reflexos 0..3,
+	// distancia 0..100 (37 = o que o motor usa por padrao; 100 = escala 1.75, bem mais pesado). Valores escolhidos seguindo os
+	// niveis que o proprio jogo usa por tipo de aparelho (MobileSettings::Initialize).
+	enum { P_MINIMA = 0, P_BAIXA, P_MEDIA, P_ALTA, P_ULTRA, P_COUNT, P_CUSTOM = P_COUNT };
+	struct Preset { const char* name; int draw, vfx, shadow, refl; };
+	const Preset kPresets[P_COUNT] = {
+		{ "Mínima", 20, 0, 0, 0 },
+		{ "Baixa",  37, 1, 0, 0 },
+		{ "Média",  60, 1, 1, 1 },
+		{ "Alta",   80, 2, 2, 2 },
+		{ "Ultra", 100, 3, 2, 3 },
+	};
+
+	int CurrentPreset()
+	{
+		if (g_cfg.draw < 0) InitFromEngine();
+		for (int i = 0; i < P_COUNT; i++)
+			if (g_cfg.draw == kPresets[i].draw && NativeGet(N_VFX) == kPresets[i].vfx &&
+				NativeGet(N_SHADOW) == kPresets[i].shadow && NativeGet(N_REFL) == kPresets[i].refl)
+				return i;
+		return P_CUSTOM;
+	}
+
+	void ApplyPreset(int i)
+	{
+		if (i < 0 || i >= P_COUNT) return;
+		const Preset& p = kPresets[i];
+		int mn, mx; NativeRange(N_DRAW, mn, mx);
+		g_cfg.draw = std::clamp(p.draw, mn, mx);
+		ApplyDraw(g_cfg.draw);
+		NativeSet(N_VFX, p.vfx);
+		NativeSet(N_SHADOW, p.shadow);
+		NativeSet(N_REFL, p.refl);
+		FLog("[MaximoMenu] preset grafico: %s (distancia=%d efeitos=%d sombras=%d reflexos=%d)", p.name, p.draw, p.vfx, p.shadow, p.refl);
+	}
+
 	const Page kSubGraficos = { "Gráficos", {
+		{ "Qualidade gráfica (preset)",  K_CHOICE, ID_PRESET },
 		{ "Distância de renderização",   K_SLIDER, ID_NATIVE, N_DRAW },
 		{ "Efeitos visuais",             K_CHOICE, ID_NATIVE, N_VFX },
 		{ "Sombras",                     K_CHOICE, ID_NATIVE, N_SHADOW },
@@ -286,7 +394,11 @@ namespace
 			case ID_SKID:     return g_skid.load() ? 1 : 0;
 			case ID_FPSCOUNT: return (pSettings && pSettings->Get().iFPSCounter) ? 1 : 0;
 			case ID_STREAM:   return g_cfg.stream;
-			case ID_NATIVE:   return NativeGet(r.nidx);
+			case ID_PRESET:   return CurrentPreset();
+			case ID_NATIVE:
+				if (r.nidx == N_DRAW)   { if (g_cfg.draw < 0)   InitFromEngine(); return g_cfg.draw; }
+				if (r.nidx == N_BRIGHT) { if (g_cfg.bright < 0) InitFromEngine(); return g_cfg.bright; }
+				return NativeGet(r.nidx);
 		}
 		return 0;
 	}
@@ -298,13 +410,19 @@ namespace
 			case ID_SKID:     g_skid.store(v != 0); break;
 			case ID_FPSCOUNT: if (pSettings) pSettings->Get().iFPSCounter = (v != 0); break;
 			case ID_STREAM:   g_cfg.stream = std::clamp(v, 0, 100); ApplyStream(g_cfg.stream); break;
-			case ID_NATIVE:   NativeSet(r.nidx, v); break;
+			case ID_PRESET:   ApplyPreset(v); break;
+			case ID_NATIVE:
+				if (r.nidx == N_DRAW)        { int mn, mx; NativeRange(N_DRAW, mn, mx);   g_cfg.draw = std::clamp(v, mn, mx);   ApplyDraw(g_cfg.draw); }
+				else if (r.nidx == N_BRIGHT) { int mn, mx; NativeRange(N_BRIGHT, mn, mx); g_cfg.bright = std::clamp(v, mn, mx); NativeSet(N_BRIGHT, g_cfg.bright); }
+				else NativeSet(r.nidx, v);
+				break;
 		}
 		g_dirty = true;
 	}
 
 	void RangeOf(const Row& r, int& mn, int& mx)
 	{
+		if (r.id == ID_PRESET) { mn = 0; mx = P_COUNT - 1; return; }   // 0..4 (a volta de "Personalizada" cai em 0)
 		if (r.id == ID_NATIVE) { NativeRange(r.nidx, mn, mx); return; }
 		mn = 0; mx = (r.id == ID_STREAM) ? 100 : 1;
 	}
@@ -353,7 +471,10 @@ void MaximoMenu::draw(ImGuiRenderer* r)
 	{
 		g_applied = true;
 		ApplyStream(g_cfg.stream);
+		InitFromEngine();
+		if (g_cfg.draw >= 0) ApplyDraw(g_cfg.draw);     // aplica a distancia salva (ou a atual do motor, se nunca mexeu)
 	}
+	if (g_applied) KeepSettings();                      // todo frame, menu aberto ou fechado
 
 	if (!g_open.load())
 	{
@@ -575,7 +696,8 @@ void MaximoMenu::draw(ImGuiRenderer* r)
 			const int v = GetValue(row);
 			char buf[24];
 			const char* s = buf;
-			if (row.nidx == N_SHADOW && v == 2) s = "Avançado";
+			if (row.id == ID_PRESET) s = (v >= 0 && v < P_COUNT) ? kPresets[v].name : "Personalizada";
+			else if (row.nidx == N_SHADOW && v == 2) s = "Avançado";
 			else if (v >= mx) s = "Máximo";
 			else if (v <= mn) s = "Mínimo";
 			else snprintf(buf, sizeof(buf), "Nível %d", v);
