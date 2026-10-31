@@ -240,6 +240,24 @@ static int CdStreamRead_guard(int channel, void* buf, uint32_t offset, uint32_t 
         }
         // NAO recusa mais a leitura: devolver erro fazia o jogo repetir para sempre (travava no Splash, samp_log 2026-10-31).
         // Agora so registra (log + migalha do relatorio de crash) e deixa seguir; a protecao de verdade e StreamInfoBad na origem.
+        {   // identifica QUEM tem info corrompida: varre a tabela e lista os modelos com IMG invalido / tamanho absurdo
+            static int s_scans = 0;
+            if (s_scans++ < 2) {
+                int bad = 0;
+                for (int32 m = 0; m < (int32)RESOURCE_ID_TOTAL; m++) {
+                    const CStreamingInfo& q = CStreaming::ms_aInfoForModel[m];
+                    if (q.m_nCdSize == 0) continue;
+                    if (q.m_nImgId >= TOTAL_IMG_ARCHIVES || q.m_nCdSize > 0x40000 || q.m_nLoadState == LOADSTATE_READING) {
+                        if (bad++ < 40)
+                            FLog("[STREAM][BAD] varredura: modelId=%d imgId=%u cdPosn=0x%X cdSize=%u loadState=%d", (int)m,
+                                 (unsigned)q.m_nImgId, (unsigned)q.m_nCdPosn, (unsigned)q.m_nCdSize, (int)q.m_nLoadState);
+                    }
+                }
+                FLog("[STREAM][BAD] varredura: %d modelos suspeitos (imgId>=%d, tamanho>0x40000 ou READING)", bad, (int)TOTAL_IMG_ARCHIVES);
+                CrashReport::Mark("scan-bad", bad, (int)arch);
+            }
+        }
+        FLog("[CDSTREAM] chamador nativo: libGTASA+0x%llX", (unsigned long long)((uintptr_t)__builtin_return_address(0) - g_libGTASA));
         CrashReport::Mark("cdread-nofile", (int)arch, (int)(offset & 0xFFFFFF));
     }
     return CdStreamRead_orig(channel, buf, offset, sectors);
@@ -861,6 +879,35 @@ void CStreaming::RequestModelStream(int32 chIdx) {
         ch.modelIds[j] = MODEL_INVALID;
     }
 
+    // PROTECAO NA ORIGEM (samp_log 2026-10-31: SIGSEGV 0x8 na CdStreamThread, IMG #87 e setores=1463484976 = lixo):
+    // so le se o IMG do posn esta aberto e a quantidade de setores e' plausivel. Senao loga TODA a cadeia, devolve os modelos
+    // ao estado "nao carregado" e sai SEM marcar o canal como READING (nada de loop no Splash).
+    {
+        const uint32_t arch = (uint32_t)posn >> 24;
+        void* fileOpen = (arch < 32) ? *reinterpret_cast<void**>(g_libGTASA + 0x8EAA40 + (size_t)arch * 8) : nullptr;
+        if (!fileOpen || nSectorsToRead > 0x40000) {
+            CrashReport::Mark("read-bad", (int)arch, (int)nSectorsToRead);
+            static int s_badLogged = 0;
+            if (s_badLogged++ < 20) {
+                FLog("[STREAM][BAD] leitura recusada: canal=%d posn=0x%X (IMG #%u %s) setores=%u modelos=%u firstModel=%d",
+                     (int)chIdx, (unsigned)posn, arch, fileOpen ? "aberto" : "SEM ARQUIVO", (unsigned)nSectorsToRead, (unsigned)i, (int)ch.modelIds[0]);
+                for (uint32 j = 0; j < i && j < std::size(ch.modelIds); j++) {
+                    const int32 mid = ch.modelIds[j];
+                    if (mid < 0 || mid >= (int32)RESOURCE_ID_TOTAL) { FLog("[STREAM][BAD]   [%u] modelId=%d FORA do intervalo", (unsigned)j, (int)mid); continue; }
+                    const CStreamingInfo& q = ms_aInfoForModel[mid];
+                    FLog("[STREAM][BAD]   [%u] modelId=%d imgId=%u cdPosn=0x%X cdSize=%u loadState=%d", (unsigned)j, (int)mid,
+                         (unsigned)q.m_nImgId, (unsigned)q.m_nCdPosn, (unsigned)q.m_nCdSize, (int)q.m_nLoadState);
+                }
+            }
+            for (uint32 j = 0; j < i && j < std::size(ch.modelIds); j++) {
+                const int32 mid = ch.modelIds[j];
+                if (mid >= 0 && mid < (int32)RESOURCE_ID_TOTAL) RemoveModel(mid);
+                ch.modelIds[j] = MODEL_INVALID;
+            }
+            ms_bLoadingBigModel = false;
+            return;
+        }
+    }
     CdStreamRead(chIdx, ms_pStreamingBuffer[chIdx], posn, nSectorsToRead); // Request models to be read
     ch.LoadStatus = eChannelState::READING;
     ch.iLoadingLevel = 0;
