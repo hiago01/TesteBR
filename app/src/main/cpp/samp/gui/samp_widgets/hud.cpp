@@ -38,7 +38,7 @@ namespace Hud
 		int        g_stServerPending = -1;   // energia vinda do servidor, ainda nao consumida pelo StaminaTick
 	}
 
-	void StaminaTick(bool sprinting)
+	int StaminaTick(bool sprinting)
 	{
 		using namespace std::chrono;
 		const long long now = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
@@ -48,6 +48,7 @@ namespace Hud
 		if (g_stServerPending >= 0) { g_st.OnServer(g_stServerPending); g_stServerPending = -1; }
 		g_st.Tick(sprinting, dt);
 		g.energy.store(g_st.Percent());
+		return g_st.Percent();
 	}
 
 	bool CanSprint()

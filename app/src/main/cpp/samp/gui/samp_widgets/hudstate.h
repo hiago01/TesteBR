@@ -53,7 +53,7 @@ namespace Hud
 
 	// Folego do jogador local (game/stamina.h): a energia da HUD cai correndo e sobe andando/parado.
 	// StaminaTick e chamado pelo hook de CPlayerPed::HandleSprintEnergy (so jogador local); CanSprint() e lido por game/movemode.cpp.
-	void StaminaTick(bool sprinting);
+	int  StaminaTick(bool sprinting);   // devolve a energia (0..100) apos o tick
 	bool CanSprint();
 
 	// Nova conexao: volta tudo ao padrao.

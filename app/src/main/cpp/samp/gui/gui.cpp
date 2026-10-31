@@ -74,6 +74,15 @@ bool UI::initialize()
 		m_passengerButton->setVisible(true);   // o proprio draw() decide quando aparece
 	}
 
+	// Botao de PULO proprio (icone hud_crouch do texdb/mobile) ao lado do botao nativo de correr; o pulo nativo foi removido (pad.cpp).
+	{
+		m_jumpButton = new JumpButton();
+		this->addChild(m_jumpButton);
+		m_jumpButton->setFixedSize(JumpButton::SizeFor(size()));
+		m_jumpButton->setPosition(JumpButton::PosFor(size()));
+		m_jumpButton->setVisible(true);   // o proprio draw() decide quando aparece
+	}
+
 	// HUD do jogador (logo Maximo RP + vida/colete/fome/energia/sede + dinheiro): canto superior direito.
 	{
 		m_hud = new HudInfo();

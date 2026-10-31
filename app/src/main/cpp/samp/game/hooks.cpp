@@ -2,6 +2,7 @@
 #include <GLES2/gl2.h>
 #include <cstring>
 #include <atomic>
+#include <dlfcn.h>
 #include <mutex>
 #include "RadarSkin.h"
 #include "../main.h"
@@ -2581,7 +2582,23 @@ void InjectHooks()
 // devolve false quando zera (personagem cansado). Aqui: sempre true; o gasto vira a energia da HUD (so o jogador local).
 static bool CPlayerPed__HandleSprintEnergy_hook(void* thiz, bool sprinting, float rate)
 {
-    if (!CWorld::PlayerInFocus) Hud::StaminaTick(sprinting);
+    if (!CWorld::PlayerInFocus)
+    {
+        const int pct = Hud::StaminaTick(sprinting);
+
+        // PONTEIRO do botao de correr (CWidgetButtonSprint::Update, lido no assembly):
+        //     enchimento = clamp(1 - (m_fTimeCanRun + c) / (max + c), 0, 1)     com m_fTimeCanRun = playerData(+0x540)+0x24
+        //     max        = CStats::GetFatAndMuscleModifier(7)  (o mesmo valor que ResetSprintEnergy poe ao zerar o folego)
+        // Como a stamina nativa foi desligada, m_fTimeCanRun ficaria parado no maximo e o ponteiro nunca encheria. Entao o
+        // m_fTimeCanRun passa a espelhar a energia da HUD: 100% = max (ponteiro vazio), 0% = 0 (ponteiro cheio).
+        static float (*s_fatMuscle)(int) = (float(*)(int))dlsym(CHook::lib, "_ZN6CStats23GetFatAndMuscleModifierE17eStatModAbilities");
+        if (s_fatMuscle && thiz)
+        {
+            const float mx = s_fatMuscle(7);
+            uintptr_t pd = *(uintptr_t*)((uintptr_t)thiz + 0x540);
+            if (pd && mx > 0.0f) *(float*)(pd + 0x24) = mx * (float)pct / 100.0f;
+        }
+    }
     return true;
 }
 
