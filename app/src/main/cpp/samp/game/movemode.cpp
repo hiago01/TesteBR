@@ -9,6 +9,7 @@
 #include "../vendor/inih/cpp/INIReader.h"
 
 #include <atomic>
+#include <chrono>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -233,12 +234,26 @@ void CMoveMode::ApplyToStick(int16_t& lr, int16_t& ud)
 
 uint32_t CMoveMode::ApplySprint(uint32_t original, int16_t lr, int16_t ud)
 {
-	if (!StickActive(lr, ud)) return original;
 	LoadIfNeeded();
+
+	// Botao de correr: cada TOQUE alterna WALK <-> SPRINT (borda de subida; segurar nao fica trocando).
+	static SprintButtonEdge s_btn;
+	{
+		using namespace std::chrono;
+		const long long now = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+		if (s_btn.OnSample(original != 0, now) && Eligible())
+		{
+			const eMoveMode next = ToggledMode((eMoveMode)g_mode.load());
+			g_mode = (uint8_t)next;
+			FLog("[MOVIMENTO] botao de correr: modo %s", ModeName(next));
+		}
+	}
+
+	if (!StickActive(lr, ud)) return original;
 	if (!Eligible()) return original;
 
 	// SPRINT: corrida rapida normal do jogo enquanto houver entrada.
-	// WALK/JOG: o botao de sprint nao pode promover o personagem a corrida (o modo so muda por comando).
+	// WALK/JOG: o botao ja foi tratado acima (o toque troca o modo); aqui ele nao promove a corrida por si so.
 	return ((eMoveMode)g_mode.load() == eMoveMode::SPRINT) ? 1u : 0u;
 }
 
