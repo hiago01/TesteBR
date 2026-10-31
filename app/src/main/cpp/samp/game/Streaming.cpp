@@ -391,6 +391,37 @@ static void RequestModelStream_safe(int chIdx)
     RequestModelStream_orig(chIdx);
 }
 
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// ARQUIVO DE DADOS AUSENTE NAO DERRUBA O JOGO (samp_logs 2026-10-31: CStreaming::ReadIniFile abre "stream.ini"; quando o arquivo nao
+// abre, o handle e 0 e CFileLoader::LoadLine -> CFileMgr::ReadLine -> OS_FileGetPosition(NULL) da SIGSEGV 0x8).
+//  - OpenFile: registra no samp_log QUAL arquivo nao abriu ([FILE][FALTA]).
+//  - LoadLine: com handle 0 devolve NULL (= fim de arquivo, que todos os chamadores ja tratam) em vez de cair.
+// ---------------------------------------------------------------------------------------------------------------------------
+static unsigned long long (*OpenFile_orig)(const char*, const char*) = nullptr;
+static unsigned long long OpenFile_log(const char* path, const char* mode)
+{
+    const unsigned long long h = OpenFile_orig(path, mode);
+    if (!h) {
+        static int s_n = 0;
+        if (s_n++ < 40) FLog("[FILE][FALTA] CFileMgr::OpenFile('%s','%s') falhou", path ? path : "(null)", mode ? mode : "(null)");
+        CrashReport::Mark("open-fail", 0, 0);
+    }
+    return h;
+}
+
+static char* (*LoadLine_orig)(unsigned long long) = nullptr;
+static char* LoadLine_safe(unsigned long long file)
+{
+    if (!file) {
+        static int s_n = 0;
+        if (s_n++ < 10) FLog("[FILE][FALTA] LoadLine com handle 0 (arquivo nao abriu): tratado como fim de arquivo; chamador nativo libGTASA+0x%llX",
+                              (unsigned long long)((uintptr_t)__builtin_return_address(0) - g_libGTASA));
+        return nullptr;
+    }
+    return LoadLine_orig(file);
+}
+
 void CStreaming::InjectHooks() {
 
     CHook::Write(g_libGTASA + 0x84DA38, &ms_pEndRequestedList);
@@ -419,6 +450,8 @@ void CStreaming::InjectHooks() {
     CHook::Redirect("_ZN10CStreaming13InitImageListEv", &CStreaming::InitImageList);
     CHook::InlineHook("_Z12CdStreamReadiPvjj", &CdStreamRead_guard, &CdStreamRead_orig);
     CHook::InlineHook("_ZN10CStreaming18RequestModelStreamEi", &RequestModelStream_safe, &RequestModelStream_orig);   // contorno: modelo sem entrada no IMG nao derruba   // guarda contra IMG nao aberto (ver acima)
+    CHook::InlineHook("_ZN8CFileMgr8OpenFileEPKcS1_", &OpenFile_log, &OpenFile_orig);           // loga QUAL arquivo nao abre
+    CHook::InlineHook("_ZN11CFileLoader8LoadLineEy", &LoadLine_safe, &LoadLine_orig);            // handle 0 => fim de arquivo (nao cai)
     // touch.img: ignora o cache posicional MODELS\MINFO.BIN (ver CustomImg.h) para o diretorio dos IMGs ser ligado pelo NOME
     // SEMPRE: ignora o cache posicional MINFO.BIN (evita travar com cache velho mesmo sem touch.img) - nao e funcionalidade, e protecao
     CustomImg::InstallAcceleratorBypass();   // GetEntry por NOME (ignora MODELS\\MINFO.BIN velho): corrige 'modelo sem entrada no IMG' (logs 2026-10-31: male01/lapd1/copcarla existem no gta3.img mas ficavam com cdSize=0)
