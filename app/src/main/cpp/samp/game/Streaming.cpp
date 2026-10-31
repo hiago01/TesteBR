@@ -255,20 +255,21 @@ static void DumpImgDirectoryDiag()
         if (fread(magic, 1, 4, f) != 4 || fread(&cnt, 4, 1, f) != 1) { FLog("[IMGDIAG] %s: cabecalho ilegivel", rel); fclose(f); return; }
         FLog("[IMGDIAG] %s: magic=%.4s entradas=%u", rel, magic, cnt);
         if (memcmp(magic, "VER2", 4) != 0 || cnt == 0 || cnt > 200000) { fclose(f); return; }
-        const char* want[] = { "male01", "lapd1", "copcarla" };
-        bool found[3] = { false, false, false };
+        const char* want[] = { "male01", "lapd1", "copcarla", "arrow", "colt45", "nitestick", "teargas", "infernus", "sfpd1" };
+        const int NW = (int)(sizeof(want) / sizeof(want[0]));
+        bool found[16] = {};
         for (uint32_t i = 0; i < cnt; i++) {
             struct { uint32_t off; uint16_t sz1; uint16_t sz2; char name[24]; } en;
             if (fread(&en, 1, sizeof(en), f) != sizeof(en)) { FLog("[IMGDIAG] diretorio truncado na entrada %u", i); break; }
             en.name[23] = 0;
-            for (int k = 0; k < 3; k++) {
+            for (int k = 0; k < NW; k++) {
                 if (strncasecmp(en.name, want[k], strlen(want[k])) == 0 && (en.name[strlen(want[k])] == '.' || en.name[strlen(want[k])] == 0)) {
                     found[k] = true;
                     FLog("[IMGDIAG] achou '%s' offset=%u setores=%u/%u", en.name, en.off, (unsigned)en.sz1, (unsigned)en.sz2);
                 }
             }
         }
-        for (int k = 0; k < 3; k++) if (!found[k]) FLog("[IMGDIAG] '%s' NAO existe no diretorio de %s", want[k], rel);
+        for (int k = 0; k < NW; k++) if (!found[k]) FLog("[IMGDIAG] '%s' NAO existe no diretorio de %s", want[k], rel);
         fclose(f);
         return;
     }
@@ -349,7 +350,11 @@ static void SanitizeRequested()
         if (id < 0 || id >= (int32)RESOURCE_ID_TOTAL) continue;
         if (nBad < 32) bad[nBad++] = id;
     }
-    static int32 s_donorPed = -2, s_donorVeh = -2;
+    static int32 s_donor[16];
+    static bool s_donorInit = false;
+    if (!s_donorInit) { for (auto& v : s_donor) v = -2; s_donorInit = true; }
+    static bool s_dumped = false;
+    if (nBad > 0 && !s_dumped) { s_dumped = true; DumpImgDirectoryDiag(); }
     static int s_logged = 0;
     for (int n = 0; n < nBad; n++) {
         const int32 id = bad[n];
@@ -357,13 +362,15 @@ static void SanitizeRequested()
         CBaseModelInfo* mi = (id < 20000) ? CModelInfo::GetModelInfo(id) : nullptr;
         int32 donor = -1;
         if (mi) {
-            if (mi->GetModelType() == ModelInfoType::MODEL_INFO_PED) {
-                if (s_donorPed == -2) s_donorPed = FindDonor(ModelInfoType::MODEL_INFO_PED, 1, 311);
-                donor = s_donorPed;
-            } else if (mi->GetModelType() == ModelInfoType::MODEL_INFO_VEHICLE) {
-                if (s_donorVeh == -2) s_donorVeh = FindDonor(ModelInfoType::MODEL_INFO_VEHICLE, 400, 611);
-                donor = s_donorVeh;
+            // doador do MESMO tipo (skin, veiculo, arma, objeto...). Skin/veiculo procuram na faixa propria; os demais em toda a faixa de DFF.
+            const int t = (int)mi->GetModelType() & 15;
+            if (s_donor[t] == -2) {
+                const ModelInfoType mt = mi->GetModelType();
+                s_donor[t] = (mt == ModelInfoType::MODEL_INFO_PED)     ? FindDonor(mt, 1, 311)
+                           : (mt == ModelInfoType::MODEL_INFO_VEHICLE) ? FindDonor(mt, 400, 611)
+                           : FindDonor(mt, 0, 19999);
             }
+            donor = s_donor[t];
         }
         if (donor >= 0) {
             const CStreamingInfo& d = CStreaming::ms_aInfoForModel[donor];
@@ -372,7 +379,7 @@ static void SanitizeRequested()
             if (s_logged++ < 40) FLog("[FALLBACK] modelo %d sem entrada no IMG -> usando os dados do modelo %d (mesmo tipo); jogo segue", (int)id, (int)donor);
         } else {
             CrashReport::Mark("fallback-rm", id, 0);
-            if (s_logged++ < 40) FLog("[FALLBACK] modelo %d sem entrada no IMG e sem doador do mesmo tipo -> retirado da fila", (int)id);
+            if (s_logged++ < 40) FLog("[FALLBACK] modelo %d sem entrada no IMG e sem doador do mesmo tipo (ou nao e DFF) -> retirado da fila", (int)id);
             CStreaming::RemoveModel(id);
         }
     }
