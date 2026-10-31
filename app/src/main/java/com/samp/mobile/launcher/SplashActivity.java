@@ -67,13 +67,15 @@ public class SplashActivity extends AppCompatActivity {
     };
 
     private boolean isSkipChecksEnabled() {
+        if (!getResources().getBoolean(R.bool.secret_gesture_enabled)) return false;   // gesto desativado no APK
         try { return getSharedPreferences("com.samp.mobile", MODE_PRIVATE).getBoolean(PREF_SKIP_CHECKS, false); }
         catch (RuntimeException e) { return false; }
     }
 
     @Override
     public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
-        if (ev.getActionMasked() == android.view.MotionEvent.ACTION_UP && mInHandler != null) {
+        if (ev.getActionMasked() == android.view.MotionEvent.ACTION_UP && mInHandler != null
+                && getResources().getBoolean(R.bool.secret_gesture_enabled)) {
             final View root = getWindow().getDecorView();
             if (mSecretGesture.onTap(ev.getRawX(), ev.getRawY(), root.getWidth(), root.getHeight(), android.os.SystemClock.uptimeMillis())) {
                 final boolean on = !isSkipChecksEnabled();
@@ -153,6 +155,9 @@ public class SplashActivity extends AppCompatActivity {
             Config.currentContext = this;
 
             prefs = getSharedPreferences("com.samp.mobile", MODE_PRIVATE);
+            // O modo "sem verificacao" NUNCA vale de uma abertura para outra: sempre verifica o cliente ao abrir.
+            // (Antes ficava gravado: 4 toques sem querer na splash faziam o app pular o download em todas as aberturas seguintes.)
+            try { prefs.edit().remove(PREF_SKIP_CHECKS).apply(); } catch (RuntimeException ignored) { }
 
             builder = new AlertDialog.Builder(this);
 

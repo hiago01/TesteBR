@@ -20,4 +20,6 @@
     <!-- true = na 1a abertura de cada APK novo (versionCode diferente) o launcher APAGA os arquivos dos clientes antigos em files/
          (menos configuracoes/favoritos/log/diag.ini) e instala tudo de novo pelo PRDownloader. false = nao apaga nada. -->
     <bool name="wipe_files_on_new_apk">true</bool>
+    <!-- false = gesto secreto (4 toques na Splash) DESATIVADO: o launcher sempre verifica/baixa o cliente. true so em APK de teste. -->
+    <bool name="secret_gesture_enabled">false</bool>
 </resources>
