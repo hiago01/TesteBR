@@ -368,19 +368,17 @@ public class UpdateService extends Service {
                     if (mUpdateGameSha.length() != 64) mUpdateGameSha = "";
                     mUpdateGameSize = jSONObject.optLong("launcher_size", 0);
                     if (withFiles) {
-                        parsePackConfig(response);
+                        // Pacotes ZIP (packs) e samp.json DESATIVADOS: tudo vem do files.json (url_cache_files) em <base>/filestestes/<path>.
+                        mPackConfig = null;
+                        mPackSelection = null;
                         String string = jSONObject.getString("url_cache_files");
                         if (!isHttpUrl(string)) {
                             failCheck("client_config: invalid url_cache_files");
                             return;
                         }
                         final String filesUrl = string;
-                        loadSamp(session, new Runnable() {
-                            @Override
-                            public void run() {
-                                getFilesInfo(filesUrl, session, onSuccess);
-                            }
-                        });
+                        mSampList = null;
+                        getFilesInfo(filesUrl, session, onSuccess);
                     } else {
                         onSuccess.run();
                     }
