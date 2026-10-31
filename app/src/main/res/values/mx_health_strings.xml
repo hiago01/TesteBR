@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="mx_health_title">Arquivos do jogo incompletos</string>
+    <string name="mx_health_intro">O jogo abriu, mas alguns arquivos parecem faltar ou estar corrompidos e foram contornados:</string>
+    <string name="mx_health_models">• %1$d modelo(s) substituído(s) por outro parecido</string>
+    <string name="mx_health_txd">• %1$d textura(s) substituída(s)</string>
+    <string name="mx_health_removed">• %1$d item(ns) removido(s) da carga</string>
+    <string name="mx_health_missing">• %1$d arquivo(s) de dados ausente(s): %2$s</string>
+    <string name="mx_health_hint">Alguns objetos podem aparecer errados. Se notar problemas, abra Soluções de problemas (engrenagem) e use Reinstalar.</string>
+    <string name="mx_health_btn">Entendi</string>
+</resources>
