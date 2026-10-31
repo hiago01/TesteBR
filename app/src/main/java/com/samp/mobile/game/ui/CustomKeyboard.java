@@ -12,7 +12,10 @@ import com.samp.mobile.R;
 import android.app.Activity;
 import android.content.Context;
 import android.text.Editable;
+import android.os.SystemClock;
 import android.view.KeyEvent;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
@@ -50,6 +53,12 @@ public class CustomKeyboard {
     private int mCurrentHistoryMessage = 0;
 
     private Runnable mAnimTask = null;
+
+    // Vigia o teclado do sistema: posiciona a barra ACIMA dele e some com ela quando o teclado fecha por qualquer meio
+    // (seta de baixo do sistema, Voltar, gesto) - antes a barra ficava presa no alto da tela.
+    private Runnable mWatchTask = null;
+    private long mShownAt = 0;
+    private boolean mImeSeen = false;
 
     public boolean IsShowing()
     {
@@ -172,6 +181,10 @@ public class CustomKeyboard {
 
         mInputLayout.postDelayed(mAnimTask, 60);
 
+        mShownAt = SystemClock.uptimeMillis();
+        mImeSeen = false;
+        startWatch();
+
         mCurrentHistoryMessage = 0;
 
         if(mSavedInput != null)
@@ -197,11 +210,16 @@ public class CustomKeyboard {
             mAnimTask = null;
         }
 
-        if(mContext.getCurrentFocus() != null)
+        stopWatch();
+
+        InputMethodManager inputMethodManager = (InputMethodManager) mContext.getSystemService(Context.INPUT_METHOD_SERVICE);
+        if(inputMethodManager != null)
         {
-            InputMethodManager inputMethodManager = (InputMethodManager) mContext.getSystemService(Context.INPUT_METHOD_SERVICE);
-            inputMethodManager.hideSoftInputFromWindow(mContext.getCurrentFocus().getWindowToken(), 0);
+            // pela janela do proprio campo (getCurrentFocus() podia ser null e o teclado ficava aberto)
+            inputMethodManager.hideSoftInputFromWindow(mInputEt.getWindowToken(), 0);
         }
+        mInputEt.clearFocus();
+        mInputLayout.setTranslationY(0.0f);
         mInputLayout.setVisibility(View.GONE);
 
         mIsShowing = false;
@@ -218,6 +236,54 @@ public class CustomKeyboard {
         InputListener listener = (InputListener)mContext;
 
         listener.OnInputEnd(str);
+
+        // enviou (ou mandou vazio): fecha a barra e o teclado - antes ela ficava aberta no alto da tela
+        HideInputLayout();
+    }
+
+    private int imeHeight(boolean[] visible)
+    {
+        visible[0] = false;
+        View decor = mContext.getWindow().getDecorView();
+        WindowInsetsCompat wi = ViewCompat.getRootWindowInsets(decor);
+        if(wi == null) return 0;
+        visible[0] = wi.isVisible(WindowInsetsCompat.Type.ime());
+        return Math.max(0, wi.getInsets(WindowInsetsCompat.Type.ime()).bottom);
+    }
+
+    private void startWatch()
+    {
+        stopWatch();
+        mWatchTask = new Runnable() {
+            @Override
+            public void run()
+            {
+                if(!mIsShowing) return;
+                boolean[] vis = new boolean[1];
+                int h = imeHeight(vis);
+                if(vis[0])
+                {
+                    mImeSeen = true;
+                    mInputLayout.setTranslationY(-h);          // barra encostada em cima do teclado
+                }
+                else if(android.os.Build.VERSION.SDK_INT >= 30 && (mImeSeen || SystemClock.uptimeMillis() - mShownAt > 1500))   // <30: o sistema nao informa o teclado; so enviar fecha
+                {
+                    HideInputLayout();                          // teclado fechou por fora (seta/Voltar/gesto)
+                    return;
+                }
+                mInputLayout.postDelayed(this, 100);
+            }
+        };
+        mInputLayout.postDelayed(mWatchTask, 100);
+    }
+
+    private void stopWatch()
+    {
+        if(mWatchTask != null)
+        {
+            mInputLayout.removeCallbacks(mWatchTask);
+            mWatchTask = null;
+        }
     }
 }
 
