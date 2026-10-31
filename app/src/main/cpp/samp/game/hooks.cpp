@@ -1013,7 +1013,7 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 		// Minimapa: tocar abre o /mapa
 		if (MiniMapTouch(type, num, posX, posY))
 			return;
-		// Botao de pulo proprio (hud_crouch): idem
+		// Botao de pulo proprio (hud_crouch): o dedo que cai nele nao vai para o jogo
 		if (pUI->jumpbutton() && pUI->jumpbutton()->onRawTouch(type, num, posX, posY))
 			return;
 
@@ -2581,14 +2581,15 @@ void InjectHooks()
 // Ponteiro do botao de correr (CWidgetButtonSprint::Update, lido no assembly):
 //     enchimento = clamp(1 - (m_fTimeCanRun + c) / (max + c), 0, 1)     com m_fTimeCanRun = playerData(+0x540)+0x24
 //     max        = CStats::GetFatAndMuscleModifier(7)
-// m_fTimeCanRun passa a espelhar a energia da HUD: 100% = max (ponteiro vazio), 0% = 0 (ponteiro cheio).
+// O ponteiro verde foi REMOVIDO a pedido: m_fTimeCanRun fica sempre no maximo (enchimento 0). A energia so aparece na HUD laranja.
 void Hud_MirrorSprintPointer(void* ped, int pct)
 {
     static float (*s_fatMuscle)(int) = (float(*)(int))dlsym(CHook::lib, "_ZN6CStats23GetFatAndMuscleModifierE17eStatModAbilities");
     if (!s_fatMuscle || !ped) return;
     const float mx = s_fatMuscle(7);
     uintptr_t pd = *(uintptr_t*)((uintptr_t)ped + 0x540);
-    if (pd && mx > 0.0f) *(float*)(pd + 0x24) = mx * (float)pct / 100.0f;
+    (void)pct;
+    if (pd && mx > 0.0f) *(float*)(pd + 0x24) = mx;
 }
 
 // CPlayerPed::HandleSprintEnergy(bool, float) -> "pode correr". So moto/nado chamam (a pe nao chama; ver movemode.cpp).

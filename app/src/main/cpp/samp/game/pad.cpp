@@ -115,7 +115,8 @@ uint32_t CPad__JumpJustDown_hook(uintptr_t thiz)
 	}
 	else
 	{
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = CPad__JumpJustDown(thiz);
+		// Pulo NATIVO removido (inclusive o duplo toque do botao de correr): so o botao hud_crouch (jumpbutton.cpp) pula.
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = JumpButtonState::ConsumeJustDown() ? 1 : 0;
 		return LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP];
 	}
 }
@@ -130,7 +131,7 @@ uint32_t CPad__GetJump_hook(uintptr_t thiz)
 	}
 	else
 	{
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = CPad__JumpJustDown(thiz);
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = JumpButtonState::Held() ? 1 : 0;   // so o botao hud_crouch
 		return LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP];
 	}
 }

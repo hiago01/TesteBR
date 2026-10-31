@@ -4,7 +4,7 @@
 #include <cstdint>
 
 // =====================================================================================
-//  Botao de PULO proprio (icone "hud_crouch" do texdb/mobile, arquivo mobile.etc.dat).
+//  Botao de PULO proprio (icone hud_crouch): UM toque pula; o pulo nativo foi removido (icone "hud_crouch" do texdb/mobile, arquivo mobile.etc.dat).
 //
 //  O pulo deixa de vir do botao nativo (o mesmo do corredor): CPad::JumpJustDown/GetJump do jogador LOCAL passam a
 //  devolver so o pedido deste botao (game/pad.cpp). Aparece ao lado esquerdo do botao nativo de correr, so a pe e vivo,

@@ -93,8 +93,7 @@ void JumpButton::draw(ImGuiRenderer* r)
 
 	const bool pressed = m_finger.load() >= 0;
 
-	// Icone "hud_crouch" (texdb/mobile). Carrega sob demanda; se nao achar, tenta no MAXIMO 3 vezes (espacadas) e depois
-	// desiste: fica o botao simples "PULO" e nao ha mais nenhuma busca em disco durante o jogo.
+	// Icone "hud_crouch" (texdb/mobile): no maximo 3 tentativas espacadas; depois fica o botao simples "PULO".
 	static RwTexture* s_icon = nullptr;
 	static int64_t    s_nextTry = 0;
 	static int        s_tries = 0;
@@ -137,7 +136,7 @@ bool JumpButton::onRawTouch(int type, int num, int x, int y)
 		if (!JumpLogic::Hit(c, fx, fy)) return false;
 		m_finger.store(num);
 		const int64_t now = NowMs();
-		if (!g_bTouchCancel && now - g_lastJumpMs >= JumpLogic::kCooldownMs) { g_lastJumpMs = now; g_req.Press(now); }   // pula ao TOCAR (resposta imediata)
+		if (!g_bTouchCancel && now - g_lastJumpMs >= JumpLogic::kCooldownMs) { g_lastJumpMs = now; g_req.Press(now); }   // 1 toque = pulo
 		return true;
 	}
 
