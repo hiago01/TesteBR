@@ -72,7 +72,7 @@ public final class KeyboardGuard {
         Report r = new Report();
         Context app = ctx.getApplicationContext();
         analyzeIme(app, r);                                    // antes do ini: decide se a chave vai para 1 ou 0
-        r.wanted = "0";                                       // o jogo usa SEMPRE o teclado nativo (nao depende do Android)
+        r.wanted = "1";                                       // FORCADO: sempre androidkeyboard=1 (teclado do Android; o teclado novo do jogo fica desativado)
         File dir = app.getExternalFilesDir(null);
         if (dir == null) { r.notes.add("armazenamento do app indisponivel"); r.iniOk = false; return r; }
         File ini = new File(dir, "SAMP/settings.ini");
@@ -98,7 +98,7 @@ public final class KeyboardGuard {
             final boolean want = "1".equals(r.wanted);
             if (IniFix.asBool(IniFix.read(text, "gui", "androidkeyboard"), false) != want) {
                 String fixed = IniFix.enforce(text, "gui", "androidkeyboard", r.wanted);
-                if (write(ini, fixed)) { r.iniFixed = true; r.notes.add("androidkeyboard ajustado para " + r.wanted + " (teclado nativo do jogo)"); }
+                if (write(ini, fixed)) { r.iniFixed = true; r.notes.add("androidkeyboard ajustado para " + r.wanted + " (teclado do Android)"); }
                 else r.notes.add("falha ao gravar settings.ini");
                 text = read(ini);
             }

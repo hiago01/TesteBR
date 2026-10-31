@@ -18,7 +18,7 @@ public final class FixedSettings {
         if (ctx == null) return;
         Context app = ctx.getApplicationContext();
         SharedPreferenceCore p = new SharedPreferenceCore();
-        p.setBoolean(app, "ANDROID_KEYBOARD", false);   // teclado NATIVO do jogo
+        p.setBoolean(app, "ANDROID_KEYBOARD", true);    // teclado do ANDROID (o teclado novo do jogo fica desativado)
         p.setBoolean(app, "AIM", true);
         p.setInt(app, "VERSION", LAST_VERSION);
         try {
@@ -27,7 +27,7 @@ public final class FixedSettings {
             File f = new File(dir, "SAMP/settings.ini");
             if (!f.exists()) return;
             Wini w = new Wini(f);
-            w.put("gui", "androidkeyboard", false);
+            w.put("gui", "androidkeyboard", true);
             w.put("gui", "autoaim", true);
             w.put("gui", "VoiceChatEnable", true);
             w.put("client", "autoaim", true);
