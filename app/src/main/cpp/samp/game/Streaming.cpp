@@ -2,6 +2,12 @@
 // Created by x1y2z on 11.01.2023.
 //
 
+#include <dirent.h>
+#include <sys/stat.h>
+#include <errno.h>
+#include <strings.h>
+#include <string>
+#include <cstdio>
 #include "Diag.h"
 #include "../crashreport.h"
 #include "Streaming.h"
@@ -224,6 +230,51 @@ void CStreaming::RemoveBuildingsNotInArea(eAreaCodes areaCode) {
 // falha de leitura (status 0xFE, 0 setores) e o log diz QUAL IMG/posicao pediu. Enderecos conferidos no desassembly do
 // libGTASA 2.10 arm64: gCdFiles = +0x8EAA40 (32 ponteiros), ponteiro dos canais = +0x8EAA18 (0x30 bytes cada; +4 setores, +0x14 status).
 // ---------------------------------------------------------------------------------------------------------------------------
+
+// DIAGNOSTICO (samp_log 2026-10-31): modelos 7 (male01), 280 (lapd1) e 596 (copcarla) pedidos SEM entrada no IMG. Le o diretorio do
+// texdb/gta3.img direto do disco e diz se esses nomes existem, quantas entradas ha e o tamanho de cada IMG da pasta texdb/.
+static void DumpImgDirectoryDiag()
+{
+    if (!g_pszStorage || !g_pszStorage[0]) return;
+    const std::string root(g_pszStorage);
+    if (DIR* d = opendir((root + "texdb").c_str())) {
+        while (dirent* e = readdir(d)) {
+            if (e->d_name[0] == '.') continue;
+            struct stat st {};
+            const std::string fp = root + "texdb/" + e->d_name;
+            if (stat(fp.c_str(), &st) == 0 && S_ISREG(st.st_mode))
+                FLog("[IMGDIAG] texdb/%s = %lld bytes", e->d_name, (long long)st.st_size);
+        }
+        closedir(d);
+    } else FLog("[IMGDIAG] pasta texdb/ nao abre (errno=%d)", errno);
+    const char* names[] = { "texdb/gta3.img", "texdb/GTA3.IMG", "texdb/Gta3.img" };
+    for (const char* rel : names) {
+        FILE* f = fopen((root + rel).c_str(), "rb");
+        if (!f) continue;
+        char magic[4]; uint32_t cnt = 0;
+        if (fread(magic, 1, 4, f) != 4 || fread(&cnt, 4, 1, f) != 1) { FLog("[IMGDIAG] %s: cabecalho ilegivel", rel); fclose(f); return; }
+        FLog("[IMGDIAG] %s: magic=%.4s entradas=%u", rel, magic, cnt);
+        if (memcmp(magic, "VER2", 4) != 0 || cnt == 0 || cnt > 200000) { fclose(f); return; }
+        const char* want[] = { "male01", "lapd1", "copcarla" };
+        bool found[3] = { false, false, false };
+        for (uint32_t i = 0; i < cnt; i++) {
+            struct { uint32_t off; uint16_t sz1; uint16_t sz2; char name[24]; } en;
+            if (fread(&en, 1, sizeof(en), f) != sizeof(en)) { FLog("[IMGDIAG] diretorio truncado na entrada %u", i); break; }
+            en.name[23] = 0;
+            for (int k = 0; k < 3; k++) {
+                if (strncasecmp(en.name, want[k], strlen(want[k])) == 0 && (en.name[strlen(want[k])] == '.' || en.name[strlen(want[k])] == 0)) {
+                    found[k] = true;
+                    FLog("[IMGDIAG] achou '%s' offset=%u setores=%u/%u", en.name, en.off, (unsigned)en.sz1, (unsigned)en.sz2);
+                }
+            }
+        }
+        for (int k = 0; k < 3; k++) if (!found[k]) FLog("[IMGDIAG] '%s' NAO existe no diretorio de %s", want[k], rel);
+        fclose(f);
+        return;
+    }
+    FLog("[IMGDIAG] nenhum texdb/gta3.img encontrado");
+}
+
 static int (*CdStreamRead_orig)(int, void*, uint32_t, uint32_t) = nullptr;
 static int CdStreamRead_guard(int channel, void* buf, uint32_t offset, uint32_t sectors)
 {
@@ -255,6 +306,7 @@ static int CdStreamRead_guard(int channel, void* buf, uint32_t offset, uint32_t 
                                  (unsigned)q.m_nImgId, (unsigned)q.m_nCdPosn, (unsigned)q.m_nCdSize, (int)q.m_nLoadState);
                     }
                 }
+                if (bad > 0) DumpImgDirectoryDiag();
                 FLog("[STREAM][BAD] varredura: %d modelos suspeitos (pedido SEM entrada no IMG, imgId>=%d, tamanho>0x40000 ou READING)", bad, (int)TOTAL_IMG_ARCHIVES);
                 CrashReport::Mark("scan-bad", bad, (int)arch);
             }
