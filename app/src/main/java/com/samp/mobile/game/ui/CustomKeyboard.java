@@ -130,13 +130,25 @@ public class CustomKeyboard {
 
                         OnInputEnd(str);
                     }
-
+                    // enviou: fecha a barra de texto e o teclado (antes ficavam abertos)
+                    HideInputLayout();
+                    return true;
                 }
                 return false;
             }
         });
 
         HideInputLayout();
+    }
+
+    /** true se o ponto (coordenadas da tela) cai dentro da barra de texto do chat. */
+    public boolean IsPointInsideInput(float rawX, float rawY)
+    {
+        if (mInputLayout == null || mInputLayout.getVisibility() != View.VISIBLE) return false;
+        int[] loc = new int[2];
+        mInputLayout.getLocationOnScreen(loc);
+        return rawX >= loc[0] && rawX <= loc[0] + mInputLayout.getWidth()
+            && rawY >= loc[1] && rawY <= loc[1] + mInputLayout.getHeight();
     }
 
     public void onHeightChanged(int height)

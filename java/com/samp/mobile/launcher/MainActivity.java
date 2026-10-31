@@ -166,7 +166,6 @@ public class MainActivity extends AppCompatActivity {
             SharedPreferences sp = getSharedPreferences("com.samp.mobile", MODE_PRIVATE);
             if (sp.getBoolean(com.samp.mobile.game.SAMP.PREF_GAME_RUNNING, false)) {
                 sp.edit().putBoolean(com.samp.mobile.game.SAMP.PREF_GAME_RUNNING, false).commit();
-                Toast.makeText(this, "O jogo foi encerrado inesperadamente. Se repetir, abra Solucoes de problemas (engrenagem).", Toast.LENGTH_LONG).show();
             }
         } catch (RuntimeException ignored) { }
 

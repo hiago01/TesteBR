@@ -340,6 +340,19 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
 
     public native boolean onEventBackPressed();
 
+    // Toque fora da barra de texto do chat fecha a barra e o teclado (o toque segue normalmente para o jogo).
+    @Override
+    public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
+        try {
+            if (ev.getActionMasked() == android.view.MotionEvent.ACTION_DOWN
+                    && mKeyboard != null && mKeyboard.IsShowing()
+                    && !mKeyboard.IsPointInsideInput(ev.getRawX(), ev.getRawY())) {
+                mKeyboard.HideInputLayout();
+            }
+        } catch (RuntimeException ignored) { }
+        return super.dispatchTouchEvent(ev);
+    }
+
     @Override
     public void onBackPressed() {
         if (mClothes != null && mClothes.isShowing()) {
