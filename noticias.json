@@ -1,0 +1,13 @@
+{
+  "news": [
+    {
+      "id": "etapa1",
+      "title": "Primeira etapa dos testes",
+      "message": "Atualize o launcher e abra o jogo: estamos na etapa 1 dos testes. Se encontrar qualquer bug, avise a equipe. Obrigado por ajudar a melhorar o Máximo RP!",
+      "image": "https://maximoroleplay.com.br/noticias/noticia_etapa1.png",
+      "type": "update",
+      "url": "",
+      "date": "2026-10-30 23:00"
+    }
+  ]
+}

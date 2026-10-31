@@ -46,6 +46,15 @@
             android:textColor="@color/mx_text_dim"
             android:textSize="9sp" />
 
+        <ImageView
+            android:id="@+id/mx_news_banner"
+            android:layout_width="match_parent"
+            android:layout_height="110dp"
+            android:layout_marginTop="6dp"
+            android:importantForAccessibility="no"
+            android:scaleType="centerCrop"
+            android:visibility="gone" />
+
         <TextView
             android:id="@+id/mx_news_time"
             android:layout_width="match_parent"

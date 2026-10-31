@@ -615,7 +615,10 @@ void WeaponBar::draw(ImGuiRenderer* r)
 	s_frame++;
 
 	CPedGTA* ped = GetLocalPed();
-	const bool usable = (ped != nullptr) && !IsBlocked(ped);
+	// kShowWeaponHud=false: o botao e a roda de armas ficam ESCONDIDOS e nao pegam toques (tudo vai para o jogo).
+	// Obs.: a troca nativa por deslize continua bloqueada em pad.cpp (kBlockNativeWeaponCycle).
+	static constexpr bool kShowWeaponHud = false;
+	const bool usable = kShowWeaponHud && (ped != nullptr) && !IsBlocked(ped);
 	m_available.store(usable);
 
 	if (!usable)
@@ -703,7 +706,9 @@ void WeaponBar::draw(ImGuiRenderer* r)
 	DrawButton(r, ped, screen, stNow == kPressed || stNow == kOpen);
 
 	// dica inicial: como usar o seletor (some sozinha, ou depois da primeira escolha pela roda)
-	if (!s_learned && m_anim <= 0.0f && s_tipTime < kTipSeconds)
+	// kShowTip=false: a mensagem de dica fica DESATIVADA (o botao e a roda de armas continuam normais).
+	static constexpr bool kShowTip = false;
+	if (kShowTip && !s_learned && m_anim <= 0.0f && s_tipTime < kTipSeconds)
 	{
 		static const std::string kL1 = "Dica: toque rapido no botao troca de arma.";
 		static const std::string kL2 = "Segure, arraste ate a arma e solte para equipar.";

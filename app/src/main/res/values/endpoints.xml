@@ -9,6 +9,8 @@
     <!-- Base do servidor HTTP do launcher, sem barra final. -->
     <string name="endpoint_base_url" translatable="false">https://maximoroleplay.com.br</string>
     <!-- JSON com o servidor exibido (estrutura documentada em docs/servers.example.json). -->
+    <!-- JSON das noticias (aba Noticias). Formato em LEIA-ME_NOTICIAS_JSON.md. -->
+    <string name="endpoint_news_path" translatable="false">/noticias.json</string>
     <string name="endpoint_servers_path" translatable="false">/servers.json</string>
     <!-- JSON do atualizador (client_config) com version_code, url_launcher, url_cache_files. -->
     <string name="endpoint_client_config_path" translatable="false">/client_config.json</string>

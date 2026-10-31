@@ -27,6 +27,10 @@ public final class AppEndpoints {
         return base(c) + c.getString(R.string.endpoint_servers_path).trim();
     }
 
+    public static String newsUrl(Context c) {
+        return base(c) + c.getString(R.string.endpoint_news_path).trim();
+    }
+
     public static String clientConfigUrl(Context c) {
         return base(c) + c.getString(R.string.endpoint_client_config_path).trim();
     }
