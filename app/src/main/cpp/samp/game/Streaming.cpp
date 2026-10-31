@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <strings.h>
 #include <string>
+#include <cctype>
 #include <cstdio>
 #include "Diag.h"
 #include "../crashreport.h"
@@ -401,6 +402,7 @@ static void SanitizeRequested()
 
 static void RequestModelStream_safe(int chIdx)
 {
+    if (CustomImg::ModelIndex::g_dirty) CustomImg::ModelIndex::SaveIfDirty();   // so ha sujeira durante a carga dos diretorios; depois dela grava 1 vez
     SanitizeRequested();
     RequestModelStream_orig(chIdx);
 }
@@ -426,15 +428,65 @@ static unsigned long long OpenFile_log(const char* path, const char* mode)
 }
 
 static char* (*LoadLine_orig)(unsigned long long) = nullptr;
+
+// stream.ini "VIRTUAL": enquanto o arquivo existe, as linhas que o ReadIniFile le sao copiadas para SAMP/stream.ini.bak.
+// Se o stream.ini sumir, as linhas voltam a ser servidas dessa copia (em memoria) - o jogo segue com os MESMOS valores de antes,
+// sem recriar o arquivo na pasta do jogo. Sem copia ainda (1a execucao sem o arquivo): fim de arquivo = valores padrao do jogo.
+static bool InReadIniFile(uintptr_t lr) { const uintptr_t off = lr - g_libGTASA; return off >= 0x55EC48 && off < 0x55EF0C; }
+static std::string              s_iniCap;
+static std::vector<std::string> s_iniLines;
+static size_t                   s_iniServe = 0;
+static bool                     s_iniLoaded = false;
+static char                     s_iniBuf[512];
+
+static std::string IniBackupPath() { return (g_pszStorage && g_pszStorage[0]) ? std::string(g_pszStorage) + "SAMP/stream.ini.bak" : std::string(); }
+
+static void IniSaveBackup()
+{
+    const std::string p = IniBackupPath();
+    if (p.empty() || s_iniCap.empty()) return;
+    std::string old;
+    if (FILE* f = fopen(p.c_str(), "rb")) { char b[512]; size_t n; while ((n = fread(b, 1, sizeof(b), f)) > 0) old.append(b, n); fclose(f); }
+    if (old == s_iniCap) return;
+    if (FILE* f = fopen(p.c_str(), "wb")) { fwrite(s_iniCap.data(), 1, s_iniCap.size(), f); fclose(f); FLog("[FILE] stream.ini: copia de seguranca gravada em SAMP/stream.ini.bak (%u bytes)", (unsigned)s_iniCap.size()); }
+}
+
+static void IniLoadBackup()
+{
+    s_iniLoaded = true; s_iniLines.clear(); s_iniServe = 0;
+    const std::string p = IniBackupPath();
+    std::string all;
+    if (!p.empty()) if (FILE* f = fopen(p.c_str(), "rb")) { char b[512]; size_t n; while ((n = fread(b, 1, sizeof(b), f)) > 0) all.append(b, n); fclose(f); }
+    size_t i = 0;
+    while (i < all.size()) { size_t j = all.find('\n', i); if (j == std::string::npos) j = all.size(); if (j > i) s_iniLines.push_back(all.substr(i, j - i)); i = j + 1; }
+    if (s_iniLines.empty()) FLog("[FILE] stream.ini ausente e SEM copia (SAMP/stream.ini.bak): o jogo usa os valores padrao");
+    else FLog("[FILE] stream.ini ausente: %u linhas servidas da copia SAMP/stream.ini.bak (arquivo virtual em memoria)", (unsigned)s_iniLines.size());
+}
+
 static char* LoadLine_safe(unsigned long long file)
 {
+    const uintptr_t lr = (uintptr_t)__builtin_return_address(0);
+    const bool ini = InReadIniFile(lr);
     if (!file) {
+        if (ini) {   // stream.ini nao abriu: serve a copia em memoria (ou fim de arquivo se nao ha copia)
+            if (!s_iniLoaded) IniLoadBackup();
+            if (s_iniServe < s_iniLines.size()) {
+                strncpy(s_iniBuf, s_iniLines[s_iniServe++].c_str(), sizeof(s_iniBuf) - 1); s_iniBuf[sizeof(s_iniBuf) - 1] = 0;
+                return s_iniBuf;
+            }
+            return nullptr;
+        }
         static int s_n = 0;
         if (s_n++ < 10) FLog("[FILE][FALTA] LoadLine com handle 0 (arquivo nao abriu): tratado como fim de arquivo; chamador nativo libGTASA+0x%llX",
-                              (unsigned long long)((uintptr_t)__builtin_return_address(0) - g_libGTASA));
+                              (unsigned long long)(lr - g_libGTASA));
         return nullptr;
     }
-    return LoadLine_orig(file);
+    char* r = LoadLine_orig(file);
+    if (ini) {
+        if (r) { s_iniCap.append(r); s_iniCap.push_back('\n'); }
+        else   { IniSaveBackup(); s_iniCap.clear(); }
+    }
+    return r;
 }
 
 void CStreaming::InjectHooks() {
@@ -488,7 +540,9 @@ int CStreaming::AddImageToList(char const* pFileName, bool bNotPlayerImg) {
     }
 
     if (fileIndex >= TOTAL_IMG_ARCHIVES) {
-        assert("AddImageToList");
+        // (antes: assert("...") nao faz nada e a escrita abaixo estourava ms_files[])
+        FLog("[IMG] lista de IMGs cheia (%d slots): '%s' NAO registrado", (int)TOTAL_IMG_ARCHIVES, pFileName);
+        return -1;
     }
 
     // free slot found, load the IMG file
@@ -530,6 +584,33 @@ void CStreaming::InitImageList() {
     else
     {
         FLog("[TOUCH] texdb/touch.img nao encontrado: ignorado");
+    }
+
+    // IMGs EXTRAS (mapas/sistemas novos) SEM mexer no codigo: um nome por linha em SAMP/extra_imgs.txt (ex.: mapa_praia.img),
+    // arquivo em texdb/. Linhas vazias ou com # sao ignoradas. Cada IMG so entra se o arquivo existe e ainda ha slot livre.
+    // As entradas do IMG so viram modelo se o IDE (SAMP/*.ide) as declara - o indice de nomes (SAMP/modelindex.bin) refaz sozinho.
+    if (g_pszStorage && g_pszStorage[0]) {
+        const std::string root(g_pszStorage);
+        if (FILE* lf = fopen((root + "SAMP/extra_imgs.txt").c_str(), "r")) {
+            char line[256];
+            while (fgets(line, sizeof(line), lf)) {
+                std::string n(line);
+                while (!n.empty() && (n.back() == '\n' || n.back() == '\r' || n.back() == ' ' || n.back() == '\t')) n.pop_back();
+                size_t b = 0; while (b < n.size() && (n[b] == ' ' || n[b] == '\t')) b++;
+                n = n.substr(b);
+                if (n.empty() || n[0] == '#') continue;
+                const size_t sl = n.find_last_of("/\\");
+                const std::string base = (sl == std::string::npos) ? n : n.substr(sl + 1);
+                if (base.size() < 5 || strcasecmp(base.c_str() + base.size() - 4, ".img") != 0) { FLog("[IMG] extra_imgs.txt: '%s' ignorado (nao termina em .img)", n.c_str()); continue; }
+                struct stat st {};
+                if (stat((root + "texdb/" + base).c_str(), &st) != 0) { FLog("[IMG] extra_imgs.txt: texdb/%s nao existe: ignorado", base.c_str()); continue; }
+                std::string up = "TEXDB\\";
+                for (char c : base) up.push_back((char)toupper((unsigned char)c));
+                const int idx = CStreaming::AddImageToList(up.c_str(), true);
+                if (idx >= 0) FLog("[IMG] extra: %s registrado no slot %d", up.c_str(), idx);
+            }
+            fclose(lf);
+        }
     }
 }
 

@@ -35,6 +35,10 @@
 
 #include <string>
 #include <chrono>
+#include <unordered_map>
+#include <algorithm>
+#include <dirent.h>
+#include <strings.h>
 #include <vector>
 #include <cstdio>
 #include <cstring>
@@ -107,19 +111,123 @@ namespace CustomImg
     // (chamado por CStreaming::LoadCdDirectory para cada .dff do diretorio de cada IMG) por uma
     // busca direta pelo nome, que e exatamente o caminho "sem cache" do proprio jogo.
     // -----------------------------------------------------------------------------------------
+    // -----------------------------------------------------------------------------------------
+    // INDICE PROPRIO nome->id (substitui o MINFO.BIN posicional): SAMP/modelindex.bin
+    //   - guarda pares (chave do nome, id do modelo), NAO posicoes: uma troca de IMG nao o corrompe;
+    //   - cada acerto e CONFERIDO (ms_modelInfoPtrs[id]->m_nKey == chave do nome); se nao confere, cai na busca lenta
+    //     do proprio jogo e o par e corrigido: o indice nunca liga um nome ao modelo errado;
+    //   - assinatura (nome+tamanho+data) de texdb/*.img, SAMP/*.ide e SAMP/extra_imgs.txt: se mudou, o arquivo antigo e
+    //     descartado inteiro (IMG novo, mapa novo, IDE novo -> reconstroi sozinho na proxima carga);
+    //   - nomes SEM modelo nao sao guardados (um IDE novo passa a ser achado na hora).
+    // -----------------------------------------------------------------------------------------
+    namespace ModelIndex
+    {
+        inline std::unordered_map<uint32_t, int32_t> g_map;
+        inline bool     g_loaded = false, g_dirty = false;
+        inline uint64_t g_sig = 0;
+
+        inline void Fnv(uint64_t& h, const char* s) { while (*s) { h ^= (uint8_t)*s++; h *= 1099511628211ULL; } h ^= 0xFF; h *= 1099511628211ULL; }
+        inline void FnvNum(uint64_t& h, unsigned long long v) { char b[32]; snprintf(b, sizeof(b), "%llu", v); Fnv(h, b); }
+
+        inline void SigDir(uint64_t& h, const std::string& dir, const char* ext)
+        {
+            std::vector<std::string> names;
+            if (DIR* d = ::opendir(dir.c_str())) {
+                while (dirent* e = ::readdir(d)) {
+                    const size_t n = strlen(e->d_name), l = strlen(ext);
+                    if (n > l && strcasecmp(e->d_name + n - l, ext) == 0) names.push_back(e->d_name);
+                }
+                ::closedir(d);
+            }
+            std::sort(names.begin(), names.end());
+            for (const auto& n : names) {
+                struct stat st {};
+                if (::stat((dir + n).c_str(), &st) != 0) continue;
+                Fnv(h, n.c_str()); FnvNum(h, (unsigned long long)st.st_size); FnvNum(h, (unsigned long long)st.st_mtime);
+            }
+        }
+
+        inline uint64_t Signature()
+        {
+            uint64_t h = 1469598103934665603ULL;
+            const std::string r = Root();
+            SigDir(h, r + "texdb/", ".img");
+            SigDir(h, r + "SAMP/", ".ide");
+            struct stat st {};
+            if (::stat((r + "SAMP/extra_imgs.txt").c_str(), &st) == 0) { FnvNum(h, (unsigned long long)st.st_size); FnvNum(h, (unsigned long long)st.st_mtime); }
+            return h;
+        }
+
+        inline std::string FilePath() { const std::string r = Root(); return r.empty() ? r : r + "SAMP/modelindex.bin"; }
+
+        inline void LoadOnce()
+        {
+            if (g_loaded) return;
+            g_loaded = true;
+            g_sig = Signature();
+            const std::string p = FilePath();
+            if (p.empty()) return;
+            FILE* f = ::fopen(p.c_str(), "rb");
+            if (!f) { FLog("[MINDEX] sem indice salvo: sera criado nesta carga"); g_dirty = true; return; }
+            char magic[4]; uint32_t ver = 0, cnt = 0; uint64_t sig = 0;
+            bool ok = ::fread(magic, 1, 4, f) == 4 && ::memcmp(magic, "MIDX", 4) == 0 && ::fread(&ver, 4, 1, f) == 1 && ver == 1 &&
+                      ::fread(&sig, 8, 1, f) == 1 && ::fread(&cnt, 4, 1, f) == 1 && cnt < 200000;
+            if (ok && sig != g_sig) { FLog("[MINDEX] assinatura mudou (IMG/IDE alterado): indice antigo descartado, sera refeito"); ok = false; g_dirty = true; }
+            if (ok) {
+                g_map.reserve(cnt);
+                for (uint32_t i = 0; i < cnt; i++) { uint32_t k; int32_t id; if (::fread(&k, 4, 1, f) != 1 || ::fread(&id, 4, 1, f) != 1) { ok = false; break; } g_map[k] = id; }
+                if (!ok) { g_map.clear(); g_dirty = true; FLog("[MINDEX] arquivo truncado/corrompido: sera refeito"); }
+                else FLog("[MINDEX] indice carregado: %u nomes", (unsigned)g_map.size());
+            } else if (!g_dirty) { g_dirty = true; FLog("[MINDEX] indice invalido: sera refeito"); }
+            ::fclose(f);
+        }
+
+        inline void SaveIfDirty()
+        {
+            if (!g_dirty || !g_loaded) return;
+            g_dirty = false;
+            const std::string p = FilePath();
+            if (p.empty() || g_map.empty()) return;
+            const std::string tmp = p + ".tmp";
+            FILE* f = ::fopen(tmp.c_str(), "wb");
+            if (!f) return;
+            const uint32_t ver = 1, cnt = (uint32_t)g_map.size();
+            bool ok = ::fwrite("MIDX", 1, 4, f) == 4 && ::fwrite(&ver, 4, 1, f) == 1 && ::fwrite(&g_sig, 8, 1, f) == 1 && ::fwrite(&cnt, 4, 1, f) == 1;
+            for (const auto& kv : g_map) { if (!ok) break; ok = ::fwrite(&kv.first, 4, 1, f) == 1 && ::fwrite(&kv.second, 4, 1, f) == 1; }
+            ::fclose(f);
+            if (ok && ::rename(tmp.c_str(), p.c_str()) == 0) FLog("[MINDEX] indice gravado: %u nomes", cnt);
+            else { ::remove(tmp.c_str()); FLog("[MINDEX] NAO consegui gravar o indice (sem espaco/permissao?)"); }
+        }
+    }
+
     inline void AcceleratorGetEntry(void* /*accelerator*/, CBaseModelInfo** outMi, int* outId, const char* name)
     {
         using Fn = CBaseModelInfo* (*)(const char*, int*);
         static Fn fn = reinterpret_cast<Fn>(CHook::getSym("_ZN10CModelInfo12GetModelInfoEPKcPi"));
-        // estatistica de custo (confirma "sem lentidao"): chamadas, sem-modelo e tempo total, logados de 4000 em 4000 chamadas
-        static unsigned long long s_calls = 0, s_nomodel = 0, s_ns = 0;
+        // estatistica de custo: chamadas, acertos do indice, sem-modelo e tempo total, logados de 4000 em 4000 chamadas
+        static unsigned long long s_calls = 0, s_hits = 0, s_nomodel = 0, s_ns = 0;
         const auto t0 = std::chrono::steady_clock::now();
-        *outMi = fn(name, outId);
+        ModelIndex::LoadOnce();
+        const uint32_t key = CKeyGen::GetUppercaseKey(name);
+        bool hit = false;
+        const auto it = ModelIndex::g_map.find(key);
+        if (it != ModelIndex::g_map.end()) {
+            const int32_t id = it->second;
+            CBaseModelInfo* mi = (id >= 0 && id < (int32_t)CModelInfo::NUM_MODEL_INFOS) ? CModelInfo::ms_modelInfoPtrs[id] : nullptr;
+            if (mi && mi->m_nKey == key) { *outMi = mi; *outId = id; hit = true; s_hits++; }   // conferido: nome <-> modelo certo
+        }
+        if (!hit) {
+            *outMi = fn(name, outId);                                   // busca do proprio jogo (lenta, sempre correta)
+            if (*outMi) {
+                const auto cur = ModelIndex::g_map.find(key);
+                if (cur == ModelIndex::g_map.end() || cur->second != *outId) { ModelIndex::g_map[key] = *outId; ModelIndex::g_dirty = true; }
+            }
+        }
         s_ns += (unsigned long long)std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count();
         s_calls++;
         if (!*outMi) s_nomodel++;
         if (s_calls % 4000 == 0)
-            FLog("[MINFO] ligacao por nome: %llu entradas, %llu sem modelo no IDE, %.1f ms no total", s_calls, s_nomodel, s_ns / 1e6);
+            FLog("[MINFO] ligacao por nome: %llu entradas, %llu do indice, %llu sem modelo no IDE, %.1f ms no total", s_calls, s_hits, s_nomodel, s_ns / 1e6);
     }
 
     inline void InstallAcceleratorBypass()
