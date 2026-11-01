@@ -76,28 +76,36 @@
  
  	// imgui
  	//bool bRet = pUI->OnTouchEvent(type, num, posX, posY);
-@@ -1106,6 +1114,10 @@
+@@ -1106,6 +1114,17 @@
  		// Minimapa: tocar abre o /mapa
  		if (MiniMapTouch(type, num, posX, posY))
  			return;
 +		// Controles MODERNOS (joystick + botoes): so atuam com o modo moderno a pe; o dedo de um controle nao vai para o jogo.
 +		// Com o modo CLASSICO isto retorna false de imediato e o fluxo abaixo fica exatamente como era.
-+		if (ModernControls::onRawTouch(type, num, posX, posY))
++		const bool modernMine = ModernControls::onRawTouch(type, num, posX, posY);
++		{   // Mira arrastavel: toques sinteticos do dedo do Ataque -> camera/mira nativas (so existem com o moderno + opcao ligada)
++			ModernControls::AimTouch at[8];
++			const int n = ModernControls::DrainAimTouches(at, 8);
++			for (int i = 0; i < n; i++)
++				if (pGame->IsGameInputEnabled()) AND_TouchEvent(at[i].type, at[i].num, at[i].x, at[i].y);
++		}
++		if (modernMine)
 +			return;
  		// Botao de pulo proprio (hud_crouch): o dedo que cai nele nao vai para o jogo
  		if (pUI->jumpbutton() && pUI->jumpbutton()->onRawTouch(type, num, posX, posY))
  			return;
 --- a/app/src/main/cpp/samp/game/pad.cpp
 +++ b/app/src/main/cpp/samp/game/pad.cpp
-@@ -5,6 +5,7 @@
+@@ -5,6 +5,8 @@
  #include "../vendor/armhook/patch.h"
  #include "World.h"
  #include "movemode.h"
++#include <dlfcn.h>
 +#include "../gui/samp_widgets/controlmode.h"
  
  extern UI* pUI;
  extern CGame* pGame;
-@@ -36,6 +37,8 @@
+@@ -36,6 +38,8 @@
  		// Local player
  		// Modo de movimento (WALK/JOG/SPRINT): molda o modulo do stick mantendo a direcao.
  		// Lemos os dois eixos do original para escalar o vetor (e nao cada eixo isolado).
@@ -106,7 +114,7 @@
  		int16_t lr = (int16_t)CPad__GetPedWalkLeftRight(thiz);
  		if (CPad__GetPedWalkUpDown)
  		{
-@@ -65,6 +68,7 @@
+@@ -65,6 +69,7 @@
  	{
  		// Local player
  		// Modo de movimento (WALK/JOG/SPRINT): ver CPad__GetPedWalkLeftRight_hook.
@@ -114,7 +122,7 @@
  		int16_t ud = (int16_t)CPad__GetPedWalkUpDown(thiz);
  		if (CPad__GetPedWalkLeftRight)
  		{
-@@ -85,6 +89,11 @@
+@@ -85,6 +90,11 @@
  	}
  	else
  	{
@@ -126,7 +134,7 @@
  		uint32_t dwSprint = CPad__GetSprint(thiz, unk);
  		if (CPad__GetPedWalkLeftRight && CPad__GetPedWalkUpDown)
  		{
-@@ -116,6 +125,8 @@
+@@ -116,6 +126,8 @@
  	else
  	{
  		// Pulo NATIVO removido (inclusive o duplo toque do botao de correr): so o botao hud_crouch (jumpbutton.cpp) pula.
@@ -135,7 +143,7 @@
  		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = JumpButtonState::ConsumeJustDown() ? 1 : 0;
  		return LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP];
  	}
-@@ -131,6 +142,7 @@
+@@ -131,6 +143,7 @@
  	}
  	else
  	{
@@ -143,7 +151,7 @@
  		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = JumpButtonState::Held() ? 1 : 0;   // so o botao hud_crouch
  		return LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP];
  	}
-@@ -202,6 +214,7 @@
+@@ -202,6 +215,7 @@
  	}
  	else
  	{
@@ -151,7 +159,7 @@
  		return CPad__DuckJustDown(thiz, unk);
  	}
  }
-@@ -225,6 +238,12 @@
+@@ -225,6 +239,12 @@
  	}
  	else
  	{
@@ -164,7 +172,48 @@
  		uint32_t dwResult = CPad__MeleeAttackJustDown(thiz);
  		//LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = true;
  
-@@ -516,6 +535,11 @@
+@@ -459,6 +479,31 @@
+ 
+ /* Weapons */
+ 
++// MODERNO: mira. Segurar Ataque com arma de fogo entra em mira (a mira nativa aparece e o tiro sai nela) e a mira
++// fica no CENTRO da tela (CCamera::m_f3rdPersonCHairMultX/Y = 0.5). Os dois floats sao resolvidos por dlsym no libGTASA;
++// se o simbolo nao existir, so a centralizacao e pulada (loga) e o resto segue.
++static bool IsFirearm(CPedGTA* ped)
++{
++    if (!ped) return false;
++    const int t = (int)ped->m_aWeapons[ped->m_nActiveWeaponSlot].dwType;
++    return t >= 22 && t <= 38;      // ids de arma do GTA SA/SA-MP: pistola(22) ... minigun(38)
++}
++static void ApplyCenteredAim(bool on)
++{
++    static float* px = nullptr; static float* py = nullptr; static bool tried = false, applied = false;
++    static float sx = 0.53f, sy = 0.4f;
++    if (!tried)
++    {
++        tried = true;
++        px = (float*)dlsym(CHook::lib, "_ZN7CCamera22m_f3rdPersonCHairMultXE");
++        py = (float*)dlsym(CHook::lib, "_ZN7CCamera22m_f3rdPersonCHairMultYE");
++        FLog("[CONTROLES] mira centralizada: simbolos %s", (px && py) ? "encontrados" : "NAO encontrados (mira fica na posicao nativa)");
++    }
++    if (!px || !py) return;
++    if (on && !applied)       { sx = *px; sy = *py; *px = 0.5f; *py = 0.5f; applied = true; }
++    else if (!on && applied)  { *px = sx; *py = sy; applied = false; }
++}
++
+ bool (*CPad__GetEnterTargeting)(uintptr_t thiz);
+ bool CPad__GetEnterTargeting_hook(uintptr_t thiz)
+ {
+@@ -471,6 +516,8 @@
+         uint8_t old = CWorld::PlayerInFocus;
+         CWorld::PlayerInFocus = byteCurPlayer;
+         uintptr_t result = CPad__GetEnterTargeting(thiz);
++        ApplyCenteredAim(ModernInput::Active());
++        if (ModernInput::AimWanted() && IsFirearm(GamePool_FindPlayerPed())) result = 1;   // MODERNO: Ataque segurado = mirar
+         LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = result;
+         CWorld::PlayerInFocus = old;
+         return result;
+@@ -516,6 +563,11 @@
  	}
  	else
  	{
@@ -178,15 +227,16 @@
  	}
 --- a/app/src/main/cpp/samp/game/Widgets/WidgetGta.cpp
 +++ b/app/src/main/cpp/samp/game/Widgets/WidgetGta.cpp
-@@ -11,6 +11,7 @@
+@@ -11,6 +11,8 @@
  #include "TouchInterface.h"
  #include "WidgetButton.h"
  #include "WidgetVisibility.h"
++#include <cstdio>
 +#include "gui/samp_widgets/controlmode.h"
  
  extern CNetGame *pNetGame;
  extern CGame *pGame;
-@@ -70,6 +71,9 @@
+@@ -70,6 +72,9 @@
          const int id = LookupWidgetId(pWidget);
          if(id >= 0 && WidgetVis::ShouldHide(id, pPlayerPed->IsInVehicle(), pPlayerPed->IsInJetpackMode()))
              return STATE_FIXED;
@@ -196,25 +246,49 @@
      }
  
      switch(widgetType)
-@@ -189,11 +193,15 @@
+@@ -189,11 +194,34 @@
      CPlayerPed *pPlayerPed = pGame->FindPlayerPed();
      if(!pPlayerPed) return;
      const bool inVeh = pPlayerPed->IsInVehicle(), jet = pPlayerPed->IsInJetpackMode();
 +    const bool modernFoot = ControlMode::IsModern() && !inVeh && !jet;
++    {   // diagnostico (1x por entrada no moderno): quais widgets nativos seguem ligados a pe -> samp_log.txt
++        static bool s_logged = false;
++        if(!modernFoot) s_logged = false;
++        else if(!s_logged)
++        {
++            s_logged = true;
++            char buf[512]; int n = 0;
++            for(int i = 0; i < WidgetIDs::NUM_WIDGETS && n < 480; i++)
++            {
++                CWidgetGta* w = CTouchInterface::m_pWidgets[i];
++                if(w && w->m_bEnabled) n += snprintf(buf + n, sizeof(buf) - n, "%X%s ", i, WidgetVis::ModernReplaces(i) ? "(oculto)" : "");
++            }
++            buf[n < (int)sizeof(buf) ? n : (int)sizeof(buf) - 1] = 0;
++            FLog("[CONTROLES] widgets nativos ligados a pe no moderno: %s", buf);
++        }
++    }
      for(int i = 0; i < WidgetIDs::NUM_WIDGETS; i++)
      {
          CWidgetGta* w = CTouchInterface::m_pWidgets[i];
          if(w && w->m_bEnabled && WidgetVis::ShouldHide(i, inVeh, jet))
              CWidget__SetEnabled(w, false);
 +        // MODERNO a pe: desliga os controles nativos que o sistema moderno substitui (no CLASSICO esta condicao e sempre falsa).
-+        else if(w && w->m_bEnabled && modernFoot && WidgetVis::ModernReplaces(i))
-+            CWidget__SetEnabled(w, false);
++        else if(w && modernFoot && WidgetVis::ModernReplaces(i))
++        {
++            if(w->m_bEnabled) CWidget__SetEnabled(w, false);
++            w->m_Color.a = 0;      // desligar nao apaga o icone: o jogo ainda o desenhava (video do teste); alpha 0 esconde o desenho
++        }
      }
  }
  
 --- a/app/src/main/cpp/samp/game/Widgets/WidgetVisibility.h
 +++ b/app/src/main/cpp/samp/game/Widgets/WidgetVisibility.h
-@@ -11,7 +11,7 @@
+@@ -7,11 +7,12 @@
+     enum : int {
+         ID_ATTACK = 0x01, ID_ACCELERATE = 0x02, ID_BRAKE = 0x03, ID_HANDBRAKE = 0x04,
+         ID_STEER_LEFT = 0x05, ID_STEER_RIGHT = 0x06, ID_HORN = 0x07,
++        ID_ENTER_TARGETING = 0x13, ID_EXIT_TARGETING = 0x14,
+         ID_HYDRAULICS = 0x0C, ID_AUTO_HYDRAULICS = 0x0D,
          ID_VEHICLE_SHOOT_LEFT = 0x10, ID_VEHICLE_SHOOT_RIGHT = 0x11, ID_CAM_TOGGLE = 0x12,
          ID_VEHICLE_BOMB = 0x19, ID_TURRET_LEFT = 0x1A, ID_TURRET_RIGHT = 0x1B,
          ID_BUTTON_SPRINT = 0x1F, ID_BUTTON_CROUCH = 0x20, ID_BUTTON_DIVE = 0x21, ID_BUTTON_SWIM = 0x22,
@@ -223,7 +297,7 @@
      };
  
      /** Botoes que so fazem sentido A PE: somem dentro de veiculo/jetpack. */
-@@ -34,6 +34,17 @@
+@@ -34,6 +35,18 @@
                  return true;
          }
          return false;
@@ -235,6 +309,7 @@
 +    {
 +        switch (id) {
 +            case ID_ATTACK: case ID_BUTTON_SPRINT: case ID_BUTTON_CROUCH: case ID_SPRINT: case ID_PED_MOVE:
++            case ID_ENTER_TARGETING: case ID_EXIT_TARGETING:   // mira: no moderno o Ataque segurado mira (pad.cpp)
 +                return true;
 +        }
 +        return false;
@@ -347,11 +422,11 @@
  	enum { K_INFO = 0, K_TOGGLE, K_SLIDER, K_ACTION, K_CHOICE };
 -	enum { ID_NONE = 0, ID_SKID, ID_FPSCOUNT, ID_STREAM, ID_NATIVE, ID_RESUME, ID_QUIT, ID_PRESET, ID_CTLRESET };
 +	enum { ID_NONE = 0, ID_SKID, ID_FPSCOUNT, ID_STREAM, ID_NATIVE, ID_RESUME, ID_QUIT, ID_PRESET, ID_CTLRESET,
-+	       ID_CTLMODE, ID_MC_EDIT, ID_MC_RESET, ID_MC_JOYSCALE, ID_MC_BTNSCALE, ID_MC_ALPHA, ID_MC_SENS, ID_MC_DEAD, ID_MC_MAXD, ID_MC_JOYX, ID_MC_JOYY };
++	       ID_CTLMODE, ID_MC_EDIT, ID_MC_RESET, ID_MC_JOYSCALE, ID_MC_BTNSCALE, ID_MC_ALPHA, ID_MC_SENS, ID_MC_DEAD, ID_MC_MAXD, ID_MC_JOYX, ID_MC_JOYY, ID_MC_AIMSENS, ID_MC_AIMSMOOTH, ID_MC_AIMDRAG };
  
  	struct Row { const char* label; int kind; int id; int nidx = -1; };
  
-@@ -407,6 +412,18 @@
+@@ -407,6 +412,21 @@
  		{ "Sensibilidade analógica",     K_SLIDER, ID_NATIVE, N_ANALOG },
  		{ "Subir automaticamente",       K_TOGGLE, ID_NATIVE, N_CLIMB },
  		{ "Restaurar padrões",           K_ACTION, ID_CTLRESET },
@@ -365,12 +440,15 @@
 +		{ "Moderno: distância máxima",   K_SLIDER, ID_MC_MAXD },
 +		{ "Moderno: joystick (horizontal)", K_SLIDER, ID_MC_JOYX },
 +		{ "Moderno: joystick (vertical)",   K_SLIDER, ID_MC_JOYY },
++		{ "Moderno: mira arrastável (Ataque)", K_TOGGLE, ID_MC_AIMDRAG },
++		{ "Moderno: sensibilidade da mira", K_SLIDER, ID_MC_AIMSENS },
++		{ "Moderno: suavização da mira", K_SLIDER, ID_MC_AIMSMOOTH },
 +		{ "Moderno: editar posições",    K_ACTION, ID_MC_EDIT },
 +		{ "Moderno: restaurar ajustes",  K_ACTION, ID_MC_RESET },
  	}};
  	const Page kPageNativa = { "", {
  		{ "Indisponível: o menu nativo foi desativado", K_INFO, ID_NONE },
-@@ -415,10 +432,60 @@
+@@ -415,10 +435,65 @@
  
  	const Page* const kSubs[3] = { &kSubGraficos, &kSubTela, &kSubChat };
  
@@ -388,6 +466,8 @@
 +			case ID_MC_MAXD:     f = { 0.6f, 1.6f };  return true;
 +			case ID_MC_JOYX:     f = { 0.05f, 0.95f };return true;
 +			case ID_MC_JOYY:     f = { 0.10f, 0.95f };return true;
++			case ID_MC_AIMSENS:  f = { 0.3f, 3.0f };  return true;
++			case ID_MC_AIMSMOOTH:f = { 0.0f, 0.85f }; return true;
 +		}
 +		return false;
 +	}
@@ -403,6 +483,8 @@
 +			case ID_MC_MAXD:     return &c.maxDist;
 +			case ID_MC_JOYX:     return &c.joyPos.x;
 +			case ID_MC_JOYY:     return &c.joyPos.y;
++			case ID_MC_AIMSENS:  return &c.aimSens;
++			case ID_MC_AIMSMOOTH:return &c.aimSmooth;
 +		}
 +		return nullptr;
 +	}
@@ -427,28 +509,30 @@
  		switch (r.id)
  		{
 +			case ID_MC_JOYSCALE: case ID_MC_BTNSCALE: case ID_MC_ALPHA: case ID_MC_SENS:
-+			case ID_MC_DEAD: case ID_MC_MAXD: case ID_MC_JOYX: case ID_MC_JOYY: return McGet(r.id);
++			case ID_MC_DEAD: case ID_MC_MAXD: case ID_MC_JOYX: case ID_MC_JOYY: case ID_MC_AIMSENS: case ID_MC_AIMSMOOTH: return McGet(r.id);
++			case ID_MC_AIMDRAG: return ControlMode::GetConfig().aimDrag ? 1 : 0;
  			case ID_SKID:     return g_skid.load() ? 1 : 0;
  			case ID_FPSCOUNT: return (pSettings && pSettings->Get().iFPSCounter) ? 1 : 0;
  			case ID_STREAM:   return g_cfg.stream;
-@@ -435,6 +502,8 @@
+@@ -435,6 +510,9 @@
  	{
  		switch (r.id)
  		{
 +			case ID_MC_JOYSCALE: case ID_MC_BTNSCALE: case ID_MC_ALPHA: case ID_MC_SENS:
-+			case ID_MC_DEAD: case ID_MC_MAXD: case ID_MC_JOYX: case ID_MC_JOYY: McSet(r.id, v); break;
++			case ID_MC_DEAD: case ID_MC_MAXD: case ID_MC_JOYX: case ID_MC_JOYY: case ID_MC_AIMSENS: case ID_MC_AIMSMOOTH: McSet(r.id, v); break;
++			case ID_MC_AIMDRAG: { CtlLogic::ModernConfig c = ControlMode::GetConfig(); c.aimDrag = (v != 0); ControlMode::SetConfig(c, false); break; }
  			case ID_SKID:     g_skid.store(v != 0); break;
  			case ID_FPSCOUNT: if (pSettings) pSettings->Get().iFPSCounter = (v != 0); break;
  			case ID_STREAM:   g_cfg.stream = std::clamp(v, 0, 100); ApplyStream(g_cfg.stream); break;
-@@ -450,6 +519,7 @@
+@@ -450,6 +528,7 @@
  
  	void RangeOf(const Row& r, int& mn, int& mx)
  	{
-+		if (r.id >= ID_MC_JOYSCALE && r.id <= ID_MC_JOYY) { mn = 0; mx = 100; return; }
++		if (r.id >= ID_MC_JOYSCALE && r.id <= ID_MC_AIMSMOOTH) { mn = 0; mx = 100; return; }
  		if (r.id == ID_PRESET) { mn = 0; mx = P_COUNT - 1; return; }   // 0..4 (a volta de "Personalizada" cai em 0)
  		if (r.id == ID_NATIVE) { NativeRange(r.nidx, mn, mx); return; }
  		mn = 0; mx = (r.id == ID_STREAM) ? 100 : 1;
-@@ -645,6 +715,9 @@
+@@ -645,6 +724,9 @@
  							for (int i : kIdx) { int32_t* d = NativeField(i, 0x14); if (d) NativeSet(i, *d); }
  							g_dirty = true;
  						}
@@ -458,7 +542,7 @@
  						if (row.id == ID_RESUME) { g_open.store(false); if (g_dirty) SaveCfg(); g_drag = Drag(); return; }
  						if (row.id == ID_QUIT)
  						{
-@@ -769,6 +842,7 @@
+@@ -769,6 +851,7 @@
  		else if (row.kind == K_ACTION)
  		{
  			const char* s = ">";

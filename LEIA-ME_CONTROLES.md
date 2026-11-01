@@ -59,3 +59,21 @@ Cobrem: modo padrão clássico; clamp de config; analógico (zona morta, proporc
 * Comportamento no aparelho: sentido do movimento, que `WIDGET_PED_MOVE (0xA7)` seja o anel do joystick clássico (se o anel continuar aparecendo no moderno, falta mapear o ID), câmera/mira/combate/moto/passageiro/diálogos/teclado, microfone moderno, desenho/legibilidade dos botões, tela de seleção em tela real.
 * Troca clássico↔moderno em jogo (a lógica está testada; o efeito visual/nativo não).
 * Que desligar `PED_MOVE` não interfira no gesto de câmera nativo.
+
+---
+## 7. Parte 2/3 – Mira (Ataque) e mira ARRASTÁVEL estilo Free Fire
+
+**Mira ao atirar** (`game/pad.cpp`): no moderno, segurar Ataque com arma de fogo (ids 22–38) faz `CPad::GetEnterTargeting` devolver verdadeiro → mira nativa; mira centralizada em `CCamera::m_f3rdPersonCHairMultX/Y = 0.5` (símbolos resolvidos por `dlsym`; se faltarem, só a centralização é pulada e o log avisa).
+
+**Ícones nativos antigos** (`WidgetGta.cpp`, `WidgetVisibility.h`): `SetEnabled(false)` não apagava o desenho; agora `m_Color.a = 0` nos widgets substituídos (+ ENTER/EXIT_TARGETING). O log grava `widgets nativos ligados a pe no moderno: ...`.
+
+**Mira arrastável** (opção independente `mira_arrastavel`, padrão ligada; menu CONTROLES → "Moderno: mira arrastável / sensibilidade / suavização"):
+* Descoberta na source: não há função/offset público de "olhar" para chamar; a câmera nativa lê o toque bruto na região de câmera (`WIDGET_LOOK 0xAF`, ver `camerazoom.h`). Por isso **não inventei nenhum offset**: o dedo do Ataque gera um dedo **sintético** (`AND_TouchEvent`, mesmo índice do dedo real, que o moderno consome e o jogo nunca vê) numa âncora livre da tela e o move pelo **deslocamento relativo** × sensibilidade (com suavização opcional). Câmera, mira, limites verticais, recuo, animações, cadência e munição continuam 100% do motor.
+* Ao chegar perto da borda o dedo sintético é solto e reposto na âncora (só o delta importa; nada "pula").
+* Soltar o Ataque encerra o disparo e o dedo sintético. Outro dedo no joystick esquerdo continua independente (cada dedo tem seu ID).
+* Armas automáticas/semiautomáticas/sem munição: decididas pelo motor via `GetWeapon` (segurado), como antes.
+* Clássico: nada disso existe (`ModernInput::Active()` falso).
+* Desligando a opção, o Ataque volta a só atirar/mirar (botão antigo preservado).
+
+**Testado no PC:** `run.sh` 125/125 (inclui arrasto relativo, sensibilidade, reancoragem sem sair da tela, suavização, soltar); `persist_test.sh` 13/13.
+**NÃO verificado:** compilação NDK; que a região de câmera aceite o dedo sintético na âncora (0,58·L, 0,38·A) e mova também a MIRA em modo de mira; sentido/velocidade; `dlsym` dos símbolos de mira; efeito de a pop sintética só sair no próximo toque quando o moderno é desligado no meio do arrasto.

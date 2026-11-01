@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cmath>
 #include <mutex>
+#include <vector>
 
 using namespace CtlLogic;
 
@@ -35,6 +36,20 @@ namespace
 	std::atomic<uint32_t> g_edges{ 0 };
 	std::atomic<int64_t>  g_jumpMs{ -1000000 };
 	int                   g_okFinger = -1;
+	CtlLogic::AimDrag     g_aim;
+	int                   g_aimFinger = -1;
+	std::vector<ModernControls::AimTouch> g_aimQ;
+
+	void QueueAim(const AimEv* ev, int n, int num)       // g_mu travado
+	{
+		for (int i = 0; i < n && g_aimQ.size() < 64; i++)
+			g_aimQ.push_back({ ev[i].type, num, (int)std::lround(ev[i].x), (int)std::lround(ev[i].y) });
+	}
+	void EndAimLocked()
+	{
+		if (g_aimFinger >= 0) { AimEv ev[2]; QueueAim(ev, g_aim.End(ev), g_aimFinger); }
+		g_aimFinger = -1;
+	}
 
 	constexpr int kJumpHoldMs = 120;
 
@@ -96,6 +111,7 @@ namespace
 
 	void ReleaseAllLocked()
 	{
+		EndAimLocked();
 		g_ctl.CancelAll();
 		Publish();
 		g_edges.store(0);
@@ -122,6 +138,15 @@ bool ModernInput::CrouchJustDown(){ return g_active.load() && ConsumeEdge(B_CROU
 bool ModernInput::AttackHeld()    { return g_active.load() && (g_held.load() & (1u << B_ATTACK)); }
 bool ModernInput::AimWanted()      { return g_active.load() && (g_held.load() & (1u << B_ATTACK)); }
 bool ModernInput::AttackJustDown(){ return g_active.load() && ConsumeEdge(B_ATTACK); }
+
+int ModernControls::DrainAimTouches(AimTouch* out, int max)
+{
+	std::lock_guard<std::mutex> l(g_mu);
+	int n = 0;
+	while (n < max && n < (int)g_aimQ.size()) { out[n] = g_aimQ[n]; n++; }
+	g_aimQ.erase(g_aimQ.begin(), g_aimQ.begin() + n);
+	return n;
+}
 
 // ----------------------------------------------------------------------------- widget
 ModernControls::ModernControls() : Widget() {}
@@ -156,8 +181,27 @@ bool ModernControls::onRawTouch(int type, int num, int x, int y)
 	}
 
 	if (g_bTouchCancel) { ReleaseAllLocked(); return false; }
+	const int atkBefore = g_ctl.BtnFinger(B_ATTACK);
 	const bool mine = g_ctl.OnTouch(type, num, fx, fy);
 	Publish();
+
+	// Mira arrastavel (opcional): o dedo do Ataque tambem arrasta a camera/mira (deslocamento relativo, ver AimDrag)
+	{
+		AimEv ev[4];
+		if (type == 2 && g_aimFinger < 0 && g_ctl.BtnFinger(B_ATTACK) == num && atkBefore != num && g_ctl.cfg.aimDrag)
+		{
+			g_aim.sens = g_ctl.cfg.aimSens; g_aim.smooth = g_ctl.cfg.aimSmooth; g_aim.SetScreen(g_sw, g_sh);
+			g_aimFinger = num;
+			QueueAim(ev, g_aim.Begin(fx, fy, ev), num);
+		}
+		else if (type == 3 && g_aimFinger == num)
+		{
+			g_aim.sens = g_ctl.cfg.aimSens; g_aim.smooth = g_ctl.cfg.aimSmooth;
+			QueueAim(ev, g_aim.Move(fx, fy, ev), num);
+		}
+		else if (type == 1 && g_aimFinger == num)
+			EndAimLocked();
+	}
 	return mine;
 }
 

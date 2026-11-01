@@ -96,6 +96,29 @@ int main()
 	  CHECK(e.OnTouch(2, 2, e.lay.base.cx, e.lay.base.cy)); CHECK(e.OnTouch(3, 2, 600, 700)); CHECK(e.OnTouch(1, 2, 600, 700));
 	  CHECK(std::fabs(e.cfg.joyPos.x - 600.0f / 2400) < 1e-3); }
 
+	// --- mira arrastavel ---
+	{
+		AimDrag a; a.SetScreen(2400, 1080); AimEv ev[4];
+		CHECK(a.Move(10, 10, ev) == 0);                                  // sem Begin: nada
+		int n = a.Begin(2160, 734, ev); CHECK(n == 1 && ev[0].type == 2 && ev[0].x > 0 && ev[0].x < 2400);   // push na ancora
+		const float ax = ev[0].x, ay = ev[0].y;
+		n = a.Move(2160, 734, ev); CHECK(n == 0);                         // parado: nenhum evento (so delta, nao absoluto)
+		n = a.Move(2200, 734, ev); CHECK(n == 1 && ev[0].type == 3 && std::fabs(ev[0].x - (ax + 40)) < 1e-3 && std::fabs(ev[0].y - ay) < 1e-3);
+		n = a.Move(2200, 700, ev); CHECK(n == 1 && std::fabs(ev[0].y - (ay - 34)) < 1e-3);      // vertical -> vertical
+		a.sens = 2.0f; n = a.Move(2210, 700, ev); CHECK(n == 1 && std::fabs(ev[0].x - (ax + 40 + 20)) < 1e-3);   // sensibilidade
+		n = a.End(ev); CHECK(n == 1 && ev[0].type == 1 && !a.active());   // soltar encerra
+		CHECK(a.End(ev) == 0 && a.Move(1, 1, ev) == 0);
+		// reancora: arrasto longo nunca sai da tela e o jogo ve sempre push/move/pop validos
+		AimDrag b; b.SetScreen(2400, 1080); b.Begin(2000, 700, ev); bool ok = true; float x = 2000; int pushes = 1, pops = 0;
+		for (int i = 0; i < 400; i++) { x += 12; int k = b.Move(x, 700, ev); for (int j = 0; j < k; j++) { if (ev[j].x < 0 || ev[j].x > 2400 || ev[j].y < 0 || ev[j].y > 1080) ok = false; if (ev[j].type == 2) pushes++; if (ev[j].type == 1) pops++; } }
+		CHECK(ok); CHECK(pushes == pops + 1 && pushes > 1);
+		// suavizacao: movimento unico e distribuido ao longo dos eventos; total nao passa do arrastado
+		AimDrag c; c.SetScreen(2400, 1080); c.smooth = 0.5f; c.Begin(2000, 700, ev); float tot = 0; float lastx = 0;
+		c.Move(2100, 700, ev); lastx = ev[0].x; const float firstStep = lastx - 1392; for (int i = 0; i < 20; i++) { int k = c.Move(2100, 700, ev); if (k) { tot += ev[k - 1].x - lastx; lastx = ev[k - 1].x; } }
+		CHECK(firstStep > 0 && firstStep < 100 && tot > 0 && tot <= 100.0f);
+		ModernConfig d; d.aimSens = 99; d.aimSmooth = 5; d.Clamp(); CHECK(d.aimSens == 3.0f && d.aimSmooth == 0.85f && d.aimDrag);
+	}
+
 	// --- seletor ---
 	for (int orient = 0; orient < 2; orient++)
 	{

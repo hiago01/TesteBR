@@ -52,6 +52,9 @@ namespace
 			g_cfg.sens     = (float)ini.GetDoubleValue(s, "sensibilidade", g_cfg.sens);
 			g_cfg.deadzone = (float)ini.GetDoubleValue(s, "zona_morta", g_cfg.deadzone);
 			g_cfg.maxDist  = (float)ini.GetDoubleValue(s, "distancia_max", g_cfg.maxDist);
+			g_cfg.aimDrag  = ini.GetLongValue(s, "mira_arrastavel", g_cfg.aimDrag ? 1 : 0) != 0;
+			g_cfg.aimSens  = (float)ini.GetDoubleValue(s, "mira_sensibilidade", g_cfg.aimSens);
+			g_cfg.aimSmooth = (float)ini.GetDoubleValue(s, "mira_suavizacao", g_cfg.aimSmooth);
 			for (int i = 0; i < B_COUNT; i++)
 			{
 				std::string k = std::string("b_") + BtnKey(i);
@@ -84,6 +87,9 @@ namespace
 		ini.SetDoubleValue(s, "sensibilidade", g_cfg.sens);
 		ini.SetDoubleValue(s, "zona_morta", g_cfg.deadzone);
 		ini.SetDoubleValue(s, "distancia_max", g_cfg.maxDist);
+		ini.SetLongValue(s, "mira_arrastavel", g_cfg.aimDrag ? 1 : 0);
+		ini.SetDoubleValue(s, "mira_sensibilidade", g_cfg.aimSens);
+		ini.SetDoubleValue(s, "mira_suavizacao", g_cfg.aimSmooth);
 		for (int i = 0; i < B_COUNT; i++)
 		{
 			std::string k = std::string("b_") + BtnKey(i);

@@ -1116,7 +1116,14 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 			return;
 		// Controles MODERNOS (joystick + botoes): so atuam com o modo moderno a pe; o dedo de um controle nao vai para o jogo.
 		// Com o modo CLASSICO isto retorna false de imediato e o fluxo abaixo fica exatamente como era.
-		if (ModernControls::onRawTouch(type, num, posX, posY))
+		const bool modernMine = ModernControls::onRawTouch(type, num, posX, posY);
+		{   // Mira arrastavel: toques sinteticos do dedo do Ataque -> camera/mira nativas (so existem com o moderno + opcao ligada)
+			ModernControls::AimTouch at[8];
+			const int n = ModernControls::DrainAimTouches(at, 8);
+			for (int i = 0; i < n; i++)
+				if (pGame->IsGameInputEnabled()) AND_TouchEvent(at[i].type, at[i].num, at[i].x, at[i].y);
+		}
+		if (modernMine)
 			return;
 		// Botao de pulo proprio (hud_crouch): o dedo que cai nele nao vai para o jogo
 		if (pUI->jumpbutton() && pUI->jumpbutton()->onRawTouch(type, num, posX, posY))

@@ -22,6 +22,11 @@ public:
 	// type: 2 = push, 3 = move, 1 = pop. true = o evento e dos controles modernos (nao segue para o jogo).
 	static bool onRawTouch(int type, int num, int x, int y);
 
+	// Mira arrastavel: toques SINTETICOS (dedo do Ataque -> regiao de camera/mira do jogo). O hook de toque os repassa a
+	// AND_TouchEvent logo apos onRawTouch. type: 2 push, 3 move, 1 pop; num = mesmo indice do dedo do Ataque.
+	struct AimTouch { int type; int num; int x; int y; };
+	static int DrainAimTouches(AimTouch* out, int max);
+
 	static void StartEdit();      // fecha-se sozinho no botao OK
 	static bool IsEditing();
 };

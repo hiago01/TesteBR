@@ -321,7 +321,7 @@ namespace
 {
 	enum { K_INFO = 0, K_TOGGLE, K_SLIDER, K_ACTION, K_CHOICE };
 	enum { ID_NONE = 0, ID_SKID, ID_FPSCOUNT, ID_STREAM, ID_NATIVE, ID_RESUME, ID_QUIT, ID_PRESET, ID_CTLRESET,
-	       ID_CTLMODE, ID_MC_EDIT, ID_MC_RESET, ID_MC_JOYSCALE, ID_MC_BTNSCALE, ID_MC_ALPHA, ID_MC_SENS, ID_MC_DEAD, ID_MC_MAXD, ID_MC_JOYX, ID_MC_JOYY };
+	       ID_CTLMODE, ID_MC_EDIT, ID_MC_RESET, ID_MC_JOYSCALE, ID_MC_BTNSCALE, ID_MC_ALPHA, ID_MC_SENS, ID_MC_DEAD, ID_MC_MAXD, ID_MC_JOYX, ID_MC_JOYY, ID_MC_AIMSENS, ID_MC_AIMSMOOTH, ID_MC_AIMDRAG };
 
 	struct Row { const char* label; int kind; int id; int nidx = -1; };
 
@@ -422,6 +422,9 @@ namespace
 		{ "Moderno: distância máxima",   K_SLIDER, ID_MC_MAXD },
 		{ "Moderno: joystick (horizontal)", K_SLIDER, ID_MC_JOYX },
 		{ "Moderno: joystick (vertical)",   K_SLIDER, ID_MC_JOYY },
+		{ "Moderno: mira arrastável (Ataque)", K_TOGGLE, ID_MC_AIMDRAG },
+		{ "Moderno: sensibilidade da mira", K_SLIDER, ID_MC_AIMSENS },
+		{ "Moderno: suavização da mira", K_SLIDER, ID_MC_AIMSMOOTH },
 		{ "Moderno: editar posições",    K_ACTION, ID_MC_EDIT },
 		{ "Moderno: restaurar ajustes",  K_ACTION, ID_MC_RESET },
 	}};
@@ -446,6 +449,8 @@ namespace
 			case ID_MC_MAXD:     f = { 0.6f, 1.6f };  return true;
 			case ID_MC_JOYX:     f = { 0.05f, 0.95f };return true;
 			case ID_MC_JOYY:     f = { 0.10f, 0.95f };return true;
+			case ID_MC_AIMSENS:  f = { 0.3f, 3.0f };  return true;
+			case ID_MC_AIMSMOOTH:f = { 0.0f, 0.85f }; return true;
 		}
 		return false;
 	}
@@ -461,6 +466,8 @@ namespace
 			case ID_MC_MAXD:     return &c.maxDist;
 			case ID_MC_JOYX:     return &c.joyPos.x;
 			case ID_MC_JOYY:     return &c.joyPos.y;
+			case ID_MC_AIMSENS:  return &c.aimSens;
+			case ID_MC_AIMSMOOTH:return &c.aimSmooth;
 		}
 		return nullptr;
 	}
@@ -485,7 +492,8 @@ namespace
 		switch (r.id)
 		{
 			case ID_MC_JOYSCALE: case ID_MC_BTNSCALE: case ID_MC_ALPHA: case ID_MC_SENS:
-			case ID_MC_DEAD: case ID_MC_MAXD: case ID_MC_JOYX: case ID_MC_JOYY: return McGet(r.id);
+			case ID_MC_DEAD: case ID_MC_MAXD: case ID_MC_JOYX: case ID_MC_JOYY: case ID_MC_AIMSENS: case ID_MC_AIMSMOOTH: return McGet(r.id);
+			case ID_MC_AIMDRAG: return ControlMode::GetConfig().aimDrag ? 1 : 0;
 			case ID_SKID:     return g_skid.load() ? 1 : 0;
 			case ID_FPSCOUNT: return (pSettings && pSettings->Get().iFPSCounter) ? 1 : 0;
 			case ID_STREAM:   return g_cfg.stream;
@@ -503,7 +511,8 @@ namespace
 		switch (r.id)
 		{
 			case ID_MC_JOYSCALE: case ID_MC_BTNSCALE: case ID_MC_ALPHA: case ID_MC_SENS:
-			case ID_MC_DEAD: case ID_MC_MAXD: case ID_MC_JOYX: case ID_MC_JOYY: McSet(r.id, v); break;
+			case ID_MC_DEAD: case ID_MC_MAXD: case ID_MC_JOYX: case ID_MC_JOYY: case ID_MC_AIMSENS: case ID_MC_AIMSMOOTH: McSet(r.id, v); break;
+			case ID_MC_AIMDRAG: { CtlLogic::ModernConfig c = ControlMode::GetConfig(); c.aimDrag = (v != 0); ControlMode::SetConfig(c, false); break; }
 			case ID_SKID:     g_skid.store(v != 0); break;
 			case ID_FPSCOUNT: if (pSettings) pSettings->Get().iFPSCounter = (v != 0); break;
 			case ID_STREAM:   g_cfg.stream = std::clamp(v, 0, 100); ApplyStream(g_cfg.stream); break;
@@ -519,7 +528,7 @@ namespace
 
 	void RangeOf(const Row& r, int& mn, int& mx)
 	{
-		if (r.id >= ID_MC_JOYSCALE && r.id <= ID_MC_JOYY) { mn = 0; mx = 100; return; }
+		if (r.id >= ID_MC_JOYSCALE && r.id <= ID_MC_AIMSMOOTH) { mn = 0; mx = 100; return; }
 		if (r.id == ID_PRESET) { mn = 0; mx = P_COUNT - 1; return; }   // 0..4 (a volta de "Personalizada" cai em 0)
 		if (r.id == ID_NATIVE) { NativeRange(r.nidx, mn, mx); return; }
 		mn = 0; mx = (r.id == ID_STREAM) ? 100 : 1;

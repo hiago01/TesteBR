@@ -67,6 +67,9 @@ namespace CtlLogic
 		float sens     = 1.0f;             // 0.5 .. 2.0 (sensibilidade da intensidade)
 		float deadzone = 0.12f;            // 0 .. 0.45
 		float maxDist  = 1.0f;             // 0.6 .. 1.6 (distancia analogica maxima, x raio da base)
+		bool  aimDrag  = true;             // Ataque tambem arrasta a mira (estilo Free Fire); desligado = Ataque so atira
+		float aimSens  = 1.0f;             // 0.3 .. 3.0 (sensibilidade do arrasto da mira)
+		float aimSmooth = 0.0f;            // 0 .. 0.85 (suavizacao; 0 = desligada)
 		CtlVec   btnPos[B_COUNT] = {
 			{ 0.77f, 0.86f },   // corrida
 			{ 0.78f, 0.64f },   // pulo
@@ -84,6 +87,8 @@ namespace CtlLogic
 			sens     = Clampf(fin(sens, 1.0f),     0.5f, 2.0f);
 			deadzone = Clampf(fin(deadzone, 0.12f), 0.0f, 0.45f);
 			maxDist  = Clampf(fin(maxDist, 1.0f),  0.6f, 1.6f);
+			aimSens  = Clampf(fin(aimSens, 1.0f),  0.3f, 3.0f);
+			aimSmooth = Clampf(fin(aimSmooth, 0.0f), 0.0f, 0.85f);
 			joyPos.x = Clampf(fin(joyPos.x, 0.13f), 0.05f, 0.95f);
 			joyPos.y = Clampf(fin(joyPos.y, 0.72f), 0.10f, 0.95f);
 			for (auto& p : btnPos) { p.x = Clampf(fin(p.x, 0.5f), 0.03f, 0.97f); p.y = Clampf(fin(p.y, 0.5f), 0.05f, 0.97f); }
@@ -297,6 +302,72 @@ namespace CtlLogic
 			if (type == 1) { dragFinger = -1; dragWhat = -1; return true; }
 			return false;
 		}
+	};
+
+	// ---------------------------------------------------------------- mira arrastavel ----
+	// O dedo do Ataque tambem "olha": cada movimento RELATIVO do dedo (nao a posicao absoluta) vira um arrasto num dedo
+	// SINTETICO que o jogo recebe como um toque normal na regiao de camera/mira. Assim o proprio motor aplica a
+	// camera/mira (sensibilidade nativa, limites verticais, recuo, animacoes, municao). O dedo sintetico usa o MESMO indice
+	// do dedo do Ataque (o jogo nunca ve o dedo real, que o moderno consome). Quando o dedo sintetico chega perto da borda,
+	// ele e solto e reposto no ancora (o jogo so usa o delta; nada "pula").
+	struct AimEv { int type; float x, y; };      // 2 push, 3 move, 1 pop (igual a AND_TouchEvent)
+
+	class AimDrag
+	{
+	public:
+		float sens = 1.0f, smooth = 0.0f;
+		bool  active() const { return act; }
+
+		void SetScreen(float w, float h)
+		{
+			sw = w; sh = h;
+			ax = w * 0.58f; ay = h * 0.38f;                 // ancora: livre de botoes (joystick a esquerda, botoes a direita)
+			const float m = std::min(w, h) * 0.06f;
+			minX = m; maxX = w - m; minY = m; maxY = h - m;
+		}
+
+		int Begin(float x, float y, AimEv* out)
+		{
+			act = true; lx = x; ly = y; fx = fy = 0; px = ax; py = ay;
+			out[0] = AimEv{ 2, px, py };
+			return 1;
+		}
+
+		int Move(float x, float y, AimEv* out)
+		{
+			if (!act) return 0;
+			const float dx = x - lx, dy = y - ly;
+			lx = x; ly = y;
+			const float s = Clampf(smooth, 0.0f, 0.85f);
+			fx = fx * s + dx * (1.0f - s);                    // suavizacao (s = 0: passa direto)
+			fy = fy * s + dy * (1.0f - s);
+			if (std::fabs(fx) < 1e-3f && std::fabs(fy) < 1e-3f) return 0;
+			int n = 0;
+			float nx = px + fx * sens, ny = py + fy * sens;
+			if (nx < minX || nx > maxX || ny < minY || ny > maxY)       // vai sair da tela: solta e repoe no ancora
+			{
+				out[n++] = AimEv{ 1, px, py };
+				px = ax; py = ay;
+				out[n++] = AimEv{ 2, px, py };
+				nx = px + fx * sens; ny = py + fy * sens;
+			}
+			px = nx; py = ny;
+			out[n++] = AimEv{ 3, px, py };
+			return n;
+		}
+
+		int End(AimEv* out)
+		{
+			if (!act) return 0;
+			act = false; fx = fy = 0;
+			out[0] = AimEv{ 1, px, py };
+			return 1;
+		}
+
+	private:
+		bool  act = false;
+		float sw = 1920, sh = 1080, ax = 1100, ay = 410, minX = 0, maxX = 1920, minY = 0, maxY = 1080;
+		float lx = 0, ly = 0, fx = 0, fy = 0, px = 0, py = 0;
 	};
 
 	// ---------------------------------------------------------------- seletor ---------
