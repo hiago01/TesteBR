@@ -966,7 +966,18 @@ uint32_t CRadar__GetRadarTraceColor(uint32_t color, uint8_t bright, uint8_t frie
 void (*CRadar__ShowRadarTraceWithHeight)(float x, float y, uint32_t size, uint8_t r, uint8_t g, uint8_t b, uint8_t a, uint8_t type);
 void CRadar__ShowRadarTraceWithHeight_hook(float x, float y, uint32_t size, uint8_t r, uint8_t g, uint8_t b, uint8_t a, uint8_t type)
 {
-    const bool gps = (r == 0xE2 && g == 0xC0 && b == 0x63);
+    // O blip criado por script guarda o CODIGO da cor (ex.: 1006 = 0x3EE), e o jogo o le como RGBA -> r=g=0, b=3, a=0xEE = preto.
+    // Codigos > 8 e < 0x400 (r=g=0, b<=3) sao traduzidos aqui com a mesma tabela do SA-MP (TranslateColorCodeToRGBA).
+    const uint32_t code = ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b << 8) | a;
+    bool gps = (r == 0xE2 && g == 0xC0 && b == 0x63);
+    if (r == 0 && g == 0 && b <= 3 && code > 8 && code < 0x400)
+    {
+        gps = (code == 1006);
+        const uint32_t rgba = TranslateColorCodeToRGBA(code);
+        static int s_tr = 0;
+        if (s_tr < 6) { s_tr++; FLog("[MINIMAPA] cor do blip %u -> %08X", code, rgba); }
+        r = (uint8_t)(rgba >> 24); g = (uint8_t)(rgba >> 16); b = (uint8_t)(rgba >> 8); a = 0xFF;
+    }
     static int s_log = 0;
     if (s_log < 12 && (gps || type != 2)) { s_log++; FLog("[MINIMAPA] blip x=%.3f y=%.3f size=%u rgba=%02X%02X%02X%02X tipo=%u gps=%d", x, y, size, r, g, b, a, (unsigned)type, (int)gps); }
     if (gps && MiniRoute::gEnabled.load()) type = 2;
