@@ -313,13 +313,19 @@ public class SplashActivity extends AppCompatActivity {
                     // APK desatualizado: aviso OBRIGATORIO (um botao, sem cancelar) e entao baixa/instala o APK novo.
                     if (!isFinishing() && !isDestroyed() && !mDialogShowing) {
                         mDialogShowing = true;
-                        View v = getLayoutInflater().inflate(R.layout.mx_dialog_update_required, null);
-                        ((android.widget.TextView) v.findViewById(R.id.mx_upd_req_title)).setText(R.string.mx_upd_app_title);
-                        ((android.widget.TextView) v.findViewById(R.id.mx_upd_req_msg)).setText(R.string.mx_upd_app_msg);
+                        View v = getLayoutInflater().inflate(R.layout.mx_dialog_update_app, null);
+                        {   // ultima palavra do titulo em azul ("Nova versao do aplicativo")
+                            String t = getString(R.string.mx_upd_app_title);
+                            android.text.SpannableString sp = new android.text.SpannableString(t);
+                            int k = t.lastIndexOf(' ');
+                            if (k > 0 && k + 1 < t.length())
+                                sp.setSpan(new android.text.style.ForegroundColorSpan(0xFF2BB5FF), k + 1, t.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                            ((android.widget.TextView) v.findViewById(R.id.mx_upd_app_title)).setText(sp);
+                        }
                         final AlertDialog alert = new AlertDialog.Builder(SplashActivity.this)
                                 .setView(v).setCancelable(false).create();
                         alert.setCanceledOnTouchOutside(false);
-                        v.findViewById(R.id.mx_upd_req_btn).setOnClickListener(new View.OnClickListener() {
+                        v.findViewById(R.id.mx_upd_app_btn).setOnClickListener(new View.OnClickListener() {
                             @Override
                             public void onClick(View view) {
                                 mDialogShowing = false;

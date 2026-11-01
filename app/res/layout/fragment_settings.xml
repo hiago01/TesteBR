@@ -1,0 +1,337 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/mx_bg_panel">
+    <ImageView
+        android:id="@+id/mx_page_icon"
+        android:layout_width="26dp"
+        android:layout_height="26dp"
+        android:layout_marginStart="14dp"
+        android:layout_marginTop="10dp"
+        android:importantForAccessibility="no"
+        android:src="@drawable/mx_ic_settings"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:tint="@color/mx_accent" />
+
+    <TextView
+        android:id="@+id/mx_page_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:fontFamily="@font/montserrat_bold"
+        android:text="@string/mx_settings_title"
+        android:textColor="@color/mx_text"
+        android:textSize="13sp"
+        app:layout_constraintStart_toEndOf="@+id/mx_page_icon"
+        app:layout_constraintTop_toTopOf="@+id/mx_page_icon" />
+
+    <TextView
+        android:id="@+id/mx_page_subtitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="@font/montserrat_medium"
+        android:text="@string/mx_settings_subtitle"
+        android:textColor="@color/mx_text_dim"
+        android:textSize="9sp"
+        app:layout_constraintStart_toStartOf="@+id/mx_page_title"
+        app:layout_constraintTop_toBottomOf="@+id/mx_page_title" />
+
+    <View
+        android:id="@+id/mx_page_divider"
+        android:layout_width="0dp"
+        android:layout_height="1dp"
+        android:layout_marginStart="10dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="10dp"
+        android:background="#332B6BFF"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/mx_page_subtitle" />
+
+    <ScrollView
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="6dp"
+        android:fillViewport="true"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/mx_page_divider">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="10dp">
+
+        <LinearLayout
+            android:id="@+id/settings_nick_card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/mx_bg_card"
+            android:gravity="center_vertical"
+            android:minHeight="42dp"
+            android:orientation="horizontal"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="@font/montserrat_bold"
+                android:text="Nickname"
+                android:textColor="@color/mx_text"
+                android:textSize="10sp" />
+
+            <EditText
+                android:id="@+id/settings_nickname"
+                android:layout_width="170dp"
+                android:layout_height="32dp"
+                android:background="@drawable/mx_bg_input"
+                android:ems="24"
+                android:fontFamily="@font/montserrat_bold"
+                android:gravity="center"
+                android:hint="NickName"
+                android:inputType="textPersonName"
+                android:lines="1"
+                android:textColor="@color/mx_text"
+                android:textColorHint="@color/gray"
+                android:textSize="10sp" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/mx_bg_card"
+            android:gravity="center_vertical"
+            android:minHeight="42dp"
+            android:orientation="horizontal"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="@font/montserrat_bold"
+                android:text="Version"
+                android:textColor="@color/mx_text"
+                android:textSize="10sp" />
+
+            <Spinner
+                android:id="@+id/spinner"
+                android:layout_width="150dp"
+                android:layout_height="32dp"
+                android:background="@drawable/mx_bg_input" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/mx_bg_card"
+            android:gravity="center_vertical"
+            android:minHeight="42dp"
+            android:orientation="horizontal"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="@font/montserrat_bold"
+                android:text="Keyboard"
+                android:textColor="@color/mx_text"
+                android:textSize="10sp" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/keyboard_switch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/mx_bg_card"
+            android:gravity="center_vertical"
+            android:minHeight="42dp"
+            android:orientation="horizontal"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="@font/montserrat_bold"
+                android:text="Voice chat"
+                android:textColor="@color/mx_text"
+                android:textSize="10sp" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/voice_switch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/mx_bg_card"
+            android:gravity="center_vertical"
+            android:minHeight="42dp"
+            android:orientation="horizontal"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="@font/montserrat_bold"
+                android:text="Show FPS"
+                android:textColor="@color/mx_text"
+                android:textSize="10sp" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/fps_switch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/mx_bg_card"
+            android:gravity="center_vertical"
+            android:minHeight="42dp"
+            android:orientation="horizontal"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="@font/montserrat_bold"
+                android:text="Qualidade gráfica"
+                android:textColor="@color/mx_text"
+                android:textSize="10sp" />
+
+            <androidx.appcompat.widget.AppCompatSeekBar
+                android:id="@+id/preset_seekbar"
+                android:layout_width="150dp"
+                android:layout_height="wrap_content"
+                android:max="4" />
+
+            <TextView
+                android:id="@+id/preset_name"
+                android:layout_width="56dp"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/montserrat_bold"
+                android:gravity="end"
+                android:textColor="@color/mx_accent"
+                android:textSize="10sp" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/mx_bg_card"
+            android:gravity="center_vertical"
+            android:minHeight="42dp"
+            android:orientation="horizontal"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="@font/montserrat_bold"
+                android:text="Chat messages"
+                android:textColor="@color/mx_text"
+                android:textSize="10sp" />
+
+            <androidx.appcompat.widget.AppCompatSeekBar
+                android:id="@+id/messages_seekbar"
+                android:layout_width="150dp"
+                android:layout_height="wrap_content" />
+
+            <TextView
+                android:id="@+id/messages_count"
+                android:layout_width="34dp"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/montserrat_bold"
+                android:gravity="end"
+                android:textColor="@color/mx_accent"
+                android:textSize="10sp" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/mx_bg_card"
+            android:gravity="center_vertical"
+            android:minHeight="42dp"
+            android:orientation="horizontal"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="@font/montserrat_bold"
+                android:text="FPS limit"
+                android:textColor="@color/mx_text"
+                android:textSize="10sp" />
+
+            <androidx.appcompat.widget.AppCompatSeekBar
+                android:id="@+id/fps_seekbar"
+                android:layout_width="150dp"
+                android:layout_height="wrap_content" />
+
+            <TextView
+                android:id="@+id/fps_count"
+                android:layout_width="34dp"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/montserrat_bold"
+                android:gravity="end"
+                android:textColor="@color/mx_accent"
+                android:textSize="10sp" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/mx_bg_card"
+            android:gravity="center_vertical"
+            android:minHeight="42dp"
+            android:orientation="horizontal"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="@font/montserrat_bold"
+                android:text="Monet loader"
+                android:textColor="@color/mx_text"
+                android:textSize="10sp" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/monet_switch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+</androidx.constraintlayout.widget.ConstraintLayout>

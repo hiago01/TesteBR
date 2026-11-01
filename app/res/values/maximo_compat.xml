@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Recursos usados por drawables/layouts herdados (server_card.xml, mx_chip_*, mx_menu_item_bg,
+  mx_btn_secondary, mx_seekbar_*). Nomes que NAO existem em maximo_launcher.xml,
+  portanto nao duplicam nada.
+-->
+<resources>
+    <color name="mx_cyan">#22B8FF</color>
+    <color name="mx_error">#FF5C6C</color>
+    <color name="mx_loading">#6AA8FF</color>
+    <color name="mx_menu_selected">#33103466</color>
+
+    <string name="mx_label_mode">MODO</string>
+    <string name="mx_label_address">ENDEREÇO</string>
+    <string name="mx_label_port">PORTA</string>
+    <string name="mx_label_players">JOGADORES</string>
+    <string name="mx_label_ping">PING</string>
+    <string name="mx_unknown">—</string>
+    <string name="mx_tap_to_retry">Toque para tentar novamente</string>
+
+    <!-- Favoritos dos servidores oficiais -->
+    <color name="mx_star_on">#FFC83D</color>
+    <string name="mx_fav_added">Servidor adicionado aos favoritos</string>
+    <string name="mx_fav_removed">Servidor removido dos favoritos</string>
+    <string name="mx_fav_add_cd">Adicionar aos favoritos</string>
+    <string name="mx_fav_remove_cd">Remover dos favoritos</string>
+    <string name="mx_fav_empty">Você ainda não tem favoritos.\nToque na estrela de um servidor oficial para adicioná-lo.</string>
+    <string name="mx_fav_unavailable">Seus favoritos continuam salvos, mas a lista oficial está indisponível no momento. Toque em ATUALIZAR.</string>
+    <string name="mx_tab_legacy_favorites">Manuais</string>
+
+    <!-- Tela de loading do jogo (progresso real por etapas) -->
+    <string name="mx_loading_title">CARREGANDO O CLIENTE...</string>
+    <string name="mx_loading_done">CONECTADO!</string>
+    <string name="mx_loading_step_start">Aguarde, estamos preparando sua experiência...</string>
+    <string name="mx_loading_step_native">Inicializando o SA-MP...</string>
+    <string name="mx_loading_step_engine">Carregando o motor do jogo...</string>
+    <string name="mx_loading_step_samp">Carregando os recursos do SA-MP...</string>
+    <string name="mx_loading_step_prepare">Preparando a conexão...</string>
+    <string name="mx_loading_step_connect">Conectando ao servidor...</string>
+    <string name="mx_loading_step_wait">Aguardando resposta do servidor...</string>
+    <string name="mx_loading_step_retry">O servidor não respondeu. Tentando novamente...</string>
+    <string name="mx_loading_step_full">O servidor está cheio. Tentando novamente...</string>
+    <string name="mx_loading_step_refused">Conexão recusada pelo servidor.</string>
+    <string name="mx_loading_step_reconnect">Conexão perdida. Reconectando...</string>
+    <string name="mx_loading_step_connected">Entrando no servidor...</string>
+    <string name="mx_loading_step_error">Não foi possível iniciar o SA-MP. Feche e abra o jogo novamente.</string>
+
+    <!-- Player "Tocando agora" (loading/jogo) -->
+    <string name="mx_gm_now_playing">♫ TOCANDO AGORA</string>
+    <string name="mx_gm_close_cd">Fechar player</string>
+    <string name="mx_gm_prev_cd">Reiniciar música</string>
+    <string name="mx_gm_play_cd">Tocar ou pausar</string>
+    <string name="mx_gm_next_cd">Reiniciar música</string>
+    <string name="mx_gm_volume_cd">Silenciar ou ativar o som</string>
+</resources>

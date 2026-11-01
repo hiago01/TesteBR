@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Anel girando (indeterminado), usado enquanto o tamanho do download ainda e desconhecido. -->
+<animated-rotate xmlns:android="http://schemas.android.com/apk/res/android"
+    android:pivotX="50%" android:pivotY="50%" android:fromDegrees="0" android:toDegrees="360" android:duration="1100">
+    <shape android:shape="ring" android:innerRadiusRatio="2.35" android:thicknessRatio="14" android:useLevel="false">
+        <gradient android:type="sweep" android:startColor="#001E90FF" android:centerColor="#881E90FF" android:endColor="#FF56D6FF"/>
+    </shape>
+</animated-rotate>

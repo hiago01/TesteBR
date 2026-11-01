@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Altura do conteudo de Configuracoes (layout original em retrato, agora dentro de ScrollView). -->
+    <dimen name="mx_settings_height">520dp</dimen>
+</resources>

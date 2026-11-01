@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher Maximo RP (landscape). O fundo e as telas sao componentes separados; nada aqui e imagem achatada de UI. -->
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/main_layout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/mx_bg"
+    android:keepScreenOn="true">
+
+    <com.maximo.roleplay.launcher.util.HeroImageView
+        android:id="@+id/mx_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:src="@drawable/maximo_bg_hero"
+        android:contentDescription="@null"
+        android:importantForAccessibility="no" />
+
+    <View
+        android:id="@+id/mx_scrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/mx_bg_scrim" />
+
+    <!-- Conteudo respeitando recortes de tela (aplicado por codigo em mx_safe_area) -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/mx_safe_area"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <include
+            android:id="@+id/mx_header"
+            layout="@layout/mx_header"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintEnd_toStartOf="@+id/mx_guide_panel_end" />
+
+        <LinearLayout
+            android:id="@+id/mx_sidebar"
+            android:layout_width="132dp"
+            android:layout_height="0dp"
+            android:layout_marginStart="14dp"
+            android:layout_marginTop="6dp"
+            android:layout_marginBottom="6dp"
+            android:gravity="center_vertical"
+            android:orientation="vertical"
+            app:layout_constraintBottom_toTopOf="@+id/mx_footer"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/mx_header" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/mx_guide_panel_end"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.73" />
+
+        <com.maximo.roleplay.launcher.util.ViewPagerWithoutSwipe
+            android:id="@+id/fragment_place"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_marginStart="10dp"
+            android:layout_marginTop="2dp"
+            android:layout_marginBottom="8dp"
+            app:layout_constraintBottom_toTopOf="@+id/mx_footer"
+            app:layout_constraintEnd_toEndOf="@+id/mx_guide_panel_end"
+            app:layout_constraintStart_toEndOf="@+id/mx_sidebar"
+            app:layout_constraintTop_toBottomOf="@+id/mx_header" />
+
+        <include
+            android:id="@+id/mx_footer"
+            layout="@layout/mx_footer"
+            android:layout_width="0dp"
+            android:layout_height="60dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent" />
+
+        <!-- Atalho discreto: engrenagem + "SOLUCOES DE PROBLEMAS" -> pagina CORRECOES (MainActivity liga o clique) -->
+        <LinearLayout
+            android:id="@+id/mx_btn_help"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="18dp"
+            android:clickable="true"
+            android:contentDescription="@string/mx_help_label"
+            android:focusable="true"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:padding="4dp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/mx_ic_settings"
+                app:tint="@color/mx_text" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:alpha="0.8"
+                android:fontFamily="@font/montserrat_medium"
+                android:gravity="center"
+                android:letterSpacing="0.06"
+                android:maxWidth="84dp"
+                android:text="@string/mx_help_label"
+                android:textColor="@color/mx_text"
+                android:textSize="6sp" />
+        </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>
