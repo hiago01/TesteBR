@@ -6,6 +6,7 @@
 #include "World.h"
 #include "movemode.h"
 #include <dlfcn.h>
+#include <chrono>
 #include "../gui/samp_widgets/controlmode.h"
 
 extern UI* pUI;
@@ -504,6 +505,30 @@ static void ApplyCenteredAim(bool on)
     else if (!on && applied)  { *px = sx; *py = sy; applied = false; }
 }
 
+// Sair da mira ao soltar o Ataque: GetEnterTargeting so ENTRA na mira; ela fica ligada ate o jogo receber o "sair"
+// (CPad::GetExitTargeting, simbolo real do libGTASA). O botao nativo de sair foi escondido no moderno, entao ao soltar o
+// Ataque devolvemos "sair" por uma janela curta.
+static bool    g_aimForced = false;
+static int64_t g_exitUntilMs = 0;
+static int64_t PadNowMs()
+{
+    using namespace std::chrono;
+    return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+}
+
+// Chamado por varios hooks locais (o motor pode parar de consultar "entrar" depois que a mira ja esta ligada).
+static bool AimWantedNow()
+{
+    return ModernInput::AimWanted() && IsFirearm(GamePool_FindPlayerPed());
+}
+static bool AimStateTick()
+{
+    const bool wanted = AimWantedNow();
+    if (wanted) g_aimForced = true;
+    else if (g_aimForced) { g_aimForced = false; g_exitUntilMs = PadNowMs() + 350; }   // soltou: sair da mira
+    return wanted;
+}
+
 bool (*CPad__GetEnterTargeting)(uintptr_t thiz);
 bool CPad__GetEnterTargeting_hook(uintptr_t thiz)
 {
@@ -517,11 +542,18 @@ bool CPad__GetEnterTargeting_hook(uintptr_t thiz)
         CWorld::PlayerInFocus = byteCurPlayer;
         uintptr_t result = CPad__GetEnterTargeting(thiz);
         ApplyCenteredAim(ModernInput::Active());
-        if (ModernInput::AimWanted() && IsFirearm(GamePool_FindPlayerPed())) result = 1;   // MODERNO: Ataque segurado = mirar
+        if (AimStateTick()) result = 1;   // MODERNO: Ataque segurado = mirar
         LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = result;
         CWorld::PlayerInFocus = old;
         return result;
     }
+}
+
+bool (*CPad__GetExitTargeting)(uintptr_t thiz);
+bool CPad__GetExitTargeting_hook(uintptr_t thiz)
+{
+    if (!CWorld::PlayerInFocus) { AimStateTick(); if (PadNowMs() < g_exitUntilMs) return true; }   // so o jogador local, so apos soltar o Ataque (moderno)
+    return CPad__GetExitTargeting(thiz);
 }
 
 // true = o deslize no HUD (widget 0xA0) NAO troca mais de arma. A troca agora e feita pela
@@ -563,6 +595,7 @@ bool CPad__GetWeapon_hook(uintptr_t thiz, CPedGTA* pPed)
 	}
 	else
 	{
+		AimStateTick();                 // MODERNO: detecta soltar o Ataque (sair da mira) mesmo que "entrar" nao seja mais consultado
 		if (ModernInput::Active())      // MODERNO: Ataque segurado = disparo/golpe continuo
 		{
 			LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = ModernInput::AttackHeld() ? 1 : 0;
@@ -1043,6 +1076,7 @@ void HookCPad()
 
     // WEAPON
     CHook::InlineHook("_ZN4CPad17GetEnterTargetingEv", &CPad__GetEnterTargeting_hook, &CPad__GetEnterTargeting);
+    CHook::InlineHook("_ZN4CPad16GetExitTargetingEv", &CPad__GetExitTargeting_hook, &CPad__GetExitTargeting);
     CHook::InlineHook("_ZN4CPad9GetWeaponEP4CPedb", &CPad__GetWeapon_hook, &CPad__GetWeapon);
     CHook::InlineHook("_ZN7CCamera17IsTargetingActiveEP10CPlayerPed", &CCamera_IsTargetingActive_hook, &CCamera_IsTargetingActive);
     CHook::InlineHook("_ZN4CPad24CycleWeaponRightJustDownEv", &CPad__CycleWeaponRightJustDown_hook, &CPad__CycleWeaponRightJustDown);
