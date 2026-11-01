@@ -23,7 +23,7 @@ public:
 	static bool ConsumeFlushRequest();
 	static bool OnBackPressed();
 	static void OnServerPacket(const unsigned char* data, int bytes);   // RPC 204
-	static std::string DebugCommand(const std::string& args);           // /mapa grade | info
+	static std::string DebugCommand(const std::string& args);           // /mapa grade | info | ruas [on|off] | nodes | linhas
 
 	virtual void draw(ImGuiRenderer* renderer) override;
 	virtual void touchEvent(const ImVec2& pos, TouchType type) override { (void)pos; (void)type; }

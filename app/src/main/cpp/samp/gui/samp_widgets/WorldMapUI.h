@@ -9,9 +9,12 @@
 // =====================================================================================
 #include "../imguirenderer.h"
 #include "WorldMapCore.h"
+#include "MapLines.h"
+#include "RoadGraph.h"
 
 #include <atomic>
 #include <cstdio>
+#include <cstring>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -32,6 +35,9 @@ namespace WorldMap
 		virtual int64_t nowMs() = 0;
 		virtual int    tilesLoaded() { return 0; }
 		virtual int    mapDim() { return 70; }   // escurecimento (0-255) por cima do mapa; 0 para tiles claros (Google Maps)
+		// ---- linhas / GPS pelas ruas (opcional: a plataforma padrao nao tem grafo e tudo segue como antes) ----
+		virtual const Roads::Graph* roads() { return nullptr; }   // grafo de ruas (NODES*.DAT); nullptr = ainda carregando/indisponivel
+		virtual const Lines::Styles& lineStyles() { static Lines::Styles s = Lines::Defaults(); return s; }
 	};
 
 	class Ui
@@ -107,6 +113,9 @@ namespace WorldMap
 		int  gpsLoc() const { return m_gps.loc; }
 		const View& view() const { return m_view; }
 		size_t routeSize() const { return m_route.size(); }
+		size_t localRouteSize() const { return m_localRoute.size(); }
+		bool   roadsCut() const { return m_roadsCut; }
+		const std::string& localWhy() const { return m_localWhy; }
 		bool debugGrid = false;      // /mapa grade: mostra o indice de cada tile (conferir a orientacao)
 
 	private:
@@ -139,7 +148,21 @@ namespace WorldMap
 
 		// estado (so a thread de desenho)
 		std::vector<Location> m_locs;
-		std::vector<Vec2> m_route;
+		std::vector<Vec2> m_route;           // rota que o SERVIDOR mandou (RPC 204 op 4); tem prioridade
+		std::vector<Vec2> m_routeDraw;       // m_route com cantos arredondados (cache para desenho)
+		uint64_t m_routeDrawKey = 0;
+		// GPS local pelas ruas (A* no grafo de NODES*.DAT) quando o servidor nao manda rota
+		Roads::Search m_search;
+		std::vector<Vec2> m_localRoute;
+		bool  m_localValid = false;          // ja tentou para o destino m_localToX/Y
+		float m_localToX = 0, m_localToY = 0, m_localFromX = 0, m_localFromY = 0;
+		int64_t m_localTryAt = 0;
+		float m_localLen = 0;
+		bool  m_localUndirected = false;
+		std::string m_localWhy;
+		struct Seg { ImVec2 a, b; uint8_t c; };
+		std::vector<Seg> m_segs;             // camada de ruas (reaproveitado a cada quadro)
+		bool  m_roadsCut = false;
 		Gps m_gps;
 		View m_view;
 		float m_listScroll = 0;
@@ -162,6 +185,11 @@ namespace WorldMap
 		void SetFreeGps(float wx, float wy);
 		void ClearGps(bool notify);
 		void TickGps();
+		void ClearLocalRoute() { m_localRoute.clear(); m_localValid = false; m_localWhy.clear(); }
+		void UpdateLocalRoute(bool havePlayer, float plx, float ply);
+		const std::vector<Vec2>& EffectiveRoute();
+		void DrawRoads(ImGuiRenderer* r, const ImVec2& origin, float k);
+		void DrawRouteLine(ImGuiRenderer* r, const std::vector<Vec2>& rt, const ImVec2& origin, float k, bool havePlayer, float plx, float ply);
 		void Cmd(const char* fmt, int a = 0, int b = 0)
 		{
 			char buf[64];
@@ -258,7 +286,7 @@ namespace WorldMap
 				else
 				{
 					m_gps.on = true; m_gps.x = p.gx; m_gps.y = p.gy; m_gps.z = p.gz; m_gps.loc = p.gpsLoc;
-					m_route.clear();
+					m_route.clear(); ClearLocalRoute();
 					P->setGps(p.gx, p.gy, p.gz);
 					m_selLoc = -1;
 					for (size_t i = 0; i < m_locs.size(); i++) if (m_locs[i].id == p.gpsLoc) m_selLoc = (int)i;
@@ -275,7 +303,7 @@ namespace WorldMap
 	{
 		if (m_gps.on) P->clearGps();
 		m_gps = Gps();
-		m_route.clear();
+		m_route.clear(); ClearLocalRoute();
 		m_selLoc = -1;
 		if (notify) P->sendCommand("/mapax clear");
 	}
@@ -286,7 +314,7 @@ namespace WorldMap
 		const Location& l = m_locs[idx];
 		m_selLoc = idx;
 		m_gps.on = true; m_gps.x = l.x; m_gps.y = l.y; m_gps.z = l.z; m_gps.loc = l.id;
-		m_route.clear();                               // rota antiga nao vale mais; o servidor manda a nova
+		m_route.clear(); ClearLocalRoute();            // rota antiga nao vale mais; o servidor manda a nova (ou o GPS local calcula)
 		P->setGps(l.x, l.y, l.z);
 		if (fromList) CenterOn(m_view, l.x, l.y);
 		Cmd("/mapax sel %d", l.id);
@@ -298,7 +326,7 @@ namespace WorldMap
 		wx = Clampf(wx, kWorldMin, kWorldMax);
 		wy = Clampf(wy, kWorldMin, kWorldMax);
 		m_gps.on = true; m_gps.x = wx; m_gps.y = wy; m_gps.z = 0; m_gps.loc = -1;
-		m_route.clear();
+		m_route.clear(); ClearLocalRoute();
 		m_selLoc = -1;
 		P->setGps(wx, wy, 0.0f);
 		Cmd("/mapax pos %d %d", (int)std::lround(wx), (int)std::lround(wy));
@@ -517,13 +545,161 @@ namespace WorldMap
 		r->drawText(ImVec2(a.x + ((b.x - a.x) - ts.x) * 0.5f, a.y + ((b.y - a.y) - ts.y) * 0.5f), ui_colors::text, label, false, fs);
 	}
 
+	// ---------------------------------------------------------------------------------------------
+	//  GPS pelas ruas + linhas
+	// ---------------------------------------------------------------------------------------------
+	// Sem rota do servidor: calcula A* entre o jogador e o destino no grafo de ruas. Recalcula quando o destino muda ou o
+	// jogador sai da rota (mais que 'recalcular_a'); no maximo 1 calculo a cada 1,2 s. Falha = segue a linha reta tracejada.
+	inline void Ui::UpdateLocalRoute(bool havePlayer, float plx, float ply)
+	{
+		if (!m_gps.on || m_route.size() >= 2 || !havePlayer) return;
+		const Roads::Graph* g = P->roads();
+		if (!g) return;
+		const Lines::Styles& S = P->lineStyles();
+		const bool sameTarget = m_localValid && m_localToX == m_gps.x && m_localToY == m_gps.y;
+		bool need = !sameTarget;
+		if (sameTarget && m_localRoute.size() >= 2)
+			need = Lines::NearestOnPolyline(m_localRoute, { plx, ply }) > S.offRouteDist;
+		else if (sameTarget)   // ja falhou: so tenta de novo se o jogador andou bastante
+			need = Dist(plx, ply, m_localFromX, m_localFromY) > 120.0f;
+		if (!need) return;
+		const int64_t now = P->nowMs();
+		if (now - m_localTryAt < 1200) return;
+		m_localTryAt = now;
+		Roads::RouteResult rr;
+		std::vector<Vec2> out;
+		if (m_search.Route(*g, plx, ply, m_gps.x, m_gps.y, S.snapMax, S.smooth, out, &rr))
+		{
+			m_localRoute = std::move(out); m_localLen = rr.length; m_localUndirected = rr.undirected; m_localWhy.clear();
+		}
+		else { m_localRoute.clear(); m_localWhy = rr.why; }
+		m_localValid = true;
+		m_localToX = m_gps.x; m_localToY = m_gps.y; m_localFromX = plx; m_localFromY = ply;
+	}
+
+	// rota que vale agora: a do servidor (com cantos arredondados) ou a local; vazia = nenhuma
+	inline const std::vector<Vec2>& Ui::EffectiveRoute()
+	{
+		static const std::vector<Vec2> kEmpty;
+		if (m_route.size() >= 2)
+		{
+			uint64_t h = 1469598103934665603ull ^ m_route.size();
+			for (const Vec2& p : m_route)
+			{
+				uint32_t a, b; std::memcpy(&a, &p.x, 4); std::memcpy(&b, &p.y, 4);
+				h = (h ^ a) * 1099511628211ull; h = (h ^ b) * 1099511628211ull;
+			}
+			if (h != m_routeDrawKey || m_routeDraw.empty())
+			{
+				m_routeDraw = P->lineStyles().smooth ? Lines::RoundCorners(m_route, 14.0f, 4) : m_route;
+				m_routeDrawKey = h;
+			}
+			return m_routeDraw;
+		}
+		if (m_gps.on && m_localRoute.size() >= 2 && m_localValid && m_localToX == m_gps.x && m_localToY == m_gps.y) return m_localRoute;
+		return kEmpty;
+	}
+
+	// Linha da rota: contorno escuro + linha principal, espessura pelo zoom, so os trechos visiveis. A parte que o jogador
+	// ja passou nao e desenhada (a linha sai da posicao dele). Pontas arredondadas.
+	inline void Ui::DrawRouteLine(ImGuiRenderer* r, const std::vector<Vec2>& rt, const ImVec2& origin, float k, bool havePlayer, float plx, float ply)
+	{
+		const Lines::Style& rs = P->lineStyles().cat[Lines::kRoute];
+		if (!rs.enabled || rt.size() < 2) return;
+		std::vector<Vec2> wp;
+		wp.reserve(rt.size() + 1);
+		size_t from = 0;
+		if (havePlayer)
+		{
+			size_t seg = 1;
+			Lines::NearestOnPolyline(rt, { plx, ply }, &seg);
+			from = seg;                                  // 1o ponto ainda a frente
+			wp.push_back({ plx, ply });
+		}
+		for (size_t i = from; i < rt.size(); i++) wp.push_back(rt[i]);
+		if (wp.size() < 2) return;
+
+		const float halfW = m_view.w * 0.5f / m_view.scale + 40.0f, halfH = m_view.h * 0.5f / m_view.scale + 40.0f;
+		static thread_local std::vector<std::pair<int, int>> runs;
+		Lines::VisibleRuns(wp, m_view.cx - halfW, m_view.cy - halfH, m_view.cx + halfW, m_view.cy + halfH, runs);
+		if (runs.empty()) return;
+
+		const float w = Lines::WidthPx(rs, m_view.scale) * k;
+		const float ow = w + 2.0f * rs.outlinePx * k;
+		const ImColor cm(rs.main.r, rs.main.g, rs.main.b, rs.main.a), co(rs.outline.r, rs.outline.g, rs.outline.b, rs.outline.a);
+		auto S = [&](const Vec2& p) { const Vec2 s = ToScreen(m_view, p.x, p.y); return ImVec2(origin.x + s.x, origin.y + s.y); };
+		std::vector<ImVec2> pts;
+		for (const auto& run : runs)
+		{
+			pts.clear();
+			for (int i = run.first; i <= run.second; i++) pts.push_back(S(wp[(size_t)i]));
+			if (pts.size() < 2) continue;
+			r->drawPolyline(pts.data(), (int)pts.size(), co, false, ow);
+			r->drawPolyline(pts.data(), (int)pts.size(), cm, false, w);
+			// pontas arredondadas (so nas pontas reais da rota; corte pela tela fica reto)
+			auto cap = [&](const ImVec2& c) {
+				r->drawRoundedRect(ImVec2(c.x - ow * 0.5f, c.y - ow * 0.5f), ImVec2(c.x + ow * 0.5f, c.y + ow * 0.5f), co, ow * 0.5f, true);
+				r->drawRoundedRect(ImVec2(c.x - w * 0.5f, c.y - w * 0.5f), ImVec2(c.x + w * 0.5f, c.y + w * 0.5f), cm, w * 0.5f, true);
+			};
+			if (run.first == 0) cap(pts.front());
+			if (run.second == (int)wp.size() - 1) cap(pts.back());
+		}
+	}
+
+	// Camada opcional com TODAS as ruas (nos + ligacoes reais do jogo). LOD: afastado so rodovias; meio rodovias+avenidas.
+	// NOTA (conferido no projeto): ImDrawIdx = 16 bits (imconfig.h) e TODA a interface sai em UMA ImDrawList (GetBackgroundDrawList):
+	// o teto e 65536 vertices por quadro. Cada linha ImGui com espessura > 1 custa 8 vertices (3 por ponto se fina, 6 num segmento).
+	// Por isso: orcamento 'max_vertices' (padrao 24000), prioridade rodovia > avenida > rua, e rua sem contorno.
+	inline void Ui::DrawRoads(ImGuiRenderer* r, const ImVec2& origin, float k)
+	{
+		const Lines::Styles& LS = P->lineStyles();
+		if (!LS.roadLayer) return;
+		const Roads::Graph* g = P->roads();
+		if (!g || m_view.scale < 0.05f) return;
+		const float halfW = m_view.w * 0.5f / m_view.scale, halfH = m_view.h * 0.5f / m_view.scale;
+		int minCat = Lines::kStreet;
+		if (m_view.scale < 0.15f) minCat = Lines::kHighway; else if (m_view.scale < 0.30f) minCat = Lines::kAvenue;
+		m_segs.clear();
+		int budget = LS.maxVertices, segLeft = LS.maxSegments;
+		bool cut = false;
+		for (int c = Lines::kHighway; c >= minCat && c >= Lines::kStreet; c--)
+		{
+			const Lines::Style& st = LS.cat[c];
+			if (!st.enabled || !st.implemented) continue;
+			const bool thick = Lines::WidthPx(st, m_view.scale) * k > 1.0f;
+			const bool outline = c != Lines::kStreet && st.outlinePx > 0.0f;
+			const int cost = (outline ? 8 : 0) + (thick ? 8 : 6);
+			const int fit = std::min(segLeft, budget / cost);
+			if (fit <= 0) { cut = true; break; }
+			const int n = Roads::ForSegments(*g, LS, m_view.cx - halfW, m_view.cy - halfH, m_view.cx + halfW, m_view.cy + halfH, fit, c,
+				[&](float ax, float ay, float bx, float by, Lines::Category cc) {
+					const Vec2 a = ToScreen(m_view, ax, ay), b = ToScreen(m_view, bx, by);
+					m_segs.push_back({ ImVec2(origin.x + a.x, origin.y + a.y), ImVec2(origin.x + b.x, origin.y + b.y), (uint8_t)cc });
+				});
+			budget -= n * cost; segLeft -= n;
+			if (n >= fit) cut = true;
+		}
+		m_roadsCut = cut;                                   // true = a camada foi cortada pelo orcamento (a plataforma pode avisar)
+		for (int pass = 0; pass < 2; pass++)                  // 0 = contornos, 1 = linhas
+			for (int c = Lines::kStreet; c <= Lines::kHighway; c++)
+			{
+				const Lines::Style& st = LS.cat[c];
+				if (!st.enabled || !st.implemented) continue;
+				if (pass == 0 && (c == Lines::kStreet || st.outlinePx <= 0.0f)) continue;
+				const float w = Lines::WidthPx(st, m_view.scale) * k;
+				const ImColor col = pass == 0 ? ImColor(st.outline.r, st.outline.g, st.outline.b, st.outline.a) : ImColor(st.main.r, st.main.g, st.main.b, st.main.a);
+				const float tw = pass == 0 ? w + 2.0f * st.outlinePx * k : w;
+				for (const Seg& sg : m_segs) if (sg.c == c) r->drawLine(sg.a, sg.b, col, tw);
+			}
+	}
+
 	inline void Ui::Draw(ImGuiRenderer* r)
 	{
 		using namespace ui_colors;
 		if (m_resetReq.exchange(false))
 		{
 			if (m_gps.on) P->clearGps();
-			m_gps = Gps(); m_locs.clear(); m_route.clear(); m_selLoc = -1; m_listScroll = 0; ResetDrawState();
+			m_gps = Gps(); m_locs.clear(); m_route.clear(); ClearLocalRoute(); m_selLoc = -1; m_listScroll = 0; ResetDrawState();
 		}
 		if (m_sendClose.exchange(false)) P->sendCommand("/mapax close");
 		DrainPending();
@@ -593,21 +769,19 @@ namespace WorldMap
 		if (P->mapDim() > 0) r->drawRect(L.mapA, L.mapB, ImColor(0, 0, 0, P->mapDim()), true);   // escurece (estilo do painel)
 		r->drawRect(S(kWorldMin, kWorldMax), S(kWorldMax, kWorldMin), ImColor(255, 255, 255, 40), false, 1.5f);
 
-		// ---- caminho ----
+		// ---- ruas (camada opcional) e caminho ----
+		DrawRoads(r, L.mapA, k);
+		UpdateLocalRoute(havePlayer, plx, ply);
 		if (m_gps.on)
 		{
-			if (m_route.size() >= 2)
+			const std::vector<Vec2>& rt = EffectiveRoute();
+			if (rt.size() >= 2)
 			{
-				std::vector<ImVec2> pts;
-				pts.reserve(m_route.size() + 2);
-				if (havePlayer) pts.push_back(S(plx, ply));
-				for (const Vec2& p : m_route) pts.push_back(S(p.x, p.y));
-				r->drawPolyline(pts.data(), (int)pts.size(), routeOut, false, 7.0f * k);
-				r->drawPolyline(pts.data(), (int)pts.size(), route, false, 3.6f * k);
+				DrawRouteLine(r, rt, L.mapA, k, havePlayer, plx, ply);
 			}
 			else if (havePlayer)
 			{
-				// sem rota do servidor: linha reta tracejada ate o destino
+				// sem rota (servidor nem ruas): linha reta tracejada ate o destino
 				const ImVec2 a = S(plx, ply), b = S(m_gps.x, m_gps.y);
 				const float len = Dist(a.x, a.y, b.x, b.y);
 				const float dash = 11.0f * k, gap = 8.0f * k;
@@ -664,9 +838,9 @@ namespace WorldMap
 			std::string head;
 			if (m_gps.on && havePlayer)
 			{
-				const float d = m_route.size() >= 2 ? RouteRemaining(m_route, plx, ply) + Dist(plx, ply, m_route.front().x, m_route.front().y) * 0.0f
-													 : Dist(plx, ply, m_gps.x, m_gps.y);
-				head = "GPS  " + FormatDistance(d) + (m_route.size() >= 2 ? "  (pela rua)" : "  (reta)");
+				const std::vector<Vec2>& rt = EffectiveRoute();
+				const float d = rt.size() >= 2 ? RouteRemaining(rt, plx, ply) : Dist(plx, ply, m_gps.x, m_gps.y);
+				head = "GPS  " + FormatDistance(d) + (rt.size() >= 2 ? "  (pela rua)" : "  (reta)");
 			}
 			if (!head.empty())
 			{
