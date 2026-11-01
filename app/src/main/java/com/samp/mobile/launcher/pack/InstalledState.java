@@ -20,9 +20,21 @@ public final class InstalledState {
         public final long size;
         /** SHA-256 (hex minusculo) do conteudo instalado; "" = desconhecido (installed.json antigo). */
         public final String sha256;
-        public Entry(String path, long size) { this(path, size, ""); }
-        public Entry(String path, long size, String sha256) {
+        /** lastModified do arquivo no momento em que foi instalado e CONFERIDO (0 = desconhecido / installed.json antigo). */
+        public final long mtime;
+        public Entry(String path, long size) { this(path, size, "", 0L); }
+        public Entry(String path, long size, String sha256) { this(path, size, sha256, 0L); }
+        public Entry(String path, long size, String sha256, long mtime) {
             this.path = path; this.size = size; this.sha256 = sha256 == null ? "" : sha256.toLowerCase(java.util.Locale.ROOT);
+            this.mtime = mtime < 0 ? 0L : mtime;
+        }
+        /** Copia desta entrada com o mtime atual do arquivo em filesDir (se existir). Chamar so para arquivo ja conferido. */
+        public Entry stamped(File filesDir) {
+            try {
+                File f = PathSafety.resolveInside(filesDir, path);
+                if (f.isFile()) return new Entry(path, size, sha256, f.lastModified());
+            } catch (PackException ignored) { }
+            return this;
         }
     }
 
@@ -48,6 +60,7 @@ public final class InstalledState {
             o.put("path", e.path);
             o.put("size", e.size);
             if (!e.sha256.isEmpty()) o.put("sha256", e.sha256);
+            if (e.mtime > 0) o.put("mtime", e.mtime);
             arr.add(o);
         }
         root.put("files", arr);
@@ -79,7 +92,7 @@ public final class InstalledState {
                 long s = MiniJson.lng(e, "size", -1);
                 if (p == null || s < 0) return null;
                 String sh = MiniJson.str(e, "sha256");
-                list.add(new Entry(p, s, sh == null ? "" : sh));
+                list.add(new Entry(p, s, sh == null ? "" : sh, MiniJson.lng(e, "mtime", 0)));
             }
             return new InstalledState(version, (int) MiniJson.lng(m, "gpu", -1), list);
         } catch (IOException | PackException e) {

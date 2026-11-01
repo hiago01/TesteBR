@@ -165,6 +165,8 @@ public final class PackInstaller {
             extractor.shutdownNow();
         }
 
+        // registra o mtime de cada arquivo ja conferido (SHA-256 na extracao): permite detectar alteracao/corrupcao depois
+        for (int si = 0; si < installedEntries.size(); si++) installedEntries.set(si, installedEntries.get(si).stamped(base));
         InstalledState st = new InstalledState(c.version, c.gpu, installedEntries);
         try {
             InstalledState.write(base, st);

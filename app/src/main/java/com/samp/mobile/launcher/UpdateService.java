@@ -486,9 +486,15 @@ public class UpdateService extends Service {
         int considered = 0;
         // SHA-256 registrado no installed.json: permite detectar arquivo ALTERADO no servidor com o mesmo tamanho (atualizacao).
         java.util.HashMap<String, String> installedSha = new java.util.HashMap<>();
+        java.util.HashMap<String, InstalledState.Entry> installedEntry = new java.util.HashMap<>();
+        java.util.ArrayList<InstalledState.Entry> refreshed = new java.util.ArrayList<>();
+        int suspects = 0, corrupt = 0;
         InstalledState prev = InstalledState.read(base);
         if (prev != null && prev.gpu == mGpuType) {
-            for (InstalledState.Entry ie : prev.files) if (!ie.sha256.isEmpty()) installedSha.put(ie.path, ie.sha256);
+            for (InstalledState.Entry ie : prev.files) {
+                installedEntry.put(ie.path, ie);
+                if (!ie.sha256.isEmpty()) installedSha.put(ie.path, ie.sha256);
+            }
         }
         for(int i = 0; i<jsonArray.length(); i++) {
             JSONObject o = jsonArray.getJSONObject(i);
@@ -520,6 +526,23 @@ public class UpdateService extends Service {
                     Log.d(TAG, "atualizacao: " + path + " mudou no servidor (mesmo tamanho, sha diferente)");
                 }
             }
+            // Verificacao rapida: o arquivo tem o tamanho certo, mas a data de modificacao difere da registrada na hora em
+            // que foi instalado e conferido -> alguem/algo o alterou (ou a gravacao foi interrompida). So ESSES arquivos
+            // tem o SHA-256 recalculado (nao ha hash de todo o cliente a cada abertura).
+            if (!changed && file.isFile() && file.length() == fileData.getSize() && serverSha.length() == 64) {
+                InstalledState.Entry ie = installedEntry.get(path);
+                if (ie != null && ie.mtime > 0 && file.lastModified() != ie.mtime) {
+                    suspects++;
+                    if (verifyDownloaded(file, fileData.getSize(), serverSha) == null) {
+                        refreshed.add(new InstalledState.Entry(path, fileData.getSize(), serverSha, file.lastModified()));
+                    } else {
+                        changed = true;
+                        corrupt++;
+                        Log.w(TAG, "verificacao rapida: " + path + " alterado/corrompido (mesmo tamanho, sha diferente)");
+                        clLog("arquivo corrompido detectado: " + path);
+                    }
+                }
+            }
             if (!file.exists() || file.length() != fileData.getSize() || changed) {
                 mUpdateFiles.add(path);
                 mUpdateFilesName.add(name);
@@ -529,6 +552,8 @@ public class UpdateService extends Service {
             }
         }
         mListTotalFiles = considered;
+        if (!refreshed.isEmpty()) InstalledState.record(base, refreshed); // sha conferiu: so atualiza o mtime
+        if (suspects > 0) Log.d(TAG, "verificacao rapida: " + suspects + " suspeitos, " + corrupt + " corrompidos");
         decidePackMode(base);
         Log.d("x1y2z", "Data size: " + mUpdateGameDataSize + " files: " + mUpdateFiles.size() + " usePacks=" + mUsePacks);
     }
@@ -836,7 +861,46 @@ public class UpdateService extends Service {
             startPackInstall(session);
             return;
         }
+        String noSpace = checkFreeSpace();
+        if (noSpace != null) {
+            restorePending(mDlFiles);
+            clLog(noSpace);
+            reportError(noSpace, false);
+            return;
+        }
         downloadNextFile(session, 1);
+    }
+
+    /** Margem alem do tamanho dos arquivos a baixar (gravacao temporaria do PRDownloader + o jogo precisa de folga). */
+    private static final long FREE_SPACE_MARGIN = 100L * 1024 * 1024;
+
+    /** null = ha espaco (ou nao foi possivel medir); senao a mensagem de erro. Roda na HandlerThread do servico. */
+    private String checkFreeSpace() {
+        File base = getExternalFilesDir(null);
+        if (base == null) return null;
+        long need = FREE_SPACE_MARGIN;
+        for (int i = 0; i < mDlFiles.size(); i++) {
+            if (PACKS_MARKER.equals(mDlFiles.get(i))) continue; // pacotes: PackInstaller tem a propria conferencia
+            need += i < mDlSizes.size() ? mDlSizes.get(i) : 0L;
+        }
+        try {
+            long free = new StatFs(base.getAbsolutePath()).getAvailableBytes();
+            if (free < need) {
+                return "Espaco insuficiente: livre " + (free >> 20) + " MB, necessario " + (need >> 20) + " MB. Libere espaco e tente de novo.";
+            }
+        } catch (RuntimeException e) {
+            Log.w(TAG, "nao foi possivel medir o espaco livre: " + e);
+        }
+        return null;
+    }
+
+    /** Registra no Crashlytics (nao fatal) o motivo de falhas de download/instalacao; nunca derruba o servico. */
+    private static void clLog(String msg) {
+        try {
+            com.google.firebase.crashlytics.FirebaseCrashlytics cl = com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance();
+            cl.log("[download] " + msg);
+            cl.recordException(new RuntimeException("download: " + msg));
+        } catch (Throwable ignored) { }
     }
 
     // ------------------------------------------------------------------------------------
@@ -999,6 +1063,7 @@ public class UpdateService extends Service {
                             afterPacks(session);
                         } else {
                             Log.e(TAG, "pack install failed: " + fail.getMessage(), fail);
+                            clLog("pacotes: " + fail.getMessage());
                             restorePending(mPackPendingFiles); // continua pendente: a proxima verificacao tenta de novo
                             mPackPendingFiles.clear();
                             reportError("Game data install failed: " + fail.getMessage(), false);
@@ -1094,6 +1159,7 @@ public class UpdateService extends Service {
                         String why = verifyDownloaded(done, mDlSizes.get(mDlIndex), mDlShas.get(mDlIndex));
                         if (why != null) {
                             Log.w("x1y2z", "arquivo invalido " + rel + ": " + why + " (attempt " + attempt + ")");
+                            if (attempt >= MAX_FILE_ATTEMPTS) clLog("arquivo invalido " + rel + ": " + why);
                             //noinspection ResultOfMethodCallIgnored
                             done.delete();
                             if (attempt < MAX_FILE_ATTEMPTS) {
@@ -1108,7 +1174,7 @@ public class UpdateService extends Service {
                             }
                             return;
                         }
-                        mDlOk.add(new InstalledState.Entry(rel, mDlSizes.get(mDlIndex), mDlShas.get(mDlIndex)));
+                        mDlOk.add(new InstalledState.Entry(rel, mDlSizes.get(mDlIndex), mDlShas.get(mDlIndex), done.lastModified()));
                         mDlDoneBytes += mDlSizes.get(mDlIndex);
                         mDlConsecutiveFailures = 0;
                         mDlIndex++;
@@ -1182,6 +1248,7 @@ public class UpdateService extends Service {
     }
 
     private void onFileGaveUp(int session, String rel) {
+        clLog("desistiu de " + rel + " apos " + MAX_FILE_ATTEMPTS + " tentativas");
         mDlFailed.add(rel);
         mDlConsecutiveFailures++;
         mDlIndex++;
