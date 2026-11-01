@@ -955,6 +955,24 @@ uint32_t CRadar__GetRadarTraceColor(uint32_t color, uint8_t bright, uint8_t frie
     return TranslateColorCodeToRGBA(color);
 }
 
+// -------------------------------------------------------------------------------------
+//  Blip do destino do GPS no minimapa (o "ponto preto"): CRadar::DrawCoordBlip escolhe o tipo de altura
+//  (0 = abaixo do jogador -> triangulo para baixo, 1 = acima -> triangulo para cima, 2 = mesmo nivel -> quadrado)
+//  comparando o Z do blip com o Z do jogador (-2 / +4). O destino do GPS quase nunca tem o mesmo Z do jogador,
+//  entao o blip dourado virava um triangulo preto preso na borda. Para o blip do GPS (cor 1006 = 0xE2C063)
+//  forcamos o tipo 2 (quadrado dourado, como um marcador normal). Outros blips ficam intactos.
+//  Diagnostico: as primeiras chamadas diferentes vao para o samp_log.txt ([MINIMAPA] blip ...).
+// -------------------------------------------------------------------------------------
+void (*CRadar__ShowRadarTraceWithHeight)(float x, float y, uint32_t size, uint8_t r, uint8_t g, uint8_t b, uint8_t a, uint8_t type);
+void CRadar__ShowRadarTraceWithHeight_hook(float x, float y, uint32_t size, uint8_t r, uint8_t g, uint8_t b, uint8_t a, uint8_t type)
+{
+    const bool gps = (r == 0xE2 && g == 0xC0 && b == 0x63);
+    static int s_log = 0;
+    if (s_log < 12 && (gps || type != 2)) { s_log++; FLog("[MINIMAPA] blip x=%.3f y=%.3f size=%u rgba=%02X%02X%02X%02X tipo=%u gps=%d", x, y, size, r, g, b, a, (unsigned)type, (int)gps); }
+    if (gps && MiniRoute::gEnabled.load()) type = 2;
+    CRadar__ShowRadarTraceWithHeight(x, y, size, r, g, b, a, type);
+}
+
 uint32_t CHudColours__GetIntColour(uintptr* thiz, uint8 colour_id)
 {
     return TranslateColorCodeToRGBA(colour_id);
@@ -3826,6 +3844,7 @@ CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
     CHook::Redirect("_ZN11CHudColours12GetIntColourEh", &CHudColours__GetIntColour); // dangerous
     CHook::Redirect("_ZN6CRadar19GetRadarTraceColourEjhh", &CRadar__GetRadarTraceColor); // dangerous
     CHook::InlineHook("_ZN6CRadar12SetCoordBlipE9eBlipType7CVectorj12eBlipDisplayPc", &CRadar__SetCoordBlip_hook, &CRadar__SetCoordBlip);
+    CHook::InlineHook("_ZN6CRadar24ShowRadarTraceWithHeightEffjhhhhh", &CRadar__ShowRadarTraceWithHeight_hook, &CRadar__ShowRadarTraceWithHeight);
     CHook::InlineHook("_ZN6CRadar20DrawRadarGangOverlayEb", & CRadar_DrawRadarGangOverlay_hook, &CRadar_DrawRadarGangOverlay);
     if (Diag::On("radarskin")) RadarSkin::InstallHooks();   // tiles PNG no radar nativo (volta ao nativo se faltar PNG ou /radarskin off)
 
