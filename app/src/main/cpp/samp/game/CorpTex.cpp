@@ -85,7 +85,6 @@ constexpr int      kMaxMaterials   = 512;
 constexpr size_t   kMaxCachedCorps = 3;
 constexpr size_t   kMaxAppTex      = 40;     // texturas de rosto/cabelo/pele em cache
 constexpr uint64_t kGraveyardMs    = 5000;
-constexpr const char* kHideTexture = "male01";          // textura invisivel do texdb
 constexpr const char* kPiecePrefix = "fantasy_m_cop_";  // pecas de roupa da Corp (policia)
 constexpr uintptr_t OFF_GEOM_MATLIST      = 0x28;   // RpGeometry::matList.materials  (igual ao CustomSkin.cpp)
 constexpr uintptr_t OFF_GEOM_NUMMATERIALS = 0x30;   // RpGeometry::matList.numMaterials
@@ -473,6 +472,19 @@ RwTexture* GetSolidTex(int idx)
     return t;
 }
 
+// textura transparente propria (RGBA alfa 0), criada uma vez e guardada no cache; substitui o male01 do jogo
+RwTexture* GetHiddenTex()
+{
+    const std::string key = "hidden/own";
+    auto it = s_appTex.find(key);
+    if (it != s_appTex.end()) { it->second.lastUse = NowMs(); return it->second.tex; }
+    uint8_t px[4 * 4 * 4];
+    for (int i = 0; i < 16; ++i) { px[i * 4] = 255; px[i * 4 + 1] = 0; px[i * 4 + 2] = 255; px[i * 4 + 3] = 0; }
+    RwTexture* t = CreateTextureRgba(px, 4, 4, "corp_hidden");
+    s_appTex[key] = AppTex{t, NowMs()};
+    return t;
+}
+
 // ---- mapa pasta -> material(is) das roupas da Normal (editavel em textures/9/roupa/mapa.txt) ---------------
 // formato do arquivo, uma linha por pasta:   tipo pasta material[,material...]     (# comentario)
 //   ex.:  tshirts 2 fantasy_m_torso2       boot 4 fantasy_m_boot4
@@ -605,8 +617,8 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
         else if (mats[i] && mats[i]->texture) keys[i] = SkinImg::Lower(std::string(mats[i]->texture->name, strnlen(mats[i]->texture->name, 32)));
     }
 
-    RwTexture* hideTex = byIndex ? TextureDatabaseRuntime::GetTexture(kHideTexture) : nullptr;
-    if (byIndex && !hideTex) FLog("[CORPTEX] AVISO: textura '%s' nao achada no texdb: nada sera ocultado", kHideTexture);
+    RwTexture* hideTex = byIndex ? GetHiddenTex() : nullptr;      // transparente PROPRIA (nunca o male01 do jogo)
+    if (byIndex && !hideTex) FLog("[CORPTEX] AVISO: nao consegui criar a textura transparente: nada sera ocultado");
 
     std::unordered_map<std::string, RwTexture*> over;   // nome do DFF (minusculo) -> textura a usar
     std::vector<const Box*> visible;                    // pecas da Corp visiveis (para a regra de cobertura)

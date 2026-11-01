@@ -32,3 +32,9 @@ Entrada: so PNG (os 70 JPEG duplicados e as pecas "(off)"/"(naofunc)"/template f
 Instalar: extraia as DUAS partes (parte1 e parte2) e deixe tudo em
 `Android/data/com.maximo.roleplay/files/texdb/skins/` (skins.txt, skins.idx, skins.unc.tmb, skins.dxt.*, skins.etc.*).
 Depois de instalado, os PNG de SAMP/skins/pack nao sao mais lidos (podem ser apagados). Mantenha `textures/272/aparencia/roupa/mapa.txt`.
+
+## Sistema sempre ativo (sem travas)
+- Removidos: SAMP/skins/.applying, SAMP/skins/disable, disable7/disable9, SAMP/skins/fallback_tex (e o uso do male01 do jogo).
+- skin, corptex, clothes e dff ignoram o SAMP/diag.ini (sempre ligados).
+- Ocultar = textura transparente criada pelo cliente (alfa 0); material sem textura original usa a mesma transparente.
+- Arquivos antigos (.applying, disable, fallback_tex, diag.ini) podem ser apagados; sao ignorados.

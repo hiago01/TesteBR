@@ -15,7 +15,7 @@
 //   exatamente como faz com "male01" no 7 original. Os nomes das texturas do skin.dff precisam existir
 //   no mesmo banco onde esta "male01" (procure "male01" no editor de texdb).
 //
-//   SAMP/skins/disable (arquivo vazio) desliga tudo; SAMP/skins/disable7 ou disable9 desligam so aquele modelo.
+//   Sempre ativo: os arquivos SAMP/skins/disable* foram removidos de proposito (nenhum arquivo desliga o sistema).
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -60,7 +60,6 @@ namespace
     Skin* FindSkin(int model) { for (Skin& k : s_skins) if (k.model == model) return &k; return nullptr; }
 
     bool s_inSkinLoad = false;        // true enquanto o jogo converte um modelo com a nossa skin
-    bool s_fallbackOn = false;        // SAMP/skins/fallback_tex existe: textura nao achada -> usa "male01"
 
     // Lista de bancos de textura registrados (suposicao: GOT 0x851CF8 -> TDBArray {numAlloced, numEntries, dataPtr}).
     // Loga so quando MUDA (n ou nulos) para achar QUANDO um banco nulo entra na lista.
@@ -100,8 +99,6 @@ namespace
 
         const std::string dir = SkinDir();
         if (dir.empty()) { FLog("[SKIN7S] storage indisponivel: usando o modelo %d original", model); return false; }
-        if (Exists(dir + "disable")) { FLog("[SKIN7S] SAMP/skins/disable existe: usando o modelo %d original", model); return false; }
-        if (Exists(dir + "disable" + std::to_string(model))) { FLog("[SKIN7S] SAMP/skins/disable%d existe: usando o modelo %d original", model, model); return false; }
 
         std::string path;
         for (const char* name : sk.files)
@@ -145,8 +142,6 @@ namespace
                 FLog("[SKIN7S] AVISO: %s", w.c_str());
         }
 
-        s_fallbackOn = Exists(dir + "fallback_tex");
-        FLog("[SKIN7S] fallback_tex=%s", s_fallbackOn ? "LIGADO (textura nao achada usa 'male01')" : "desligado");
         FLog("[SKIN7S] modelo %d: DFF lido: %zu bytes (%u setores)", model, sk.data.size(),
              (unsigned)((sk.data.size() + STREAMING_SECTOR_SIZE - 1) / STREAMING_SECTOR_SIZE));
         sk.ok = true;
@@ -154,7 +149,8 @@ namespace
     }
 
     // log de cada textura pedida pelo DFF da skin: "-> (nil)" = nao existe no banco (parte branca).
-    // Com SAMP/skins/fallback_tex: no lugar de devolver NULL, devolve a textura "male01" (teste: o crash some
+    // (fallback_tex/male01 removidos) textura nao achada devolve NULL, como o jogo faz.
+    // [historico] antes: devolvia a textura "male01" (teste: o crash some
     // quando o DFF nao tem nenhuma busca "perdida"?).
     // true se a lista de bancos registrados tem entrada nula (GetTexture le um campo em +0x110 de cada banco:
     // o SIGSEGV "Fault address: 0x110" bate com isso). Hipotese, ainda nao confirmada.
@@ -180,16 +176,6 @@ namespace
         void* r = s_getTexOrig(name);
         if (!s_inSkinLoad) return r;
 
-        if (!r && s_fallbackOn)
-        {
-            static void* fb = nullptr;
-            if (!fb) fb = s_getTexOrig("male01");
-            if (fb)
-            {
-                FLog("[SKIN7S] textura '%s' nao achada -> fallback male01 %p", name ? name : "(null)", fb);
-                return fb;
-            }
-        }
         FLog("[SKIN7S] textura '%s' -> %p%s", name ? name : "(null)", r, r ? "" : "   <== NAO ACHADA NO TEXDB");
         return r;
     }

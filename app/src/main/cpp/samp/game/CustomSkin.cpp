@@ -73,9 +73,8 @@ extern bool                        g_hostSuspend;       // CorpTex::SetLocalPrev
 //     criado depois usa o molde novo. CPed::SetModelIndex chama RpAnimBlendClumpInit na instância.
 //   * A troca não persiste: reiniciar volta ao original (kAutoApply refaz na partida seguinte).
 //
-// APLICAÇÃO AUTOMÁTICA (kAutoApply) E TRAVAS
-//   SAMP/skins/disable (arquivo vazio) desliga; SAMP/skins/.applying é criado antes de instalar e
-//   apagado ~15 s depois; se existir na partida seguinte a aplicação automática é PULADA.
+// APLICAÇÃO AUTOMÁTICA (kAutoApply)
+//   Sempre ativa: não existe mais SAMP/skins/disable nem o marcador SAMP/skins/.applying (removidos de propósito).
 //
 // LIMITES: o DFF não tem os 12 frames-marcador (Smid, Shead, ...) que SetFrameIds procura por
 //   nome (o jogo ignora os ausentes); sendo o placeholder, qualquer ped sem modelo carregado usa o 7.
@@ -672,19 +671,16 @@ namespace
                         }
                         else if (!cur || !TexHasRaster(cur))
                         {
-                            // SAMP/skins/fallback_tex (arquivo vazio): no lugar de ficar branco usa a textura "male01"
-                            RwTexture* fb = FileExists(SkinDir() + "fallback_tex") ? LookupGameTexture("male01") : nullptr;
-                            if (fb)
+                            // sem textura original utilizavel: usa a textura transparente PROPRIA (nunca o male01 do jogo)
+                            if (RwTexture* hid = EnsureHiddenTex())
                             {
-                                SetMatTexture(mats[i], fb);
-                                cur = fb;
-                                FLog("[SKIN7] material %zu: textura '%s' nao achada -> fallback male01", i, mi.texture.c_str());
+                                SetMatTexture(mats[i], hid);
+                                cur = hid;
+                                FLog("[SKIN7] material %zu: textura '%s' sem original -> transparente propria", i, mi.texture.c_str());
                             }
                             else
                             {
-                                problems.push_back("material " + std::to_string(i) + " textura '" + mi.texture +
-                                                   "' NAO ENCONTRADA (sem PNG em textures/, sem textura no DFF/banco do jogo): ficara branco" +
-                                                   " (crie SAMP/skins/fallback_tex para usar male01)");
+                                problems.push_back("material " + std::to_string(i) + " textura '" + mi.texture + "' NAO ENCONTRADA: ficara branco");
                             }
                         }
                     }
@@ -1891,7 +1887,7 @@ namespace
 
     // Preparação AUTOMÁTICA ao abrir o /provador (e antes de uma prévia): verifica InstalledOurs() e só instala se preciso.
     //   * molde nosso e íntegro  -> não faz nada (sem reinstalações repetidas)
-    //   * força=false (automática): respeita .applying (crash anterior), espera o modelo 7 carregar, intervalo mínimo entre
+    //   * força=false (automática): espera o modelo 7 carregar, intervalo mínimo entre
     //     tentativas e no máximo kPrepMaxAuto falhas; depois só o botão PREPARAR (força=true) tenta de novo.
     bool EnsurePrepared(bool force, std::string& why)
     {
@@ -1904,23 +1900,12 @@ namespace
             if (s_prepLastMs && now - s_prepLastMs < kPrepRetryMs) { why = s_prepWhy.empty() ? "preparando..." : s_prepWhy; return false; }
             s_prepLastMs = now;
             if (!AutoReady()) { why = "aguardando o modelo 7: " + AutoWhy(); s_prepWhy = why; return false; }
-            const std::string marker = SkinDir() + ".applying";
-            if (FileExists(marker))
-            {
-                s_prepGiveUp = true;
-                s_prepWhy = "a tentativa anterior de instalar a skin não terminou (SAMP/skins/.applying); toque PREPARAR";
-                why = s_prepWhy;
-                return false;
-            }
-            if (FILE* f = std::fopen(marker.c_str(), "wb")) { std::fputs("applying\n", f); std::fclose(f); }
             FLog("[SKIN7] provador: preparação automática (molde nosso=%d, obsoleto=%d)", InstalledOurs() ? 1 : 0, s_moldStale ? 1 : 0);
             if (PrepareMold(true, why))
             {
                 s_prepAutoFail = 0; s_prepGiveUp = false;
-                s_markerClearAtMs = NowMs() + 15000;          // sobreviveu 15 s => apaga o marcador (igual ao auto-apply)
                 return true;
             }
-            std::remove(marker.c_str());                      // falhou sem crashar: não trava a próxima partida
             if (++s_prepAutoFail >= kPrepMaxAuto) { s_prepGiveUp = true; s_prepWhy = why + " (use PREPARAR)"; why = s_prepWhy; }
             return false;
         }
@@ -2234,39 +2219,20 @@ namespace
         return "pronto";
     }
 
-    // Aplicação automática (1x por sessão): só se o arquivo existir, sem "disable" e sem marcador pendente.
+    // Aplicação automática (1x por sessão): só se o arquivo existir.
     void DoAutoApply()
     {
-        const std::string dir = SkinDir();
         if (!FileExists(SkinPath()))
         {
             FLog("[SKIN7] auto: %s ausente; nada a aplicar", SkinPath().c_str());
             return;
         }
-        if (FileExists(dir + "disable"))
-        {
-            SetInfo("auto-apply desativado (existe SAMP/skins/disable)");
-            return;
-        }
-        const std::string marker = dir + ".applying";
-        if (FileExists(marker))
-        {
-            SetInfo("auto-apply PULADO: a tentativa anterior não terminou (crash?). Apague SAMP/skins/.applying para tentar de novo");
-            return;
-        }
-
-        if (FILE* f = std::fopen(marker.c_str(), "wb")) { std::fputs("applying\n", f); std::fclose(f); }
         FLog("[SKIN7] auto: aplicando %s ao modelo %d", SkinPath().c_str(), CCustomSkin::kTargetModelId);
         DoApply();
         if (s_applied)
         {
             s_autoApplied = true;
-            s_markerClearAtMs = NowMs() + 15000;   // sobreviveu 15 s => apaga o marcador
             RunAutoexec();                         // roupas/ocultos guardados (SAMP/skins/autoexec.txt), se existir
-        }
-        else
-        {
-            std::remove(marker.c_str());           // falhou sem crashar (erro tratado): não trava a próxima partida
         }
     }
 }
@@ -2347,14 +2313,6 @@ void CCustomSkin::Process()
                 FLog("[SKIN7] auto: ainda aguardando há 30 s: %s", AutoWhy().c_str());
             }
         }
-    }
-
-    if (s_markerClearAtMs && NowMs() >= s_markerClearAtMs)
-    {
-        s_markerClearAtMs = 0;
-        const std::string dir = SkinDir();
-        if (!dir.empty()) std::remove((dir + ".applying").c_str());
-        FLog("[SKIN7] auto: marcador .applying removido (sessão estável)");
     }
 
     // texturas antigas (troca de PNG ao vivo): solta a nossa ref depois do atraso
