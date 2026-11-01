@@ -284,7 +284,7 @@ static jobject g_dlgKbActivity = nullptr;
 static Widget* g_dlgKbTarget  = nullptr;
 
 extern "C" {
-	JNIEXPORT void JNICALL Java_com_samp_mobile_game_SAMP_initializeSAMP(JNIEnv *pEnv, jobject thiz)
+	JNIEXPORT void JNICALL Java_com_maximo_roleplay_game_SAMP_initializeSAMP(JNIEnv *pEnv, jobject thiz)
 	{
 		pJavaWrapper = new CJavaWrapper(pEnv, thiz);
 
@@ -315,7 +315,7 @@ extern "C" {
 		};
 	}
 
-	JNIEXPORT jint JNICALL Java_com_samp_mobile_game_SAMP_openDialogKeyboard(JNIEnv *pEnv, jobject thiz, jbyteArray initial, jboolean mask, jbyteArray hint)
+	JNIEXPORT jint JNICALL Java_com_maximo_roleplay_game_SAMP_openDialogKeyboard(JNIEnv *pEnv, jobject thiz, jbyteArray initial, jboolean mask, jbyteArray hint)
 	{
 		if (!pUI || !pUI->keyboard()) return -1;
 		auto toStr = [pEnv](jbyteArray a) {
@@ -339,12 +339,12 @@ extern "C" {
 		});
 	}
 	// Fecha o teclado nativo SE ele pertence ao dialogo (o dialogo foi enviado/fechado com o teclado aberto).
-	JNIEXPORT void JNICALL Java_com_samp_mobile_game_SAMP_closeDialogKeyboard(JNIEnv *pEnv, jobject thiz)
+	JNIEXPORT void JNICALL Java_com_maximo_roleplay_game_SAMP_closeDialogKeyboard(JNIEnv *pEnv, jobject thiz)
 	{
 		if (pUI && pUI->keyboard() && pUI->keyboard()->visible() && g_dlgKbTarget && pUI->keyboard()->caller() == g_dlgKbTarget)
 			pUI->keyboard()->hide();
 	}
-	JNIEXPORT void JNICALL Java_com_samp_mobile_game_SAMP_onInputEnd(JNIEnv *pEnv, jobject thiz, jbyteArray str)
+	JNIEXPORT void JNICALL Java_com_maximo_roleplay_game_SAMP_onInputEnd(JNIEnv *pEnv, jobject thiz, jbyteArray str)
 	{
 		if(pUI)
 		{
@@ -353,7 +353,7 @@ extern "C" {
 	}
 	// Retorna true quando o evento foi tratado pelo menu Maximo RP (abre/fecha o menu);
 	// o Java entao NAO repassa o Voltar ao jogo (evita o Pause nativo e o finish() da Activity).
-	JNIEXPORT jboolean JNICALL Java_com_samp_mobile_game_SAMP_onEventBackPressed(JNIEnv *pEnv, jobject thiz)
+	JNIEXPORT jboolean JNICALL Java_com_maximo_roleplay_game_SAMP_onEventBackPressed(JNIEnv *pEnv, jobject thiz)
 	{
 		// Teclado nativo aberto: Voltar fecha so ele (guarda o rascunho) e nao repassa ao jogo/menu.
 		if (pUI && pUI->keyboard() && pUI->keyboard()->visible())
@@ -369,7 +369,7 @@ extern "C" {
 			return MaximoMenu::OnBackPressed() ? JNI_TRUE : JNI_FALSE;
 		return JNI_TRUE;
 	}
-	JNIEXPORT void JNICALL Java_com_samp_mobile_game_ui_dialog_DialogManager_sendDialogResponse(JNIEnv* pEnv, jobject thiz, jint i3, jint i, jint i2, jbyteArray str)
+	JNIEXPORT void JNICALL Java_com_maximo_roleplay_game_ui_dialog_DialogManager_sendDialogResponse(JNIEnv* pEnv, jobject thiz, jint i3, jint i, jint i2, jbyteArray str)
 	{
 		jboolean isCopy = true;
 

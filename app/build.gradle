@@ -21,13 +21,13 @@ android {
     }
 
     compileSdk 34
-    namespace 'com.samp.mobile'
+    namespace 'com.maximo.roleplay'
 
     defaultConfig {
-        applicationId "com.samp.mobile"
+        applicationId "com.maximo.roleplay"
         minSdk 26
         targetSdk 34
-        versionCode 134
+        versionCode 1
         versionName "0.0.0.1"
 
         multiDexEnabled true

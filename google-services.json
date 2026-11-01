@@ -1,36 +1,26 @@
 {
   "project_info": {
-    "project_number": "987683256590",
-    "project_id": "sa-mp-mobile-eb475",
-    "storage_bucket": "sa-mp-mobile-eb475.appspot.com"
+    "project_number": "114414317168",
+    "project_id": "com-maximo-roleplay",
+    "storage_bucket": "com-maximo-roleplay.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:987683256590:android:741c836747410855e63f5f",
+        "mobilesdk_app_id": "1:114414317168:android:fc766c9d302841f2cc8eb5",
         "android_client_info": {
-          "package_name": "com.samp.mobile"
+          "package_name": "com.maximo.roleplay"
         }
       },
-      "oauth_client": [
-        {
-          "client_id": "987683256590-6er3toqeqgmuf28mcoh6qrrt04fnsgcp.apps.googleusercontent.com",
-          "client_type": 3
-        }
-      ],
+      "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyBBpcdsaJHGJY1UcOyYcMM7Kc0WVn6cKCE"
+          "current_key": "AIzaSyBABBvJ0yWi92-u9Lat1c2qoi3wq_5P3qY"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": [
-            {
-              "client_id": "987683256590-6er3toqeqgmuf28mcoh6qrrt04fnsgcp.apps.googleusercontent.com",
-              "client_type": 3
-            }
-          ]
+          "other_platform_oauth_client": []
         }
       }
     }

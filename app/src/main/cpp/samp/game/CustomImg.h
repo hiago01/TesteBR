@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 // touch.img  (veiculos + skins customizados, carregados por ID)
 //
-//   IMG:       <raiz>/texdb/touch.img       (raiz = Android/data/com.samp.mobile/files/)
+//   IMG:       <raiz>/texdb/touch.img       (raiz = Android/data/com.maximo.roleplay/files/)
 //   Texturas:  <raiz>/texdb/touch/          (banco de texturas "touch")
 //   IDs:       SAMP/samp.ide e SAMP/vehicles.ide (e peds.ide, se for skin) - ja existentes
 //

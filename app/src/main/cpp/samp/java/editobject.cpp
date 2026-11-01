@@ -53,7 +53,7 @@ void CObjectEditor::showGui() {
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_samp_mobile_game_ui_AttachEdit_Exit(JNIEnv *env, jobject thiz) {
+Java_com_maximo_roleplay_game_ui_AttachEdit_Exit(JNIEnv *env, jobject thiz) {
     CPlayerPed* pPlayer = pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed();
     int slot = CObjectEditor::iEditedId;
 
@@ -122,7 +122,7 @@ void CObjectEditor::SendOnEditAttach(int response, int index, int modelid, int b
 }
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_samp_mobile_game_ui_AttachEdit_AttachClick(JNIEnv *env, jobject thiz, jint button_type,
+Java_com_maximo_roleplay_game_ui_AttachEdit_AttachClick(JNIEnv *env, jobject thiz, jint button_type,
                                                   jboolean button_id) {
 
     auto pPlayer = pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed();
@@ -294,7 +294,7 @@ Java_com_samp_mobile_game_ui_AttachEdit_AttachClick(JNIEnv *env, jobject thiz, j
 }
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_samp_mobile_game_ui_AttachEdit_Save(JNIEnv *env, jobject thiz) {
+Java_com_maximo_roleplay_game_ui_AttachEdit_Save(JNIEnv *env, jobject thiz) {
     CPlayerPed* pPlayer = pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed();
     int slot = CObjectEditor::iEditedId;
     auto attach = pPlayer->GetAttachedObject(slot);

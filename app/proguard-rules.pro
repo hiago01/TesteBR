@@ -5,7 +5,7 @@
 
 -keep class com.wardrumstudios.utils.* { *; }
 
--keep class com.samp.mobile.game.* { *; }
+-keep class com.maximo.roleplay.game.* { *; }
 
 -dontwarn javax.servlet.**
 -dontwarn org.conscrypt.**

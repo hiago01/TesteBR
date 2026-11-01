@@ -51,7 +51,7 @@
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <com.samp.mobile.game.ui.LoadingBarView
+            <com.maximo.roleplay.game.ui.LoadingBarView
                 android:id="@+id/progressBar2"
                 android:layout_width="0dp"
                 android:layout_height="@dimen/_8sdp"

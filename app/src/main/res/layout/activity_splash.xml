@@ -6,7 +6,7 @@
     android:layout_height="match_parent"
     android:background="@color/mx_bg">
 
-    <com.samp.mobile.launcher.util.HeroImageView
+    <com.maximo.roleplay.launcher.util.HeroImageView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:contentDescription="@null"

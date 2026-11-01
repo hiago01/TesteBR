@@ -15,7 +15,7 @@ extern CNetGame* pNetGame;
 extern "C" {
 
 JNIEXPORT void JNICALL
-Java_com_samp_mobile_game_ui_ClothesUI_sendCommand(JNIEnv* env, jobject thiz, jbyteArray command)
+Java_com_maximo_roleplay_game_ui_ClothesUI_sendCommand(JNIEnv* env, jobject thiz, jbyteArray command)
 {
     if (!command || !pNetGame) return;
 

@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 // Skin customizada (DFF) para o modelo 7 + inventário/texturização/ocultação de materiais
 //
-//   arquivo:   <raiz>/SAMP/skins/skin.dff          (raiz = Android/data/com.samp.mobile/files/)
+//   arquivo:   <raiz>/SAMP/skins/skin.dff          (raiz = Android/data/com.maximo.roleplay/files/)
 //   PNGs:      <raiz>/SAMP/skins/textures/mat_NN.png     (identificação por índice, NN = 00..41)
 //              <raiz>/SAMP/skins/textures/<Textura>.png  (textura real, pelo nome gravado no DFF)
 //   inventário:<raiz>/SAMP/skins/materials.csv           (gerado por /skin7 mats)

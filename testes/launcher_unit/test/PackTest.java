@@ -1,7 +1,7 @@
 package test;
 
-import com.samp.mobile.launcher.pack.*;
-import com.samp.mobile.launcher.pack.ZipPackExtractor.ExtractedFile;
+import com.maximo.roleplay.launcher.pack.*;
+import com.maximo.roleplay.launcher.pack.ZipPackExtractor.ExtractedFile;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;

@@ -34,7 +34,7 @@ namespace Diag
     inline std::string IniPath()
     {
         if (g_pszStorage && g_pszStorage[0]) { std::string p(g_pszStorage); if (p.back() != '/') p.push_back('/'); return p + "SAMP/diag.ini"; }
-        return "/storage/emulated/0/Android/data/com.samp.mobile/files/SAMP/diag.ini";
+        return "/storage/emulated/0/Android/data/com.maximo.roleplay/files/SAMP/diag.ini";
     }
 
     inline void Load()

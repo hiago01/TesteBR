@@ -14,7 +14,7 @@
 //   A ligacao e' feita pelo hash do nome (CKeyGen::GetUppercaseKey == CBaseModelInfo::m_nKey), igual
 //   ao que CustomImg.h ja faz.
 //
-// ONDE COLOCAR (dentro de Android/data/com.samp.mobile/files/), ordem de precedencia crescente:
+// ONDE COLOCAR (dentro de Android/data/com.maximo.roleplay/files/), ordem de precedencia crescente:
 //     texdb/DFF/*.dff     <- principal
 //     texdb/dff/*.dff     <- variante minuscula (Android diferencia maiusculas)
 //     SAMP/dff/*.dff

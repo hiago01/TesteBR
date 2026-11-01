@@ -8,7 +8,7 @@
     android:background="@color/mx_bg"
     tools:context=".launcher.UpdateActivity">
 
-    <com.samp.mobile.launcher.util.HeroImageView
+    <com.maximo.roleplay.launcher.util.HeroImageView
         android:id="@+id/mx_bg"
         android:layout_width="match_parent"
         android:layout_height="match_parent"

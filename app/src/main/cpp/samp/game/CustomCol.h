@@ -11,7 +11,7 @@
 // (mesmo slot) vai ao loader NATIVO - nenhuma validacao nativa e' desligada. Antes de entregar, o buffer final
 // passa por Parse + ValidateAll; se algo falhar entrega o buffer ORIGINAL do IMG.
 //
-// ONDE COLOCAR OS .col (dentro de Android/data/com.samp.mobile/files/):
+// ONDE COLOCAR OS .col (dentro de Android/data/com.maximo.roleplay/files/):
 //     texdb/col/*.col   e   SAMP/col/*.col     <- QUALQUER nome, cada arquivo so com os modelos alterados
 //     (legado, ainda funciona: texdb/countrye_10.col, SAMP/countrye_10.col, countrye_10.col na raiz)
 //   Ordem: legados, depois texdb/col (ordem alfabetica), depois SAMP/col. Nome repetido: o ULTIMO vence (vai pro log).

@@ -9,7 +9,7 @@
 // LoadIpl NATIVO (mesmo slot). Qualquer duvida -> entrega o buffer ORIGINAL do IMG.
 // Layout, enderecos confirmados no desassembly e formato do arquivo: ver CustomIplParse.h e LEIA-ME_IPL.md.
 //
-// ONDE COLOCAR (dentro de Android/data/com.samp.mobile/files/):
+// ONDE COLOCAR (dentro de Android/data/com.maximo.roleplay/files/):
 //     texdb/ipl/<nome_do_ipl>.ipl    e    SAMP/ipl/<nome_do_ipl>.ipl      (ordem: texdb, depois SAMP, alfabetica;
 //     em conflito no mesmo indice o ULTIMO vence)
 // MARCADOR (arquivo vazio):  SAMP/ipl_off.on  = desliga tudo
