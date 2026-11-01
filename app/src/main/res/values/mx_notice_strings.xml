@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="mx_wipe_title">Atualizando o cliente</string>
+    <string name="mx_wipe_msg">Removendo os arquivos do cliente antigo para instalar a versão nova.\nNão feche o aplicativo.</string>
+    <string name="mx_wipe_done_title">Cliente antigo removido</string>
+    <string name="mx_wipe_done_msg">Pronto! O aplicativo vai fechar e abrir de novo sozinho para começar a instalação nova.</string>
+    <string name="mx_unk_title">Permissão necessária</string>
+    <string name="mx_unk_msg">Para instalar a nova versão, o Android precisa da sua permissão: na tela que vai abrir, ative \"Permitir desta fonte\" para o Máximo RP e volte.</string>
+    <string name="mx_unk_btn">ABRIR CONFIGURAÇÃO</string>
+    <string name="mx_unk_denied_msg">A permissão não foi concedida, por isso a nova versão não pôde ser instalada. Sem ela não é possível jogar. Toque abaixo para tentar de novo.</string>
+    <string name="mx_unk_retry_btn">TENTAR DE NOVO</string>
+</resources>

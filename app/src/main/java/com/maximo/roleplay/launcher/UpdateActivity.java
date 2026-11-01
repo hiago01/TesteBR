@@ -234,20 +234,30 @@ public class UpdateActivity extends AppCompatActivity{
                 .show();
     }
 
+    private boolean mAskedUnknownSources = false;
+
     void requestInstallGame()
     {
         Log.d("x1y2z", "request install game");
 
-        // Android 8+: instalar APK exige "Instalar apps desconhecidos" para este app.
+        // Android 8+: instalar APK exige "Instalar apps desconhecidos" para este app. Explica ANTES de abrir a configuracao.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !getPackageManager().canRequestPackageInstalls()) {
-            Toast.makeText(this, "Allow \"Install unknown apps\" for this app to finish the update.", Toast.LENGTH_LONG).show();
-            Intent settings = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()));
-            try {
-                startActivityForResult(settings, REQ_UNKNOWN_SOURCES); // ao voltar: onActivityResult
-            } catch (RuntimeException e) {
-                Log.e("x1y2z", "cannot open unknown-sources settings", e);
-                showUpdateError("Cannot open the \"Install unknown apps\" settings.");
-            }
+            if (isFinishing() || isDestroyed()) return;
+            final boolean denied = mAskedUnknownSources;
+            mAskedUnknownSources = true;
+            com.maximo.roleplay.launcher.util.NoticeDialog.show(this, getString(R.string.mx_unk_title),
+                    getString(denied ? R.string.mx_unk_denied_msg : R.string.mx_unk_msg), false,
+                    getString(denied ? R.string.mx_unk_retry_btn : R.string.mx_unk_btn), new Runnable() {
+                        @Override public void run() {
+                            Intent settings = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()));
+                            try {
+                                startActivityForResult(settings, REQ_UNKNOWN_SOURCES); // ao voltar: onActivityResult
+                            } catch (RuntimeException e) {
+                                Log.e("x1y2z", "cannot open unknown-sources settings", e);
+                                showUpdateError("Cannot open the \"Install unknown apps\" settings.");
+                            }
+                        }
+                    });
             return;
         }
 

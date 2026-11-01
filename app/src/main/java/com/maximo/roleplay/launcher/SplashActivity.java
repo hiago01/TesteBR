@@ -424,7 +424,9 @@ public class SplashActivity extends AppCompatActivity {
     }
 
     private void wipeThenStart() {
-        Toast.makeText(this, "Preparando instalacao nova: removendo arquivos antigos...", Toast.LENGTH_LONG).show();
+        // Aviso na tela (nao so um Toast): o jogador precisa saber que o app vai fechar e abrir sozinho.
+        final com.maximo.roleplay.launcher.util.NoticeDialog notice = com.maximo.roleplay.launcher.util.NoticeDialog.show(
+                this, getString(R.string.mx_wipe_title), getString(R.string.mx_wipe_msg), true, null, null);
         final java.io.File dir = getExternalFilesDir(null);
         final int vc = currentVersionCode();
         new Thread(new Runnable() {
@@ -433,10 +435,22 @@ public class SplashActivity extends AppCompatActivity {
                 try { res = com.maximo.roleplay.launcher.pack.ClientWipe.wipe(dir).toString(); }
                 catch (Throwable t) { Log.e(TAG, "ClientWipe falhou", t); res = "erro " + t; }
                 Log.i(TAG, "ClientWipe (versionCode " + vc + "): " + res);
-                try { getSharedPreferences("com.maximo.roleplay", MODE_PRIVATE).edit().putInt(PREF_WIPED_VC, vc).apply(); } catch (Throwable ignored) {}
+                // marca ANTES de reabrir: na proxima abertura nao apaga de novo (sem laco)
+                try { getSharedPreferences("com.maximo.roleplay", MODE_PRIVATE).edit().putInt(PREF_WIPED_VC, vc).commit(); } catch (Throwable ignored) {}
                 runOnUiThread(new Runnable() { @Override public void run() {
                     mWipeDone = true;
-                    if (!isFinishing() && !isDestroyed()) startUpdateService();
+                    if (isFinishing() || isDestroyed()) return;
+                    notice.update(getString(R.string.mx_wipe_done_title), getString(R.string.mx_wipe_done_msg), true, null, null);
+                    mUiHandler.postDelayed(new Runnable() { @Override public void run() {
+                        if (isFinishing() || isDestroyed()) return;
+                        try {
+                            RestartActivity.restart(SplashActivity.this);   // fecha e abre de novo
+                        } catch (Throwable t) {
+                            Log.e(TAG, "reabrir falhou, seguindo sem reiniciar", t);
+                            notice.dismiss();
+                            startUpdateService();
+                        }
+                    } }, 2500);
                 } });
             }
         }, "client-wipe").start();

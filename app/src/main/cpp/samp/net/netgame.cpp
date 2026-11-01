@@ -487,9 +487,9 @@ void CNetGame::ProcessLoadingScreen()
 		pPlayerPed->m_pPed->SetPosn(1133.0504, -2038.4034, 69.099998);
 	}
 
-	CCamera::SetPosition(1537.018,-1660.168,5.8906, 0.0, 0.0, 0.0);
-	CCamera::LookAtPoint(1546.623, -1660.569, 5.8906, 2);
-	pGame->SetWorldWeather(1);
+	CCamera::SetPosition(2055.0581, -1857.6940, 61.4906, 0.0, 0.0, 0.0);
+	CCamera::LookAtPoint(2055.5916, -1856.8501, 60.7806, 2);
+	pGame->SetWorldWeather(14);
 	pGame->DisplayHUD(false);
 }
 // 0.3.7

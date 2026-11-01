@@ -4,7 +4,6 @@
     package="com.maximo.roleplay"
     android:installLocation="auto">
 
-    <uses-permission android:name="INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- O launcher e o jogo usam apenas getExternalFilesDir() (armazenamento especifico do app):
@@ -83,6 +82,14 @@
             android:theme="@style/Theme.AppCompat.NoActionBar"
             android:windowSoftInputMode="adjustNothing">
         </activity>
+
+        <activity
+            android:name=".launcher.RestartActivity"
+            android:process=":restart"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <activity
             android:name=".launcher.SplashActivity"
