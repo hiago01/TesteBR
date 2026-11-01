@@ -542,7 +542,7 @@ bool CPad__GetEnterTargeting_hook(uintptr_t thiz)
         CWorld::PlayerInFocus = byteCurPlayer;
         uintptr_t result = CPad__GetEnterTargeting(thiz);
         ApplyCenteredAim(ModernInput::Active());
-        if (AimStateTick()) result = 1;   // MODERNO: Ataque segurado = mirar
+        if (byteCurPlayer == 0 && AimStateTick()) result = 1;   // MODERNO: Ataque segurado = mirar (so o ped LOCAL, nunca um remoto)
         LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = result;
         CWorld::PlayerInFocus = old;
         return result;
@@ -552,7 +552,7 @@ bool CPad__GetEnterTargeting_hook(uintptr_t thiz)
 bool (*CPad__GetExitTargeting)(uintptr_t thiz);
 bool CPad__GetExitTargeting_hook(uintptr_t thiz)
 {
-    if (!CWorld::PlayerInFocus) { AimStateTick(); if (PadNowMs() < g_exitUntilMs) return true; }   // so o jogador local, so apos soltar o Ataque (moderno)
+    if (!CWorld::PlayerInFocus && byteCurPlayer == 0) { AimStateTick(); if (PadNowMs() < g_exitUntilMs) return true; }   // so o jogador local, so apos soltar o Ataque (moderno)
     return CPad__GetExitTargeting(thiz);
 }
 
@@ -595,8 +595,9 @@ bool CPad__GetWeapon_hook(uintptr_t thiz, CPedGTA* pPed)
 	}
 	else
 	{
-		AimStateTick();                 // MODERNO: detecta soltar o Ataque (sair da mira) mesmo que "entrar" nao seja mais consultado
-		if (ModernInput::Active())      // MODERNO: Ataque segurado = disparo/golpe continuo
+		const bool localPed = (pPed == GamePool_FindPlayerPed());   // nunca age sobre ped remoto
+		if (localPed) AimStateTick();   // MODERNO: detecta soltar o Ataque (sair da mira) mesmo que "entrar" nao seja mais consultado
+		if (localPed && ModernInput::Active())      // MODERNO: Ataque segurado = disparo/golpe continuo
 		{
 			LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = ModernInput::AttackHeld() ? 1 : 0;
 			return LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE];
