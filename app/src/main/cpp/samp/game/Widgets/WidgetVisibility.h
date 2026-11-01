@@ -11,7 +11,7 @@ namespace WidgetVis
         ID_VEHICLE_SHOOT_LEFT = 0x10, ID_VEHICLE_SHOOT_RIGHT = 0x11, ID_CAM_TOGGLE = 0x12,
         ID_VEHICLE_BOMB = 0x19, ID_TURRET_LEFT = 0x1A, ID_TURRET_RIGHT = 0x1B,
         ID_BUTTON_SPRINT = 0x1F, ID_BUTTON_CROUCH = 0x20, ID_BUTTON_DIVE = 0x21, ID_BUTTON_SWIM = 0x22,
-        ID_SPRINT = 0xA8
+        ID_PED_MOVE = 0xA7, ID_SPRINT = 0xA8
     };
 
     /** Botoes que so fazem sentido A PE: somem dentro de veiculo/jetpack. */
@@ -31,6 +31,17 @@ namespace WidgetVis
             case ID_ACCELERATE: case ID_BRAKE: case ID_HANDBRAKE: case ID_STEER_LEFT: case ID_STEER_RIGHT: case ID_HORN:
             case ID_HYDRAULICS: case ID_AUTO_HYDRAULICS: case ID_VEHICLE_SHOOT_LEFT: case ID_VEHICLE_SHOOT_RIGHT: case ID_CAM_TOGGLE:
             case ID_VEHICLE_BOMB: case ID_TURRET_LEFT: case ID_TURRET_RIGHT:
+                return true;
+        }
+        return false;
+    }
+
+    /** Controles MODERNOS (a pe): botoes/joystick nativos que o sistema moderno substitui. Nadar/mergulhar (DIVE/SWIM) e o
+     *  botao de entrar no carro NAO entram aqui: o moderno nao os reimplementa, entao continuam nativos. */
+    inline bool ModernReplaces(int id)
+    {
+        switch (id) {
+            case ID_ATTACK: case ID_BUTTON_SPRINT: case ID_BUTTON_CROUCH: case ID_SPRINT: case ID_PED_MOVE:
                 return true;
         }
         return false;

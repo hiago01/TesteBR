@@ -7,6 +7,7 @@
 #include "../../settings.h"
 #include "util/CUtil.h"
 #include "voicebutton_logic.h"
+#include "controlmode.h"
 
 
 extern CSettings* pSettings;
@@ -30,6 +31,7 @@ public:
 	virtual void draw(ImGuiRenderer* renderer) override
 	{
 		if(!pSettings->Get().bVoiceChatEnable) return;
+		if (ControlMode::IsModern()) return;   // MODERNO: o icone e o botao Microfone moderno (desenhado por ModernControls)
 
 		if (countdown > 0 && recording() == 1) countdown--;
 		if (countdown == 0 && recording() == 1) setRecording(0);
@@ -47,6 +49,7 @@ public:
 	// para fora e soltar deixava o microfone ligado. Aqui desligamos ao sair do icone (ainda apertado) e ao soltar em qualquer lugar.
 	void touchEvent(const ImVec2& pos, TouchType type) override
 	{
+		if (ControlMode::IsModern()) return;   // MODERNO: nao processa (o botao moderno aciona touchPush/PopEvent direto)
 		bool release = false;
 		if (type == TouchType::move) release = m_hold.OnMove(contains(pos));
 		else if (type == TouchType::pop) release = m_hold.OnPop();

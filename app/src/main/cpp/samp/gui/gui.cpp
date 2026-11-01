@@ -83,6 +83,15 @@ bool UI::initialize()
 		m_jumpButton->setVisible(true);   // o proprio draw() decide quando aparece
 	}
 
+	// Controles MODERNOS (joystick analogico + botoes). So desenham/atuam com o modo moderno escolhido (ControlMode).
+	{
+		m_modernControls = new ModernControls();
+		this->addChild(m_modernControls);
+		m_modernControls->setFixedSize(size());
+		m_modernControls->setPosition(ImVec2(0.0f, 0.0f));
+		m_modernControls->setVisible(true);
+	}
+
 	// HUD do jogador (logo Maximo RP + vida/colete/fome/energia/sede + dinheiro): canto superior direito.
 	{
 		m_hud = new HudInfo();
@@ -152,6 +161,13 @@ bool UI::initialize()
 	m_maximoOS->setFixedSize(size());
 	m_maximoOS->setPosition(ImVec2(0.0f, 0.0f));
 	m_maximoOS->setVisible(true);
+
+	// Tela de escolha de controles (CLASSICO x MODERNO): so aparece na 1a vez ou pelo menu CONTROLES; captura de toque em AND_TouchEvent_hook.
+	m_controlsSelector = new ControlsSelector();
+	this->addChild(m_controlsSelector);
+	m_controlsSelector->setFixedSize(size());
+	m_controlsSelector->setPosition(ImVec2(0.0f, 0.0f));
+	m_controlsSelector->setVisible(true);
 
     label = new Label(" ", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
     pUI->addChild(label);

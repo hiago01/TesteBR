@@ -24,6 +24,8 @@
 #include "samp_widgets/buttonpanel.h"
 #include "samp_widgets/passengerbutton.h"
 #include "samp_widgets/jumpbutton.h"
+#include "samp_widgets/moderncontrols.h"
+#include "samp_widgets/controlsselector.h"
 #include "samp_widgets/playertablist.h"
 #include "samp_widgets/voicebutton.h"
 #include "samp_widgets/weaponbar.h"
@@ -65,6 +67,8 @@ public:
 	WeaponBar* weaponbar() const { return m_weaponBar; }
 	PassengerButton* passengerbutton() const { return m_passengerButton; }
 	JumpButton* jumpbutton() const { return m_jumpButton; }
+	ModernControls* moderncontrols() const { return m_modernControls; }
+	ControlsSelector* controlsselector() const { return m_controlsSelector; }
 	HudInfo* hud() const { return m_hud; }
 	MaximoMenu* maximomenu() const { return m_maximoMenu; }
 	MaximoOSWidget* maximoos() const { return m_maximoOS; }
@@ -112,6 +116,8 @@ private:
 	WeaponBar* m_weaponBar;
 	PassengerButton* m_passengerButton;
 	JumpButton* m_jumpButton = nullptr;
+	ModernControls* m_modernControls = nullptr;
+	ControlsSelector* m_controlsSelector = nullptr;
 	HudInfo* m_hud = nullptr;
 	MaximoMenu* m_maximoMenu = nullptr;
 	MaximoOSWidget* m_maximoOS = nullptr;

@@ -1088,6 +1088,14 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 	}
 	if (MaximoMenu::HandleRawTouch(type, num, posX, posY))
 		return;
+	// Tela de escolha de controles (CLASSICO x MODERNO): consome tudo enquanto aberta.
+	if (ControlsSelector::ConsumeFlushRequest())
+	{
+		for (int i = 0; i < 3; i++)
+			AND_TouchEvent(1, i, 0, 0);
+	}
+	if (ControlsSelector::HandleRawTouch(type, num, posX, posY))
+		return;
 
 	// imgui
 	//bool bRet = pUI->OnTouchEvent(type, num, posX, posY);
@@ -1105,6 +1113,10 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 			return;
 		// Minimapa: tocar abre o /mapa
 		if (MiniMapTouch(type, num, posX, posY))
+			return;
+		// Controles MODERNOS (joystick + botoes): so atuam com o modo moderno a pe; o dedo de um controle nao vai para o jogo.
+		// Com o modo CLASSICO isto retorna false de imediato e o fluxo abaixo fica exatamente como era.
+		if (ModernControls::onRawTouch(type, num, posX, posY))
 			return;
 		// Botao de pulo proprio (hud_crouch): o dedo que cai nele nao vai para o jogo
 		if (pUI->jumpbutton() && pUI->jumpbutton()->onRawTouch(type, num, posX, posY))

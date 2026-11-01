@@ -5,6 +5,7 @@
 #include "../vendor/armhook/patch.h"
 #include "World.h"
 #include "movemode.h"
+#include "../gui/samp_widgets/controlmode.h"
 
 extern UI* pUI;
 extern CGame* pGame;
@@ -36,6 +37,8 @@ uint16_t CPad__GetPedWalkLeftRight_hook(uintptr_t thiz)
 		// Local player
 		// Modo de movimento (WALK/JOG/SPRINT): molda o modulo do stick mantendo a direcao.
 		// Lemos os dois eixos do original para escalar o vetor (e nao cada eixo isolado).
+		// MODERNO (a pe): o joystick analogico proprio substitui o stick nativo (intensidade proporcional, sem moldar por WALK/JOG).
+		{ int16_t mlr, mud; if (ModernInput::Stick(mlr, mud)) { LocalPlayerKeys.wKeyLR = (uint16_t)mlr; return LocalPlayerKeys.wKeyLR; } }
 		int16_t lr = (int16_t)CPad__GetPedWalkLeftRight(thiz);
 		if (CPad__GetPedWalkUpDown)
 		{
@@ -65,6 +68,7 @@ uint16_t CPad__GetPedWalkUpDown_hook(uintptr_t thiz)
 	{
 		// Local player
 		// Modo de movimento (WALK/JOG/SPRINT): ver CPad__GetPedWalkLeftRight_hook.
+		{ int16_t mlr, mud; if (ModernInput::Stick(mlr, mud)) { LocalPlayerKeys.wKeyUD = (uint16_t)mud; return LocalPlayerKeys.wKeyUD; } }
 		int16_t ud = (int16_t)CPad__GetPedWalkUpDown(thiz);
 		if (CPad__GetPedWalkLeftRight)
 		{
@@ -85,6 +89,11 @@ uint32_t CPad__GetSprint_hook(uintptr_t thiz, uint32_t unk)
 	}
 	else
 	{
+		if (ModernInput::Active())      // MODERNO: Corrida = botao proprio (segurado, com o joystick em uso)
+		{
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT] = ModernInput::SprintHeld() ? 1 : 0;
+			return LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT];
+		}
 		uint32_t dwSprint = CPad__GetSprint(thiz, unk);
 		if (CPad__GetPedWalkLeftRight && CPad__GetPedWalkUpDown)
 		{
@@ -116,6 +125,8 @@ uint32_t CPad__JumpJustDown_hook(uintptr_t thiz)
 	else
 	{
 		// Pulo NATIVO removido (inclusive o duplo toque do botao de correr): so o botao hud_crouch (jumpbutton.cpp) pula.
+		// MODERNO: o botao Pulo do sistema moderno.
+		if (ModernInput::Active()) { LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = ModernInput::JumpJustDown() ? 1 : 0; return LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP]; }
 		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = JumpButtonState::ConsumeJustDown() ? 1 : 0;
 		return LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP];
 	}
@@ -131,6 +142,7 @@ uint32_t CPad__GetJump_hook(uintptr_t thiz)
 	}
 	else
 	{
+		if (ModernInput::Active()) { LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = ModernInput::JumpHeld() ? 1 : 0; return LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP]; }
 		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = JumpButtonState::Held() ? 1 : 0;   // so o botao hud_crouch
 		return LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP];
 	}
@@ -202,6 +214,7 @@ uint32_t CPad__DuckJustDown_hook(uintptr_t thiz, int unk)
 	}
 	else
 	{
+		if (ModernInput::Active()) return ModernInput::CrouchJustDown() ? 1 : 0;   // MODERNO: botao Agachar
 		return CPad__DuckJustDown(thiz, unk);
 	}
 }
@@ -225,6 +238,12 @@ uint32_t CPad__MeleeAttackJustDown_hook(uintptr_t thiz)
 	}
 	else
 	{
+		if (ModernInput::Active())      // MODERNO: botao Ataque (soco/golpe)
+		{
+			const uint32_t m = ModernInput::AttackJustDown() ? 1 : 0;
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = m;
+			return m;
+		}
 		uint32_t dwResult = CPad__MeleeAttackJustDown(thiz);
 		//LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = true;
 
@@ -516,6 +535,11 @@ bool CPad__GetWeapon_hook(uintptr_t thiz, CPedGTA* pPed)
 	}
 	else
 	{
+		if (ModernInput::Active())      // MODERNO: Ataque segurado = disparo/golpe continuo
+		{
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = ModernInput::AttackHeld() ? 1 : 0;
+			return LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE];
+		}
 		LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = CPad__GetWeapon(thiz, pPed);
 		return LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE];
 	}

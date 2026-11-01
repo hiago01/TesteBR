@@ -1,0 +1,131 @@
+// Testes de PC da logica dos controles (controlmode_logic.h). Nao testa NDK/Android/aparelho.
+#include "../../gui/samp_widgets/controlmode_logic.h"
+#include <cstdio>
+using namespace CtlLogic;
+static int fails = 0, total = 0;
+#define CHECK(c) do { total++; if (!(c)) { fails++; printf("FALHOU L%d: %s\n", __LINE__, #c); } } while (0)
+
+int main()
+{
+	// --- modo / padrao classico ---
+	CHECK(ModeFromString(nullptr) == Mode::Classic);
+	CHECK(ModeFromString("") == Mode::Classic);
+	CHECK(ModeFromString("lixo") == Mode::Classic);
+	CHECK(ModeFromString("MODERNO") == Mode::Modern);
+	CHECK(ModeFromString("classico") == Mode::Classic);
+	CHECK(std::string(ModeToString(Mode::Modern)) == "moderno");
+	CHECK(SectionFor("Jo ao") == "controles_Jo_ao");
+	CHECK(SectionFor("") == "controles_jogador");
+	CHECK(SectionFor(nullptr) == "controles_jogador");
+
+	// --- config: clamp ---
+	ModernConfig c; c.joyScale = 99; c.alpha = -1; c.deadzone = NAN; c.btnPos[0] = {5, -5}; c.Clamp();
+	CHECK(c.joyScale == 1.6f); CHECK(c.alpha == 0.15f); CHECK(c.deadzone == 0.12f);
+	CHECK(c.btnPos[0].x == 0.97f && c.btnPos[0].y == 0.05f);
+
+	// --- analogico ---
+	float x, y;
+	StickAxes(0, 0, 100, 0.1f, 1, x, y); CHECK(x == 0 && y == 0);
+	StickAxes(5, 0, 100, 0.1f, 1, x, y); CHECK(x == 0 && y == 0);               // dentro da zona morta
+	StickAxes(100, 0, 100, 0.1f, 1, x, y); CHECK(std::fabs(x - 1) < 1e-5 && y == 0);
+	StickAxes(500, 0, 100, 0.1f, 1, x, y); CHECK(std::fabs(x - 1) < 1e-5);      // satura
+	StickAxes(55, 0, 100, 0.1f, 1, x, y); CHECK(x > 0.4f && x < 0.6f);          // proporcional
+	float x1, y1, x2, y2;
+	StickAxes(30, 0, 100, 0.1f, 1, x1, y1); StickAxes(60, 0, 100, 0.1f, 1, x2, y2); CHECK(x2 > x1);
+	StickAxes(70, 70, 100, 0.1f, 1, x, y); CHECK(std::fabs(x - y) < 1e-5 && x > 0); // diagonal 45
+	StickAxes(-70, -70, 100, 0.1f, 1, x, y); CHECK(x < 0 && y < 0);             // 360: outro quadrante
+	StickAxes(50, 0, 100, 0.1f, 2, x1, y1); StickAxes(50, 0, 100, 0.1f, 1, x2, y2); CHECK(x1 > x2);   // sensibilidade
+	StickAxes(1, 1, 0, 0.1f, 1, x, y); CHECK(x == 0 && y == 0);                 // maxDist invalido
+	CHECK(ToPad(1.0f) == 127 && ToPad(-1.0f) == -127 && ToPad(5) == 127 && ToPad(0) == 0);
+
+	// --- layout ---
+	ModernConfig cfg; ModernController k; k.cfg = cfg; k.SetScreen(2400, 1080);
+	CHECK(k.lay.base.cx < 2400 * 0.3f && k.lay.base.cy > 1080 * 0.5f);   // joystick embaixo a esquerda
+	for (int i = 0; i < B_COUNT; i++) for (int j = i + 1; j < B_COUNT; j++)
+	{
+		const float dx = k.lay.btn[i].cx - k.lay.btn[j].cx, dy = k.lay.btn[i].cy - k.lay.btn[j].cy;
+		CHECK(std::sqrt(dx * dx + dy * dy) > k.lay.btn[i].r + k.lay.btn[j].r);   // padrao: nada sobreposto
+	}
+	// retrato tambem cabe
+	{ ModernController p; p.SetScreen(1080, 2400); for (int i = 0; i < B_COUNT; i++) CHECK(p.lay.btn[i].cx > 0 && p.lay.btn[i].cx < 1080); }
+
+	// --- multitouch ---
+	const CtlCircle J = k.lay.base, A = k.lay.btn[B_ATTACK], U = k.lay.btn[B_JUMP], R = k.lay.btn[B_RUN];
+	CHECK(!k.OnTouch(2, 0, 1200, 100));                          // toque no vazio: nao e nosso (vai pro jogo/camera)
+	CHECK(k.OnTouch(2, 1, J.cx, J.cy));                          // dedo 1 no joystick
+	CHECK(k.StickDown());
+	CHECK(k.OnTouch(2, 2, A.cx, A.cy));                          // dedo 2 no ataque (simultaneo)
+	CHECK(k.OnTouch(2, 3, U.cx, U.cy));                          // dedo 3 no pulo
+	{ Output o = k.Read(false); CHECK((o.held & (1u << B_ATTACK)) && (o.held & (1u << B_JUMP))); CHECK(!o.stickActive); }
+	CHECK(k.OnTouch(3, 1, J.cx + J.r, J.cy));                    // joystick todo a direita
+	{ Output o = k.Read(false); CHECK(o.lr == 127 && o.ud == 0 && o.stickActive); }
+	CHECK(k.OnTouch(3, 1, J.cx, J.cy - J.r));                    // para cima -> ud negativo (frente)
+	{ Output o = k.Read(false); CHECK(o.ud == -127 && o.lr == 0); }
+	// dedo do ataque arrasta para fora: continua dono ate soltar
+	CHECK(k.OnTouch(3, 2, 10, 10)); { Output o = k.Read(false); CHECK(o.held & (1u << B_ATTACK)); }
+	CHECK(k.OnTouch(1, 2, 10, 10)); { Output o = k.Read(true); CHECK(!(o.held & (1u << B_ATTACK))); CHECK(o.releasedEdge & (1u << B_ATTACK)); CHECK(o.pressedEdge & (1u << B_ATTACK)); }
+	{ Output o = k.Read(true); CHECK(o.pressedEdge == 0 && o.releasedEdge == 0); }     // bordas consumidas 1x
+	// soltar o joystick volta ao centro; os outros dedos nao sao afetados
+	CHECK(k.OnTouch(1, 1, 0, 0)); { Output o = k.Read(false); CHECK(o.lr == 0 && o.ud == 0 && !k.StickDown()); CHECK(o.held & (1u << B_JUMP)); }
+	CHECK(!k.OnTouch(3, 7, 5, 5));                               // move de dedo desconhecido: nao e nosso
+	CHECK(!k.OnTouch(1, 7, 5, 5));
+	// um dedo nao pega dois controles / dois dedos no mesmo botao
+	CHECK(k.OnTouch(2, 4, R.cx, R.cy)); CHECK(k.BtnFinger(B_RUN) == 4);
+	CHECK(!k.OnTouch(2, 5, R.cx, R.cy) || k.BtnFinger(B_RUN) == 4);
+	// CANCEL solta tudo
+	k.CancelAll(); { Output o = k.Read(true); CHECK(o.held == 0 && !o.stickActive); CHECK(o.releasedEdge != 0); }
+	// push repetido do mesmo dedo (POINTER_DOWN duplicado) nao troca de dono
+	CHECK(k.OnTouch(2, 1, J.cx, J.cy)); CHECK(k.OnTouch(2, 1, A.cx, A.cy)); CHECK(!k.BtnDown(B_ATTACK));
+	k.CancelAll();
+
+	// --- botao desabilitado (microfone sem voz)
+	{ ModernController m; m.SetScreen(2400, 1080); m.disabledMask = 1u << B_MIC; const CtlCircle mc = m.lay.btn[B_MIC]; CHECK(!m.OnTouch(2, 1, mc.cx, mc.cy)); m.disabledMask = 0; CHECK(m.OnTouch(2, 1, mc.cx, mc.cy) && m.BtnDown(B_MIC)); }
+
+	// --- zona morta configuravel no controlador ---
+	{ ModernConfig d; d.deadzone = 0.3f; ModernController q; q.cfg = d; q.SetScreen(2400, 1080);
+	  q.OnTouch(2, 1, q.lay.base.cx, q.lay.base.cy); q.OnTouch(3, 1, q.lay.base.cx + q.lay.maxDistPx * 0.2f, q.lay.base.cy);
+	  CHECK(q.Read(false).lr == 0);
+	  q.OnTouch(3, 1, q.lay.base.cx + q.lay.maxDistPx * 0.6f, q.lay.base.cy); CHECK(q.Read(false).lr > 0); }
+
+	// --- edicao de posicoes ---
+	{ ModernController e; e.SetScreen(2400, 1080); e.editing = true;
+	  const CtlCircle a = e.lay.btn[B_ATTACK];
+	  CHECK(e.OnTouch(2, 1, a.cx, a.cy)); CHECK(e.OnTouch(3, 1, 1200, 540)); CHECK(e.OnTouch(1, 1, 1200, 540));
+	  CHECK(std::fabs(e.cfg.btnPos[B_ATTACK].x - 0.5f) < 1e-3 && std::fabs(e.cfg.btnPos[B_ATTACK].y - 0.5f) < 1e-3);
+	  CHECK(e.Read(false).held == 0);                                // editar nao dispara gameplay
+	  CHECK(e.OnTouch(2, 2, e.lay.base.cx, e.lay.base.cy)); CHECK(e.OnTouch(3, 2, 600, 700)); CHECK(e.OnTouch(1, 2, 600, 700));
+	  CHECK(std::fabs(e.cfg.joyPos.x - 600.0f / 2400) < 1e-3); }
+
+	// --- seletor ---
+	for (int orient = 0; orient < 2; orient++)
+	{
+		const float sw = orient ? 1080 : 2400, sh = orient ? 2400 : 1080;
+		SelectorLayout S = MakeSelectorLayout(sw, sh);
+		CHECK(S.card[0].r <= S.card[1].l || S.card[0].b <= S.card[1].t);     // cartoes nao se sobrepoem
+		for (int i = 0; i < 2; i++) { CHECK(S.card[i].l >= 0 && S.card[i].r <= sw && S.card[i].t >= 0 && S.card[i].b <= sh); CHECK(CtlIn(S.card[i], (S.selectBtn[i].l + S.selectBtn[i].r) / 2, (S.selectBtn[i].t + S.selectBtn[i].b) / 2)); }
+		CHECK(S.confirm.r <= sw && S.back.l >= 0 && S.back.r <= S.confirm.l);
+		SelectorState st; st.Open(Mode::Classic);
+		auto mid = [](const CtlRect& r, float& cx, float& cy) { cx = (r.l + r.r) / 2; cy = (r.t + r.b) / 2; };
+		float cx, cy;
+		mid(S.selectBtn[1], cx, cy); st.Act(SelectorHit(S, cx, cy)); CHECK(st.selected == Mode::Modern && !st.done);
+		mid(S.back, cx, cy); st.Act(SelectorHit(S, cx, cy)); CHECK(st.done && !st.apply && st.current == Mode::Classic);   // VOLTAR nao aplica
+		st.Open(Mode::Classic);
+		mid(S.card[1], cx, cy); st.Act(SelectorHit(S, cx, cy)); mid(S.confirm, cx, cy); st.Act(SelectorHit(S, cx, cy));
+		CHECK(st.done && st.apply && st.selected == Mode::Modern);
+		CHECK(SelectorHit(S, 1, 1) == SelAction::None || !CtlIn(S.panel, 1, 1) == false);
+	}
+
+	// --- auto exibicao / modo efetivo ---
+	CHECK(ShouldAutoShowSelector(false, true, false));
+	CHECK(!ShouldAutoShowSelector(true, true, false));      // ja escolheu: nunca de novo
+	CHECK(!ShouldAutoShowSelector(false, false, false));    // fora do jogo (login/conexao)
+	CHECK(!ShouldAutoShowSelector(false, true, true));      // sobre dialogo/teclado/spawn
+	CHECK(!ModernActiveOnFoot(Mode::Classic, false, false, true));
+	CHECK(ModernActiveOnFoot(Mode::Modern, false, false, true));
+	CHECK(!ModernActiveOnFoot(Mode::Modern, true, false, true));
+	CHECK(!ModernActiveOnFoot(Mode::Modern, false, true, true));
+	CHECK(!ModernActiveOnFoot(Mode::Modern, false, false, false));
+
+	printf("%d/%d verificacoes OK\n", total - fails, total);
+	return fails ? 1 : 0;
+}

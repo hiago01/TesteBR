@@ -8,6 +8,9 @@
 #include "../../vendor/SimpleIni/SimpleIni.h"
 #include "maximomenu.h"
 #include "worldmap.h"
+#include "controlmode.h"
+#include "controlsselector.h"
+#include "moderncontrols.h"
 
 #include <dlfcn.h>
 #include <algorithm>
@@ -212,6 +215,7 @@ namespace
 	{
 		g_dirty = false;
 		NativeSave();
+		ControlMode::Save();      // ajustes do MODERNO (secao propria; nao mexe no classico)
 		const std::string path = IniPath();
 		if (path.empty()) return;
 
@@ -316,7 +320,8 @@ bool MaximoMenu::HandleRawTouch(int type, int num, int x, int y)
 namespace
 {
 	enum { K_INFO = 0, K_TOGGLE, K_SLIDER, K_ACTION, K_CHOICE };
-	enum { ID_NONE = 0, ID_SKID, ID_FPSCOUNT, ID_STREAM, ID_NATIVE, ID_RESUME, ID_QUIT, ID_PRESET, ID_CTLRESET };
+	enum { ID_NONE = 0, ID_SKID, ID_FPSCOUNT, ID_STREAM, ID_NATIVE, ID_RESUME, ID_QUIT, ID_PRESET, ID_CTLRESET,
+	       ID_CTLMODE, ID_MC_EDIT, ID_MC_RESET, ID_MC_JOYSCALE, ID_MC_BTNSCALE, ID_MC_ALPHA, ID_MC_SENS, ID_MC_DEAD, ID_MC_MAXD, ID_MC_JOYX, ID_MC_JOYY };
 
 	struct Row { const char* label; int kind; int id; int nidx = -1; };
 
@@ -407,6 +412,18 @@ namespace
 		{ "Sensibilidade analógica",     K_SLIDER, ID_NATIVE, N_ANALOG },
 		{ "Subir automaticamente",       K_TOGGLE, ID_NATIVE, N_CLIMB },
 		{ "Restaurar padrões",           K_ACTION, ID_CTLRESET },
+		// ---- Sistema de controles (CLASSICO x MODERNO). Os ajustes abaixo valem so para o MODERNO; o classico nao e alterado. ----
+		{ "Sistema de controles",        K_ACTION, ID_CTLMODE },
+		{ "Moderno: tamanho do joystick", K_SLIDER, ID_MC_JOYSCALE },
+		{ "Moderno: tamanho dos botões", K_SLIDER, ID_MC_BTNSCALE },
+		{ "Moderno: transparência",      K_SLIDER, ID_MC_ALPHA },
+		{ "Moderno: sensibilidade",      K_SLIDER, ID_MC_SENS },
+		{ "Moderno: zona morta",         K_SLIDER, ID_MC_DEAD },
+		{ "Moderno: distância máxima",   K_SLIDER, ID_MC_MAXD },
+		{ "Moderno: joystick (horizontal)", K_SLIDER, ID_MC_JOYX },
+		{ "Moderno: joystick (vertical)",   K_SLIDER, ID_MC_JOYY },
+		{ "Moderno: editar posições",    K_ACTION, ID_MC_EDIT },
+		{ "Moderno: restaurar ajustes",  K_ACTION, ID_MC_RESET },
 	}};
 	const Page kPageNativa = { "", {
 		{ "Indisponível: o menu nativo foi desativado", K_INFO, ID_NONE },
@@ -415,10 +432,60 @@ namespace
 
 	const Page* const kSubs[3] = { &kSubGraficos, &kSubTela, &kSubChat };
 
+	// ---- ajustes do controle MODERNO como 0..100 (percentual da faixa de cada campo; limites = ModernConfig::Clamp) ----
+	struct McField { float lo, hi; };
+	bool McRange(int id, McField& f)
+	{
+		switch (id)
+		{
+			case ID_MC_JOYSCALE: f = { 0.5f, 1.6f };  return true;
+			case ID_MC_BTNSCALE: f = { 0.5f, 1.6f };  return true;
+			case ID_MC_ALPHA:    f = { 0.15f, 1.0f }; return true;
+			case ID_MC_SENS:     f = { 0.5f, 2.0f };  return true;
+			case ID_MC_DEAD:     f = { 0.0f, 0.45f }; return true;
+			case ID_MC_MAXD:     f = { 0.6f, 1.6f };  return true;
+			case ID_MC_JOYX:     f = { 0.05f, 0.95f };return true;
+			case ID_MC_JOYY:     f = { 0.10f, 0.95f };return true;
+		}
+		return false;
+	}
+	float* McPtr(CtlLogic::ModernConfig& c, int id)
+	{
+		switch (id)
+		{
+			case ID_MC_JOYSCALE: return &c.joyScale;
+			case ID_MC_BTNSCALE: return &c.btnScale;
+			case ID_MC_ALPHA:    return &c.alpha;
+			case ID_MC_SENS:     return &c.sens;
+			case ID_MC_DEAD:     return &c.deadzone;
+			case ID_MC_MAXD:     return &c.maxDist;
+			case ID_MC_JOYX:     return &c.joyPos.x;
+			case ID_MC_JOYY:     return &c.joyPos.y;
+		}
+		return nullptr;
+	}
+	int McGet(int id)
+	{
+		McField f; if (!McRange(id, f)) return 0;
+		CtlLogic::ModernConfig c = ControlMode::GetConfig();
+		const float* p = McPtr(c, id);
+		return p ? (int)std::lround(std::clamp((*p - f.lo) / (f.hi - f.lo), 0.0f, 1.0f) * 100.0f) : 0;
+	}
+	void McSet(int id, int pct)
+	{
+		McField f; if (!McRange(id, f)) return;
+		CtlLogic::ModernConfig c = ControlMode::GetConfig();
+		float* p = McPtr(c, id);
+		if (p) *p = f.lo + (f.hi - f.lo) * (float)std::clamp(pct, 0, 100) / 100.0f;
+		ControlMode::SetConfig(c, false);     // grava ao soltar o slider (g_dirty -> SaveCfg), sem I/O a cada quadro
+	}
+
 	int GetValue(const Row& r)
 	{
 		switch (r.id)
 		{
+			case ID_MC_JOYSCALE: case ID_MC_BTNSCALE: case ID_MC_ALPHA: case ID_MC_SENS:
+			case ID_MC_DEAD: case ID_MC_MAXD: case ID_MC_JOYX: case ID_MC_JOYY: return McGet(r.id);
 			case ID_SKID:     return g_skid.load() ? 1 : 0;
 			case ID_FPSCOUNT: return (pSettings && pSettings->Get().iFPSCounter) ? 1 : 0;
 			case ID_STREAM:   return g_cfg.stream;
@@ -435,6 +502,8 @@ namespace
 	{
 		switch (r.id)
 		{
+			case ID_MC_JOYSCALE: case ID_MC_BTNSCALE: case ID_MC_ALPHA: case ID_MC_SENS:
+			case ID_MC_DEAD: case ID_MC_MAXD: case ID_MC_JOYX: case ID_MC_JOYY: McSet(r.id, v); break;
 			case ID_SKID:     g_skid.store(v != 0); break;
 			case ID_FPSCOUNT: if (pSettings) pSettings->Get().iFPSCounter = (v != 0); break;
 			case ID_STREAM:   g_cfg.stream = std::clamp(v, 0, 100); ApplyStream(g_cfg.stream); break;
@@ -450,6 +519,7 @@ namespace
 
 	void RangeOf(const Row& r, int& mn, int& mx)
 	{
+		if (r.id >= ID_MC_JOYSCALE && r.id <= ID_MC_JOYY) { mn = 0; mx = 100; return; }
 		if (r.id == ID_PRESET) { mn = 0; mx = P_COUNT - 1; return; }   // 0..4 (a volta de "Personalizada" cai em 0)
 		if (r.id == ID_NATIVE) { NativeRange(r.nidx, mn, mx); return; }
 		mn = 0; mx = (r.id == ID_STREAM) ? 100 : 1;
@@ -645,6 +715,9 @@ void MaximoMenu::draw(ImGuiRenderer* r)
 							for (int i : kIdx) { int32_t* d = NativeField(i, 0x14); if (d) NativeSet(i, *d); }
 							g_dirty = true;
 						}
+						if (row.id == ID_CTLMODE) { g_open.store(false); if (g_dirty) SaveCfg(); g_drag = Drag(); ControlsSelector::Open(); return; }
+						if (row.id == ID_MC_EDIT && ControlMode::IsModern()) { g_open.store(false); if (g_dirty) SaveCfg(); g_drag = Drag(); ModernControls::StartEdit(); return; }
+						if (row.id == ID_MC_RESET) ControlMode::ResetConfig();
 						if (row.id == ID_RESUME) { g_open.store(false); if (g_dirty) SaveCfg(); g_drag = Drag(); return; }
 						if (row.id == ID_QUIT)
 						{
@@ -769,6 +842,7 @@ void MaximoMenu::draw(ImGuiRenderer* r)
 		else if (row.kind == K_ACTION)
 		{
 			const char* s = ">";
+			if (row.id == ID_CTLMODE) s = ControlMode::IsModern() ? "Moderno >" : "Clássico >";
 			if (row.id == ID_QUIT && NowMs() < g_quitArmedUntil) s = "Toque de novo para sair";
 			const ImVec2 ts = r->calculateTextSize(s, fs);
 			r->drawText(ImVec2(panX + panW - pad - ts.x, ty), (row.id == ID_QUIT) ? ImColor(235, 90, 80, 255) : cText, s, false, fs);

@@ -8,6 +8,7 @@
 #include "../../util/CUtil.h"
 #include "jumpbutton_logic.h"
 #include "maximomenu.h"
+#include "controlmode.h"
 
 #include <chrono>
 #include <algorithm>
@@ -81,7 +82,7 @@ void JumpButton::draw(ImGuiRenderer* r)
 {
 	CPedGTA* ped = nullptr;
 	const bool pedOk = LocalPed(ped);
-	const bool show = JumpLogic::ShouldShow(pedOk, UiBlocked(), pedOk && ped->IsInVehicle(), pedOk && ped->m_fHealth > 0.0f);
+	const bool show = !ControlMode::IsModern() && JumpLogic::ShouldShow(pedOk, UiBlocked(), pedOk && ped->IsInVehicle(), pedOk && ped->m_fHealth > 0.0f);
 	m_available.store(show);
 	if (!show) { m_finger.store(-1); return; }
 
