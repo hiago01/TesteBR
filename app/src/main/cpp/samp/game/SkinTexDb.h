@@ -22,6 +22,8 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <GLES2/gl2.h>
+#include <EGL/egl.h>
 #include <unistd.h>
 #include <sys/stat.h>
 
@@ -83,6 +85,32 @@ namespace SkinTexDb
         return true;
     }
 
+    // GPU do aparelho (precisa de contexto GL na thread atual; sem contexto devolve o aviso). Mostra o que a GPU aceita.
+    inline std::string GpuInfo()
+    {
+        if (eglGetCurrentContext() == EGL_NO_CONTEXT) return "GPU: sem contexto GL nesta thread (rode /skin7 texdb gpu no jogo)";
+        auto S = [](GLenum n) { const GLubyte* p = glGetString(n); return std::string(p ? (const char*)p : ""); };
+        const std::string ext = S(GL_EXTENSIONS);
+        auto has = [&](const char* k) { return ext.find(k) != std::string::npos; };
+        const bool dxt = has("GL_EXT_texture_compression_dxt1") || has("GL_EXT_texture_compression_s3tc");
+        const bool etc = has("GL_OES_compressed_ETC1_RGB8_texture");
+        const bool pvr = has("GL_IMG_texture_compression_pvrtc");
+        const bool atc = has("GL_AMD_compressed_ATC_texture") || has("GL_ATI_texture_compression_atitc");
+        return "GPU: " + S(GL_RENDERER) + " | DXT " + (dxt ? "SIM" : "nao") + " | ETC1 " + (etc ? "SIM" : "nao") +
+               " | PVRTC " + (pvr ? "SIM" : "nao") + " | ATC " + (atc ? "SIM" : "nao") +
+               (dxt || etc ? "" : " | ATENCAO: nem DXT nem ETC1 (o banco nao serve nesta GPU)");
+    }
+
+    // quais arquivos de dados existem (o motor escolhe um conforme a GPU)
+    inline std::string Files()
+    {
+        const std::string d = detail::DbDir();
+        auto sz = [&](const char* f) { struct stat st{}; return ::stat((d + f).c_str(), &st) == 0 ? (long long)st.st_size / 1048576 : -1LL; };
+        char b[160];
+        std::snprintf(b, sizeof(b), "arquivos: dxt.dat %lld MB, etc.dat %lld MB (-1 = ausente)", sz("skins.dxt.dat"), sz("skins.etc.dat"));
+        return b;
+    }
+
     inline std::string Status()
     {
         using namespace detail;
@@ -94,6 +122,7 @@ namespace SkinTexDb
     inline std::vector<int> Variants(const std::string& folder) { return detail::Ready_() ? detail::Idx().Variants(folder) : std::vector<int>(); }
     inline std::vector<std::string> List(const std::string& prefix) { return detail::Ready_() ? detail::Idx().WithPrefix(prefix) : std::vector<std::string>(); }
     inline std::vector<std::string> SubFolders(const std::string& prefix) { return detail::Ready_() ? detail::Idx().SubFolders(prefix) : std::vector<std::string>(); }
+    inline std::string FallbackRel(const std::string& rel) { return detail::Ready_() ? detail::Idx().FallbackFor(rel) : std::string(); }
     inline size_t Count() { return detail::Ready_() ? detail::Idx().Size() : 0; }
 
     // Textura do banco para 'rel' (ex.: "tshirts/1/34"). nullptr se nao existe/falhou. O chamador recebe +1 de refCount
@@ -111,6 +140,24 @@ namespace SkinTexDb
         if (!t) { Failed()[key] = true; return nullptr; }
         Cache()[key] = t;
         ++t->refCount;                                                                           // +1 para o chamador
+        return t;
+    }
+
+    // Para aparencia de OUTROS jogadores: se 'rel' nao existe/falha neste aparelho, usa a variante mais proxima da mesma
+    // pasta (nunca derruba o jogo; sem substituta -> nullptr e o item fica como esta). Nao usar em comandos do proprio jogador.
+    inline RwTexture* TextureOrFallback(const std::string& rel, bool* usedFallback = nullptr)
+    {
+        if (usedFallback) *usedFallback = false;
+        if (RwTexture* t = Has(rel) ? Texture(rel) : nullptr) return t;
+        const std::string fb = FallbackRel(rel);
+        if (fb.empty() || fb == SkinTexDbCore::LowerAscii(rel)) return nullptr;
+        RwTexture* t = Texture(fb);
+        if (t)
+        {
+            static int logged = 0;
+            if (logged++ < 20) FLog("[SKINTEXDB] '%s' ausente: usando '%s' no lugar", rel.c_str(), fb.c_str());
+            if (usedFallback) *usedFallback = true;
+        }
         return t;
     }
 }

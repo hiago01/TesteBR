@@ -425,7 +425,7 @@ RwTexture* GetAppTex(const std::string& rel)
     // so o banco binario texdb/skins (leitura de PNG removida)
     std::string pr;
     RwTexture* t = nullptr;
-    if (SkinTexDb::Ready() && CorpMap::PackRelFor(rel, pr) && SkinTexDb::Has(DbKey(pr))) t = SkinTexDb::Texture(DbKey(pr));
+    if (SkinTexDb::Ready() && CorpMap::PackRelFor(rel, pr)) t = SkinTexDb::TextureOrFallback(DbKey(pr));
     if (!t) FLog("[CORPTEX] AVISO: textura de aparencia '%s' nao existe no banco texdb/skins", rel.c_str());
     s_appTex[rel] = AppTex{t, NowMs()};                // guarda tambem a falha (nao tenta de novo a cada frame)
     return t;
@@ -438,7 +438,7 @@ RwTexture* GetSlotPackTex(const std::string& rel)
     const std::string key = "slot/" + rel;
     auto it = s_appTex.find(key);
     if (it != s_appTex.end()) { it->second.lastUse = NowMs(); return it->second.tex; }
-    RwTexture* t = SkinTexDb::Has(DbKey(rel)) ? SkinTexDb::Texture(DbKey(rel)) : nullptr;     // so o banco texdb/skins
+    RwTexture* t = SkinTexDb::TextureOrFallback(DbKey(rel));     // so o banco texdb/skins; ausente -> variante proxima, nunca crasha
     if (!t) FLog("[CORPTEX] AVISO: slot: '%s' nao existe no banco texdb/skins (o slot fica como esta)", rel.c_str());
     s_appTex[key] = AppTex{t, NowMs()};
     return t;

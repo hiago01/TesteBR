@@ -1,5 +1,6 @@
 #include "CustomSkin.h"
 #include "SkinTexDb.h"
+#include "Diag.h"
 
 #include <algorithm>
 #include <atomic>
@@ -1169,6 +1170,13 @@ namespace
     // ---- /skin7 texdb [rel] : estado do banco texdb/skins; com rel, diz se a textura existe no banco -------
     void DoTexdb(const std::string& rest)
     {
+        if (rest == "gpu")
+        {
+            const std::string g = SkinTexDb::GpuInfo() + " | " + SkinTexDb::Files();
+            FLog("[SKINTEXDB] %s", g.c_str());
+            SetInfo(g);
+            return;
+        }
         if (rest.empty()) { SetInfo(SkinTexDb::Status()); return; }
         if (!SkinTexDb::Ready()) { SetInfo(SkinTexDb::Status()); return; }
         SetInfo("texdb/skins '" + rest + "': " + (SkinTexDb::Has(rest) ? "existe no banco" : "NAO existe no banco"));
@@ -2374,6 +2382,9 @@ std::string CCustomSkin::DebugCommand(const std::string& args)
     std::string first;
     in >> first;
 
+    if (!Diag::On("skin"))
+        return "[SKIN7] DESLIGADO pelo SAMP/diag.ini (skin=0): o /skin7 e o /provador NAO funcionam. Ponha skin=1 (ou apague o diag.ini) e reinicie o jogo. Veja /diag";
+
     for (const char* n : kNames)
     {
         if (first == n)
@@ -2396,6 +2407,6 @@ std::string CCustomSkin::DebugCommand(const std::string& args)
     }
 
     const std::string p = SkinPath();
-    return "[SKIN7] /skin7 load|apply|wear|unwear|unload|info | mats | mat list|reset|off|on|only <lista> | tex auto|idx|none | png | pack | texdb [pasta/n] | slots | slot <nome> <n|+|-|on|off|pasta/arq> | set <lista> <pasta/arq> | save [default] [wear] | autoexec   arquivo: " +
+    return "[SKIN7] /skin7 load|apply|wear|unwear|unload|info | mats | mat list|reset|off|on|only <lista> | tex auto|idx|none | png | pack | texdb [gpu|pasta/n] | slots | slot <nome> <n|+|-|on|off|pasta/arq> | set <lista> <pasta/arq> | save [default] [wear] | autoexec   arquivo: " +
            (p.empty() ? std::string("(storage indisponível)") : p);
 }

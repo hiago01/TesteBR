@@ -106,6 +106,33 @@ namespace SkinTexDbCore
             return std::vector<int>(out.begin(), out.end());
         }
 
+        // Substituta para um rel ausente (ex.: outro jogador usa tshirts/3/99 e este banco nao tem): a variante mais proxima
+        // da MESMA pasta (numerica; empate -> a menor); sem numericas, o primeiro arquivo da pasta. "" se a pasta nao existe.
+        std::string FallbackFor(const std::string& rel) const
+        {
+            const std::string r = LowerAscii(rel);
+            const size_t sl = r.rfind('/');
+            if (sl == std::string::npos) return {};
+            const std::string folder = r.substr(0, sl), stem = r.substr(sl + 1);
+            const std::vector<int> v = Variants(folder);
+            if (!v.empty())
+            {
+                bool dig = !stem.empty() && stem.size() <= 6;
+                for (char c : stem) if (!std::isdigit((unsigned char)c)) { dig = false; break; }
+                int best = v.front();
+                if (dig)
+                {
+                    const int want = std::atoi(stem.c_str());
+                    for (int x : v) if (std::abs(x - want) < std::abs(best - want)) best = x;
+                }
+                return folder + "/" + std::to_string(best);
+            }
+            const std::string pre = folder + "/";
+            for (const std::string& k : m_all)
+                if (k.compare(0, pre.size(), pre) == 0 && k.find('/', pre.size()) == std::string::npos) return k;
+            return {};
+        }
+
         // Todos os rel que comecam com 'prefix' (ex.: "corp/policia/"), em ordem.
         std::vector<std::string> WithPrefix(const std::string& prefix) const
         {

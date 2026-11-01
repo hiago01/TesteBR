@@ -721,6 +721,8 @@ bool CGame::InitialiseRenderWare() {
     // banco de texturas das roupas/skins (texdb/skins/). So personagens; independe de CustomImg::kCustomContent.
     SkinTexDb::Load();
     FLog("[SKINTEXDB] %s", SkinTexDb::Status().c_str());
+    FLog("[SKINTEXDB] %s", SkinTexDb::Files().c_str());
+    FLog("[SKINTEXDB] %s", SkinTexDb::GpuInfo().c_str());
 
     const auto camera = RwCameraCreate();
     if (!camera) {

@@ -31,6 +31,12 @@ int main()
     CHECK(ix.WithPrefix("corp/policia/").size() == 1);
     const std::vector<std::string> sf = ix.SubFolders("corp/");
     CHECK(sf.size() == 2 && sf[0] == "bombeiro" && sf[1] == "policia");
+    CHECK(ix.FallbackFor("tshirts/1/99") == "tshirts/1/34");     // mais proxima
+    CHECK(ix.FallbackFor("tshirts/1/9") == "tshirts/1/10");
+    CHECK(ix.FallbackFor("tshirts/1/1") == "tshirts/1/2");
+    CHECK(ix.FallbackFor("tshirts/7/3").empty());                // pasta inexistente
+    CHECK(ix.FallbackFor("hair/1/zzz") == "hair/1/abc");         // sem numericas: primeiro da pasta
+    CHECK(ix.FallbackFor("semPasta").empty());
     CHECK(ix.Parse("") == 0);
     std::printf("%d checks, %d falhas\n", checks, fails);
     return fails ? 1 : 0;

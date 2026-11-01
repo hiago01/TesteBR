@@ -20,6 +20,10 @@ Copie a pasta `skins` (gerada) para `Android/data/com.maximo.roleplay/files/texd
   CorpTex (texturas de aparencia e slots) e /provador idem. Ainda leem PNG: pecas de corporacao (pack/corp) e textures/ do /skin7 apply.
 - Log: linhas `[SKINTEXDB]` ao iniciar.
 
+## Teste da GPU e fallback
+- `/skin7 texdb gpu` mostra a GPU, se aceita DXT/ETC1/PVRTC/ATC e quais arquivos do banco existem (tambem vai no log `[SKINTEXDB]` ao iniciar).
+- Aparencia de OUTROS jogadores (CorpTex): textura ausente -> usa a variante mais proxima da mesma pasta (log `ausente: usando ...`); sem substituta o item fica como esta. Comandos do proprio jogador (/skin7 slot) dao erro claro em vez de trocar por outra.
+
 ## Nao verificado (precisa do aparelho)
 Compilacao NDK; carga do banco pelo motor; DXT5/RGBA4444 no `.etc`; aparelhos PowerVR (sem `.pvr`); conversao com o pack real.
 
