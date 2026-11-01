@@ -5,6 +5,7 @@
 #include "../vendor/armhook/patch.h"
 #include "World.h"
 #include "movemode.h"
+#include <dlfcn.h>
 #include "../gui/samp_widgets/controlmode.h"
 
 extern UI* pUI;
@@ -478,6 +479,31 @@ uint32_t CPad__GetExitVehicle_hook(uintptr_t thiz)
 
 /* Weapons */
 
+// MODERNO: mira. Segurar Ataque com arma de fogo entra em mira (a mira nativa aparece e o tiro sai nela) e a mira
+// fica no CENTRO da tela (CCamera::m_f3rdPersonCHairMultX/Y = 0.5). Os dois floats sao resolvidos por dlsym no libGTASA;
+// se o simbolo nao existir, so a centralizacao e pulada (loga) e o resto segue.
+static bool IsFirearm(CPedGTA* ped)
+{
+    if (!ped) return false;
+    const int t = (int)ped->m_aWeapons[ped->m_nActiveWeaponSlot].dwType;
+    return t >= 22 && t <= 38;      // ids de arma do GTA SA/SA-MP: pistola(22) ... minigun(38)
+}
+static void ApplyCenteredAim(bool on)
+{
+    static float* px = nullptr; static float* py = nullptr; static bool tried = false, applied = false;
+    static float sx = 0.53f, sy = 0.4f;
+    if (!tried)
+    {
+        tried = true;
+        px = (float*)dlsym(CHook::lib, "_ZN7CCamera22m_f3rdPersonCHairMultXE");
+        py = (float*)dlsym(CHook::lib, "_ZN7CCamera22m_f3rdPersonCHairMultYE");
+        FLog("[CONTROLES] mira centralizada: simbolos %s", (px && py) ? "encontrados" : "NAO encontrados (mira fica na posicao nativa)");
+    }
+    if (!px || !py) return;
+    if (on && !applied)       { sx = *px; sy = *py; *px = 0.5f; *py = 0.5f; applied = true; }
+    else if (!on && applied)  { *px = sx; *py = sy; applied = false; }
+}
+
 bool (*CPad__GetEnterTargeting)(uintptr_t thiz);
 bool CPad__GetEnterTargeting_hook(uintptr_t thiz)
 {
@@ -490,6 +516,8 @@ bool CPad__GetEnterTargeting_hook(uintptr_t thiz)
         uint8_t old = CWorld::PlayerInFocus;
         CWorld::PlayerInFocus = byteCurPlayer;
         uintptr_t result = CPad__GetEnterTargeting(thiz);
+        ApplyCenteredAim(ModernInput::Active());
+        if (ModernInput::AimWanted() && IsFirearm(GamePool_FindPlayerPed())) result = 1;   // MODERNO: Ataque segurado = mirar
         LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = result;
         CWorld::PlayerInFocus = old;
         return result;

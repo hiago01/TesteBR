@@ -120,6 +120,7 @@ bool ModernInput::JumpJustDown()  { return g_active.load() && ConsumeEdge(B_JUMP
 bool ModernInput::JumpHeld()      { return g_active.load() && (NowMs() - g_jumpMs.load()) < kJumpHoldMs; }
 bool ModernInput::CrouchJustDown(){ return g_active.load() && ConsumeEdge(B_CROUCH); }
 bool ModernInput::AttackHeld()    { return g_active.load() && (g_held.load() & (1u << B_ATTACK)); }
+bool ModernInput::AimWanted()      { return g_active.load() && (g_held.load() & (1u << B_ATTACK)); }
 bool ModernInput::AttackJustDown(){ return g_active.load() && ConsumeEdge(B_ATTACK); }
 
 // ----------------------------------------------------------------------------- widget

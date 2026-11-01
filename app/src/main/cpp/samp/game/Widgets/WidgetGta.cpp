@@ -11,6 +11,7 @@
 #include "TouchInterface.h"
 #include "WidgetButton.h"
 #include "WidgetVisibility.h"
+#include <cstdio>
 #include "gui/samp_widgets/controlmode.h"
 
 extern CNetGame *pNetGame;
@@ -194,14 +195,33 @@ void CTouchInterface__Update_hook()
     if(!pPlayerPed) return;
     const bool inVeh = pPlayerPed->IsInVehicle(), jet = pPlayerPed->IsInJetpackMode();
     const bool modernFoot = ControlMode::IsModern() && !inVeh && !jet;
+    {   // diagnostico (1x por entrada no moderno): quais widgets nativos seguem ligados a pe -> samp_log.txt
+        static bool s_logged = false;
+        if(!modernFoot) s_logged = false;
+        else if(!s_logged)
+        {
+            s_logged = true;
+            char buf[512]; int n = 0;
+            for(int i = 0; i < WidgetIDs::NUM_WIDGETS && n < 480; i++)
+            {
+                CWidgetGta* w = CTouchInterface::m_pWidgets[i];
+                if(w && w->m_bEnabled) n += snprintf(buf + n, sizeof(buf) - n, "%X%s ", i, WidgetVis::ModernReplaces(i) ? "(oculto)" : "");
+            }
+            buf[n < (int)sizeof(buf) ? n : (int)sizeof(buf) - 1] = 0;
+            FLog("[CONTROLES] widgets nativos ligados a pe no moderno: %s", buf);
+        }
+    }
     for(int i = 0; i < WidgetIDs::NUM_WIDGETS; i++)
     {
         CWidgetGta* w = CTouchInterface::m_pWidgets[i];
         if(w && w->m_bEnabled && WidgetVis::ShouldHide(i, inVeh, jet))
             CWidget__SetEnabled(w, false);
         // MODERNO a pe: desliga os controles nativos que o sistema moderno substitui (no CLASSICO esta condicao e sempre falsa).
-        else if(w && w->m_bEnabled && modernFoot && WidgetVis::ModernReplaces(i))
-            CWidget__SetEnabled(w, false);
+        else if(w && modernFoot && WidgetVis::ModernReplaces(i))
+        {
+            if(w->m_bEnabled) CWidget__SetEnabled(w, false);
+            w->m_Color.a = 0;      // desligar nao apaga o icone: o jogo ainda o desenhava (video do teste); alpha 0 esconde o desenho
+        }
     }
 }
 

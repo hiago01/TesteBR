@@ -35,5 +35,6 @@ namespace ModernInput
 	bool JumpHeld();                                  // ~120 ms apos o toque
 	bool CrouchJustDown();                            // 1x por toque
 	bool AttackHeld();
+	bool AimWanted();                                 // Ataque segurado (o pad.cpp so mira se houver arma de fogo)
 	bool AttackJustDown();                            // 1x por toque
 }
