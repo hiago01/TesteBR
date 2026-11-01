@@ -33,7 +33,8 @@ namespace MaximoOS
 	enum class Icon
 	{
 		None, Home, Back, Recents, Gear, Shield, People, Car, Alert, Document, Building, Message, Folder, Calculator, Wrench,
-		Bell, Signal, Battery, Close, Chevron
+		Bell, Signal, Battery, Close, Chevron,
+		Radio, Calendar, Clock, Gallery, Camera, Reminder, Notes, Mic, Map, Pin, Apps, Speaker, Play, News, Coin, Music, Mail
 	};
 
 	namespace Icons
@@ -131,6 +132,97 @@ namespace MaximoOS
 				break;
 			case Icon::Chevron:
 				cv.line(P(-0.3f, -0.65f), P(0.35f, 0), c, t * 2.0f); cv.line(P(0.35f, 0), P(-0.3f, 0.65f), c, t * 2.0f);
+				break;
+			case Icon::Radio:
+				cv.line(P(0.3f, -0.4f), P(0.55f, -0.98f), c, t * 2.0f);
+				cv.fillRect({ m.x - 0.6f * h, m.y - 0.4f * h, 1.2f * h, 1.4f * h }, c, h * 0.18f);
+				cv.fillRect({ m.x - 0.4f * h, m.y - 0.22f * h, 0.8f * h, 0.34f * h }, Colors::Navy, h * 0.06f);
+				for (int i = 0; i < 3; i++) cv.fillRect({ m.x - 0.4f * h, m.y + 0.3f * h + i * 0.22f * h, 0.8f * h, 0.1f * h }, Colors::Navy, 0);
+				break;
+			case Icon::Calendar:
+				cv.fillRect({ m.x - 0.85f * h, m.y - 0.75f * h, 1.7f * h, 1.65f * h }, c, h * 0.16f);
+				cv.fillRect({ m.x - 0.85f * h, m.y - 0.75f * h, 1.7f * h, 0.42f * h }, Colors::Navy, h * 0.16f);
+				cv.fillRect({ m.x - 0.85f * h, m.y - 0.5f * h, 1.7f * h, 0.17f * h }, Colors::Navy, 0);
+				for (int i = 0; i < 6; i++) cv.fillRect({ m.x - 0.6f * h + (i % 3) * 0.5f * h, m.y - 0.05f * h + (i / 3) * 0.45f * h, 0.3f * h, 0.26f * h }, Colors::Navy, h * 0.05f);
+				break;
+			case Icon::Clock:
+				cv.strokeCircle(m, h * 0.82f, c, t * 2.2f);
+				cv.line(m, P(0, -0.5f), c, t * 2.0f); cv.line(m, P(0.38f, 0.2f), c, t * 2.0f);
+				cv.fillCircle(m, h * 0.09f, c);
+				break;
+			case Icon::Gallery:
+				cv.fillRect({ m.x - 0.9f * h, m.y - 0.7f * h, 1.8f * h, 1.4f * h }, c, h * 0.16f);
+				cv.fillTriangle(P(-0.8f, 0.6f), P(-0.25f, -0.15f), P(0.3f, 0.6f), Colors::Navy);
+				cv.fillTriangle(P(-0.05f, 0.6f), P(0.4f, 0.0f), P(0.8f, 0.6f), Colors::Navy);
+				cv.fillCircle(P(0.45f, -0.4f), h * 0.14f, Colors::Navy);
+				break;
+			case Icon::Camera:
+				cv.fillRect({ m.x - 0.4f * h, m.y - 0.8f * h, 0.8f * h, 0.3f * h }, c, h * 0.08f);
+				cv.fillRect({ m.x - 0.9f * h, m.y - 0.55f * h, 1.8f * h, 1.35f * h }, c, h * 0.2f);
+				cv.fillCircle(P(0, 0.13f), h * 0.45f, Colors::Navy); cv.fillCircle(P(0, 0.13f), h * 0.28f, c);
+				break;
+			case Icon::Reminder:
+				for (int i = 0; i < 3; i++)
+				{
+					cv.strokeCircle(P(-0.6f, -0.55f + i * 0.55f), h * 0.17f, c, t * 1.6f);
+					cv.fillRect({ m.x - 0.25f * h, m.y + (-0.6f + i * 0.55f) * h, 1.05f * h, 0.12f * h }, c, 0);
+				}
+				break;
+			case Icon::Notes:
+				cv.fillRect({ m.x - 0.7f * h, m.y - 0.9f * h, 1.4f * h, 1.8f * h }, c, h * 0.12f);
+				cv.fillRect({ m.x - 0.7f * h, m.y - 0.9f * h, 1.4f * h, 0.38f * h }, Colors::Navy, h * 0.12f);
+				cv.fillRect({ m.x - 0.7f * h, m.y - 0.7f * h, 1.4f * h, 0.18f * h }, Colors::Navy, 0);
+				for (int i = 0; i < 3; i++) cv.fillRect({ m.x - 0.45f * h, m.y - 0.25f * h + i * 0.4f * h, 0.9f * h, 0.1f * h }, Colors::Navy, 0);
+				break;
+			case Icon::Mic:
+				cv.fillRect({ m.x - 0.3f * h, m.y - 0.9f * h, 0.6f * h, 1.1f * h }, c, h * 0.3f);
+				cv.line(P(-0.55f, 0.0f), P(-0.55f, 0.15f), c, t * 1.6f); cv.line(P(0.55f, 0.0f), P(0.55f, 0.15f), c, t * 1.6f);
+				cv.line(P(-0.55f, 0.15f), P(-0.3f, 0.5f), c, t * 1.6f); cv.line(P(0.55f, 0.15f), P(0.3f, 0.5f), c, t * 1.6f);
+				cv.line(P(-0.3f, 0.5f), P(0.3f, 0.5f), c, t * 1.6f);
+				cv.line(P(0, 0.5f), P(0, 0.85f), c, t * 1.8f); cv.line(P(-0.35f, 0.88f), P(0.35f, 0.88f), c, t * 1.8f);
+				break;
+			case Icon::Map:
+				cv.fillRect({ m.x - 0.9f * h, m.y - 0.75f * h, 1.8f * h, 1.5f * h }, c, h * 0.12f);
+				cv.line(P(-0.3f, -0.75f), P(-0.3f, 0.75f), Colors::Navy, t * 1.4f); cv.line(P(0.3f, -0.75f), P(0.3f, 0.75f), Colors::Navy, t * 1.4f);
+				cv.fillCircle(P(0.0f, -0.05f), h * 0.2f, Colors::Navy);
+				break;
+			case Icon::Pin:
+				cv.fillCircle(P(0, -0.3f), h * 0.55f, c);
+				cv.fillTriangle(P(-0.48f, -0.05f), P(0.48f, -0.05f), P(0, 0.95f), c);
+				cv.fillCircle(P(0, -0.3f), h * 0.22f, Colors::Navy);
+				break;
+			case Icon::Apps:
+				for (int i = 0; i < 4; i++) cv.fillRect({ m.x + ((i % 2) ? 0.1f : -0.8f) * h, m.y + ((i / 2) ? 0.1f : -0.8f) * h, 0.7f * h, 0.7f * h }, c, h * 0.16f);
+				break;
+			case Icon::Speaker:
+				cv.fillRect({ m.x - 0.85f * h, m.y - 0.3f * h, 0.5f * h, 0.6f * h }, c, h * 0.06f);
+				cv.fillTriangle(P(-0.4f, -0.3f), P(0.15f, -0.8f), P(0.15f, 0.8f), c); cv.fillTriangle(P(-0.4f, -0.3f), P(-0.4f, 0.3f), P(0.15f, 0.8f), c);
+				cv.line(P(0.4f, -0.3f), P(0.55f, 0), c, t * 1.6f); cv.line(P(0.55f, 0), P(0.4f, 0.3f), c, t * 1.6f);
+				cv.line(P(0.62f, -0.55f), P(0.88f, 0), c, t * 1.6f); cv.line(P(0.88f, 0), P(0.62f, 0.55f), c, t * 1.6f);
+				break;
+			case Icon::Play:
+				cv.strokeCircle(m, h * 0.85f, c, t * 2.2f);
+				cv.fillTriangle(P(-0.25f, -0.45f), P(-0.25f, 0.45f), P(0.5f, 0), c);
+				break;
+			case Icon::News:
+				cv.fillRect({ m.x - 0.9f * h, m.y - 0.75f * h, 1.8f * h, 1.5f * h }, c, h * 0.12f);
+				cv.fillRect({ m.x - 0.7f * h, m.y - 0.55f * h, 0.7f * h, 0.5f * h }, Colors::Navy, h * 0.05f);
+				for (int i = 0; i < 4; i++) cv.fillRect({ m.x + 0.12f * h, m.y - 0.55f * h + i * 0.2f * h, 0.58f * h, 0.09f * h }, Colors::Navy, 0);
+				for (int i = 0; i < 2; i++) cv.fillRect({ m.x - 0.7f * h, m.y + 0.15f * h + i * 0.28f * h, 1.4f * h, 0.1f * h }, Colors::Navy, 0);
+				break;
+			case Icon::Coin:
+				cv.fillCircle(m, h * 0.85f, c);
+				cv.strokeCircle(m, h * 0.62f, Colors::Navy, t * 1.4f);
+				{ const float fs = h * 1.1f; const Vec2 mm = cv.measure("$", fs); cv.text({ m.x - mm.x * 0.5f, m.y - mm.y * 0.5f }, Colors::Navy, "$", fs); }
+				break;
+			case Icon::Music:
+				cv.fillCircle(P(-0.45f, 0.55f), h * 0.28f, c); cv.fillCircle(P(0.45f, 0.4f), h * 0.28f, c);
+				cv.line(P(-0.2f, 0.55f), P(-0.2f, -0.65f), c, t * 1.8f); cv.line(P(0.7f, 0.4f), P(0.7f, -0.8f), c, t * 1.8f);
+				cv.line(P(-0.2f, -0.65f), P(0.7f, -0.8f), c, t * 2.6f);
+				break;
+			case Icon::Mail:
+				cv.fillRect({ m.x - 0.9f * h, m.y - 0.6f * h, 1.8f * h, 1.2f * h }, c, h * 0.14f);
+				cv.line(P(-0.85f, -0.5f), P(0, 0.12f), Colors::Navy, t * 1.6f); cv.line(P(0, 0.12f), P(0.85f, -0.5f), Colors::Navy, t * 1.6f);
 				break;
 			default: break;
 			}

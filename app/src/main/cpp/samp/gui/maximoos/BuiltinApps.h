@@ -18,9 +18,9 @@ namespace MaximoOS
 			DrawPanel(cv, m, card);
 			const float is = m.px(72);
 			Icons::Draw(cv, m_icon, { card.center().x - is * 0.5f, card.y + m.px(26), is, is }, m_accent);
-			DrawTextIn(cv, { card.x, card.y + m.px(112), card.w, m.px(34) }, "Em breve", Colors::Text, m.font(Fonts::Header), Align::Center);
-			DrawTextIn(cv, { card.x + m.px(20), card.y + m.px(150), card.w - m.px(40), m.px(26) }, "Este aplicativo será liberado em uma próxima etapa.", Colors::TextDim, m.font(Fonts::Caption), Align::Center);
-			DrawTextIn(cv, { card.x + m.px(20), card.y + m.px(180), card.w - m.px(40), m.px(26) }, "Nenhum dado é exibido nesta versão.", Colors::TextDim, m.font(Fonts::Caption), Align::Center);
+			DrawTextIn(cv, { card.x, card.y + m.px(112), card.w, m.px(34) }, "Módulo não implementado", Colors::Text, m.font(Fonts::Header), Align::Center);
+			DrawTextIn(cv, { card.x + m.px(20), card.y + m.px(150), card.w - m.px(40), m.px(26) }, "Apenas a estrutura visual existe nesta versão.", Colors::TextDim, m.font(Fonts::Caption), Align::Center);
+			DrawTextIn(cv, { card.x + m.px(20), card.y + m.px(180), card.w - m.px(40), m.px(26) }, "Nenhum dado do servidor é exibido.", Colors::TextDim, m.font(Fonts::Caption), Align::Center);
 		}
 		bool onTouch(const Touch& t, const Metrics&, const Rect&) override
 		{

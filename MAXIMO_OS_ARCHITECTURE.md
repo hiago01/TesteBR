@@ -38,3 +38,12 @@ Nenhum. Quando existirem, ficarão em um único arquivo de registro de handlers 
 Novos: `gui/maximoos/*.h` (Types, Canvas, ResolutionManager, GestureTracker, InputManager, Navigation, Theme, Components, AppModel, NotificationCenter, StatusBar, HomeScreen, BuiltinApps, OSManager), `gui/samp_widgets/maximoos.{h,cpp}`, `testes/maximoos/*`.
 Alterados (backups em `backup_originais/`): `gui/gui.h`, `gui/gui.cpp` (widget filho), `game/hooks.cpp` (captura de toque), `main.cpp` (Voltar), `gui/samp_widgets/chat.cpp` (`/tablet`, `/maximoos`).
 O CMake usa `GLOB_RECURSE`: os novos .cpp entram sozinhos.
+
+## Etapa 2 — tela inicial completa
+- **HomeScreen** (`gui/maximoos/HomeScreen.h`): layout único em lu (`ComputeHomeLayout`) escalado por `Metrics::s`: relógio+data (topo esquerdo), 4 widgets (Calendário, Clima, Comunicados, Mídia), grade 6×4 paginada, indicadores, dock de 8 posições. Papel de parede por primitivas (gradiente laranja→vermelho→roxo + curvas azul/roxa/claras).
+- **Widgets honestos:** Calendário usa a data do aparelho ("Sem compromissos"); Clima/Comunicados/Mídia mostram "indisponível/nenhum/sem player" porque o cliente ainda não tem essas fontes. Nada é inventado.
+- **Páginas:** `AppInfo::page` (0 = primeira página, 1 = apps do protótipo anterior, -1 = só no dock) e `AppInfo::dock` (0..7). A ordem de registro define a posição. Deslizar (arrasto > 20% da largura ou rápido) troca de página com assentamento suave; tocar nos pontos também troca; arrasto nunca abre app.
+- **Dock:** vidro translúcido, slots iguais, destaque ao pressionar, ponto sob o app em execução; o dock tem prioridade de toque (o mesmo app pode estar na grade e no dock).
+- **Ícones:** 17 novos em `Theme.h` (Radio, Calendar, Clock, Gallery, Camera, Reminder, Notes, Mic, Map, Pin, Apps, Speaker, Play, News, Coin, Music, Mail), todos por primitivas (originais, sem emoji), mesma iluminação (`DrawAppIcon`), estados normal/pressionado.
+- **Apps:** todos placeholders ("Módulo não implementado") exceto "Teste"; apps anteriores (MDT, Veículos, Ocorrências, Mandados, Organizações, Calculadora) foram para a página 2.
+- Para novo app/ícone: ver "Como criar um app novo"; não recriar navegação, renderer ou input.

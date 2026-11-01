@@ -57,7 +57,7 @@ namespace MaximoOS
 	}
 
 	// ---- icone de aplicativo (grade da tela inicial / dock) ----
-	struct AppIconStyle { bool showLabel = true; float scale = 1.0f; int badge = 0; bool dim = false; };
+	struct AppIconStyle { bool showLabel = true; float scale = 1.0f; int badge = 0; bool dim = false; bool shadowLabel = false; };
 
 	inline Rect AppIconSquare(const Metrics& m, const Rect& cell, bool showLabel)
 	{
@@ -89,6 +89,8 @@ namespace MaximoOS
 			cv.fillCircle(bc, br, Colors::Danger);
 			DrawTextIn(cv, { bc.x - br, bc.y - br, br * 2, br * 2 }, st.badge > 9 ? "9+" : std::to_string(st.badge), Colors::Text, std::max(Metrics::kMinFontPx - 2.0f, br * 1.2f), Align::Center);
 		}
+		if (st.showLabel && st.shadowLabel)
+			DrawTextIn(cv, { cell.x + m.px(2), cell.bottom() - m.px(34) + m.px(2) + std::max(1.0f, m.px(1)), cell.w - m.px(4), m.px(26) }, title, Color(0, 0, 0, 150), m.font(Fonts::Caption), Align::Center);
 		if (st.showLabel)
 			DrawTextIn(cv, { cell.x + m.px(2), cell.bottom() - m.px(34) + m.px(2), cell.w - m.px(4), m.px(26) }, title, Colors::Text.alpha(st.dim ? 0.85f : 1.0f), m.font(Fonts::Caption), Align::Center);
 	}

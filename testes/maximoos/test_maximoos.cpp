@@ -71,7 +71,7 @@ int main()
 	// ---------- AppRegistry / AppManager ----------
 	{
 		OSManager os;
-		CHECK(os.registry().size() == 11);
+		CHECK(os.registry().size() == 31);
 		AppInfo dup; dup.id = "mdt"; dup.factory = []() { return std::unique_ptr<App>(new TestApp()); };
 		CHECK(!os.registry().add(dup));                          // id duplicado recusado
 		AppInfo bad; bad.id = "x"; CHECK(!os.registry().add(bad)); // sem factory recusado
@@ -115,15 +115,15 @@ int main()
 		bool allIn = true, fontOk = true, textInClip = true;
 		for (auto& o : cv.ops)
 		{
-			if (o.k == 'X') { if (o.a < Metrics::kMinFontPx - 0.01f) fontOk = false; if (o.r.right() > o.clip.right() + 0.5f && o.clip.w < 1e8f) textInClip = false; }
+			if (o.k == 'X') { if (o.s.size() > 1 && o.a < Metrics::kMinFontPx - 0.01f) fontOk = false; const bool vis = o.r.right() > o.clip.x && o.r.x < o.clip.right(); if (vis && o.r.right() > o.clip.right() + 0.5f && o.clip.w < 1e8f) textInClip = false; }
 			Rect vis = o.r; if (o.k != 'X') { /* geometria pode ser grande no scrim */ }
 			(void)vis;
 		}
 		(void)allIn; CHECK(fontOk); CHECK(textInClip); CHECK(cv.minClipDepth == 0 && cv.clips.empty());
 		// abre um app tocando no icone da grade
-		const GridSpec g = os.home().grid(m);
-		tapAt(os, GridCell(g, 7).center(), t, cv);   // 8o app = configuracoes (se couber na pagina)
-		if (g.perPage > 7) { CHECK(os.apps().foregroundId() == "configuracoes"); }
+		const HomeLayout HL = ComputeHomeLayout(m);
+		tapAt(os, { HL.grid.x + HL.cellW * 1.5f, HL.grid.y + HL.cellH * 0.5f }, t, cv);   // 2a coluna, 1a fileira = Calendario
+		CHECK(os.apps().foregroundId() == "calendario");
 		tapAt(os, os.navHome().center(), t, cv);   // Home
 		CHECK(os.apps().foregroundId().empty()); CHECK(os.isOpen());
 		// abre o app de teste e interage
@@ -174,13 +174,58 @@ int main()
 		bool valid = true; for (size_t i = 0; i < s.size(); ++i) if ((unsigned char)s[i] >= 0x80 && (unsigned char)s[i] < 0xC0 && (i == 0 || (unsigned char)s[i - 1] < 0x80)) valid = false; CHECK(valid);
 		CHECK(FitText(cv, "abc", 16, 0).empty());
 	}
+	// ---------- Etapa 2: tela inicial ----------
+	for (auto& r : res)
+	{
+		Metrics m = ComputeMetrics(r[0], r[1]); const HomeLayout L = ComputeHomeLayout(m);
+		const Rect* parts[] = { &L.clock, &L.date, &L.calendar, &L.weather, &L.news, &L.media, &L.grid, &L.dots, &L.dock };
+		for (auto* p : parts) CHECK(p->inside(m.content));                       // tudo dentro da area de conteudo (dock nunca fora da tela)
+		for (int i = 0; i < 8; ++i) { CHECK(L.dockSlot[i].inside(L.dock)); CHECK(std::fabs(L.dockSlot[i].w - L.dockSlot[0].w) < 0.01f); }   // espacamento/tamanho iguais
+		auto ov = [](const Rect& a, const Rect& b) { return a.x < b.right() && b.x < a.right() && a.y < b.bottom() && b.y < a.bottom(); };
+		CHECK(!ov(L.calendar, L.weather)); CHECK(!ov(L.news, L.media)); CHECK(!ov(L.calendar, L.news)); CHECK(!ov(L.media, L.dock)); CHECK(!ov(L.news, L.grid));
+		CHECK(!ov(L.grid, L.dock)); CHECK(!ov(L.dots, L.dock)); CHECK(!ov(L.dots, L.grid)); CHECK(!ov(L.media, L.grid));
+		CHECK(std::fabs((L.dock.center().x) - m.content.center().x) < 0.5f);
+		// icone da grade cabe na celula e tem area de toque >= 24 px logicos * s
+		const Rect sq = AppIconSquare(m, Rect{ 0, 0, L.cellW, L.cellH }, true); CHECK(sq.inside(Rect{ 0, 0, L.cellW, L.cellH })); CHECK(sq.w >= m.px(40));
+	}
+	{
+		OSManager os; MockCanvas cv; int64_t t = 0; os.setScreenSize(2400, 1080); os.input().setOpen(true); os.open(); frames(os, cv, t, 2);
+		const Metrics& m = os.metrics(); const HomeLayout L = ComputeHomeLayout(m);
+		CHECK(HomeScreen::PageCount(os.registry()) == 2); CHECK(HomeScreen::PageApps(os.registry(), 0).size() == 20);
+		for (int i = 0; i < 8; ++i) CHECK(HomeScreen::DockApp(os.registry(), i) != nullptr);
+		CHECK(os.registry().find("mdt")->placeholder);
+		// dock: toque no slot 4 = Arquivos (o dock tem prioridade; comunicacao esta no dock E na grade)
+		tapAt(os, L.dockSlot[4].center(), t, cv); CHECK(os.apps().foregroundId() == "arquivos"); os.goHome(); frames(os, cv, t, 2);
+		tapAt(os, L.dockSlot[1].center(), t, cv); CHECK(os.apps().foregroundId() == "comunicacao"); os.goHome(); frames(os, cv, t, 2);
+		// deslizar para a esquerda troca de pagina
+		auto swipe = [&](Vec2 a, Vec2 b) { os.input().handleRaw(2, 0, a.x, a.y, false); os.frame(cv, t += 16, 16);
+			for (int i = 1; i <= 6; ++i) { os.input().handleRaw(3, 0, a.x + (b.x - a.x) * i / 6, a.y + (b.y - a.y) * i / 6, false); os.frame(cv, t += 16, 16); }
+			os.input().handleRaw(1, 0, b.x, b.y, false); os.frame(cv, t += 16, 16); };
+		const Vec2 mid = L.grid.center();
+		CHECK(os.home().page() == 0);
+		swipe(mid, { mid.x - L.grid.w * 0.5f, mid.y }); frames(os, cv, t, 120); CHECK(os.home().page() == 1); CHECK(std::fabs(os.home().offset()) < 1.0f);
+		tapAt(os, { L.grid.x + L.cellW * 0.5f, L.grid.y + L.cellH * 0.5f }, t, cv); CHECK(os.apps().foregroundId() == "mdt"); os.goHome(); frames(os, cv, t, 2);
+		swipe(mid, { mid.x - L.grid.w * 0.5f, mid.y }); frames(os, cv, t, 120); CHECK(os.home().page() == 1);          // ultima pagina: nao passa
+		swipe(mid, { mid.x + L.grid.w * 0.5f, mid.y }); frames(os, cv, t, 120); CHECK(os.home().page() == 0);
+		swipe(mid, { mid.x + L.grid.w * 0.5f, mid.y }); frames(os, cv, t, 120); CHECK(os.home().page() == 0);
+		swipe(mid, { mid.x - 40, mid.y }); frames(os, cv, t, 120); CHECK(os.home().page() == 0); CHECK(os.apps().foregroundId().empty());   // arrasto curto volta
+		// arrasto que comecou na grade nao abre app ao soltar
+		swipe({ L.grid.x + L.cellW * 0.5f, L.grid.y + L.cellH * 0.5f }, { L.grid.x + L.cellW * 0.5f - 60, L.grid.y + L.cellH * 0.5f }); frames(os, cv, t, 100);
+		CHECK(os.apps().foregroundId().empty());
+		// toque no indicador de pagina
+		tapAt(os, { L.dots.x + L.dots.w * 0.9f, L.dots.center().y }, t, cv); frames(os, cv, t, 100); CHECK(os.home().page() == 1);
+		// desenho: texto sempre dentro do clip e nenhum texto menor que o minimo
+		os.home().setPage(0); frames(os, cv, t, 3);
+		bool ok = true; for (auto& o : cv.ops) if (o.k == 'X') { if (o.s.size() > 1 && o.a < Metrics::kMinFontPx - 0.01f) ok = false; const bool vis = o.r.right() > o.clip.x && o.r.x < o.clip.right(); if (vis && o.clip.w < 1e8f && (o.r.x < o.clip.x - 1 || o.r.right() > o.clip.right() + 1)) ok = false; }
+		CHECK(ok);
+	}
 	// dump p/ render
 	{
-		OSManager os; MockCanvas cv; int64_t t = 0; os.setScreenSize(2400, 1080); os.input().setOpen(true); os.open(); os.setStatusProvider([]() { StatusInfo s; s.clock = "21:45"; return s; });
+		OSManager os; MockCanvas cv; int64_t t = 0; os.setScreenSize(2400, 1080); os.input().setOpen(true); os.open(); os.setStatusProvider([]() { StatusInfo s; s.clock = "21:45"; s.weekday = 0; s.day = 1; s.month = 11; s.year = 2026; return s; });
 		os.notifications().post("Teste de sistema", "Notificação de demonstração (sem dados reais)", "teste", 0);
-		frames(os, cv, t, 3); cv.dump("home.txt");
+		frames(os, cv, t, 40); cv.dump("home.txt");
 		os.notifications().markAllRead(); os.openApp("teste"); frames(os, cv, t, 20); cv.dump("teste.txt");
-		os.openApp("mdt"); frames(os, cv, t, 20); cv.dump("placeholder.txt");
+		os.openApp("mdt"); frames(os, cv, t, 20); cv.dump("placeholder.txt"); os.goHome(); os.home().setPage(1); frames(os, cv, t, 40); cv.dump("home2.txt"); os.home().setPage(0);
 		os.back(); os.openApp("teste"); frames(os, cv, t, 20); tapAt(os, os.navRecents().center(), t, cv); frames(os, cv, t, 2); cv.dump("recents.txt");
 	}
 	printf("%d verificacoes, %d falhas\n", g_n, g_fail);

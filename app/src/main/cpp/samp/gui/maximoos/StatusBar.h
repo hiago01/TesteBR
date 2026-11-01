@@ -11,6 +11,8 @@ namespace MaximoOS
 		int signal = 4;          // 0..4
 		int battery = 100;       // 0..100, -1 = oculto
 		bool demo = false;       // true = valores ilustrativos da etapa 1
+		int  weekday = -1;       // 0 = domingo .. 6; -1 = desconhecido
+		int  day = 0, month = 0, year = 0;   // data do aparelho (month 1..12); 0 = desconhecida
 	};
 
 	struct StatusBarResult { Rect bell; };
@@ -22,6 +24,7 @@ namespace MaximoOS
 		const float fs = m.font(Fonts::Caption);
 		const float pad = m.px(18);
 		DrawTextIn(cv, { r.x + pad, r.y, m.px(120), r.h }, st.clock, Colors::Text, fs);
+		DrawTextIn(cv, { r.center().x - m.px(80), r.y, m.px(160), r.h }, "MÁXIMO RP", Colors::Text.alpha(0.7f), fs, Align::Center);
 		float x = r.right() - pad;
 		StatusBarResult res;
 		// bateria

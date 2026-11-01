@@ -47,6 +47,8 @@ namespace MaximoOS
 		std::string title;
 		Icon        icon = Icon::None;
 		Color       accent = Colors::Accent;
+		int         page = 0;           // pagina da grade da tela inicial (-1 = nao aparece na grade)
+		int         dock = -1;          // posicao no dock (0..7), -1 = fora do dock
 		bool        placeholder = false;   // etapa 1: app ainda sem funcionalidade (abre a tela "Em breve")
 		std::function<std::unique_ptr<App>()> factory;
 	};

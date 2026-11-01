@@ -22,27 +22,51 @@ namespace MaximoOS
 		// ---------- registro dos apps previstos (etapa 1: placeholders; o "Teste" e o unico com tela) ----------
 		void registerBuiltinApps()
 		{
-			struct P { const char* id; const char* title; Icon ic; Color c; };
+			// page: pagina da grade (-1 = so no dock);  dock: posicao 0..7 (-1 = fora do dock).  A ORDEM define a posicao na grade.
+			struct P { const char* id; const char* title; Icon ic; Color c; int page; int dock; };
 			const P list[] = {
-				{ "mdt",           "MDT",           Icon::Shield,   Color(30, 144, 255) },
-				{ "cidadaos",      "Cidadãos",      Icon::People,   Color(52, 168, 130) },
-				{ "veiculos",      "Veículos",      Icon::Car,      Color(240, 150, 50) },
-				{ "ocorrencias",   "Ocorrências",   Icon::Alert,    Color(232, 84, 84) },
-				{ "mandados",      "Mandados",      Icon::Document, Color(150, 110, 220) },
-				{ "organizacoes",  "Organizações",  Icon::Building, Color(60, 130, 200) },
-				{ "mensagens",     "Mensagens",     Icon::Message,  Color(68, 190, 110) },
-				{ "configuracoes", "Configurações", Icon::Gear,     Color(120, 130, 150) },
-				{ "arquivos",      "Arquivos",      Icon::Folder,   Color(230, 180, 60) },
-				{ "calculadora",   "Calculadora",   Icon::Calculator, Color(90, 100, 120) },
+				// ---- pagina 1 (6 x 4, como a referencia) ----
+				{ "comunicacao",   "Comunicação",   Icon::Radio,    Color(46, 184, 114),  0, 1 },
+				{ "calendario",    "Calendário",    Icon::Calendar, Color(232, 84, 84),   0, -1 },
+				{ "relogio",       "Relógio",       Icon::Clock,    Color(40, 46, 66),    0, -1 },
+				{ "inicio",        "Início",        Icon::Home,     Color(240, 150, 50),  0, -1 },
+				{ "galeria",       "Galeria",       Icon::Gallery,  Color(190, 90, 200),  0, 5 },
+				{ "camera",        "Câmera",        Icon::Camera,   Color(96, 104, 124),  0, -1 },
+				{ "lembretes",     "Lembretes",     Icon::Reminder, Color(236, 112, 70),  0, -1 },
+				{ "anotacoes",     "Anotações",     Icon::Notes,    Color(238, 190, 52),  0, 7 },
+				{ "gravacoes",     "Gravações",     Icon::Mic,      Color(200, 60, 80),   0, -1 },
+				{ "cidadaos",      "Cidadãos",      Icon::People,   Color(52, 168, 130),  0, -1 },
+				{ "mapa",          "Mapa",          Icon::Map,      Color(70, 160, 90),   0, -1 },
+				{ "localizador",   "Localizador",   Icon::Pin,      Color(60, 190, 150),  0, -1 },
+				{ "aplicativos",   "Aplicativos",   Icon::Apps,     Color(30, 144, 255),  0, -1 },
+				{ "documentos",    "Documentos",    Icon::Document, Color(60, 130, 200),  0, -1 },
+				{ "audio",         "Áudio",         Icon::Speaker,  Color(120, 80, 210),  0, -1 },
+				{ "midia",         "Mídia",         Icon::Play,     Color(220, 70, 110),  0, -1 },
+				{ "noticias",      "Notícias",      Icon::News,     Color(232, 70, 70),   0, 6 },
+				{ "economia",      "Economia",      Icon::Coin,     Color(214, 168, 40),  0, -1 },
+				{ "ferramentas",   "Ferramentas",   Icon::Wrench,   Color(110, 120, 140), 0, -1 },
+				{ "configuracoes", "Configurações", Icon::Gear,     Color(120, 130, 150), 0, -1 },
+				// ---- pagina 2: apps do prototipo anterior (preservados) ----
+				{ "mdt",           "MDT",           Icon::Shield,   Color(30, 144, 255),  1, -1 },
+				{ "veiculos",      "Veículos",      Icon::Car,      Color(240, 150, 50),  1, -1 },
+				{ "ocorrencias",   "Ocorrências",   Icon::Alert,    Color(232, 84, 84),   1, -1 },
+				{ "mandados",      "Mandados",      Icon::Document, Color(150, 110, 220), 1, -1 },
+				{ "organizacoes",  "Organizações",  Icon::Building, Color(60, 130, 200),  1, -1 },
+				{ "calculadora",   "Calculadora",   Icon::Calculator, Color(90, 100, 120), 1, -1 },
+				// ---- so no dock ----
+				{ "mensagens",     "Mensagens",     Icon::Message,  Color(68, 190, 110), -1, 0 },
+				{ "musica",        "Música",        Icon::Music,    Color(240, 80, 120), -1, 2 },
+				{ "correspondencia","Correspondência", Icon::Mail,   Color(40, 150, 240), -1, 3 },
+				{ "arquivos",      "Arquivos",      Icon::Folder,   Color(230, 180, 60), -1, 4 },
 			};
 			for (const P& p : list)
 			{
-				AppInfo i; i.id = p.id; i.title = p.title; i.icon = p.ic; i.accent = p.c; i.placeholder = true;
+				AppInfo i; i.id = p.id; i.title = p.title; i.icon = p.ic; i.accent = p.c; i.placeholder = true; i.page = p.page; i.dock = p.dock;
 				std::string t = p.title; Icon ic = p.ic; Color c = p.c;
 				i.factory = [t, ic, c]() { return std::unique_ptr<App>(new PlaceholderApp(t, ic, c)); };
 				m_reg.add(i);
 			}
-			AppInfo t; t.id = "teste"; t.title = "Teste"; t.icon = Icon::Wrench; t.accent = Color(160, 90, 220);
+			AppInfo t; t.id = "teste"; t.title = "Teste"; t.icon = Icon::Wrench; t.accent = Color(160, 90, 220); t.page = 1;
 			t.factory = []() { return std::unique_ptr<App>(new TestApp()); };
 			m_reg.add(t);
 		}
@@ -108,6 +132,7 @@ namespace MaximoOS
 			if (!m_open) return;                                  // um toque pode ter fechado o tablet
 			// 2) atualiza
 			m_trans.update(dtMs);
+			m_home.update(dtMs);
 			if (App* a = m_apps.foreground()) { a->update(dtMs); if (a->consumeFinish()) goHome(); }
 			if (m_notifOpen) m_notifs.markAllRead();
 			// 3) desenha
@@ -228,6 +253,7 @@ namespace MaximoOS
 			localtime_r(&tt, &tmv);
 #endif
 			char b[16]; std::snprintf(b, sizeof(b), "%02d:%02d", tmv.tm_hour, tmv.tm_min); s.clock = b;
+			s.weekday = tmv.tm_wday; s.day = tmv.tm_mday; s.month = tmv.tm_mon + 1; s.year = tmv.tm_year + 1900;
 			return s;
 		}
 
@@ -244,11 +270,12 @@ namespace MaximoOS
 
 			cv.pushClip(m.screen);
 			const StatusInfo st = status();
+			if (!m_apps.foreground()) m_home.drawWallpaper(cv, m);          // por baixo da barra de status e da navegacao
 			// conteudo (com fade na troca)
 			cv.pushClip(m.content);
 			cv.setAlpha(std::max(0.05f, m_trans.alpha()));
 			if (App* a = m_apps.foreground()) a->draw(cv, m, m.content);
-			else m_home.draw(cv, m, m_reg, st, m_notifs);
+			else m_home.draw(cv, m, m_reg, m_apps, st, m_notifs);
 			cv.setAlpha(1.0f);
 			cv.popClip();
 
