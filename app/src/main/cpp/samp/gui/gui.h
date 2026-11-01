@@ -32,6 +32,7 @@
 #include "samp_widgets/worldmap.h"
 #include "samp_widgets/provador.h"
 #include "samp_widgets/maximomenu.h"
+#include "samp_widgets/maximoos.h"
 
 #include "samp_widgets/dialogs/dialog.h"
 
@@ -66,6 +67,7 @@ public:
 	JumpButton* jumpbutton() const { return m_jumpButton; }
 	HudInfo* hud() const { return m_hud; }
 	MaximoMenu* maximomenu() const { return m_maximoMenu; }
+	MaximoOSWidget* maximoos() const { return m_maximoOS; }
 
 	static const ImColor fixcolor(uint32_t color) {
 		return ImColor(
@@ -112,6 +114,7 @@ private:
 	JumpButton* m_jumpButton = nullptr;
 	HudInfo* m_hud = nullptr;
 	MaximoMenu* m_maximoMenu = nullptr;
+	MaximoOSWidget* m_maximoOS = nullptr;
 	InventoryUI* m_inventory = nullptr;
 	WorldMapWidget* m_worldmap = nullptr;
 	Provador* m_provador = nullptr;

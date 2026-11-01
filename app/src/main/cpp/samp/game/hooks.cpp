@@ -1073,6 +1073,14 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 	}
 	if (Provador::HandleRawTouch(type, num, posX, posY))
 		return;
+	// Maximo OS (tablet): consome todos os toques enquanto aberto; mesmo esquema do menu.
+	if (MaximoOSWidget::ConsumeFlushRequest())
+	{
+		for (int i = 0; i < 3; i++)
+			AND_TouchEvent(1, i, 0, 0);
+	}
+	if (MaximoOSWidget::HandleRawTouch(type, num, posX, posY))
+		return;
 	if (MaximoMenu::ConsumeFlushRequest())
 	{
 		for (int i = 0; i < 3; i++)

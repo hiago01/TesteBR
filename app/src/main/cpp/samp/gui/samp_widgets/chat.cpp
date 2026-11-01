@@ -226,6 +226,13 @@ if (input == "/mangueira" || input.rfind("/mangueira ", 0) == 0)
 
             return;
         }
+// /tablet (ou /maximoos): abre/fecha o tablet interno (Maximo OS, etapa 1: infraestrutura).
+if (input == "/tablet" || input == "/maximoos")
+{
+        MaximoOSWidget::Toggle();
+        return;
+}
+
 // /menu: abre/fecha o menu "Maximo RP" (sobreposicao; nao usa o Pause nativo, nao desconecta).
 if (input == "/menu")
 {

@@ -146,6 +146,13 @@ bool UI::initialize()
 	m_maximoMenu->setPosition(ImVec2(0.0f, 0.0f));
 	m_maximoMenu->setVisible(true);
 
+	// Maximo OS (tablet interno, etapa 1). Desenha so quando aberto (/tablet); captura de toque em AND_TouchEvent_hook.
+	m_maximoOS = new MaximoOSWidget();
+	this->addChild(m_maximoOS);
+	m_maximoOS->setFixedSize(size());
+	m_maximoOS->setPosition(ImVec2(0.0f, 0.0f));
+	m_maximoOS->setVisible(true);
+
     label = new Label(" ", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
     pUI->addChild(label);
 
