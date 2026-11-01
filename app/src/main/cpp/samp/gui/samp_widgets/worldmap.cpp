@@ -291,6 +291,12 @@ std::string WorldMapWidget::DebugCommand(const std::string& args)
 		std::snprintf(b, sizeof(b), "[MAPA] camada de ruas %s (grafo: %s). Aberta so com o mapa aberto (/mapa)", on ? "LIGADA" : "desligada", g_plat.roadStateName());
 		return b;
 	}
+	if (args.rfind("minimapa", 0) == 0)                     // /mapa minimapa on|off  (linha da rota no minimapa)
+	{
+		const bool on = args.find("off") == std::string::npos && (args.find("on") != std::string::npos || !MiniRoute::gEnabled.load());
+		MiniRoute::gEnabled.store(on);
+		return on ? "[MAPA] rota no minimapa LIGADA" : "[MAPA] rota no minimapa desligada";
+	}
 	if (args == "nodes")
 	{
 		const char* st = g_plat.roadStateName();

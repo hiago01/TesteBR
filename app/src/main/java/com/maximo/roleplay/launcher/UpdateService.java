@@ -849,6 +849,7 @@ public class UpdateService extends Service {
         mDlSizes = new ArrayList<>(mUpdateFilesSize);
         mDlShas = new ArrayList<>(mUpdateFilesSha);
         mDlFailed = new ArrayList<>();
+        mDlAutoRounds = 0;
         mDlOk = new ArrayList<>();
         mUpdateFiles.clear();
         mUpdateFilesName.clear();
@@ -950,6 +951,7 @@ public class UpdateService extends Service {
         for (Long l : mDlSizes) total += l;
         mUpdateGameDataSize = total;
         mDlFailed = new ArrayList<>();
+        mDlAutoRounds = 0;
         mDlIndex = 0;
         mDlDoneBytes = 0;
         mDlConsecutiveFailures = 0;
@@ -1077,7 +1079,7 @@ public class UpdateService extends Service {
     private void downloadNextFile(final int session, final int attempt) {
         if (session != mSession) return;
         if (mDlIndex >= mDlFiles.size()) {
-            finishDataUpdating();
+            finishDataUpdating(session);
             return;
         }
         final String rel = mDlFiles.get(mDlIndex);
@@ -1260,9 +1262,46 @@ public class UpdateService extends Service {
         downloadNextFile(session, 1);
     }
 
-    private void finishDataUpdating() {
+    /** Rodadas automaticas de nova tentativa dos arquivos que falharam (rede instavel), antes de mostrar qualquer erro. */
+    private static final int MAX_AUTO_ROUNDS = 6;
+    private static final long AUTO_ROUND_DELAY_MS = 5000;
+    private int mDlAutoRounds = 0;
+
+    private void finishDataUpdating(final int session) {
         mDownloadingStatus = false;
         recordUpdated();
+        if (!mDlFailed.isEmpty() && mDlAutoRounds < MAX_AUTO_ROUNDS) {
+            // Tenta de novo SOZINHO os arquivos que falharam (5 s, 10 s, 15 s...), sem mostrar mensagem ao jogador.
+            mDlAutoRounds++;
+            ArrayList<String> files = new ArrayList<>();
+            ArrayList<Long> sizes = new ArrayList<>();
+            ArrayList<String> shas = new ArrayList<>();
+            for (String p : mDlFailed) {
+                int i = mDlFiles.indexOf(p);
+                if (i < 0) continue;
+                files.add(p);
+                sizes.add(i < mDlSizes.size() ? mDlSizes.get(i) : 0L);
+                shas.add(i < mDlShas.size() ? mDlShas.get(i) : "");
+            }
+            if (!files.isEmpty()) {
+                Log.w(TAG, "nova tentativa automatica " + mDlAutoRounds + "/" + MAX_AUTO_ROUNDS + ": " + files.size() + " arquivo(s)");
+                mDlFiles = files;
+                mDlSizes = sizes;
+                mDlShas = shas;
+                mDlFailed = new ArrayList<>();
+                mDlIndex = 0;
+                mDlConsecutiveFailures = 0;
+                mDownloadingStatus = true; // continua "baixando" durante a espera
+                mInHandler.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (session != mSession) return;
+                        downloadNextFile(session, 1);
+                    }
+                }, AUTO_ROUND_DELAY_MS * mDlAutoRounds);
+                return;
+            }
+        }
         if (!mDlFailed.isEmpty()) {
             restorePending(mDlFailed); // continuam pendentes para a proxima verificacao
             int n = mDlFailed.size();

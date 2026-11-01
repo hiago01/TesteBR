@@ -15,6 +15,7 @@
 #include "../gui/samp_widgets/hudstate.h"
 #include "../gui/samp_widgets/minimaptap_logic.h"
 #include "../gui/samp_widgets/worldmap.h"
+#include "../gui/samp_widgets/MiniRoute.h"
 #include "RW/RenderWare.h"
 #include <chrono>
 #include "Textures/TextureDatabase.h"
@@ -485,6 +486,9 @@ vertices[i * 2 + 1] =
         }
     }
 
+    if (g_InRadarMask && count == 8 && vertices)
+        MiniRoute::SetMask(vertices, 8);   // formato REAL do minimapa (para recortar a rota da seta/GPS)
+
     CSprite2d__SetMaskVertices(
         count,
         vertices
@@ -492,6 +496,56 @@ vertices[i * 2 + 1] =
 }
 
 void (*CHud__DrawRadar)(void);
+
+// ============================================================
+// ROTA NO MINIMAPA (GPS): converte a rota (coordenadas do mundo, publicada por WorldMapUI.h) para PIXELS usando as
+// funcoes do PROPRIO jogo e guarda as polilinhas ja recortadas no disco do radar. Roda logo depois de CHud::DrawRadar(),
+// ainda com o retangulo/transformacao do radar deslocados/escalados pelo projeto (BeginRadarMove), por isso o resultado
+// bate com o radar que aparece na tela. O desenho em si e feito pelo ImGui (Ui::DrawMiniRoute).
+// Enderecos por SIMBOLO exportado do libGTASA (nada de offset fixo); se faltar algum, a rota no minimapa simplesmente nao aparece.
+// ============================================================
+struct MiniV2 { float x, y; };
+typedef void (*MiniXformFn)(MiniV2* out, const MiniV2* in);
+
+static void MiniRoute_AfterRadar()
+{
+    if (!MiniRoute::gEnabled.load()) { MiniRoute::ClearScreen(); return; }
+    static bool resolved = false;
+    static MiniXformFn toRadar = nullptr, toScreen = nullptr;
+    if (!resolved)
+    {
+        resolved = true;
+        if (CHook::lib)
+        {
+            toRadar  = (MiniXformFn)dlsym(CHook::lib, "_ZN6CRadar35TransformRealWorldPointToRadarSpaceER9CVector2DRKS0_");
+            toScreen = (MiniXformFn)dlsym(CHook::lib, "_ZN6CRadar32TransformRadarPointToScreenSpaceER9CVector2DRKS0_");
+        }
+        FLog("[MINIMAPA] rota: TransformRealWorldPointToRadarSpace=%p TransformRadarPointToScreenSpace=%p", (void*)toRadar, (void*)toScreen);
+    }
+    if (!toRadar || !toScreen) return;
+
+    std::vector<MiniRoute::Vec2> world;
+    bool straight = false;
+    if (!MiniRoute::GetWorld(world, straight)) { MiniRoute::ClearScreen(); return; }
+
+    auto fRadar  = [&](MiniRoute::Vec2 w) { MiniV2 in{ w.x, w.y }, out{ 0, 0 }; toRadar(&out, &in); return MiniRoute::Vec2{ out.x, out.y }; };
+    auto fScreen = [&](MiniRoute::Vec2 r) { MiniV2 in{ r.x, r.y }, out{ 0, 0 }; toScreen(&out, &in); return MiniRoute::Vec2{ out.x, out.y }; };
+
+    // disco do radar em pixels: centro = (0,0) do espaco do radar; raio = distancia ate (1,0)
+    const MiniRoute::Vec2 c = fScreen({ 0.0f, 0.0f }), e = fScreen({ 1.0f, 0.0f });
+    const float radiusPx = std::sqrt((e.x - c.x) * (e.x - c.x) + (e.y - c.y) * (e.y - c.y));
+    if (!std::isfinite(radiusPx) || radiusPx < 8.0f || radiusPx > 2000.0f) { MiniRoute::ClearScreen(); return; }
+
+    std::vector<std::vector<MiniRoute::Vec2>> runs;
+    // recorte no formato real da mascara (quadrado arredondado); sem mascara valida, no disco (raio 0,965 do radar)
+    const std::vector<MiniRoute::Vec2> poly = MiniRoute::MaskPolygon(MiniRoute::GetMask(), c.x, c.y, radiusPx, 0.97f);
+    static int s_logged = 0;
+    if (s_logged < 3) { s_logged++; FLog("[MINIMAPA] centro=(%.1f,%.1f) raio=%.1f px, recorte=%s", c.x, c.y, radiusPx, poly.empty() ? "circulo" : "mascara"); }
+    if (!poly.empty()) MiniRoute::BuildPoly(world, fRadar, fScreen, poly, runs);
+    else MiniRoute::Build(world, fRadar, fScreen, MiniRoute::kClipRadius, runs);
+    using namespace std::chrono;
+    MiniRoute::PublishScreen(std::move(runs), c.x, c.y, radiusPx, duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
+}
 
 void CHud__DrawRadar_hook()
 {
@@ -524,6 +578,8 @@ void CHud__DrawRadar_hook()
     );
 
     CHud__DrawRadar();
+
+    MiniRoute_AfterRadar();   // rota do GPS no minimapa (ver acima)
 
     /*
      * Restore the original GTA values immediately after

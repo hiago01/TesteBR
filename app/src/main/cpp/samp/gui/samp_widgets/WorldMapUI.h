@@ -11,6 +11,7 @@
 #include "WorldMapCore.h"
 #include "MapLines.h"
 #include "RoadGraph.h"
+#include "MiniRoute.h"
 
 #include <atomic>
 #include <cstdio>
@@ -189,6 +190,8 @@ namespace WorldMap
 		void UpdateLocalRoute(bool havePlayer, float plx, float ply);
 		const std::vector<Vec2>& EffectiveRoute();
 		void DrawRoads(ImGuiRenderer* r, const ImVec2& origin, float k);
+		void PublishMiniRoute();                       // minimapa: publica a rota (mundo) para o hook do radar
+		void DrawMiniRoute(ImGuiRenderer* r);          // minimapa: desenha a rota ja convertida para pixels
 		void DrawRouteLine(ImGuiRenderer* r, const std::vector<Vec2>& rt, const ImVec2& origin, float k, bool havePlayer, float plx, float ply);
 		void Cmd(const char* fmt, int a = 0, int b = 0)
 		{
@@ -600,6 +603,56 @@ namespace WorldMap
 		return kEmpty;
 	}
 
+	// ---------------------------------------------------------------------------------------------
+	//  Minimapa: rota (mundo) a partir do jogador. O hook de CHud::DrawRadar (game/hooks.cpp) converte para pixels.
+	// ---------------------------------------------------------------------------------------------
+	inline void Ui::PublishMiniRoute()
+	{
+		float px = 0, py = 0, hd = 0;
+		if (!MiniRoute::gEnabled.load() || !m_gps.on || !P->player(px, py, hd) || !Finite(px) || !Finite(py)) { MiniRoute::ClearWorld(); return; }
+		UpdateLocalRoute(true, px, py);
+		const std::vector<Vec2>& rt = EffectiveRoute();
+		std::vector<Vec2> wp;
+		bool straight = false;
+		wp.push_back({ px, py });
+		if (rt.size() >= 2)
+		{
+			size_t seg = 1;
+			Lines::NearestOnPolyline(rt, { px, py }, &seg);
+			for (size_t i = seg; i < rt.size(); i++) wp.push_back(rt[i]);       // so o que ainda falta percorrer
+		}
+		else { wp.push_back({ m_gps.x, m_gps.y }); straight = true; }          // sem rota/grafo: reta ate o destino
+		MiniRoute::PublishWorld(wp, straight);
+	}
+
+	inline void Ui::DrawMiniRoute(ImGuiRenderer* r)
+	{
+		std::vector<std::vector<Vec2>> runs;
+		float rad = 0;
+		bool straight = false;
+		float rcx = 0, rcy = 0;
+		if (!MiniRoute::GetScreen(runs, rad, P->nowMs(), straight, &rcx, &rcy)) return;
+		const Lines::Style& rs = P->lineStyles().cat[Lines::kRoute];
+		if (!rs.enabled) return;
+		const float w = Clampf(rad * 0.055f, 2.5f, 8.0f);                       // espessura proporcional ao radar
+		const float ow = w + 2.0f * Clampf(rad * 0.012f, 1.0f, 2.5f);
+		const int a = straight ? (int)rs.main.a * 6 / 10 : (int)rs.main.a;
+		const int ao = straight ? (int)rs.outline.a * 6 / 10 : (int)rs.outline.a;
+		const ImColor cm(rs.main.r, rs.main.g, rs.main.b, a), co(rs.outline.r, rs.outline.g, rs.outline.b, ao);
+		std::vector<ImVec2> pts;
+		for (const auto& run : runs)
+		{
+			pts.clear();
+			std::vector<Vec2> rn = run;
+			// a run que nasce no centro (jogador) comeca um pouco depois, para nao cobrir a seta do radar
+			if (std::hypot(rn[0].x - rcx, rn[0].y - rcy) < rad * 0.06f && !MiniRoute::TrimStart(rn, rad * 0.16f)) continue;
+			for (const Vec2& p : rn) pts.push_back(ImVec2(p.x, p.y));
+			if (pts.size() < 2) continue;
+			r->drawPolyline(pts.data(), (int)pts.size(), co, false, ow);
+			r->drawPolyline(pts.data(), (int)pts.size(), cm, false, w);
+		}
+	}
+
 	// Linha da rota: contorno escuro + linha principal, espessura pelo zoom, so os trechos visiveis. A parte que o jogador
 	// ja passou nao e desenhada (a linha sai da posicao dele). Pontas arredondadas.
 	inline void Ui::DrawRouteLine(ImGuiRenderer* r, const std::vector<Vec2>& rt, const ImVec2& origin, float k, bool havePlayer, float plx, float ply)
@@ -705,7 +758,14 @@ namespace WorldMap
 		DrainPending();
 		TickGps();
 
-		if (!m_open.load()) { ResetDrawState(); return; }
+		if (!m_open.load())
+		{
+			PublishMiniRoute();     // mapa fechado: a rota aparece no minimapa (radar nativo)
+			DrawMiniRoute(r);
+			ResetDrawState();
+			return;
+		}
+		MiniRoute::ClearWorld();    // mapa aberto: sem linha no minimapa
 
 		m_L = MakeLayout();
 		const Layout& L = m_L;

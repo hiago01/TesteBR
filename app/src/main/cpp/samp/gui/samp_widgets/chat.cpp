@@ -181,7 +181,7 @@ if (input == "/mapa" || input.rfind("/mapa ", 0) == 0)
         {
             // mapa aberto: /mapa (abre/fecha) | /mapa grade | /mapa info | /mapa ruas [on|off] | /mapa nodes | /mapa linhas
             const std::string args = input.size() > 5 ? input.substr(6) : std::string();
-            if (args == "grade" || args == "info" || args == "nodes" || args == "linhas" || args.rfind("ruas", 0) == 0) addDebugMessage("%s", WorldMapWidget::DebugCommand(args).c_str());
+            if (args == "grade" || args == "info" || args == "nodes" || args == "linhas" || args.rfind("ruas", 0) == 0 || args.rfind("minimapa", 0) == 0) addDebugMessage("%s", WorldMapWidget::DebugCommand(args).c_str());
             else WorldMapWidget::Toggle();
             return;
         }
