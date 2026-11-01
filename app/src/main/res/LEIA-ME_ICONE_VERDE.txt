@@ -1,0 +1,6 @@
+MAXIMO RP - ICONE VERDE
+Atualizados os icones launcher Android e o icone Play Store.
+Pastas de densidade: mipmap-mdpi, hdpi, xhdpi, xxhdpi e xxxhdpi.
+Arquivos por densidade: ic_launcher.webp, ic_launcher_round.webp e ic_launcher_foreground.webp.
+Adaptive icons mantidos em mipmap-anydpi-v26; fundo atualizado para verde.
+O restante dos recursos do ZIP original foi preservado.
