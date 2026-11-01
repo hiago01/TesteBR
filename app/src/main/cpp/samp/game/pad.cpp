@@ -521,12 +521,20 @@ static bool AimWantedNow()
 {
     return ModernInput::AimWanted() && IsFirearm(GamePool_FindPlayerPed());
 }
+// Debounce de 120 ms na SOLTURA: um pico de "nao quer mirar" (Active piscando, dedo tremendo) nao derruba a mira, e
+// apertar de novo cancela na hora qualquer "sair" pendente. Era isso que fazia a mira "ameacar sumir e voltar".
 static bool AimStateTick()
 {
+    static int64_t s_lastWanted = 0;
+    const int64_t now = PadNowMs();
     const bool wanted = AimWantedNow();
-    if (wanted) g_aimForced = true;
-    else if (g_aimForced) { g_aimForced = false; g_exitUntilMs = PadNowMs() + 350; }   // soltou: sair da mira
-    return wanted;
+    if (wanted) { s_lastWanted = now; g_aimForced = true; g_exitUntilMs = 0; return true; }
+    if (g_aimForced)
+    {
+        if (now - s_lastWanted < 120) return true;                    // ainda dentro do debounce: segue mirando
+        g_aimForced = false; g_exitUntilMs = now + 250;               // soltou de verdade: sair da mira
+    }
+    return false;
 }
 
 bool (*CPad__GetEnterTargeting)(uintptr_t thiz);
@@ -552,7 +560,9 @@ bool CPad__GetEnterTargeting_hook(uintptr_t thiz)
 bool (*CPad__GetExitTargeting)(uintptr_t thiz);
 bool CPad__GetExitTargeting_hook(uintptr_t thiz)
 {
-    if (!CWorld::PlayerInFocus && byteCurPlayer == 0) { AimStateTick(); if (PadNowMs() < g_exitUntilMs) return true; }   // so o jogador local, so apos soltar o Ataque (moderno)
+    // Quem chama e CCamera::CamControl (libGTASA 0x4b6874/0x4b694c), sempre com o pad 0 (local); la byteCurPlayer pode estar velho
+    // (ultimo ped remoto processado), por isso aqui NAO se usa byteCurPlayer - so PlayerInFocus (era isso que impedia a saida).
+    if (!CWorld::PlayerInFocus) { if (AimStateTick()) return false; if (PadNowMs() < g_exitUntilMs) return true; }   // so o jogador local, so apos soltar o Ataque (moderno)
     return CPad__GetExitTargeting(thiz);
 }
 
