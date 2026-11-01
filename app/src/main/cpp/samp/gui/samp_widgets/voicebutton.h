@@ -6,6 +6,7 @@
 
 #include "../../settings.h"
 #include "util/CUtil.h"
+#include "voicebutton_logic.h"
 
 
 extern CSettings* pSettings;
@@ -42,8 +43,24 @@ public:
 		
 	}
 
+	// Dedo fora do icone: o Widget so chama touchPopEvent() se o dedo for levantado DENTRO do botao, entao arrastar
+	// para fora e soltar deixava o microfone ligado. Aqui desligamos ao sair do icone (ainda apertado) e ao soltar em qualquer lugar.
+	void touchEvent(const ImVec2& pos, TouchType type) override
+	{
+		bool release = false;
+		if (type == TouchType::move) release = m_hold.OnMove(contains(pos));
+		else if (type == TouchType::pop) release = m_hold.OnPop();
+		if (release)
+		{
+			countdown = 500;
+			setRecording(0);
+		}
+		Button::touchEvent(pos, type);
+	}
+
 	void touchPopEvent() override
 	{
+		m_hold.Reset();
 		countdown = 500;
 		setRecording(0);
 	}
@@ -51,6 +68,7 @@ public:
 	void touchPushEvent() override
 	{
 			//setRecording(recording() ^ 1);
+		m_hold.OnPush();
 		setRecording(1);
 		countdown = 500;
 	}
@@ -66,6 +84,7 @@ public:
 
 private:
 	bool m_recording;
+	VoiceHold m_hold;   // dedo ainda apertando o icone? (ver voicebutton_logic.h)
 	RwTexture* m_texture_micro_on;
 	RwTexture* m_texture_micro_off;
 	//int countdown = 1000;
