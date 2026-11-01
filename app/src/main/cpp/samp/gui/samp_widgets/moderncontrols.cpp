@@ -167,7 +167,9 @@ void ModernControls::draw(ImGuiRenderer* r)
 	CPedGTA* ped = nullptr;
 	const bool pedOk = LocalPed(ped);
 	const bool editing = g_editing.load();
-	const bool vehicle = pedOk && ped->IsInVehicle(), jet = pedOk && ped->IsInJetpackMode();
+	const bool vehicle = pedOk && ped->IsInVehicle();
+	bool jet = false;
+	{ CPlayerPed* pp = pGame ? pGame->FindPlayerPed() : nullptr; if (pedOk && pp) jet = pp->IsInJetpackMode(); }   // IsInJetpackMode e do CPlayerPed (igual WidgetGta.cpp)
 	const bool alive = pedOk && ped->m_fHealth > 0.0f;
 	const bool selOpen = ControlsSelector::IsOpen();
 	const bool modernNow = ControlMode::IsModern() && pedOk && !selOpen;
