@@ -1,4 +1,5 @@
 #include "CustomSkin.h"
+#include "SkinTexDb.h"
 
 #include <algorithm>
 #include <atomic>
@@ -1109,48 +1110,10 @@ namespace
         return d.empty() ? d : d + "pack/";
     }
 
-    bool IsDirPath(const std::string& path)
-    {
-        struct stat st {};
-        return ::stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
-    }
-
     // Variantes numéricas "<n>.png" existentes em pack/<folder>, em ordem crescente.
     std::vector<int> PackVariants(const std::string& folder)
     {
-        std::vector<int> v;
-        DIR* d = ::opendir((PackDir() + folder).c_str());
-        if (!d) return v;
-        while (dirent* e = ::readdir(d))
-        {
-            const std::string fn = e->d_name;
-            if (fn.size() < 5 || SkinImg::Lower(fn.substr(fn.size() - 4)) != ".png") continue;
-            const std::string stem = fn.substr(0, fn.size() - 4);
-            if (stem.empty() || stem.size() > 6) continue;
-            bool digits = true;
-            for (char c : stem) if (!std::isdigit((unsigned char)c)) { digits = false; break; }
-            if (digits) v.push_back(std::atoi(stem.c_str()));
-        }
-        ::closedir(d);
-        std::sort(v.begin(), v.end());
-        return v;
-    }
-
-    // Arquivo do pack para rel ("tshirts/1/34"). Só aceita caminho relativo sem "..".
-    std::string PackFile(const std::string& rel, std::string& err)
-    {
-        if (rel.empty() || rel[0] == '/' || rel.find("..") != std::string::npos || rel.find('\\') != std::string::npos)
-        {
-            err = "caminho inválido (use pasta/n, ex.: tshirts/1/34)";
-            return {};
-        }
-        const std::string base = PackDir() + rel;
-        for (const char* ext : { ".png", ".PNG" })
-            if (FileExists(base + ext)) return base + ext;
-        for (const char* ext : { ".jpeg", ".jpg", ".JPEG", ".JPG" })
-            if (FileExists(base + ext)) { err = "'" + rel + "' é JPEG: converta com tools_skin_pack.py (o cliente só lê PNG)"; return {}; }
-        err = "não achei pack/" + rel + ".png";
-        return {};
+        return SkinTexDb::Variants(folder);      // so o banco texdb/skins (leitura de PNG do pack removida)
     }
 
     std::vector<int> SlotMaterials(const SkinSlots::Slot& sl)
@@ -1176,16 +1139,10 @@ namespace
         s_hidden.resize(mats.size(), 0);
         if (idx.empty()) { note = "ERRO: nenhum material para aplicar"; return false; }
 
-        std::string err;
-        const std::string path = PackFile(rel, err);
-        if (path.empty()) { note = "ERRO: " + err; return false; }
-
-        char nm[40];
-        const std::string& tn = s_parsed.materialsList[(size_t)idx[0]].texture;
-        std::snprintf(nm, sizeof(nm), "%s", tn.empty() ? "mat" : tn.c_str());
-        RwTexture* t = LoadPngTexture(path, nm, err);
-        if (!t) { note = "ERRO ao carregar pack/" + rel + ": " + err; return false; }
-
+        // so o banco binario texdb/skins (leitura de PNG do pack removida)
+        if (!SkinTexDb::Ready()) { note = "ERRO: banco texdb/skins nao carregado (" + SkinTexDb::Status() + ")"; return false; }
+        RwTexture* t = SkinTexDb::Has(rel) ? SkinTexDb::Texture(rel) : nullptr;
+        if (!t) { note = "ERRO: '" + rel + "' nao existe no banco texdb/skins"; return false; }
         const uint64_t now = NowMs();
         for (int i : idx)
         {
@@ -1199,58 +1156,22 @@ namespace
         TexRelease(t);                       // solta a ref de criação (slots + materiais seguram as deles)
         for (int i : idx) s_matPack[i] = rel;
         RecountHidden();
-        note = "pack/" + rel + ".png -> materiais " + JoinList(idx);
+        note = std::string("texdb/skins:") + rel + " -> materiais " + JoinList(idx);
         return true;
-    }
-
-    // ---- /skin7 pack : confere a pasta pack/ (quantos .png e quantos .jpeg que o cliente não lê) -----
-    void ScanPack(const std::string& rel, int depth, int& png, int& jpg, std::vector<std::string>& lines)
-    {
-        DIR* d = ::opendir((PackDir() + rel).c_str());
-        if (!d) return;
-        int p = 0, j = 0;
-        std::vector<std::string> subs;
-        while (dirent* e = ::readdir(d))
-        {
-            const std::string fn = e->d_name;
-            if (fn == "." || fn == "..") continue;
-            const std::string full = PackDir() + (rel.empty() ? "" : rel + "/") + fn;
-            if (IsDirPath(full)) { subs.push_back(fn); continue; }
-            const size_t dot = fn.rfind('.');
-            if (dot == std::string::npos) continue;
-            const std::string ext = SkinImg::Lower(fn.substr(dot));
-            if (ext == ".png") ++p;
-            else if (ext == ".jpg" || ext == ".jpeg") ++j;
-        }
-        ::closedir(d);
-        if (p || j)
-        {
-            char b[160];
-            std::snprintf(b, sizeof(b), "%s: png=%d jpeg=%d%s", rel.c_str(), p, j, j ? "  <-- converta (tools_skin_pack.py)" : "");
-            lines.push_back(b);
-        }
-        png += p; jpg += j;
-        if (depth >= 3) return;
-        std::sort(subs.begin(), subs.end());
-        for (const std::string& sub : subs) ScanPack(rel.empty() ? sub : rel + "/" + sub, depth + 1, png, jpg, lines);
     }
 
     void DoPack()
     {
-        const std::string dir = PackDir();
-        if (dir.empty() || !IsDirPath(dir))
-        {
-            SetInfo("pack ausente: copie as pastas para " + (dir.empty() ? std::string("<raiz>/SAMP/skins/pack/") : dir));
-            return;
-        }
-        int png = 0, jpg = 0;
-        std::vector<std::string> lines;
-        ScanPack("", 0, png, jpg, lines);
-        for (const std::string& l : lines) FLog("[SKIN7-PACK] %s", l.c_str());
-        char msg[260];
-        std::snprintf(msg, sizeof(msg), "pack: %d PNG ok, %d JPEG (o cliente NÃO lê JPEG; converta)%s; detalhes [SKIN7-PACK] no log",
-                      png, jpg, jpg ? " <-- ATENÇÃO" : "");
-        SetInfo(msg);
+        if (SkinTexDb::Ready()) FLog("[SKIN7-PACK] %s (%zu texturas)", SkinTexDb::Status().c_str(), SkinTexDb::Count());
+        SetInfo("pack: " + SkinTexDb::Status() + " (PNG do pack nao e mais lido)");
+    }
+
+    // ---- /skin7 texdb [rel] : estado do banco texdb/skins; com rel, diz se a textura existe no banco -------
+    void DoTexdb(const std::string& rest)
+    {
+        if (rest.empty()) { SetInfo(SkinTexDb::Status()); return; }
+        if (!SkinTexDb::Ready()) { SetInfo(SkinTexDb::Status()); return; }
+        SetInfo("texdb/skins '" + rest + "': " + (SkinTexDb::Has(rest) ? "existe no banco" : "NAO existe no banco"));
     }
 
     // ---- /skin7 slots : slot -> material(is) do DFF -> pasta do pack --------------------------
@@ -2260,6 +2181,7 @@ namespace
         else if (cmd == "tex")    DoTex(rest);
         else if (cmd == "png")    DoPng();
         else if (cmd == "pack")   DoPack();
+        else if (cmd == "texdb")  DoTexdb(rest);
         else if (cmd == "slots")  DoSlots();
         else if (cmd == "slot")   DoSlot(rest);
         else if (cmd == "set")    DoSet(rest);
@@ -2447,7 +2369,7 @@ std::string CCustomSkin::Info()
 
 std::string CCustomSkin::DebugCommand(const std::string& args)
 {
-    static const char* kNames[] = {"load", "apply", "wear", "unwear", "unload", "mats", "mat", "tex", "png", "pack", "slots", "slot", "set", "save", "autoexec"};
+    static const char* kNames[] = {"load", "apply", "wear", "unwear", "unload", "mats", "mat", "tex", "png", "pack", "texdb", "slots", "slot", "set", "save", "autoexec"};
     std::istringstream in(args);
     std::string first;
     in >> first;
@@ -2474,6 +2396,6 @@ std::string CCustomSkin::DebugCommand(const std::string& args)
     }
 
     const std::string p = SkinPath();
-    return "[SKIN7] /skin7 load|apply|wear|unwear|unload|info | mats | mat list|reset|off|on|only <lista> | tex auto|idx|none | png | pack | slots | slot <nome> <n|+|-|on|off|pasta/arq> | set <lista> <pasta/arq> | save [default] [wear] | autoexec   arquivo: " +
+    return "[SKIN7] /skin7 load|apply|wear|unwear|unload|info | mats | mat list|reset|off|on|only <lista> | tex auto|idx|none | png | pack | texdb [pasta/n] | slots | slot <nome> <n|+|-|on|off|pasta/arq> | set <lista> <pasta/arq> | save [default] [wear] | autoexec   arquivo: " +
            (p.empty() ? std::string("(storage indisponível)") : p);
 }

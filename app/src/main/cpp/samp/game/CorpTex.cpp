@@ -30,6 +30,7 @@
 //   * Se CPed::Render nao chamar CEntity::Render, o hook nao e atingido; o Process loga um AVISO apos 5 s.
 //   * Ped desenhado pela lista de alfa (fade de distancia) nao passa por CEntity::Render.
 #include "CorpTex.h"
+#include "SkinTexDb.h"
 #include "LookSlots.h"       // visual por slots (RPC 232): parse + plano de materiais + cobertura (puro, testado no host)
 #include "CorpTexMap.h"     // mapa pack/ <-> aparencia (rosto, cabelo, pele, roupa) do corpo male; testado no host
 
@@ -294,39 +295,14 @@ void Sanitize(Look& l)
     else l.hairColor = 0;
 }
 
-// pastas de corp: textures/272/<corp>/  e  pack/corp/<corp>/  (a mesma corp nas duas = vale a de textures/272)
-std::string CorpDir(const std::string& corp)       // "" se nao existe em nenhum dos dois lugares
-{
-    std::vector<std::string> roots;
-    if (!BaseDir().empty()) roots.push_back(BaseDir());
-    if (!PackDir().empty()) roots.push_back(PackDir() + "corp/");
-    for (const std::string& root : roots) {
-        struct stat st{};
-        const std::string d = root + corp + "/";
-        if (::stat(d.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) return d;
-    }
-    return {};
-}
+// corps: so no banco texdb/skins (rel "corp/<corp>/<peca>"); leitura de PNG removida
+bool CorpExists(const std::string& corp) { return SkinTexDb::Ready() && !SkinTexDb::List("corp/" + corp + "/").empty(); }
 
 std::vector<std::string> ListCorps()
 {
-    std::vector<std::string> bases;
-    if (!BaseDir().empty()) bases.push_back(BaseDir());
-    if (!PackDir().empty()) bases.push_back(PackDir() + "corp/");
     std::vector<std::string> out;
-    for (const std::string& base : bases) {
-        if (DIR* d = ::opendir(base.c_str())) {
-            while (dirent* e = ::readdir(d)) {
-                if (e->d_name[0] == '.' || std::strcmp(e->d_name, kAppFolder) == 0) continue;
-                struct stat st{};
-                if (::stat((base + e->d_name).c_str(), &st) == 0 && S_ISDIR(st.st_mode) && ValidName(e->d_name)
-                    && std::find(out.begin(), out.end(), std::string(e->d_name)) == out.end()) out.push_back(e->d_name);
-            }
-            ::closedir(d);
-        }
-    }
-    std::sort(out.begin(), out.end());
-    return out;
+    for (const std::string& n : SkinTexDb::SubFolders("corp/")) if (ValidName(n.c_str())) out.push_back(n);
+    return out;                                   // SubFolders ja vem em ordem
 }
 
 CEntityGTA* GetEnt(PLAYERID id)
@@ -419,17 +395,26 @@ Corp* EnsureCorp(const std::string& corp)
     auto it = s_corps.find(corp);
     if (it != s_corps.end()) { it->second.lastUse = NowMs(); return &it->second; }
 
-    const std::string cd = CorpDir(corp);
-    const std::string dir = cd.empty() ? BaseDir() + corp + "/" : cd;
-    const auto idx = SkinImg::IndexPngDir(dir);
-    if (idx.empty()) { SetInfo("corp '" + corp + "': nenhum PNG em " + dir); return nullptr; }
+    const std::vector<std::string> rels = SkinTexDb::List("corp/" + corp + "/");
+    if (rels.empty()) { SetInfo("corp '" + corp + "': nao existe no banco texdb/skins"); return nullptr; }
 
     Corp c; c.lastUse = NowMs();
-    for (const auto& kv : idx)                         // kv.first = nome em minusculas, kv.second = caminho
-        if (RwTexture* t = LoadPng(kv.second, kv.first)) c.tex[kv.first] = t;
-    if (c.tex.empty()) { SetInfo("corp '" + corp + "': nenhum PNG pode ser carregado"); return nullptr; }
-    FLog("[CORPTEX] corp '%s' carregada: %zu/%zu PNG(s) (teto %d)", corp.c_str(), c.tex.size(), idx.size(), kMaxTexSize);
+    for (const std::string& rel : rels)                // chave = nome da peca em minusculas (sem pasta)
+        if (RwTexture* t = SkinTexDb::Texture(rel)) c.tex[rel.substr(rel.rfind('/') + 1)] = t;
+    if (c.tex.empty()) { SetInfo("corp '" + corp + "': nenhuma textura pode ser carregada"); return nullptr; }
+    FLog("[CORPTEX] corp '%s' carregada do banco: %zu/%zu textura(s)", corp.c_str(), c.tex.size(), rels.size());
     return &(s_corps[corp] = std::move(c));
+}
+
+// rel do pack sem a extensao de imagem ("heads/1/2.png" -> "heads/1/2"): chave do banco texdb/skins
+static std::string DbKey(std::string rel)
+{
+    for (const char* e : { ".png", ".PNG", ".jpg", ".jpeg" })
+    {
+        const size_t n = std::strlen(e);
+        if (rel.size() > n && rel.compare(rel.size() - n, n, e) == 0) { rel.resize(rel.size() - n); break; }
+    }
+    return rel;
 }
 
 // ---- cache de texturas de aparencia (1 PNG por vez, sob demanda) -------------------------------
@@ -437,14 +422,11 @@ RwTexture* GetAppTex(const std::string& rel)
 {
     auto it = s_appTex.find(rel);
     if (it != s_appTex.end()) { it->second.lastUse = NowMs(); return it->second.tex; }
-    // "roupa/..." : ver ClothPath (272/aparencia/roupa ou 9/roupa); o resto em textures/272/aparencia/
-    std::string path = rel.compare(0, 6, "roupa/") == 0 ? ClothPath(rel.substr(6)) : BaseDir() + kAppFolder + "/" + rel;
-    if (::access(path.c_str(), F_OK) != 0) {          // nao existe em textures/272/aparencia: tenta direto na pasta pack/
-        std::string pr;
-        if (CorpMap::PackRelFor(rel, pr) && ::access((PackDir() + pr).c_str(), F_OK) == 0) path = PackDir() + pr;
-    }
-    RwTexture* t = ::access(path.c_str(), F_OK) == 0 ? LoadPng(path, rel) : nullptr;
-    if (!t) FLog("[CORPTEX] AVISO: textura de aparencia ausente: %s", path.c_str());
+    // so o banco binario texdb/skins (leitura de PNG removida)
+    std::string pr;
+    RwTexture* t = nullptr;
+    if (SkinTexDb::Ready() && CorpMap::PackRelFor(rel, pr) && SkinTexDb::Has(DbKey(pr))) t = SkinTexDb::Texture(DbKey(pr));
+    if (!t) FLog("[CORPTEX] AVISO: textura de aparencia '%s' nao existe no banco texdb/skins", rel.c_str());
     s_appTex[rel] = AppTex{t, NowMs()};                // guarda tambem a falha (nao tenta de novo a cada frame)
     return t;
 }
@@ -456,9 +438,8 @@ RwTexture* GetSlotPackTex(const std::string& rel)
     const std::string key = "slot/" + rel;
     auto it = s_appTex.find(key);
     if (it != s_appTex.end()) { it->second.lastUse = NowMs(); return it->second.tex; }
-    const std::string path = PackDir() + rel;
-    RwTexture* t = ::access(path.c_str(), F_OK) == 0 ? LoadPng(path, key) : nullptr;
-    if (!t) FLog("[CORPTEX] AVISO: slot: PNG ausente/ilegivel: %s (o slot fica como esta)", path.c_str());
+    RwTexture* t = SkinTexDb::Has(DbKey(rel)) ? SkinTexDb::Texture(DbKey(rel)) : nullptr;     // so o banco texdb/skins
+    if (!t) FLog("[CORPTEX] AVISO: slot: '%s' nao existe no banco texdb/skins (o slot fica como esta)", rel.c_str());
     s_appTex[key] = AppTex{t, NowMs()};
     return t;
 }
@@ -1038,8 +1019,9 @@ int CountVariants(const char* tipo, int set)
 {
     int n = 0;
     while (n < 200) {
-        const std::string p = ClothPath(std::string(tipo) + "/" + std::to_string(set) + "/" + std::to_string(n + 1) + ".png");
-        if (::access(p.c_str(), F_OK) != 0) break;
+        std::string pr;
+        if (!CorpMap::PackRelFor("roupa/" + std::string(tipo) + "/" + std::to_string(set) + "/" + std::to_string(n + 1) + ".png", pr)
+            || !SkinTexDb::Has(DbKey(pr))) break;
         ++n;
     }
     return n;
@@ -1133,13 +1115,12 @@ std::string VisualCommand(const std::string& cmdIn, const std::string& argsIn)  
             if (!CorpMap::CopBaseFolder(piece, tipo, pasta)) return "[CORPTEX] peca sem pasta base";
             const std::string rel = "cop/" + tipo + "/" + std::to_string(pasta) + "/" + std::to_string(n) + ".png";
             std::string pr;
-            if (!CorpMap::PackRelFor(rel, pr) || !CanOpen(PackDir() + pr)) return "[CORPTEX] nao achei " + PackDir() + pr;
+            if (!CorpMap::PackRelFor(rel, pr) || !SkinTexDb::Has(DbKey(pr))) return "[CORPTEX] nao achei no banco texdb/skins: " + pr;
             src = rel;
         } else {
             if (!ValidName(w[1])) return "[CORPTEX] nome de corp invalido";
-            const std::string cd = CorpDir(w[1]);
-            if (cd.empty()) return "[CORPTEX] corp '" + w[1] + "' nao existe (use /corp lista)";
-            if (!CanOpen(cd + kPiecePrefix + piece + ".png")) return "[CORPTEX] a corp '" + w[1] + "' nao tem a peca " + piece + " (" + cd + kPiecePrefix + piece + ".png)";
+            if (!CorpExists(w[1])) return "[CORPTEX] corp '" + w[1] + "' nao existe no banco texdb/skins (use /corp lista)";
+            if (!SkinTexDb::Has("corp/" + w[1] + "/" + kPiecePrefix + piece)) return "[CORPTEX] a corp '" + w[1] + "' nao tem a peca " + piece + " (corp/" + w[1] + "/" + kPiecePrefix + piece + ")";
             src = "corp:" + w[1];
         }
         return ApplyLocal(me, [&](Look& l) {
@@ -1166,10 +1147,9 @@ std::string VisualCommand(const std::string& cmdIn, const std::string& argsIn)  
         const int varWanted = v.size() == 2 ? v[1] : 1;
         std::string warn;
         {   // diagnostico no chat: o arquivo existe mas o jogo consegue abrir?
-            const std::string pf = ClothPath(std::string(tipo) + "/" + std::to_string(v[0]) + "/" + std::to_string(varWanted) + ".png");
-            FILE* tf = std::fopen(pf.c_str(), "rb");
-            if (!tf) warn = std::string(" | ERRO: nao consigo abrir o PNG (") + std::strerror(errno) + "): " + pf;
-            else std::fclose(tf);
+            std::string pf;
+            if (!CorpMap::PackRelFor("roupa/" + std::string(tipo) + "/" + std::to_string(v[0]) + "/" + std::to_string(varWanted) + ".png", pf)
+                || !SkinTexDb::Has(DbKey(pf))) warn = " | ERRO: textura nao existe no banco texdb/skins: " + pf;
         }
         std::string r = ApplyLocal(me, [&](Look& l) { auto f = field(l); *f.first = (uint8_t)v[0]; if (v.size() == 2) *f.second = (uint8_t)v[1]; else if (!*f.second) *f.second = 1; });
         return r + warn;

@@ -19,6 +19,7 @@
 #include "CustomImg.h"
 #include "CustomCol.h"
 #include "CustomSkinStream.h"
+#include "SkinTexDb.h"
 
 void ApplySAMPPatchesInGame();
 void InitScripting();
@@ -716,6 +717,10 @@ bool CGame::InitialiseRenderWare() {
     {
         FLog("[TOUCH] pasta texdb/touch nao encontrada: banco ignorado");
     }
+
+    // banco de texturas das roupas/skins (texdb/skins/). So personagens; independe de CustomImg::kCustomContent.
+    SkinTexDb::Load();
+    FLog("[SKINTEXDB] %s", SkinTexDb::Status().c_str());
 
     const auto camera = RwCameraCreate();
     if (!camera) {
