@@ -1,0 +1,4 @@
+Fix: sair da mira ao soltar o Ataque. Substitua app/src/main/cpp/samp/game/pad.cpp por game/pad.cpp deste zip.
+Causa provavel: patches.cpp:316 desliga CCamera::ClearPlayerWeaponMode (dentro de CPlayerPed::ClearWeaponTarget), entao o modo de arma nunca era limpo.
+Agora, ao soltar o Ataque, chama-se essa funcao real uma vez. Log: "[CONTROLES] mira: soltou o Ataque -> ClearPlayerWeaponMode".
+NAO verificado: compilacao NDK e comportamento no aparelho.
