@@ -238,7 +238,7 @@ void ScrCreateObject(RPCParameters* rpcParams)
 
 	CVector vecAttachOffset;
 	CVector vecAttachRot;
-	uint8_t bSyncRotation;
+	uint8_t bSyncRotation = 0;
 
 	if (AttachedObjectID != INVALID_OBJECT_ID || AttachedVehicleID != INVALID_VEHICLE_ID)
 	{

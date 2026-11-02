@@ -2018,7 +2018,7 @@ uintptr_t LoadTexture(const char* texname)
 
 RwTexture* LoadTextureFromTxd(const char* txdname, const char* texturename)
 {
-    RwTexture* tex;
+    RwTexture* tex = nullptr;
     if (strncmp(txdname, "none", 5u))
     {
         uintptr_t v10 = ((int (*)(const char*))(g_libGTASA + 0x5D3E60+1))(txdname);

@@ -703,6 +703,8 @@ int CPad__GetNitroFired_hook(uintptr_t thiz)
     {
         if(RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_FIRE])
             return 1;
+
+        return 0;
     }
     else
     {

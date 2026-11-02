@@ -29,6 +29,8 @@ public:
 
 			return nullptr;
 		}
+
+		return nullptr;
 	}
 	// 0.3.7
 	PLAYERID FindIDFromGtaPtr(CPedGTA* pPed) {

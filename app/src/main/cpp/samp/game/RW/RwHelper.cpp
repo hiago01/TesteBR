@@ -32,6 +32,8 @@ RpHAnimHierarchy* GetAnimHierarchyFromSkinClump(RpClump* clump) {
         RpClumpForAllAtomics(clump, SkinAtomicGetHAnimHierarchCB, &anim);
         return anim;
     }
+
+    return nullptr;
 }
 
 // name not from Android

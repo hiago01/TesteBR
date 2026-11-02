@@ -74,7 +74,7 @@ CTextDraw::~CTextDraw()
 
 uintptr_t LoadFromTxdSlot(const char* szSlot, const char* szTexture)
 {
-    RwTexture* tex;
+    RwTexture* tex = nullptr;
     if (strncmp(szSlot, "none", 5u))
     {
         /*uintptr_t v10 = ((int (*)(const char*))(g_libGTASA + 0x55BB85))(szSlot);

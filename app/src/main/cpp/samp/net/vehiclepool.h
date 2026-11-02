@@ -84,6 +84,8 @@ public:
 				return i;
 			}
 		}
+
+		return INVALID_VEHICLE_ID;
 	}
 
 	// 0.3.7

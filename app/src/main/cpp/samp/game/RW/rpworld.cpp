@@ -9,6 +9,8 @@
 RpClump* RpClumpForAllAtomics(RpClump* clump, RpAtomicCallBack callback, void* data) {
     if(clump)
         return CHook::CallFunction<RpClump*>(g_libGTASA + 0x2BA020, clump, callback, data);
+
+    return nullptr;
 }
 
 RpGeometry* RpGeometryForAllMaterials(RpGeometry* geometry, RpMaterialCallBack fpCallBack, void* data) {

@@ -793,7 +793,7 @@ inline void CAnimManager::LoadAnimFile_ANP23(RwStream* stream, bool compress, bo
             seq->SetName(buf);
             seq->SetBoneTag(sdata.bone_id);
             size_t data_size = 0;
-            bool bIsRoot, bIsCompressed, bInvalidType = false;
+            bool bIsRoot = false, bIsCompressed = false, bInvalidType = false;
             switch (sdata.type) {
                 case 1:
                     data_size = sizeof(KeyFrame) * sdata.frames_count;
