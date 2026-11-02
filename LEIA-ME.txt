@@ -1,5 +1,3 @@
-v4: copie game/pad.cpp e game/Widgets/WidgetGta.cpp para app/src/main/cpp/samp/game/ (incluindo o pad.cpp do v3).
-Tick de saida da mira agora roda todo frame (CTouchInterface::Update) e chama CCamera::ClearPlayerWeaponMode ao soltar o Ataque.
-Logs esperados no samp_log: "sair da mira: ClearPlayerWeaponMode ok" e "mira: soltou o Ataque -> ClearPlayerWeaponMode".
-Se esses logs nao aparecerem, o APK instalado nao e este build.
+Fix pulo duplo: copie gui/samp_widgets/moderncontrols.cpp para app/src/main/cpp/samp/gui/samp_widgets/ (substitui).
+Toques no Pulo dentro de 900 ms do pulo anterior sao descartados (kJumpCooldownMs).
 NAO verificado: compilacao NDK e comportamento no aparelho.
