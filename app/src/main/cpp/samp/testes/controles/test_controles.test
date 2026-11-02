@@ -79,6 +79,7 @@ int main()
 	k.CancelAll();
 
 	// --- botao desabilitado (microfone sem voz)
+	{ ModernController m; m.SetScreen(2400, 1080); m.disabledMask = 1u << B_RUN; const CtlCircle rc = m.lay.btn[B_RUN]; CHECK(!m.OnTouch(2, 1, rc.cx, rc.cy) && !m.BtnDown(B_RUN)); m.disabledMask = 0; CHECK(m.OnTouch(2, 1, rc.cx, rc.cy) && m.BtnDown(B_RUN)); }   // LOCK ligado esconde CORRER
 	{ ModernController m; m.SetScreen(2400, 1080); m.disabledMask = 1u << B_MIC; const CtlCircle mc = m.lay.btn[B_MIC]; CHECK(!m.OnTouch(2, 1, mc.cx, mc.cy)); m.disabledMask = 0; CHECK(m.OnTouch(2, 1, mc.cx, mc.cy) && m.BtnDown(B_MIC)); }
 
 	// --- zona morta configuravel no controlador ---

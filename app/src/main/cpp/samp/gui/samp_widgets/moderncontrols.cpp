@@ -289,7 +289,8 @@ void ModernControls::draw(ImGuiRenderer* r)
 		const uint32_t ver = ControlMode::ConfigVersion();
 		if (ver != g_seenVer) { g_ctl.ApplyConfig(ControlMode::GetConfig()); g_seenVer = ver; }
 		g_ctl.SetScreen(screen.x, screen.y);
-		g_ctl.disabledMask = 0u;                              // voz sempre ativa: o botao Microfone nunca e escondido
+		// CORRIDA LOCK ligado: o botao CORRER some (nao desenha nem recebe toque); no editor de HUD ele continua visivel.
+		g_ctl.disabledMask = (!editing && g_runLock.load()) ? (1u << B_RUN) : 0u;
 		wasActive = g_active.load();
 		if (wasActive && !show) ReleaseAllLocked();          // saiu do modo/entrou em veiculo/abriu UI: solta tudo
 		if (!editing && g_editing.load() == false) g_ctl.editing = false;
