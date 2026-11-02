@@ -207,8 +207,10 @@ uint32_t CPad__SwimJumpJustDown_hook(uintptr_t thiz)
 	}
 }
 
-uint32_t(*CPad__DuckJustDown)(uintptr_t thiz, int unk);
-uint32_t CPad__DuckJustDown_hook(uintptr_t thiz, int unk)
+// 2o parametro = CPed* (64 bits). Era 'int' (heranca 32-bit): ao chamar ModernInput::Active() antes do original o compilador
+// guardava o valor num registrador de 32 bits e o ponteiro chegava TRUNCADO em DuckJustDown (SIGSEGV em [x1+0x150]).
+uint32_t(*CPad__DuckJustDown)(uintptr_t thiz, uintptr_t ped);
+uint32_t CPad__DuckJustDown_hook(uintptr_t thiz, uintptr_t ped)
 {
 	if (CWorld::PlayerInFocus)
 	{
@@ -217,7 +219,7 @@ uint32_t CPad__DuckJustDown_hook(uintptr_t thiz, int unk)
 	else
 	{
 		if (ModernInput::Active()) return ModernInput::CrouchJustDown() ? 1 : 0;   // MODERNO: botao Agachar
-		return CPad__DuckJustDown(thiz, unk);
+		return CPad__DuckJustDown(thiz, ped);
 	}
 }
 
