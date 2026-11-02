@@ -1,0 +1,130 @@
+plugins {
+    id 'com.android.application'
+    id 'com.google.gms.google-services'
+    id 'com.google.firebase.crashlytics'
+}
+
+android {
+    signingConfigs {
+        debug {
+            storeFile file('..//keystore_playmarket2.jks')
+            storePassword 'hayk2010'
+            keyAlias 'key0'
+            keyPassword 'hayk2010'
+        }
+        release {
+            storeFile file('..//keystore_playmarket2.jks')
+            storePassword 'hayk2010'
+            keyPassword 'hayk2010'
+            keyAlias 'key0'
+        }
+    }
+
+    compileSdk 35
+    namespace 'com.maximo.roleplay'
+
+    defaultConfig {
+        applicationId "com.maximo.roleplay"
+        minSdk 26
+        targetSdk 34
+        versionCode 3
+        versionName "0.0.0.5"
+
+        multiDexEnabled true
+
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    packagingOptions {
+        jniLibs {
+            excludes += ['META-INF/*']
+        }
+        resources {
+            excludes += ['META-INF/*']
+        }
+    }
+
+    ndkVersion '26.2.11394342'
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+        }
+    }
+
+    buildTypes {
+        debug {
+            debuggable false
+            jniDebuggable false
+            minifyEnabled false
+
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
+        }
+        release {
+            firebaseCrashlytics {
+                // Enable processing and uploading of native symbols to Firebase servers.
+                // By default, this is disabled to improve build speeds.
+                // This flag must be enabled to see properly-symbolicated native
+                // stack traces in the Crashlytics dashboard.
+                // (strippedNativeLibsDir/unstrippedNativeLibsDir removidos: o plugin 3.x detecta sozinho)
+                nativeSymbolUploadEnabled true
+            }
+            debuggable false
+            jniDebuggable false
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
+        }
+        all{
+            multiDexEnabled true
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    lint {
+        checkReleaseBuilds false
+        // Or, if you prefer, you can continue to check for errors in release builds,
+        // but continue the build even when errors are found:
+        abortOnError false
+    }
+    buildFeatures {
+        prefab true
+    }
+}
+
+dependencies {
+    implementation fileTree(dir: "libs", include: ["*.jar"])
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation "com.google.android.material:material:1.12.0"
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.navigation:navigation-fragment:2.8.5'
+    implementation 'androidx.navigation:navigation-ui:2.8.5'
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
+
+    implementation 'com.github.amitshekhariitbhu:PRDownloader:1.0.2'
+    implementation 'com.android.volley:volley:1.2.1'
+    implementation 'com.intuit.sdp:sdp-android:1.1.0'
+
+    implementation platform('com.google.firebase:firebase-bom:33.7.0')
+    implementation 'com.google.firebase:firebase-analytics'
+    implementation 'com.google.firebase:firebase-crashlytics-ndk'
+    implementation 'com.google.firebase:firebase-messaging'
+
+    implementation 'org.ini4j:ini4j:0.5.4'
+
+    implementation 'com.github.bumptech.glide:glide:4.16.0'
+
+    implementation("androidx.lifecycle:lifecycle-process:2.8.7")
+
+    implementation "com.joom.paranoid:paranoid-gradle-plugin:0.3.14"
+    implementation 'com.bytedance.android:shadowhook:1.0.10'
+}
