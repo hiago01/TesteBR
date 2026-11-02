@@ -197,6 +197,40 @@ public final class NotificationHelper {
         } catch (SecurityException ignored) { }
     }
 
+    /** Notificacao do servico em primeiro plano do download (mesmo id/canal da barra de progresso: a Activity so a atualiza). */
+    public static int downloadNotificationId() { return ID_DOWNLOAD; }
+
+    public static Notification buildDownloadForeground(Context ctx) {
+        Context app = ctx.getApplicationContext();
+        ensureChannels(app);
+        Intent open = new Intent(app, SplashActivity.class);
+        open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        return new NotificationCompat.Builder(app, CH_DOWNLOAD)
+                .setSmallIcon(R.drawable.mx_ic_stat)
+                .setColor(COLOR_ACCENT)
+                .setContentTitle(app.getString(R.string.mx_notif_download_title))
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setProgress(100, 0, true)
+                .setContentIntent(PendingIntent.getActivity(app, ID_DOWNLOAD, open,
+                        PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT))
+                .build();
+    }
+
+    /** Ao fim do servico: remove a notificacao do download se ela ainda estiver "em andamento"; mantem a de "concluido". */
+    public static void cancelDownloadIfOngoing(Context ctx) {
+        try {
+            NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm == null) return;
+            for (android.service.notification.StatusBarNotification sbn : nm.getActiveNotifications()) {
+                if (sbn.getId() == ID_DOWNLOAD && (sbn.getNotification().flags & Notification.FLAG_ONGOING_EVENT) != 0) {
+                    nm.cancel(ID_DOWNLOAD);
+                }
+            }
+        } catch (RuntimeException ignored) { }
+    }
+
     public static void cancelDownload(Context ctx) {
         NotificationManagerCompat.from(ctx.getApplicationContext()).cancel(ID_DOWNLOAD);
     }

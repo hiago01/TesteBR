@@ -2,7 +2,10 @@ package com.maximo.roleplay.launcher;
 
 import android.app.Service;
 import android.content.Intent;
+import android.app.Notification;
 import android.content.pm.PackageInfo;
+import android.content.pm.ServiceInfo;
+import android.os.Build;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Handler;
@@ -14,6 +17,8 @@ import android.os.Messenger;
 import android.os.RemoteException;
 import android.os.StatFs;
 import android.util.Log;
+
+import androidx.core.content.ContextCompat;
 
 import com.android.volley.DefaultRetryPolicy;
 import com.android.volley.RequestQueue;
@@ -39,6 +44,7 @@ import com.maximo.roleplay.launcher.pack.PackException;
 import com.maximo.roleplay.launcher.pack.PackInstaller;
 import com.maximo.roleplay.launcher.pack.PackSpec;
 import com.maximo.roleplay.launcher.pack.SampList;
+import com.maximo.roleplay.launcher.util.NotificationHelper;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -165,9 +171,66 @@ public class UpdateService extends Service {
         return mMessenger.getBinder();
     }
 
+    // ---- servico em primeiro plano (dataSync) enquanto baixa: sem isso o Android 14/15 congela/mata o processo
+    // quando o app vai para segundo plano ou a tela apaga, e o download para no meio.
+    private static final String ACTION_FG = "com.maximo.roleplay.action.DOWNLOAD_FG";
+    private static final long FG_STOP_DELAY_MS = 3000;   // debounce: as rodadas automaticas de retentativa alternam false->true
+    private final Handler mMainH = new Handler(Looper.getMainLooper());
+    private boolean mFgOn = false;                       // somente na thread principal
+    private final Runnable mStopFg = new Runnable() {
+        @Override public void run() {
+            if (!mFgOn) return;
+            mFgOn = false;
+            try { stopForeground(false); } catch (RuntimeException ignored) { }
+            NotificationHelper.cancelDownloadIfOngoing(UpdateService.this);
+            stopSelf();   // ainda ligado a uma Activity: continua vivo ate o unbind, como antes
+        }
+    };
+
+    /** Unico ponto que muda mDownloadingStatus (qualquer thread); liga/desliga o primeiro plano na thread principal. */
+    private void setDownloading(final boolean on) {
+        mDownloadingStatus = on;
+        mMainH.post(new Runnable() {
+            @Override public void run() { applyForeground(on); }
+        });
+    }
+
+    private void applyForeground(boolean on) {
+        if (on) {
+            mMainH.removeCallbacks(mStopFg);
+            if (mFgOn) return;
+            try {
+                ContextCompat.startForegroundService(this, new Intent(this, UpdateService.class).setAction(ACTION_FG));
+                mFgOn = true;
+            } catch (RuntimeException e) {     // ex.: ForegroundServiceStartNotAllowedException com o app em segundo plano
+                Log.w(TAG, "startForegroundService falhou: " + e);
+            }
+        } else if (mFgOn) {
+            mMainH.removeCallbacks(mStopFg);
+            mMainH.postDelayed(mStopFg, FG_STOP_DELAY_MS);
+        }
+    }
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null && ACTION_FG.equals(intent.getAction())) {
+            try {
+                final Notification n = NotificationHelper.buildDownloadForeground(this);
+                if (Build.VERSION.SDK_INT >= 29) startForeground(NotificationHelper.downloadNotificationId(), n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+                else startForeground(NotificationHelper.downloadNotificationId(), n);
+            } catch (RuntimeException e) {
+                Log.w(TAG, "startForeground falhou: " + e);
+                mFgOn = false;
+            }
+        }
+        return START_NOT_STICKY;
+    }
+
     @Override
     public void onDestroy() {
         // Ninguem esta mais ligado: cancela rede/downloads e encerra a thread (sem threads vazadas).
+        mMainH.removeCallbacksAndMessages(null);
+        if (mFgOn) { mFgOn = false; try { stopForeground(true); } catch (RuntimeException ignored) { } }
         mSession++;
         stopPackWorker();
         if (mQueue != null) {
@@ -245,7 +308,7 @@ public class UpdateService extends Service {
 
     /** Mensagem 6: erro recuperavel + (como no original) status Unknown (msg 5) para o Splash seguir. */
     private void reportError(String text, boolean alsoUnknownStatus) {
-        mDownloadingStatus = false;
+        setDownloading(false);
         mUpdateStatus = UpdateActivity.UpdateStatus.Undefined; // sem notificar: evita disparar msg 1 na Activity
         if (alsoUnknownStatus) {
             mGameStatus = UpdateActivity.GameStatus.Unknown;
@@ -718,7 +781,7 @@ public class UpdateService extends Service {
             file.delete();
         }
 
-        mDownloadingStatus = true;
+        setDownloading(true);
         final long[] last = { System.currentTimeMillis() };
         mDownloadId = PRDownloader.download(mUpdateGameURL, dir.getAbsolutePath(), "launcher.apk").build().setOnStartOrResumeListener(null).setOnPauseListener(null).setOnCancelListener(null).setOnProgressListener(new OnProgressListener() {
             @Override
@@ -749,7 +812,7 @@ public class UpdateService extends Service {
                     @Override
                     public void run() {
                         if (session != mSession) return;
-                        mDownloadingStatus = false;
+                        setDownloading(false);
                         mDownloadId = -1;
                         // APK novo: confere tamanho/SHA-256 do client_config ANTES de oferecer a instalacao.
                         if (!mUpdateGameSha.isEmpty() || mUpdateGameSize > 0) {
@@ -788,7 +851,7 @@ public class UpdateService extends Service {
                     @Override
                     public void run() {
                         if (session != mSession) return;
-                        mDownloadingStatus = false; // sempre volta a false
+                        setDownloading(false); // sempre volta a false
                         mDownloadId = -1;
                         Log.w("x1y2z", "error downloadgame (attempt " + attempt + ") connection=" + error.isConnectionError() + " server=" + error.isServerError());
                         if (attempt < MAX_GAME_ATTEMPTS) {
@@ -1029,7 +1092,7 @@ public class UpdateService extends Service {
                 });
             }
         };
-        mDownloadingStatus = true;
+        setDownloading(true);
         ExecutorService worker = Executors.newSingleThreadExecutor(new ThreadFactory() {
             @Override
             public Thread newThread(Runnable r) {
@@ -1057,7 +1120,7 @@ public class UpdateService extends Service {
                     @Override
                     public void run() {
                         if (session != mSession) return;
-                        mDownloadingStatus = false;
+                        setDownloading(false);
                         if (fail == null) {
                             Log.d(TAG, "pack install done");
                             mPackPendingFiles.clear();
@@ -1121,7 +1184,7 @@ public class UpdateService extends Service {
             return;
         }
 
-        mDownloadingStatus = true;
+        setDownloading(true);
         final String fileName = target.getName();
         final long[] last = { System.currentTimeMillis() };
         mDownloadId = PRDownloader.download(urlFor(rel), parent.getAbsolutePath(), fileName).build().setOnStartOrResumeListener(null).setOnPauseListener(null).setOnCancelListener(null).setOnProgressListener(new OnProgressListener() {
@@ -1154,7 +1217,7 @@ public class UpdateService extends Service {
                     @Override
                     public void run() {
                         if (session != mSession) return;
-                        mDownloadingStatus = false;
+                        setDownloading(false);
                         mDownloadId = -1;
                         // PRDownloader diz "completo" mesmo com arquivo cortado/errado: confere tamanho (e SHA-256, se a lista tiver).
                         final File done = new File(parentOf(rel), fileName);
@@ -1192,7 +1255,7 @@ public class UpdateService extends Service {
                     @Override
                     public void run() {
                         if (session != mSession) return;
-                        mDownloadingStatus = false; // sempre volta a false
+                        setDownloading(false); // sempre volta a false
                         mDownloadId = -1;
                         Log.w("x1y2z", "error downloadgamedata " + rel + " (attempt " + attempt + ") connection=" + error.isConnectionError() + " server=" + error.isServerError());
                         if (attempt < MAX_FILE_ATTEMPTS) {
@@ -1268,7 +1331,7 @@ public class UpdateService extends Service {
     private int mDlAutoRounds = 0;
 
     private void finishDataUpdating(final int session) {
-        mDownloadingStatus = false;
+        setDownloading(false);
         recordUpdated();
         if (!mDlFailed.isEmpty() && mDlAutoRounds < MAX_AUTO_ROUNDS) {
             // Tenta de novo SOZINHO os arquivos que falharam (5 s, 10 s, 15 s...), sem mostrar mensagem ao jogador.
@@ -1291,7 +1354,7 @@ public class UpdateService extends Service {
                 mDlFailed = new ArrayList<>();
                 mDlIndex = 0;
                 mDlConsecutiveFailures = 0;
-                mDownloadingStatus = true; // continua "baixando" durante a espera
+                setDownloading(true); // continua "baixando" durante a espera
                 mInHandler.postDelayed(new Runnable() {
                     @Override
                     public void run() {
@@ -1334,6 +1397,6 @@ public class UpdateService extends Service {
         } catch (RuntimeException ignored) {
         }
         mDownloadId = -1;
-        mDownloadingStatus = false;
+        setDownloading(false);
     }
 }

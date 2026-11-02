@@ -20,6 +20,8 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Android 14+: servico em primeiro plano exige o tipo; o download dos dados do jogo e "dataSync". -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Pedida em runtime apenas quando o jogo (chat de voz) e aberto; nunca no splash. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -43,7 +45,6 @@
     <uses-permission android:name="com.google.android.c2dm.permission.RECEIVE" />
 
     <application
-        android:gwpAsanMode="always"
         android:requestLegacyExternalStorage="true"
         android:banner="@mipmap/ic_launcher"
         android:hardwareAccelerated="true"
@@ -109,7 +110,8 @@
             android:theme="@style/Theme.AppCompat.Light.NoActionBar">
         </activity>
 
-        <service android:name=".launcher.UpdateService" android:enabled="true" android:exported="false"/>
+        <service android:name=".launcher.UpdateService" android:enabled="true" android:exported="false"
+            android:foregroundServiceType="dataSync"/>
 
         <service
             android:name="com.maximo.roleplay.launcher.util.FirebaseMessageReceiver"
