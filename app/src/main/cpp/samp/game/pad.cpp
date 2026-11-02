@@ -523,6 +523,36 @@ static bool AimWantedNow()
 }
 // Debounce de 120 ms na SOLTURA: um pico de "nao quer mirar" (Active piscando, dedo tremendo) nao derruba a mira, e
 // apertar de novo cancela na hora qualquer "sair" pendente. Era isso que fazia a mira "ameacar sumir e voltar".
+// O patch patches.cpp (NOP em CPlayerPed::ClearWeaponTarget+0x30) tira a chamada de CCamera::ClearPlayerWeaponMode, entao nada
+// limpava o modo de arma da camera/ped depois da mira. Ao soltar o Ataque chamamos a funcao real UMA vez (zera o modo da
+// camera e, se o ped esta em PEDSTATE 0xC/mirando, volta para o estado normal) - assim o ped baixa a arma.
+// Replica o que o CPad::GetExitTargeting NATIVO faz quando devolve "sair" (libGTASA 0x4deab4..0x4dead4):
+//   CPlayerPed::ClearWeaponTarget(ped);  ped->[+0x540]->(uint16 @+0x48) &= 0xFFF7;   (bit 3 = flag de mira lida por CCamera::IsTargetingActive)
+// Como o hook devolvia true sem passar pelo original, a flag nunca era apagada e o ped ficava na pose de mira.
+static void ClearLocalAimMode()
+{
+    static void (*fnCam)(void*) = nullptr; static void* cam = nullptr;
+    static void (*fnClr)(void*) = nullptr; static bool tried = false;
+    if (!tried)
+    {
+        tried = true;
+        fnCam = (void(*)(void*))dlsym(CHook::lib, "_ZN7CCamera21ClearPlayerWeaponModeEv");
+        cam   = dlsym(CHook::lib, "TheCamera");
+        fnClr = (void(*)(void*))dlsym(CHook::lib, "_ZN10CPlayerPed17ClearWeaponTargetEv");
+        FLog("[CONTROLES] sair da mira: ClearPlayerWeaponMode %s, TheCamera %s, ClearWeaponTarget %s",
+             fnCam ? "ok" : "NAO achado", cam ? "ok" : "NAO achado", fnClr ? "ok" : "NAO achado");
+    }
+    CPedGTA* ped = GamePool_FindPlayerPed();
+    if (ped && fnClr)
+    {
+        fnClr((void*)ped);
+        uintptr_t task = *(uintptr_t*)((uintptr_t)ped + 0x540);
+        if (task) *(uint16_t*)(task + 0x48) &= 0xFFF7;
+    }
+    if (fnCam && cam) fnCam(cam);
+    FLog("[CONTROLES] mira: soltou o Ataque -> ClearWeaponTarget + flag de mira apagada + ClearPlayerWeaponMode");
+}
+
 static bool AimStateTick()
 {
     static int64_t s_lastWanted = 0;
@@ -533,8 +563,17 @@ static bool AimStateTick()
     {
         if (now - s_lastWanted < 120) return true;                    // ainda dentro do debounce: segue mirando
         g_aimForced = false; g_exitUntilMs = now + 250;               // soltou de verdade: sair da mira
+        ClearLocalAimMode();
     }
     return false;
+}
+
+// Chamado TODO frame na thread do jogo (CTouchInterface::Update): garante que a saida da mira roda mesmo que o motor
+// nao consulte mais nenhum dos pad-hooks depois que a mira ja esta ligada.
+void PadAimFrameTick()
+{
+    if (!ModernInput::Active() && !g_aimForced) return;
+    AimStateTick();
 }
 
 bool (*CPad__GetEnterTargeting)(uintptr_t thiz);

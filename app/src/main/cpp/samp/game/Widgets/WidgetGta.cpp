@@ -187,9 +187,11 @@ void CWidgetButton__Update_hook(CWidgetButton* thiz) {
 // Depois do Update nativo do HUD de toque, forca desligados os botoes que nao pertencem ao estado atual do jogador LOCAL
 // (cobre widgets que o jogo nao religa/desliga por SetEnabled a cada quadro e subclasses com Update proprio, como a buzina).
 void (*CTouchInterface__Update)();
+void PadAimFrameTick();   // game/pad.cpp
 void CTouchInterface__Update_hook()
 {
     CTouchInterface__Update();
+    if(pNetGame && pGame) PadAimFrameTick();
     if(!pNetGame || !pGame || !CTouchInterface::m_pWidgets) return;
     CPlayerPed *pPlayerPed = pGame->FindPlayerPed();
     if(!pPlayerPed) return;
