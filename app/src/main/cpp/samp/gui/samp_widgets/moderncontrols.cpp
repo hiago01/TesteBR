@@ -239,6 +239,8 @@ bool ModernControls::onRawTouch(int type, int num, int x, int y)
 	}
 
 	if (g_bTouchCancel) { ReleaseAllLocked(); return false; }
+	// Freada: botoes e joystick escondidos NAO aceitam toque novo. Dedos ja presos continuam (move/soltar) para nada ficar preso.
+	if (type == 2 && g_brake.load()) return false;
 	const int atkBefore = g_ctl.BtnFinger(B_ATTACK);
 	const bool mine = g_ctl.OnTouch(type, num, fx, fy);
 	Publish();
@@ -314,14 +316,14 @@ void ModernControls::draw(ImGuiRenderer* r)
 	const ModernConfig& c = snap.cfg;
 	const ModernLayout& L = snap.lay;
 	auto alphaOf = [&](int idx) { return (int)std::lround(255.0f * c.ctlAlpha[idx]); };
-	// fade dos botoes durante a freada (so o desenho; os toques continuam valendo). Descida ~120 ms, volta ~150 ms.
+	// fade dos botoes durante a freada (o toque tambem fica desativado, ver onRawTouch). Descida ~120 ms, volta ~150 ms.
 	static float s_fm = 1.0f; static int64_t s_fmMs = 0;
 	{
 		const int64_t nowMs = NowMs();
 		float dt = s_fmMs ? (float)(nowMs - s_fmMs) / 1000.0f : 0.0f;
 		s_fmMs = nowMs;
 		dt = std::clamp(dt, 0.0f, 0.1f);
-		const bool hide = c.fadeBrake && !editing && g_brake.load();
+		const bool hide = !editing && g_brake.load();
 		s_fm = hide ? std::max(0.0f, s_fm - dt / 0.12f) : std::min(1.0f, s_fm + dt / 0.15f);
 		if (editing) s_fm = 1.0f;
 	}
