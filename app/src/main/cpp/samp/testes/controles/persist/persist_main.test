@@ -48,6 +48,47 @@ int main()
 	ControlMode::Set(CtlLogic::Mode::Modern);
 	{ FILE* f = fopen(STORAGE "SAMP/settings.ini", "r"); char b[8192]; size_t n = fread(b, 1, sizeof b - 1, f); b[n] = 0; fclose(f);
 	  CHECK(strstr(b, "[maximo]") && (strstr(b, "skidmarks = 0") || strstr(b, "skidmarks=0")) && strstr(b, "[controles_Hiago_Teste]") && strstr(b, "modo = moderno")); }
+	// 8) HUD 1..4: independentes, ativo e escala/opacidade por controle persistem
+	{
+		using namespace CtlLogic;
+		HudLayout h[kHudCount]; int cur = 0; ControlMode::GetHuds(h, cur); CHECK(cur == 0);
+		h[0].btnPos[B_ATTACK] = { 0.55f, 0.45f }; h[0].ctlScale[B_ATTACK] = 1.4f; h[0].ctlAlpha[B_ATTACK] = 0.8f;
+		h[2].btnPos[B_JUMP] = { 0.25f, 0.35f }; h[2].ctlScale[B_COUNT] = 0.7f; h[2].ctlAlpha[B_COUNT] = 0.3f;
+		ModernConfig cfg = ControlMode::GetConfig(); cfg.sens = 1.5f;
+		ControlMode::CommitHuds(h, 2, cfg);                                   // ativa o HUD 3
+		CHECK(ControlMode::ActiveHud() == 2);
+		CHECK(std::fabs(ControlMode::GetConfig().btnPos[B_JUMP].x - 0.25f) < 1e-4 && std::fabs(ControlMode::GetConfig().ctlScale[B_COUNT] - 0.7f) < 1e-4);
+		// reabre o jogo (relê do INI): tudo igual
+		strcpy(s.m.szNickName, "Outro"); ControlMode::EnsureLoaded();
+		CHECK(ControlMode::ActiveHud() == 0 && ControlMode::GetConfig().ctlScale[B_ATTACK] == 1.0f);     // outro jogador: padroes
+		strcpy(s.m.szNickName, "Hiago_Teste"); ControlMode::EnsureLoaded();
+		CHECK(ControlMode::ActiveHud() == 2);
+		HudLayout g[kHudCount]; ControlMode::GetHuds(g, cur);
+		CHECK(std::fabs(g[0].btnPos[B_ATTACK].x - 0.55f) < 1e-4 && std::fabs(g[0].ctlScale[B_ATTACK] - 1.4f) < 1e-4 && std::fabs(g[0].ctlAlpha[B_ATTACK] - 0.8f) < 1e-4);
+		CHECK(std::fabs(g[2].btnPos[B_JUMP].y - 0.35f) < 1e-4 && std::fabs(g[2].ctlAlpha[B_COUNT] - 0.3f) < 1e-4);
+		CHECK(g[1].btnPos[B_ATTACK].x == ModernConfig().btnPos[B_ATTACK].x && g[1].ctlScale[B_ATTACK] == 1.0f);   // HUD 2 nunca tocado
+		CHECK(std::fabs(ControlMode::GetConfig().sens - 1.5f) < 1e-4);
+		// troca de HUD fora do editor grava e nao mexe nos outros
+		ControlMode::SetActiveHud(0); CHECK(ControlMode::ActiveHud() == 0 && std::fabs(ControlMode::GetConfig().btnPos[B_ATTACK].x - 0.55f) < 1e-4);
+		ControlMode::EnsureLoaded(); strcpy(s.m.szNickName, "Outro"); ControlMode::EnsureLoaded(); strcpy(s.m.szNickName, "Hiago_Teste"); ControlMode::EnsureLoaded();
+		CHECK(ControlMode::ActiveHud() == 0);
+		// restaurar (menu) volta os 4 ao padrao
+		ControlMode::ResetConfig(); ControlMode::GetHuds(g, cur);
+		CHECK(cur == 0 && g[0].ctlScale[B_ATTACK] == 1.0f && g[2].btnPos[B_JUMP].x == ModernConfig().btnPos[B_JUMP].x);
+	}
+	// 9) migracao: INI antigo (sem hud1_*) vira HUD 1 sem perder posicoes/transparencia
+	{
+		using namespace CtlLogic;
+		strcpy(s.m.szNickName, "Antigo");
+		{ FILE* f = fopen(STORAGE "SAMP/settings.ini", "a"); fputs("\n[controles_Antigo]\nmodo = moderno\nescolhido = 1\ntransparencia = 0.7\nb_ataque_x = 0.61\nb_ataque_y = 0.52\njoy_x = 0.2\njoy_y = 0.6\n", f); fclose(f); }
+		ControlMode::EnsureLoaded();
+		ModernConfig c2 = ControlMode::GetConfig();
+		CHECK(ControlMode::ActiveHud() == 0 && ControlMode::IsModern());
+		CHECK(std::fabs(c2.btnPos[B_ATTACK].x - 0.61f) < 1e-4 && std::fabs(c2.btnPos[B_ATTACK].y - 0.52f) < 1e-4 && std::fabs(c2.joyPos.x - 0.2f) < 1e-4);
+		CHECK(std::fabs(c2.ctlAlpha[B_ATTACK] - 0.7f) < 1e-4 && std::fabs(c2.ctlAlpha[B_COUNT] - 0.7f) < 1e-4);
+		HudLayout g[kHudCount]; int cur; ControlMode::GetHuds(g, cur);
+		CHECK(g[1].btnPos[B_ATTACK].x == ModernConfig().btnPos[B_ATTACK].x);                      // HUD 2..4 padrao
+	}
 	printf("%d/%d verificacoes OK\n", total - fails, total);
 	return fails ? 1 : 0;
 }

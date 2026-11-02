@@ -54,6 +54,8 @@ namespace CtlLogic
 
 	struct CtlVec { float x, y; };
 	struct CtlCircle { float cx, cy, r; };
+	struct CtlRect { float l, t, r, b; };
+	inline bool CtlIn(const CtlRect& R, float x, float y) { return x >= R.l && x <= R.r && y >= R.t && y <= R.b; }
 
 	inline float Clampf(float v, float lo, float hi) { return !(v >= lo) ? lo : (v > hi ? hi : v); }
 
@@ -79,6 +81,11 @@ namespace CtlLogic
 			{ 0.66f, 0.80f },   // corrida lock (liga/desliga: corre reto sozinho)
 		};
 
+		// Por controle (0..B_COUNT-1 = botoes, B_COUNT = joystick): multiplicador de tamanho e opacidade propria.
+		float ctlScale[B_COUNT + 1];       // 0.5 .. 2.0 (x joy_escala / botoes_escala)
+		float ctlAlpha[B_COUNT + 1];       // 0.15 .. 1.0 (opacidade absoluta do controle)
+		ModernConfig() { for (int i = 0; i <= B_COUNT; i++) { ctlScale[i] = 1.0f; ctlAlpha[i] = 0.55f; } }
+
 		void Clamp()
 		{
 			auto fin = [](float v, float d) { return std::isfinite(v) ? v : d; };
@@ -90,11 +97,40 @@ namespace CtlLogic
 			maxDist  = Clampf(fin(maxDist, 1.0f),  0.6f, 1.6f);
 			aimSens  = Clampf(fin(aimSens, 1.0f),  0.3f, 3.0f);
 			aimSmooth = Clampf(fin(aimSmooth, 0.0f), 0.0f, 0.85f);
+			for (int i = 0; i <= B_COUNT; i++) { ctlScale[i] = Clampf(fin(ctlScale[i], 1.0f), 0.5f, 2.0f); ctlAlpha[i] = Clampf(fin(ctlAlpha[i], 0.55f), 0.15f, 1.0f); }
 			joyPos.x = Clampf(fin(joyPos.x, 0.13f), 0.05f, 0.95f);
 			joyPos.y = Clampf(fin(joyPos.y, 0.72f), 0.10f, 0.95f);
 			for (auto& p : btnPos) { p.x = Clampf(fin(p.x, 0.5f), 0.03f, 0.97f); p.y = Clampf(fin(p.y, 0.5f), 0.05f, 0.97f); }
 		}
 	};
+
+	// ---------------------------------------------------------------- HUD 1..4 ---------
+	// Cada HUD guarda SO o que e "do layout": posicoes, tamanho e opacidade de cada controle. Os ajustes globais
+	// (sensibilidade, zona morta, mira...) ficam no ModernConfig e valem para os 4.
+	constexpr int kHudCount = 4;
+	struct HudLayout
+	{
+		CtlVec joyPos{ 0.13f, 0.72f };
+		CtlVec btnPos[B_COUNT];
+		float  ctlScale[B_COUNT + 1];
+		float  ctlAlpha[B_COUNT + 1];
+		HudLayout() { const ModernConfig d; joyPos = d.joyPos; for (int i = 0; i < B_COUNT; i++) btnPos[i] = d.btnPos[i]; for (int i = 0; i <= B_COUNT; i++) { ctlScale[i] = d.ctlScale[i]; ctlAlpha[i] = d.ctlAlpha[i]; } }
+	};
+	inline HudLayout ExtractLayout(const ModernConfig& c)
+	{
+		HudLayout h; h.joyPos = c.joyPos;
+		for (int i = 0; i < B_COUNT; i++) h.btnPos[i] = c.btnPos[i];
+		for (int i = 0; i <= B_COUNT; i++) { h.ctlScale[i] = c.ctlScale[i]; h.ctlAlpha[i] = c.ctlAlpha[i]; }
+		return h;
+	}
+	inline void ApplyLayout(ModernConfig& c, const HudLayout& h)
+	{
+		c.joyPos = h.joyPos;
+		for (int i = 0; i < B_COUNT; i++) c.btnPos[i] = h.btnPos[i];
+		for (int i = 0; i <= B_COUNT; i++) { c.ctlScale[i] = h.ctlScale[i]; c.ctlAlpha[i] = h.ctlAlpha[i]; }
+		c.Clamp();
+	}
+	inline int ClampHud(int n) { return n < 0 ? 0 : (n >= kHudCount ? kHudCount - 1 : n); }
 
 	// ---------------------------------------------------------------- layout ---------
 	struct ModernLayout
@@ -109,14 +145,14 @@ namespace CtlLogic
 	inline ModernLayout MakeLayout(const ModernConfig& c, float sw, float sh)
 	{
 		ModernLayout L;
-		const float baseR = sh * 0.15f * c.joyScale;
+		const float baseR = sh * 0.15f * c.joyScale * c.ctlScale[B_COUNT];
 		L.base      = CtlCircle{ c.joyPos.x * sw, c.joyPos.y * sh, baseR };
 		L.knobR     = baseR * 0.42f;
 		L.maxDistPx = baseR * c.maxDist;
 		L.zoneR     = baseR * 1.55f;
 		const float rb = sh * 0.058f * c.btnScale;
 		for (int i = 0; i < B_COUNT; i++)
-			L.btn[i] = CtlCircle{ c.btnPos[i].x * sw, c.btnPos[i].y * sh, rb * (i == B_ATTACK ? 1.45f : 1.0f) };
+			L.btn[i] = CtlCircle{ c.btnPos[i].x * sw, c.btnPos[i].y * sh, rb * c.ctlScale[i] * (i == B_ATTACK ? 1.45f : 1.0f) };
 		return L;
 	}
 
@@ -146,6 +182,63 @@ namespace CtlLogic
 	// para cima = negativo (frente) - convencao do GTA SA, NAO verificada no aparelho.
 	inline int ToPad(float v) { return (int)std::lround(Clampf(v, -1.0f, 1.0f) * 127.0f); }
 
+	// ---------------------------------------------------------------- painel do editor ----
+	// Painel do editor de HUD (topo, centralizado): seletor HUD 1..4, Tamanho e Opacidade do controle selecionado
+	// (setas -/+ e barra) e CANCELAR / PADRAO / OK. Tudo em fracao da tela (retrato/paisagem).
+	enum PanelItem : int { PI_NONE = 0, PI_HUDPREV, PI_HUDNEXT, PI_OK, PI_CANCEL, PI_RESET,
+	                       PI_SIZE_M, PI_SIZE_P, PI_SIZE_TRK, PI_OPA_M, PI_OPA_P, PI_OPA_TRK };
+	struct EditPanel
+	{
+		CtlRect box, hudPrev, hudNext, hudLbl, ok, cancel, reset;
+		CtlRect sizeM, sizeP, sizeTrk, opaM, opaP, opaTrk;
+		float   labelX = 0;          // x do texto "Tamanho"/"Opacidade"
+		float   rowSize[2]{}, rowOpa[2]{};   // y (topo/base) das duas linhas de slider
+	};
+	constexpr float kScaleMin = 0.5f, kScaleMax = 2.0f, kAlphaMin = 0.15f, kAlphaMax = 1.0f, kPanelStep = 0.05f;
+	inline EditPanel MakeEditPanel(float sw, float sh)
+	{
+		EditPanel p;
+		const float w = std::min(sw * 0.54f, sh * 1.3f), H = sh * 0.36f;
+		const float l = (sw - w) * 0.5f, t = sh * 0.02f, pad = w * 0.03f, r = l + w;
+		p.box = CtlRect{ l, t, r, t + H };
+		const float rh = H * 0.2f, g = H * 0.04f, y1 = t + H * 0.05f, y2 = y1 + rh + g, y3 = y2 + rh + g, y4 = y3 + rh + g;
+		const float sq = rh * 1.3f;
+		p.hudPrev = CtlRect{ l + pad, y1, l + pad + sq, y1 + rh };
+		p.hudNext = CtlRect{ r - pad - sq, y1, r - pad, y1 + rh };
+		p.hudLbl  = CtlRect{ p.hudPrev.r + g, y1, p.hudNext.l - g, y1 + rh };
+		p.labelX = l + pad;
+		const float lblW = w * 0.2f;
+		p.sizeM = CtlRect{ l + pad + lblW, y2, l + pad + lblW + sq, y2 + rh };
+		p.sizeP = CtlRect{ r - pad - sq, y2, r - pad, y2 + rh };
+		p.sizeTrk = CtlRect{ p.sizeM.r + g, y2, p.sizeP.l - g, y2 + rh };
+		p.opaM = CtlRect{ p.sizeM.l, y3, p.sizeM.r, y3 + rh };
+		p.opaP = CtlRect{ p.sizeP.l, y3, p.sizeP.r, y3 + rh };
+		p.opaTrk = CtlRect{ p.opaM.r + g, y3, p.opaP.l - g, y3 + rh };
+		p.rowSize[0] = y2; p.rowSize[1] = y2 + rh; p.rowOpa[0] = y3; p.rowOpa[1] = y3 + rh;
+		const float g2 = pad * 0.6f, bw = (w - 2 * pad - 2 * g2) / 3.0f;
+		p.cancel = CtlRect{ l + pad, y4, l + pad + bw, y4 + rh };
+		p.reset  = CtlRect{ p.cancel.r + g2, y4, p.cancel.r + g2 + bw, y4 + rh };
+		p.ok     = CtlRect{ p.reset.r + g2, y4, p.reset.r + g2 + bw, y4 + rh };
+		return p;
+	}
+	inline int PanelHit(const EditPanel& P, float x, float y)
+	{
+		if (CtlIn(P.hudPrev, x, y)) return PI_HUDPREV;
+		if (CtlIn(P.hudNext, x, y)) return PI_HUDNEXT;
+		if (CtlIn(P.ok, x, y)) return PI_OK;
+		if (CtlIn(P.cancel, x, y)) return PI_CANCEL;
+		if (CtlIn(P.reset, x, y)) return PI_RESET;
+		if (CtlIn(P.sizeM, x, y)) return PI_SIZE_M;
+		if (CtlIn(P.sizeP, x, y)) return PI_SIZE_P;
+		if (CtlIn(P.sizeTrk, x, y)) return PI_SIZE_TRK;
+		if (CtlIn(P.opaM, x, y)) return PI_OPA_M;
+		if (CtlIn(P.opaP, x, y)) return PI_OPA_P;
+		if (CtlIn(P.opaTrk, x, y)) return PI_OPA_TRK;
+		return PI_NONE;
+	}
+	inline float ScaleToT(float v) { return Clampf((v - kScaleMin) / (kScaleMax - kScaleMin), 0.0f, 1.0f); }
+	inline float AlphaToT(float v) { return Clampf((v - kAlphaMin) / (kAlphaMax - kAlphaMin), 0.0f, 1.0f); }
+
 	// ---------------------------------------------------------------- controlador ----
 	struct Output
 	{
@@ -164,7 +257,33 @@ namespace CtlLogic
 		bool editing = false;
 		uint32_t disabledMask = 0;      // bit i = botao i ausente (ex.: microfone com voz desligada): nao desenha nem recebe toque
 
+		// ---- editor de HUD (so com editing=true) ----
+		int sel = B_ATTACK;             // controle selecionado: 0..B_COUNT-1 botao, B_COUNT joystick, -1 nenhum
+		int hud = 0;                    // HUD em edicao (0..3)
+		int editAction = 0;             // 1 = OK, 2 = CANCELAR (lido e zerado pelo widget)
+		HudLayout hudStore[kHudCount];  // copia de trabalho dos 4 HUDs durante a edicao
+
 		ModernController() { Reset(); }
+
+		void BeginEdit(const HudLayout* h, int cur)
+		{
+			for (int i = 0; i < kHudCount; i++) hudStore[i] = h[i];
+			hud = ClampHud(cur); sel = B_ATTACK; editAction = 0;
+			ApplyLayout(cfg, hudStore[hud]); lay = MakeLayout(cfg, sw, sh);
+			dragFinger = -1; dragWhat = -1; panelFinger = -1; panelWhat = 0;
+		}
+		void StoreHud() { hudStore[hud] = ExtractLayout(cfg); }
+		void SwitchHud(int n)
+		{
+			n = ClampHud(n); if (n == hud) return;
+			StoreHud(); hud = n; ApplyLayout(cfg, hudStore[hud]); lay = MakeLayout(cfg, sw, sh);
+		}
+		void ResetHud() { ApplyLayout(cfg, HudLayout()); lay = MakeLayout(cfg, sw, sh); }    // so o HUD atual
+		bool  HasSel() const { return sel >= 0 && sel <= B_COUNT; }
+		float SelScale() const { return HasSel() ? cfg.ctlScale[sel] : 1.0f; }
+		float SelAlpha() const { return HasSel() ? cfg.ctlAlpha[sel] : cfg.alpha; }
+		void  SetSelScale(float v) { if (!HasSel()) return; cfg.ctlScale[sel] = Clampf(v, kScaleMin, kScaleMax); lay = MakeLayout(cfg, sw, sh); }
+		void  SetSelAlpha(float v) { if (!HasSel()) return; cfg.ctlAlpha[sel] = Clampf(v, kAlphaMin, kAlphaMax); }
 
 		void Reset()
 		{
@@ -273,28 +392,87 @@ namespace CtlLogic
 			return false;
 		}
 
-		// ---- edicao de posicoes: arrastar o controle; nada de gameplay ----
+		// ---- editor de HUD: selecionar/arrastar o controle, painel (HUD, tamanho, opacidade, OK/CANCELAR/PADRAO); nada de gameplay ----
+		int   panelFinger = -1, panelWhat = 0;
+		float grabDx = 0, grabDy = 0;
+
+		void PanelPush(const EditPanel& P, int what, float x)
+		{
+			switch (what)
+			{
+				case PI_HUDPREV: SwitchHud(hud - 1 < 0 ? kHudCount - 1 : hud - 1); break;
+				case PI_HUDNEXT: SwitchHud(hud + 1 >= kHudCount ? 0 : hud + 1); break;
+				case PI_SIZE_M: SetSelScale(SelScale() - kPanelStep * (kScaleMax - kScaleMin)); break;
+				case PI_SIZE_P: SetSelScale(SelScale() + kPanelStep * (kScaleMax - kScaleMin)); break;
+				case PI_OPA_M:  SetSelAlpha(SelAlpha() - kPanelStep); break;
+				case PI_OPA_P:  SetSelAlpha(SelAlpha() + kPanelStep); break;
+				default: PanelMove(P, what, x); break;
+			}
+		}
+		void PanelMove(const EditPanel& P, int what, float x)
+		{
+			if (what == PI_SIZE_TRK)
+			{
+				const float t = Clampf((x - P.sizeTrk.l) / std::max(P.sizeTrk.r - P.sizeTrk.l, 1.0f), 0.0f, 1.0f);
+				SetSelScale(kScaleMin + t * (kScaleMax - kScaleMin));
+			}
+			else if (what == PI_OPA_TRK)
+			{
+				const float t = Clampf((x - P.opaTrk.l) / std::max(P.opaTrk.r - P.opaTrk.l, 1.0f), 0.0f, 1.0f);
+				SetSelAlpha(kAlphaMin + t * (kAlphaMax - kAlphaMin));
+			}
+		}
+		void PanelPop(const EditPanel& P, int what, float x, float y)
+		{
+			if (what == PI_OK && CtlIn(P.ok, x, y)) editAction = 1;
+			else if (what == PI_CANCEL && CtlIn(P.cancel, x, y)) editAction = 2;
+			else if (what == PI_RESET && CtlIn(P.reset, x, y)) ResetHud();
+		}
+
 		bool OnEditTouch(int type, int num, float x, float y)
 		{
+			const EditPanel P = MakeEditPanel(sw, sh);
 			if (type == 2)
 			{
-				if (dragFinger >= 0) return true;
+				if (dragFinger >= 0 || panelFinger >= 0) return true;        // um dedo por vez no editor (os outros so sao consumidos)
+				if (CtlIn(P.box, x, y))                                       // painel: nunca "vaza" para o controle de tras
+				{
+					panelFinger = num; panelWhat = PanelHit(P, x, y);
+					PanelPush(P, panelWhat, x);
+					return true;
+				}
 				int best = -1; float bestD = 1e30f;
 				for (int i = 0; i < B_COUNT; i++)
 				{
-					if (!Hit(lay.btn[i], x, y)) continue;
+					if ((disabledMask & (1u << i)) || !Hit(lay.btn[i], x, y)) continue;
 					const float dx = x - lay.btn[i].cx, dy = y - lay.btn[i].cy, d = dx * dx + dy * dy;
 					if (d < bestD) { bestD = d; best = i; }
 				}
-				if (best >= 0) { dragFinger = num; dragWhat = best; return true; }
+				if (best >= 0)
+				{
+					dragFinger = num; dragWhat = best; sel = best;
+					grabDx = lay.btn[best].cx - x; grabDy = lay.btn[best].cy - y;
+					return true;
+				}
 				const float dx = x - lay.base.cx, dy = y - lay.base.cy;
-				if (dx * dx + dy * dy <= lay.zoneR * lay.zoneR) { dragFinger = num; dragWhat = -2; return true; }
+				if (dx * dx + dy * dy <= lay.zoneR * lay.zoneR)
+				{
+					dragFinger = num; dragWhat = -2; sel = B_COUNT;
+					grabDx = lay.base.cx - x; grabDy = lay.base.cy - y;
+					return true;
+				}
 				return false;
+			}
+			if (panelFinger == num)
+			{
+				if (type == 3) PanelMove(P, panelWhat, x);
+				else if (type == 1) { PanelPop(P, panelWhat, x, y); panelFinger = -1; panelWhat = 0; }
+				return true;
 			}
 			if (dragFinger != num) return false;
 			if (type == 3)
 			{
-				const float fx = Clampf(x / sw, 0.0f, 1.0f), fy = Clampf(y / sh, 0.0f, 1.0f);
+				const float fx = Clampf((x + grabDx) / sw, 0.0f, 1.0f), fy = Clampf((y + grabDy) / sh, 0.0f, 1.0f);
 				if (dragWhat == -2) { cfg.joyPos = CtlVec{ fx, fy }; }
 				else if (dragWhat >= 0) { cfg.btnPos[dragWhat] = CtlVec{ fx, fy }; }
 				cfg.Clamp(); lay = MakeLayout(cfg, sw, sh);
@@ -372,8 +550,6 @@ namespace CtlLogic
 	};
 
 	// ---------------------------------------------------------------- seletor ---------
-	struct CtlRect { float l, t, r, b; };
-	inline bool CtlIn(const CtlRect& R, float x, float y) { return x >= R.l && x <= R.r && y >= R.t && y <= R.b; }
 
 	struct SelectorLayout
 	{

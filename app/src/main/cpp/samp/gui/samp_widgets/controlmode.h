@@ -23,6 +23,11 @@ namespace ControlMode
 	void                    ResetConfig();                // so o moderno; o classico nao e tocado
 	uint32_t                ConfigVersion();              // muda a cada SetConfig (o widget recalcula o layout)
 	void                    Save();
+	// HUD 1..4 (cada um guarda posicao, tamanho e opacidade de cada controle)
+	int                     ActiveHud();                  // 0..3
+	void                    GetHuds(CtlLogic::HudLayout* out, int& cur);          // out[kHudCount]
+	void                    CommitHuds(const CtlLogic::HudLayout* in, int cur, const CtlLogic::ModernConfig& cfg);   // grava tudo
+	void                    SetActiveHud(int n);          // troca e grava
 }
 
 // Lido pelos hooks de CPad (game/pad.cpp, thread do jogo). So tem efeito com o modo moderno ativo a pe.

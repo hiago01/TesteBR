@@ -484,6 +484,7 @@ namespace
 		CtlLogic::ModernConfig c = ControlMode::GetConfig();
 		float* p = McPtr(c, id);
 		if (p) *p = f.lo + (f.hi - f.lo) * (float)std::clamp(pct, 0, 100) / 100.0f;
+		if (id == ID_MC_ALPHA) for (int i = 0; i <= CtlLogic::B_COUNT; i++) c.ctlAlpha[i] = c.alpha;   // a transparencia geral vale para todos os controles do HUD ativo
 		ControlMode::SetConfig(c, false);     // grava ao soltar o slider (g_dirty -> SaveCfg), sem I/O a cada quadro
 	}
 

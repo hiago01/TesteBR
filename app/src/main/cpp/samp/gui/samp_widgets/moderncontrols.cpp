@@ -10,6 +10,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <mutex>
 #include <vector>
 
@@ -36,7 +37,6 @@ namespace
 	std::atomic<bool>     g_runLock{ false };   // CORRIDA LOCK ligada: o personagem corre reto sem segurar o joystick
 	std::atomic<uint32_t> g_edges{ 0 };
 	std::atomic<int64_t>  g_jumpMs{ -1000000 };
-	int                   g_okFinger = -1;
 	CtlLogic::AimDrag     g_aim;
 	int                   g_aimFinger = -1;
 	std::vector<ModernControls::AimTouch> g_aimQ;
@@ -83,18 +83,6 @@ namespace
 		return true;
 	}
 
-	CtlRect OkRect(float sw, float sh)
-	{
-		const float w = sh * 0.34f, h = sh * 0.11f, cx = sw * 0.5f, t = sh * 0.04f;
-		return CtlRect{ cx - w * 0.5f, t, cx + w * 0.5f, t + h };
-	}
-	CtlRect ResetRect(float sw, float sh)
-	{
-		const CtlRect o = OkRect(sw, sh);
-		const float w = o.r - o.l, gap = sh * 0.02f;
-		return CtlRect{ o.l - gap - w, o.t, o.l - gap, o.b };
-	}
-
 	void Publish()   // chamar com g_mu travado, depois de mudar o controlador
 	{
 		const Output o = g_ctl.Read(true);
@@ -126,7 +114,6 @@ namespace
 		Publish();
 		g_edges.store(0);
 		g_lr.store(0); g_ud.store(0); g_held.store(0);
-		g_okFinger = -1;
 	}
 
 	bool ConsumeEdge(int b) { const uint32_t bit = 1u << b; return (g_edges.fetch_and(~bit) & bit) != 0; }
@@ -163,7 +150,20 @@ int ModernControls::DrainAimTouches(AimTouch* out, int max)
 // ----------------------------------------------------------------------------- widget
 ModernControls::ModernControls() : Widget() {}
 
-void ModernControls::StartEdit() { if (ControlMode::IsModern()) g_editing.store(true); }
+void ModernControls::StartEdit()
+{
+	if (!ControlMode::IsModern()) return;
+	HudLayout huds[kHudCount]; int cur = 0;
+	ControlMode::GetHuds(huds, cur);
+	{
+		std::lock_guard<std::mutex> l(g_mu);
+		g_ctl.ApplyConfig(ControlMode::GetConfig());
+		g_seenVer = ControlMode::ConfigVersion();
+		g_ctl.SetScreen(g_sw > 1.0f ? g_sw : 1920.0f, g_sh > 1.0f ? g_sh : 1080.0f);
+		g_ctl.BeginEdit(huds, cur);          // copia de trabalho dos 4 HUDs; so vale ao apertar OK
+	}
+	g_editing.store(true);
+}
 bool ModernControls::IsEditing() { return g_editing.load(); }
 
 bool ModernControls::onRawTouch(int type, int num, int x, int y)
@@ -176,20 +176,23 @@ bool ModernControls::onRawTouch(int type, int num, int x, int y)
 
 	if (editing)
 	{
-		const CtlRect ok = OkRect(g_sw, g_sh), rs = ResetRect(g_sw, g_sh);
-		if (type == 2 && g_okFinger < 0 && (CtlIn(ok, fx, fy) || CtlIn(rs, fx, fy))) { g_okFinger = num; return true; }
-		if (g_okFinger == num)
+		// Em edicao NENHUM toque vai para o jogo: o controlador so move/seleciona/ajusta; OK e CANCELAR chegam por editAction.
+		const bool mine = g_ctl.OnTouch(type, num, fx, fy);
+		(void)mine;
+		if (g_ctl.editAction == 1)
 		{
-			if (type == 1)
-			{
-				g_okFinger = -1;
-				if (CtlIn(ok, fx, fy)) { ControlMode::SetConfig(g_ctl.cfg, true); g_editing.store(false); g_ctl.editing = false; }
-				else if (CtlIn(rs, fx, fy)) { ControlMode::ResetConfig(); g_ctl.ApplyConfig(ControlMode::GetConfig()); g_seenVer = ControlMode::ConfigVersion(); }
-			}
-			return true;
+			g_ctl.StoreHud();
+			HudLayout h[kHudCount]; for (int i = 0; i < kHudCount; i++) h[i] = g_ctl.hudStore[i];
+			ControlMode::CommitHuds(h, g_ctl.hud, g_ctl.cfg);          // grava no settings.ini
+			g_ctl.ApplyConfig(ControlMode::GetConfig()); g_seenVer = ControlMode::ConfigVersion();
+			g_ctl.editAction = 0; g_ctl.editing = false; g_editing.store(false);
 		}
-		g_ctl.OnTouch(type, num, fx, fy);
-		return true;                  // em edicao nenhum toque vai para o jogo
+		else if (g_ctl.editAction == 2)
+		{
+			g_ctl.ApplyConfig(ControlMode::GetConfig()); g_seenVer = ControlMode::ConfigVersion();   // descarta o rascunho
+			g_ctl.editAction = 0; g_ctl.editing = false; g_editing.store(false);
+		}
+		return true;
 	}
 
 	if (g_bTouchCancel) { ReleaseAllLocked(); return false; }
@@ -248,7 +251,17 @@ void ModernControls::draw(ImGuiRenderer* r)
 		if (!editing && g_editing.load() == false) g_ctl.editing = false;
 	}
 	g_active.store(show && !editing);
-	if (!show) { if (editing && !modernNow) g_editing.store(false); return; }
+	if (!show)
+	{
+		if (editing && !modernNow)      // o editor foi interrompido (saiu do moderno/morreu...): descarta o rascunho
+		{
+			std::lock_guard<std::mutex> l(g_mu);
+			g_ctl.ApplyConfig(ControlMode::GetConfig()); g_seenVer = ControlMode::ConfigVersion();
+			g_ctl.editing = false; g_ctl.editAction = 0;
+			g_editing.store(false);
+		}
+		return;
+	}
 
 	ModernController snap;
 	{
@@ -257,7 +270,8 @@ void ModernControls::draw(ImGuiRenderer* r)
 	}
 	const ModernConfig& c = snap.cfg;
 	const ModernLayout& L = snap.lay;
-	const int A = (int)std::lround(255.0f * c.alpha);
+	auto alphaOf = [&](int idx) { return (int)std::lround(255.0f * c.ctlAlpha[idx]); };
+	const ImColor kYellow(255, 204, 0, 255);
 	auto circle = [&](const CtlCircle& ci, const ImColor& fill, const ImColor& line, float lw) {
 		constexpr int N = 40;
 		ImVec2 p[N];
@@ -265,12 +279,23 @@ void ModernControls::draw(ImGuiRenderer* r)
 		r->drawConvexPolyFilled(p, N, fill);
 		r->drawPolyline(p, N, line, true, lw);
 	};
+	auto ring = [&](const CtlCircle& ci, float grow, float lw) {   // contorno amarelo do controle selecionado (so na edicao)
+		constexpr int N = 48;
+		ImVec2 p[N];
+		const float rr = ci.r * grow;
+		for (int i = 0; i < N; i++) { const float a = (float)i * 6.2831853f / (float)N; p[i] = ImVec2(ci.cx + std::cos(a) * rr, ci.cy + std::sin(a) * rr); }
+		r->drawPolyline(p, N, kYellow, true, lw);
+	};
 
-	// joystick: base translucida + centro movel
-	circle(L.base, ImColor(20, 20, 20, A / 2), ImColor(255, 255, 255, A), std::max(2.0f, L.base.r * 0.03f));
-	const CtlVec k = snap.Knob();
-	circle(CtlCircle{ k.x, k.y, L.knobR }, snap.StickDown() ? ImColor(255, 255, 255, std::min(255, A + 70)) : ImColor(230, 230, 230, A),
-	       ImColor(255, 255, 255, std::min(255, A + 40)), 2.0f);
+	// joystick: base translucida + centro movel (opacidade propria)
+	{
+		const int Aj = alphaOf(B_COUNT);
+		circle(L.base, ImColor(20, 20, 20, Aj / 2), ImColor(255, 255, 255, Aj), std::max(2.0f, L.base.r * 0.03f));
+		const CtlVec k = snap.Knob();
+		circle(CtlCircle{ k.x, k.y, L.knobR }, snap.StickDown() ? ImColor(255, 255, 255, std::min(255, Aj + 70)) : ImColor(230, 230, 230, Aj),
+		       ImColor(255, 255, 255, std::min(255, Aj + 40)), 2.0f);
+		if (editing && snap.sel == B_COUNT) ring(L.base, 1.08f, std::max(3.0f, L.base.r * 0.045f));
+	}
 
 	// botoes
 	static const char* const kLbl[B_COUNT] = { "CORRER", "PULO", "AGACHAR", "ATAQUE", "MIC", "LOCK" };
@@ -279,25 +304,63 @@ void ModernControls::draw(ImGuiRenderer* r)
 		if (((snap.disabledMask >> i) & 1u)) continue;
 		const bool down = (i == B_RUNLOCK) ? g_runLock.load() : snap.BtnDown(i);   // LOCK fica aceso enquanto ligado
 		const CtlCircle& b = L.btn[i];
+		const int A = alphaOf(i);
 		circle(b, down ? ImColor(255, 255, 255, std::min(255, A + 60)) : ImColor(20, 20, 20, A), ImColor(255, 255, 255, std::min(255, A + 50)), std::max(2.0f, b.r * 0.06f));
 		const float fs = b.r * (i == B_CROUCH ? 0.34f : 0.42f);
 		const ImVec2 ts = r->calculateTextSize(kLbl[i], fs);
 		r->drawText(ImVec2(b.cx - ts.x * 0.5f, b.cy - ts.y * 0.5f),
 		            down ? ImColor(0, 0, 0, 255) : ImColor(255, 255, 255, std::min(255, A + 80)), kLbl[i], true, fs);
+		if (editing && snap.sel == i) ring(b, 1.18f, std::max(3.0f, b.r * 0.08f));
 	}
 
 	if (editing)
 	{
-		r->drawRect(ImVec2(0, 0), screen, ImColor(0, 0, 0, 90), true);
-		const CtlRect ok = OkRect(screen.x, screen.y), rs = ResetRect(screen.x, screen.y);
-		const float fs = screen.y * 0.04f;
-		r->drawRect(ImVec2(ok.l, ok.t), ImVec2(ok.r, ok.b), ImColor(40, 140, 70, 235), true);
-		r->drawRect(ImVec2(rs.l, rs.t), ImVec2(rs.r, rs.b), ImColor(150, 60, 50, 235), true);
-		ImVec2 t1 = r->calculateTextSize("OK", fs), t2 = r->calculateTextSize("PADRÃO", fs);
-		r->drawText(ImVec2((ok.l + ok.r) * 0.5f - t1.x * 0.5f, (ok.t + ok.b) * 0.5f - t1.y * 0.5f), ImColor(255, 255, 255, 255), "OK", false, fs);
-		r->drawText(ImVec2((rs.l + rs.r) * 0.5f - t2.x * 0.5f, (rs.t + rs.b) * 0.5f - t2.y * 0.5f), ImColor(255, 255, 255, 255), "PADRÃO", false, fs);
-		const char* msg = "Arraste os controles para a posição desejada";
+		const EditPanel P = MakeEditPanel(screen.x, screen.y);
+		const float fs = (P.box.b - P.box.t) * 0.085f;
+		auto rect = [&](const CtlRect& R, const ImColor& fill, const ImColor& line) {
+			r->drawRect(ImVec2(R.l, R.t), ImVec2(R.r, R.b), fill, true);
+			r->drawRect(ImVec2(R.l, R.t), ImVec2(R.r, R.b), line, false, 2.0f);
+		};
+		auto textC = [&](const CtlRect& R, const char* s, const ImColor& col) {
+			const ImVec2 ts = r->calculateTextSize(s, fs);
+			r->drawText(ImVec2((R.l + R.r) * 0.5f - ts.x * 0.5f, (R.t + R.b) * 0.5f - ts.y * 0.5f), col, s, false, fs);
+		};
+		const ImColor white(255, 255, 255, 255), btnFill(35, 45, 70, 235), btnLine(120, 150, 210, 255);
+		rect(P.box, ImColor(12, 16, 28, 225), btnLine);
+
+		// HUD 1..4
+		char buf[48];
+		rect(P.hudPrev, btnFill, btnLine); textC(P.hudPrev, "<", white);
+		rect(P.hudNext, btnFill, btnLine); textC(P.hudNext, ">", white);
+		snprintf(buf, sizeof buf, "HUD %d", snap.hud + 1);
+		textC(P.hudLbl, buf, kYellow);
+
+		// Tamanho / Opacidade do controle selecionado (cinza se nada selecionado)
+		const bool has = snap.HasSel();
+		const ImColor txt = has ? white : ImColor(130, 130, 130, 255);
+		auto slider = [&](const char* label, const CtlRect& mnus, const CtlRect& pls, const CtlRect& trk, float t, float value) {
+			const ImVec2 ts = r->calculateTextSize(label, fs);
+			r->drawText(ImVec2(P.labelX, (trk.t + trk.b) * 0.5f - ts.y * 0.5f), txt, label, false, fs);
+			rect(mnus, btnFill, btnLine); textC(mnus, "-", txt);
+			rect(pls, btnFill, btnLine); textC(pls, "+", txt);
+			const float cy = (trk.t + trk.b) * 0.5f, th = (trk.b - trk.t) * 0.12f;
+			r->drawRect(ImVec2(trk.l, cy - th), ImVec2(trk.r, cy + th), ImColor(70, 80, 100, 255), true);
+			r->drawRect(ImVec2(trk.l, cy - th), ImVec2(trk.l + (trk.r - trk.l) * t, cy + th), kYellow, true);
+			const float kx = trk.l + (trk.r - trk.l) * t, kr = (trk.b - trk.t) * 0.28f;
+			circle(CtlCircle{ kx, cy, kr }, has ? kYellow : ImColor(130, 130, 130, 255), ImColor(255, 255, 255, 255), 2.0f);
+			snprintf(buf, sizeof buf, "%d%%", (int)std::lround(value * 100.0f));
+			const ImVec2 vs = r->calculateTextSize(buf, fs * 0.9f);
+			r->drawText(ImVec2((trk.l + trk.r) * 0.5f - vs.x * 0.5f, trk.t - vs.y * 0.05f), txt, buf, true, fs * 0.9f);
+		};
+		slider("Tamanho", P.sizeM, P.sizeP, P.sizeTrk, ScaleToT(snap.SelScale()), snap.SelScale());
+		slider("Opacidade", P.opaM, P.opaP, P.opaTrk, AlphaToT(snap.SelAlpha()), snap.SelAlpha());
+
+		rect(P.cancel, ImColor(150, 60, 50, 235), btnLine); textC(P.cancel, "CANCELAR", white);
+		rect(P.reset, btnFill, btnLine);                    textC(P.reset, "PADRÃO", white);
+		rect(P.ok, ImColor(40, 140, 70, 235), btnLine);     textC(P.ok, "OK", white);
+
+		const char* msg = "Toque num controle para selecionar e arraste para mover";
 		const ImVec2 tm = r->calculateTextSize(msg, fs * 0.8f);
-		r->drawText(ImVec2(screen.x * 0.5f - tm.x * 0.5f, ok.b + fs * 0.4f), ImColor(255, 255, 255, 255), msg, true, fs * 0.8f);
+		r->drawText(ImVec2(screen.x * 0.5f - tm.x * 0.5f, P.box.b + fs * 0.4f), ImColor(255, 255, 255, 255), msg, true, fs * 0.8f);
 	}
 }
