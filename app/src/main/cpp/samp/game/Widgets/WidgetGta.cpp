@@ -198,6 +198,12 @@ void CTouchInterface__Update_hook()
     if(!pPlayerPed) return;
     const bool inVeh = pPlayerPed->IsInVehicle(), jet = pPlayerPed->IsInJetpackMode();
     const bool modernFoot = ControlMode::IsModern() && !inVeh && !jet;
+    {   // Anel tracejado nativo (CWidgetThumbCircle, slot 0xA4, textura hud_analognub): no MODERNO a pe ele e o indicador da mira
+        // (segue o toque sintetico do Ataque); no CLASSICO (e em veiculo/jetpack) fica escondido. So o desenho: alpha 0 depois do
+        // Update do jogo (Draw nao desenha com alpha 0); a logica do widget nao e tocada.
+        CWidgetGta* ring = CTouchInterface::m_pWidgets[WidgetIDs::WIDGET_THUMB_CIRCLE];
+        if(ring && !modernFoot) ring->m_Color.a = 0;
+    }
     {   // diagnostico (1x por entrada no moderno): quais widgets nativos seguem ligados a pe -> samp_log.txt
         static bool s_logged = false;
         if(!modernFoot) s_logged = false;

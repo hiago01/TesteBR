@@ -222,13 +222,13 @@ bool ModernControls::onRawTouch(int type, int num, int x, int y)
 	// Mira arrastavel (opcional): o dedo do Ataque tambem arrasta a camera/mira (deslocamento relativo, ver AimDrag)
 	{
 		AimEv ev[4];
-		if (type == 2 && g_aimFinger < 0 && g_ctl.BtnFinger(B_ATTACK) == num && atkBefore != num && g_ctl.cfg.aimDrag)
+		if (type == 2 && g_aimFinger < 0 && g_ctl.BtnFinger(B_ATTACK) == num && atkBefore != num)   // sempre: o toque sintetico faz o anel (CWidgetThumbCircle) aparecer como indicador da mira; so ARRASTA se aimDrag
 		{
 			g_aim.sens = g_ctl.cfg.aimSens; g_aim.smooth = g_ctl.cfg.aimSmooth; g_aim.SetScreen(g_sw, g_sh);
 			g_aimFinger = num;
 			QueueAim(ev, g_aim.Begin(fx, fy, ev), num);
 		}
-		else if (type == 3 && g_aimFinger == num)
+		else if (type == 3 && g_aimFinger == num && g_ctl.cfg.aimDrag)
 		{
 			g_aim.sens = g_ctl.cfg.aimSens; g_aim.smooth = g_ctl.cfg.aimSmooth;
 			QueueAim(ev, g_aim.Move(fx, fy, ev), num);

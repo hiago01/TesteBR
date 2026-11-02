@@ -1,3 +1,5 @@
-Fix pulo duplo: copie gui/samp_widgets/moderncontrols.cpp para app/src/main/cpp/samp/gui/samp_widgets/ (substitui).
-Toques no Pulo dentro de 900 ms do pulo anterior sao descartados (kJumpCooldownMs).
+Anel tracejado nativo (CWidgetThumbCircle, widget 0xA4, hud_analognub):
+- MODERNO a pe: indicador da mira. Aparece ao segurar o Ataque mesmo com "mira arrastavel" DESLIGADA (toque sintetico parado); com ela ligada tambem segue o dedo.
+- CLASSICO (e veiculo/jetpack): escondido (alpha 0 do desenho; logica intacta).
+Copie moderncontrols.cpp (gui/samp_widgets) e WidgetGta.cpp (game/Widgets) para app/src/main/cpp/samp/. Estes dois incluem o editor de HUD v2.
 NAO verificado: compilacao NDK e comportamento no aparelho.
