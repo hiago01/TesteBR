@@ -247,6 +247,10 @@ void DoInitStuff()
 
 		Samp::loadStatus = true;*/
 
+		// VOZ: sem isto Plugin::MainLoop() retorna na 1a linha (if(!Samp::IsLoaded()) return;) e o botao de microfone
+		// (moderno e classico) nunca envia o pacote pressKey ao sampvoice, nem recebe/toca voz.
+		Samp::loadStatus = true;
+
 		LogVoice("[dbg:samp:load] : module loaded");
 
 		if (bDebug)
