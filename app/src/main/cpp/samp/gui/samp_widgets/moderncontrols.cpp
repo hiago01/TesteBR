@@ -36,6 +36,8 @@ namespace
 	std::atomic<int>      g_lr{ 0 }, g_ud{ 0 };
 	std::atomic<uint32_t> g_held{ 0 };
 	std::atomic<int>      g_soundReq{ 0 };      // pedido de som do editor (1 toque, 2 voltar/recolher); tocado na thread do jogo
+	std::atomic<bool>     g_busy{ false };      // personagem pulando/no ar ou segurando na parede (ver ModernControlsBrakeTick)
+	std::atomic<bool>     g_busyJumpUsed{ false };   // o unico pulo permitido neste estado ja foi usado
 	std::atomic<bool>     g_brake{ false };     // personagem na animacao de freada (RUN_STOP/RUN_STOPR); escrito na thread do jogo, lido no desenho
 	std::atomic<bool>     g_runLock{ false };   // CORRIDA LOCK ligada: o personagem corre reto sem segurar o joystick
 	std::atomic<uint32_t> g_edges{ 0 };
@@ -99,6 +101,8 @@ namespace
 				if (now - g_jumpMs.load() < kJumpCooldownMs) edge &= ~(1u << B_JUMP);   // 2o toque rapido: descartado
 				else g_jumpMs.store(now);
 			}
+			// pulando/na parede: so UM pulo por estado (o 2o e descartado)
+			if ((edge & (1u << B_JUMP)) && g_busy.load() && g_busyJumpUsed.exchange(true)) edge &= ~(1u << B_JUMP);
 			if (edge) g_edges.fetch_or(edge);
 		}
 		// microfone: mesmo caminho do botao original (VoiceButton), so que acionado por este botao
@@ -167,21 +171,40 @@ void ModernControlsSoundTick()
 void ModernControlsBrakeTick()
 {
 	static int64_t s_since = -1;
-	bool b = false;
+	static int64_t s_busySince = -1, s_busySeen = -1;
+	static bool    s_busyPrev = false, s_busyCapped = false;
+	bool b = false, air = false;
 	CPedGTA* ped = nullptr;
 	if (g_active.load() && LocalPed(ped) && ped->m_pRwClump)
 	{
-		const uint32_t ids[2] = { (uint32_t)ANIM_ID_RUN_STOP, (uint32_t)ANIM_ID_RUN_STOPR };
-		for (uint32_t id : ids)
-		{
+		auto has = [&](uint32_t id) {
 			CAnimBlendAssociation* a = RpAnimBlendClumpGetAssociation(ped->m_pRwClump, id);
-			if (a && a->IsRunning() && a->m_fBlendAmount > 0.05f) { b = true; break; }
-		}
+			return a && a->IsRunning() && a->m_fBlendAmount > 0.05f;
+		};
+		const uint32_t ids[2] = { (uint32_t)ANIM_ID_RUN_STOP, (uint32_t)ANIM_ID_RUN_STOPR };
+		for (uint32_t id : ids) if (has(id)) { b = true; break; }
+		// pulando / no ar / segurando na parede (escalada): mesma leitura das associacoes de animacao
+		const uint32_t airIds[] = { (uint32_t)ANIM_ID_JUMP_LAUNCH, (uint32_t)ANIM_ID_JUMP_LAUNCH_R, (uint32_t)ANIM_ID_JUMP_GLIDE,
+		                            (uint32_t)ANIM_ID_FALL_FALL, (uint32_t)ANIM_ID_FALL_GLIDE,
+		                            (uint32_t)ANIM_ID_CLIMB_JUMP, (uint32_t)ANIM_ID_CLIMB_IDLE, (uint32_t)ANIM_ID_CLIMB_PULL,
+		                            (uint32_t)ANIM_ID_CLIMB_STAND, (uint32_t)ANIM_ID_CLIMB_JUMP_B, (uint32_t)ANIM_ID_CLIMB_JUMP2FALL };
+		for (uint32_t id : airIds) if (has(id)) { air = true; break; }
 	}
 	const int64_t now = NowMs();
 	if (!b) s_since = -1;
 	else { if (s_since < 0) s_since = now; if (now - s_since > 1500) b = false; }   // trava de seguranca: nunca esconde por mais de 1,5 s
 	g_brake.store(b);
+
+	// estado "ocupado" (pulando/na parede): segura 150 ms depois da ultima leitura para nao piscar entre animacoes
+	if (!air) s_busyCapped = false;
+	if (air) s_busySeen = now;
+	bool busy = !s_busyCapped && (air || (s_busySeen > 0 && now - s_busySeen < 150));
+	if (busy) { if (s_busySince < 0) s_busySince = now; if (now - s_busySince > 8000) { busy = false; s_busyCapped = true; } }   // trava: no maximo 8 s
+	else s_busySince = -1;
+	if (busy && !s_busyPrev) { g_runLock.store(false); g_busyJumpUsed.store(false); }   // entrou: LOCK desliga e o unico pulo volta a valer
+	if (!busy) g_busyJumpUsed.store(false);
+	s_busyPrev = busy;
+	g_busy.store(busy);
 }
 
 // ----------------------------------------------------------------------------- widget
@@ -291,6 +314,13 @@ void ModernControls::draw(ImGuiRenderer* r)
 		g_ctl.SetScreen(screen.x, screen.y);
 		// CORRIDA LOCK ligado: o botao CORRER some (nao desenha nem recebe toque); no editor de HUD ele continua visivel.
 		g_ctl.disabledMask = (!editing && g_runLock.load()) ? (1u << B_RUN) : 0u;
+		// pulando/na parede: bloqueia TODOS os botoes, menos o PULO (que vale uma vez so); o joystick segue livre
+		g_ctl.blockedMask = 0u;
+		if (!editing && g_busy.load())
+		{
+			g_ctl.blockedMask = ((1u << B_COUNT) - 1u) & ~(1u << B_JUMP);
+			if (g_busyJumpUsed.load()) g_ctl.blockedMask |= (1u << B_JUMP);
+		}
 		wasActive = g_active.load();
 		if (wasActive && !show) ReleaseAllLocked();          // saiu do modo/entrou em veiculo/abriu UI: solta tudo
 		if (!editing && g_editing.load() == false) g_ctl.editing = false;
@@ -363,11 +393,13 @@ void ModernControls::draw(ImGuiRenderer* r)
 		const bool down = (i == B_RUNLOCK) ? g_runLock.load() : snap.BtnDown(i);   // LOCK fica aceso enquanto ligado
 		const CtlCircle& b = L.btn[i];
 		const int A = alphaOf(i);
-		circle(b, down ? Cf(255, 255, 255, std::min(255, A + 60)) : Cf(20, 20, 20, A), Cf(255, 255, 255, std::min(255, A + 50)), std::max(2.0f, b.r * 0.06f));
+		const float bk = (((snap.blockedMask >> i) & 1u) != 0) ? 0.3f : 1.0f;      // bloqueado (pulando/na parede): esmaecido
+		auto Cb = [&](int R, int G, int B2, int A2) { return ImColor(R, G, B2, (int)std::lround((float)A2 * fm * bk)); };
+		circle(b, down ? Cb(255, 255, 255, std::min(255, A + 60)) : Cb(20, 20, 20, A), Cb(255, 255, 255, std::min(255, A + 50)), std::max(2.0f, b.r * 0.06f));
 		const float fs = b.r * (i == B_CROUCH ? 0.34f : 0.42f);
 		const ImVec2 ts = r->calculateTextSize(kLbl[i], fs);
 		r->drawText(ImVec2(b.cx - ts.x * 0.5f, b.cy - ts.y * 0.5f),
-		            down ? Cf(0, 0, 0, 255) : Cf(255, 255, 255, std::min(255, A + 80)), kLbl[i], fm > 0.99f, fs);
+		            down ? Cb(0, 0, 0, 255) : Cb(255, 255, 255, std::min(255, A + 80)), kLbl[i], (fm * bk) > 0.99f, fs);
 		if (editing && snap.sel == i) ring(b, 1.18f, std::max(3.0f, b.r * 0.08f));
 	}
 

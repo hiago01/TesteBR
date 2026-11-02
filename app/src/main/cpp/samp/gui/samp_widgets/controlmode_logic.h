@@ -270,7 +270,8 @@ namespace CtlLogic
 		ModernConfig cfg;
 		ModernLayout lay;
 		bool editing = false;
-		uint32_t disabledMask = 0;      // bit i = botao i ausente (reservado; hoje nenhum botao e escondido): nao desenha nem recebe toque
+		uint32_t disabledMask = 0;      // bit i = botao i ausente (ex.: CORRER com o LOCK ligado): nao desenha nem recebe toque
+		uint32_t blockedMask = 0;       // bit i = botao i BLOQUEADO (pulando/na parede): continua desenhado (esmaecido), mas nao recebe toque novo
 
 		// ---- editor de HUD (so com editing=true) ----
 		int sel = B_ATTACK;             // controle selecionado: 0..B_COUNT-1 botao, B_COUNT joystick, -1 nenhum
@@ -389,7 +390,7 @@ namespace CtlLogic
 			int best = -1; float bestD = 1e30f;
 			for (int i = 0; i < B_COUNT; i++)
 			{
-				if (btnFinger[i] >= 0 || (disabledMask & (1u << i)) || !Hit(lay.btn[i], x, y)) continue;
+				if (btnFinger[i] >= 0 || (disabledMask & (1u << i)) || (blockedMask & (1u << i)) || !Hit(lay.btn[i], x, y)) continue;
 				const float dx = x - lay.btn[i].cx, dy = y - lay.btn[i].cy, d = dx * dx + dy * dy;
 				if (d < bestD) { bestD = d; best = i; }
 			}
