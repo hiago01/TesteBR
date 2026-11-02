@@ -166,6 +166,7 @@ public final class RepairEngine {
             r.total++;
             if (progress != null) progress.onStep(e.path, ++i, entries.size());
             File f = PathSafety.resolveInside(base, e.path);
+            if (!f.isFile() && GameFilePolicy.isGenerated(e.path)) { r.ok++; continue; }   // CINFO.BIN, MINFO.BIN...: o jogo recria; falta nao e erro
             if (!f.isFile()) {
                 String alt = caseVariant(f);
                 r.bad.add(new Problem(e, alt == null ? "ausente" : "ausente (existe com outra caixa: " + alt + ")"));

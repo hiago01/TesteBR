@@ -831,6 +831,21 @@ public class PackTest {
             }
         }
 
+        // ---------------- CINFO/MINFO ausentes: nao e erro na verificacao ----------------
+        r("cinfo/minfo .bin/.sig em qualquer pasta sao 'gerados' (ignorados)", GameFilePolicy.isGenerated("CINFO.BIN") && GameFilePolicy.isGenerated("models/MINFO.BIN")
+                && GameFilePolicy.isGenerated("x/y/minfo.bin") && GameFilePolicy.isGenerated("SAMP/cinfo.sig")
+                && !GameFilePolicy.isGenerated("SAMP/modelindex.bin") && !GameFilePolicy.isGenerated("data/gta.dat"), "");
+        {
+            File base = Files.createTempDirectory("verif").toFile();
+            List<RepairEngine.Entry> ents = RepairEngine.fromSampJson(
+                    "{\"files\":[{\"name\":\"cinfo.sig\",\"path\":\"SAMP/cinfo.sig\",\"size\":4},"
+                    + "{\"name\":\"a.txt\",\"path\":\"SAMP/a.txt\",\"size\":3}]}");
+            RepairEngine.VerifyResult vr = RepairEngine.verify(base, ents, null, ct());
+            boolean sigNotBad = true, aBad = false;
+            for (RepairEngine.Problem pr : vr.bad) { if (pr.entry.path.equalsIgnoreCase("SAMP/cinfo.sig")) sigNotBad = false; if (pr.entry.path.equals("SAMP/a.txt")) aBad = true; }
+            r("verify: cinfo.sig ausente NAO vira problema; arquivo comum ausente continua sendo", sigNotBad && aBad && vr.bad.size() == 1, "bad=" + vr.bad.size());
+        }
+
         System.out.println("\n" + pass + " ok, " + fail + " falhas");
         if (fail > 0) System.exit(1);
     }

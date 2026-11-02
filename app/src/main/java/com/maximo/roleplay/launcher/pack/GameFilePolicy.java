@@ -27,6 +27,13 @@ public final class GameFilePolicy {
             "samp_log.txt", "gta_sa.set", "gtasatelem.set",
             "installed.json"));
 
+    /**
+     * Arquivos que o JOGO recria sozinho (indices em cache): CINFO.BIN, MINFO.BIN e CINFO.SIG, em qualquer pasta.
+     * Nunca sao baixados nem sobrescritos e a falta deles NAO e problema (ver RepairEngine.verify).
+     */
+    private static final Set<String> GENERATED_BASENAMES = new HashSet<>(Arrays.asList(
+            "cinfo.bin", "minfo.bin", "cinfo.sig"));
+
     /** Pastas internas do instalador (nunca fazem parte do jogo). */
     public static final String DIR_STAGING = ".staging";
     public static final String DIR_BACKUP = ".backup";
@@ -56,7 +63,7 @@ public final class GameFilePolicy {
         if (PROTECTED_PATHS.contains(l)) return true;
         int slash = l.lastIndexOf('/');
         String base = slash >= 0 ? l.substring(slash + 1) : l;
-        return JUNK_BASENAMES.contains(base);
+        return JUNK_BASENAMES.contains(base) || GENERATED_BASENAMES.contains(base);
     }
 
     /** Lixo de SO que nunca deve ser instalado (.DS_Store, Thumbs.db, desktop.ini, .htaccess). */
