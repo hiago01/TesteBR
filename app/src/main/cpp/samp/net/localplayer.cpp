@@ -743,7 +743,8 @@ void CLocalPlayer::SendOnFootFullSyncData()
 	ofSync.dwAnimation = 0;
 	//_this->field_104 = 1;
 
-	if (/*(GetTickCount() - m_dwLastUpdateOnFootData) > 500 || */memcmp(&m_ofSync, &ofSync, sizeof(ONFOOT_SYNC_DATA)))
+	// heartbeat 0.3.7: reenvia a cada 500 ms mesmo parado, senao o servidor nao atualiza o streaming do jogador
+	if ((GetTickCount() - m_dwLastUpdateOnFootData) > 500 || memcmp(&m_ofSync, &ofSync, sizeof(ONFOOT_SYNC_DATA)))
 	{
 		m_dwLastUpdateOnFootData = GetTickCount();
 
