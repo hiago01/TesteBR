@@ -45,10 +45,10 @@ namespace CtlLogic
 	// ---------------------------------------------------------------- botoes ---------
 	// Interacao (entrar no veiculo) NAO esta aqui: nao existe hook de pad comprovado para forca-la; o widget nativo
 	// "hud_car" continua ativo no modo moderno (ver LEIA-ME_CONTROLES.md).
-	enum Btn : int { B_RUN = 0, B_JUMP, B_CROUCH, B_ATTACK, B_MIC, B_COUNT };
+	enum Btn : int { B_RUN = 0, B_JUMP, B_CROUCH, B_ATTACK, B_MIC, B_RUNLOCK, B_COUNT };
 	inline const char* BtnKey(int b)
 	{
-		static const char* k[B_COUNT] = { "corrida", "pulo", "agachar", "ataque", "microfone" };
+		static const char* k[B_COUNT] = { "corrida", "pulo", "agachar", "ataque", "microfone", "corrida_lock" };
 		return (b >= 0 && b < B_COUNT) ? k[b] : "";
 	}
 
@@ -76,6 +76,7 @@ namespace CtlLogic
 			{ 0.90f, 0.88f },   // agachar
 			{ 0.90f, 0.68f },   // ataque
 			{ 0.93f, 0.42f },   // microfone
+			{ 0.66f, 0.80f },   // corrida lock (liga/desliga: corre reto sozinho)
 		};
 
 		void Clamp()

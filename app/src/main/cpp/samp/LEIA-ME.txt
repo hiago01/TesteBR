@@ -1,5 +1,5 @@
-Esconde so o desenho dos botoes << / Spawn / >> (tela de selecao de classe).
-Copie para app/src/main/cpp/samp/: gui/widgets/button.h, gui/widgets/button.cpp, gui/samp_widgets/spawn.cpp. Originais em backup/.
-Toque e callbacks (SendPrevClass/SendSpawn/SendNextClass) NAO foram alterados: a area continua clicavel, so invisivel.
-Para voltar a mostrar: remover as 3 linhas setDrawHidden(true) em spawn.cpp.
-NAO verificado: compilacao NDK e comportamento no aparelho.
+Botao CORRIDA LOCK (LOCK) no HUD moderno.
+Copie para app/src/main/cpp/samp/gui/samp_widgets/: controlmode_logic.h e moderncontrols.cpp (originais em backup/).
+Toque = liga; toque de novo = desliga. Ligado: corre reto (stick para frente + sprint); tocar no joystick assume o controle; a camera segue livre.
+Desliga sozinho ao entrar em veiculo/jetpack/abrir menu/morrer. Posicao arrastavel no modo "editar posicoes"; chave no ini: b_corrida_lock_x/_y.
+NAO verificado: compilacao NDK e comportamento no aparelho (inclusive se frente = ud negativo).

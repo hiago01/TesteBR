@@ -33,6 +33,7 @@ namespace
 	std::atomic<bool>     g_editing{ false };
 	std::atomic<int>      g_lr{ 0 }, g_ud{ 0 };
 	std::atomic<uint32_t> g_held{ 0 };
+	std::atomic<bool>     g_runLock{ false };   // CORRIDA LOCK ligada: o personagem corre reto sem segurar o joystick
 	std::atomic<uint32_t> g_edges{ 0 };
 	std::atomic<int64_t>  g_jumpMs{ -1000000 };
 	int                   g_okFinger = -1;
@@ -100,6 +101,7 @@ namespace
 		g_lr.store(o.lr); g_ud.store(o.ud); g_held.store(o.held);
 		if (o.pressedEdge) {
 			uint32_t edge = o.pressedEdge;
+			if (edge & (1u << B_RUNLOCK)) { g_runLock.store(!g_runLock.load()); edge &= ~(1u << B_RUNLOCK); }   // toggle
 			if (edge & (1u << B_JUMP))
 			{
 				const int64_t now = NowMs();
@@ -118,6 +120,7 @@ namespace
 
 	void ReleaseAllLocked()
 	{
+		g_runLock.store(false);                 // saiu do modo/veiculo/UI: o lock desliga
 		EndAimLocked();
 		g_ctl.CancelAll();
 		Publish();
@@ -136,9 +139,11 @@ bool ModernInput::Stick(int16_t& lr, int16_t& ud)
 {
 	if (!g_active.load()) return false;
 	lr = (int16_t)g_lr.load(); ud = (int16_t)g_ud.load();
+	// CORRIDA LOCK: sem o joystick em uso, empurra o stick para frente (GTA SA: frente = ud negativo); o joystick, se tocado, manda.
+	if (g_runLock.load() && lr == 0 && ud == 0) ud = -127;
 	return true;
 }
-bool ModernInput::SprintHeld()    { return g_active.load() && (g_held.load() & (1u << B_RUN)) && (g_lr.load() != 0 || g_ud.load() != 0); }
+bool ModernInput::SprintHeld()    { return g_active.load() && (g_runLock.load() || ((g_held.load() & (1u << B_RUN)) && (g_lr.load() != 0 || g_ud.load() != 0))); }
 bool ModernInput::JumpJustDown()  { return g_active.load() && ConsumeEdge(B_JUMP); }
 bool ModernInput::JumpHeld()      { return g_active.load() && (NowMs() - g_jumpMs.load()) < kJumpHoldMs; }
 bool ModernInput::CrouchJustDown(){ return g_active.load() && ConsumeEdge(B_CROUCH); }
@@ -268,11 +273,11 @@ void ModernControls::draw(ImGuiRenderer* r)
 	       ImColor(255, 255, 255, std::min(255, A + 40)), 2.0f);
 
 	// botoes
-	static const char* const kLbl[B_COUNT] = { "CORRER", "PULO", "AGACHAR", "ATAQUE", "MIC" };
+	static const char* const kLbl[B_COUNT] = { "CORRER", "PULO", "AGACHAR", "ATAQUE", "MIC", "LOCK" };
 	for (int i = 0; i < B_COUNT; i++)
 	{
 		if (((snap.disabledMask >> i) & 1u)) continue;
-		const bool down = snap.BtnDown(i);
+		const bool down = (i == B_RUNLOCK) ? g_runLock.load() : snap.BtnDown(i);   // LOCK fica aceso enquanto ligado
 		const CtlCircle& b = L.btn[i];
 		circle(b, down ? ImColor(255, 255, 255, std::min(255, A + 60)) : ImColor(20, 20, 20, A), ImColor(255, 255, 255, std::min(255, A + 50)), std::max(2.0f, b.r * 0.06f));
 		const float fs = b.r * (i == B_CROUCH ? 0.34f : 0.42f);
