@@ -114,12 +114,18 @@ bool Network::SendVoicePacket(const void *dataAddr, const uint16_t dataSize) noe
 
     std::memcpy(Network::outputVoicePacket->data, dataAddr, dataSize);
 
-    const auto voicePacketAddr = reinterpret_cast<const char*>(&Network::outputVoicePacket);
+    const auto voicePacketAddr = reinterpret_cast<const char*>(Network::outputVoicePacket.GetData());
     const auto voicePacketSize = static_cast<int>(Network::outputVoicePacket->GetFullSize());
 
     const auto sended = send(Network::socketHandle, voicePacketAddr, voicePacketSize, NULL);
 
     ++Network::outputVoicePacket->packid;
+
+    {
+        static uint32_t diagSent = 0;
+        if ((diagSent++ % 20) == 0)
+            LogVoice("[sv:diag:send] frames enviados=%u bytes=%d retorno=%d", diagSent, voicePacketSize, (int)sended);
+    }
 
     return sended == voicePacketSize;
 }

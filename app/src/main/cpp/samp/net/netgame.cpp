@@ -396,7 +396,8 @@ void CNetGame::ShutdownForGameModeRestart()
 	// voice
 	SpeakerList::Hide();
 	MicroIcon::Hide();
-	Network::OnRaknetDisconnect();
+	// voz: NAO desconectar. O servidor continua com o jogador identificado apos o gmx;
+	// derrubar aqui deixava o cliente em status=0 sem novo handshake.
 
 	for (PLAYERID playerId = 0; playerId < MAX_PLAYERS; playerId++)
 	{
