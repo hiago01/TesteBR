@@ -57,6 +57,7 @@ namespace
 			g_cfg.deadzone = (float)ini.GetDoubleValue(s, "zona_morta", g_cfg.deadzone);
 			g_cfg.maxDist  = (float)ini.GetDoubleValue(s, "distancia_max", g_cfg.maxDist);
 			g_cfg.aimDrag  = ini.GetLongValue(s, "mira_arrastavel", g_cfg.aimDrag ? 1 : 0) != 0;
+			g_cfg.fadeBrake = ini.GetLongValue(s, "fade_freada", g_cfg.fadeBrake ? 1 : 0) != 0;
 			g_cfg.aimSens  = (float)ini.GetDoubleValue(s, "mira_sensibilidade", g_cfg.aimSens);
 			g_cfg.aimSmooth = (float)ini.GetDoubleValue(s, "mira_suavizacao", g_cfg.aimSmooth);
 			// Layouts HUD 1..4: chaves hud<N>_*. O HUD 1 usa as chaves antigas (joy_x, b_<botao>_x, transparencia...) como
@@ -115,6 +116,7 @@ namespace
 		ini.SetDoubleValue(s, "zona_morta", g_cfg.deadzone);
 		ini.SetDoubleValue(s, "distancia_max", g_cfg.maxDist);
 		ini.SetLongValue(s, "mira_arrastavel", g_cfg.aimDrag ? 1 : 0);
+		ini.SetLongValue(s, "fade_freada", g_cfg.fadeBrake ? 1 : 0);
 		ini.SetDoubleValue(s, "mira_sensibilidade", g_cfg.aimSens);
 		ini.SetDoubleValue(s, "mira_suavizacao", g_cfg.aimSmooth);
 		// o HUD ativo sempre reflete g_cfg

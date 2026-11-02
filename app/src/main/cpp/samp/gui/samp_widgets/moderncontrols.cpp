@@ -6,6 +6,7 @@
 #include "controlmode.h"
 #include "maximomenu.h"
 #include "controlsselector.h"
+#include "../../game/Plugins/RpAnimBlendPlugin/RpAnimBlend.h"
 
 #include <atomic>
 #include <chrono>
@@ -35,6 +36,7 @@ namespace
 	std::atomic<int>      g_lr{ 0 }, g_ud{ 0 };
 	std::atomic<uint32_t> g_held{ 0 };
 	std::atomic<int>      g_soundReq{ 0 };      // pedido de som do editor (1 toque, 2 voltar/recolher); tocado na thread do jogo
+	std::atomic<bool>     g_brake{ false };     // personagem na animacao de freada (RUN_STOP/RUN_STOPR); escrito na thread do jogo, lido no desenho
 	std::atomic<bool>     g_runLock{ false };   // CORRIDA LOCK ligada: o personagem corre reto sem segurar o joystick
 	std::atomic<uint32_t> g_edges{ 0 };
 	std::atomic<int64_t>  g_jumpMs{ -1000000 };
@@ -158,6 +160,28 @@ void ModernControlsSoundTick()
 	if (!LocalPed(ped)) return;
 	const RwMatrix mat = ped->GetMatrix().ToRwMatrix();
 	pGame->PlaySound(req == 2 ? 1053 : 1052, mat.pos.x, mat.pos.y, mat.pos.z);
+}
+
+// Thread do jogo (depois do Update nativo). Detecta a animacao de freada do ped local lendo as associacoes
+// da propria clump (RpAnimBlendClumpGetAssociation por AnimationId). So publica um bool; o fade e feito no desenho.
+void ModernControlsBrakeTick()
+{
+	static int64_t s_since = -1;
+	bool b = false;
+	CPedGTA* ped = nullptr;
+	if (g_active.load() && LocalPed(ped) && ped->m_pRwClump)
+	{
+		const uint32_t ids[2] = { (uint32_t)ANIM_ID_RUN_STOP, (uint32_t)ANIM_ID_RUN_STOPR };
+		for (uint32_t id : ids)
+		{
+			CAnimBlendAssociation* a = RpAnimBlendClumpGetAssociation(ped->m_pRwClump, id);
+			if (a && a->IsRunning() && a->m_fBlendAmount > 0.05f) { b = true; break; }
+		}
+	}
+	const int64_t now = NowMs();
+	if (!b) s_since = -1;
+	else { if (s_since < 0) s_since = now; if (now - s_since > 1500) b = false; }   // trava de seguranca: nunca esconde por mais de 1,5 s
+	g_brake.store(b);
 }
 
 // ----------------------------------------------------------------------------- widget
@@ -290,6 +314,19 @@ void ModernControls::draw(ImGuiRenderer* r)
 	const ModernConfig& c = snap.cfg;
 	const ModernLayout& L = snap.lay;
 	auto alphaOf = [&](int idx) { return (int)std::lround(255.0f * c.ctlAlpha[idx]); };
+	// fade dos botoes durante a freada (so o desenho; os toques continuam valendo). Descida ~120 ms, volta ~150 ms.
+	static float s_fm = 1.0f; static int64_t s_fmMs = 0;
+	{
+		const int64_t nowMs = NowMs();
+		float dt = s_fmMs ? (float)(nowMs - s_fmMs) / 1000.0f : 0.0f;
+		s_fmMs = nowMs;
+		dt = std::clamp(dt, 0.0f, 0.1f);
+		const bool hide = c.fadeBrake && !editing && g_brake.load();
+		s_fm = hide ? std::max(0.0f, s_fm - dt / 0.12f) : std::min(1.0f, s_fm + dt / 0.15f);
+		if (editing) s_fm = 1.0f;
+	}
+	const float fm = s_fm;
+	auto Cf = [&](int R, int G, int B, int A) { return ImColor(R, G, B, (int)std::lround((float)A * fm)); };
 	const ImColor kYellow(255, 204, 0, 255);
 	auto circle = [&](const CtlCircle& ci, const ImColor& fill, const ImColor& line, float lw) {
 		constexpr int N = 40;
@@ -309,10 +346,10 @@ void ModernControls::draw(ImGuiRenderer* r)
 	// joystick: base translucida + centro movel (opacidade propria)
 	{
 		const int Aj = alphaOf(B_COUNT);
-		circle(L.base, ImColor(20, 20, 20, Aj / 2), ImColor(255, 255, 255, Aj), std::max(2.0f, L.base.r * 0.03f));
+		circle(L.base, Cf(20, 20, 20, Aj / 2), Cf(255, 255, 255, Aj), std::max(2.0f, L.base.r * 0.03f));
 		const CtlVec k = snap.Knob();
-		circle(CtlCircle{ k.x, k.y, L.knobR }, snap.StickDown() ? ImColor(255, 255, 255, std::min(255, Aj + 70)) : ImColor(230, 230, 230, Aj),
-		       ImColor(255, 255, 255, std::min(255, Aj + 40)), 2.0f);
+		circle(CtlCircle{ k.x, k.y, L.knobR }, snap.StickDown() ? Cf(255, 255, 255, std::min(255, Aj + 70)) : Cf(230, 230, 230, Aj),
+		       Cf(255, 255, 255, std::min(255, Aj + 40)), 2.0f);
 		if (editing && snap.sel == B_COUNT) ring(L.base, 1.08f, std::max(3.0f, L.base.r * 0.045f));
 	}
 
@@ -324,11 +361,11 @@ void ModernControls::draw(ImGuiRenderer* r)
 		const bool down = (i == B_RUNLOCK) ? g_runLock.load() : snap.BtnDown(i);   // LOCK fica aceso enquanto ligado
 		const CtlCircle& b = L.btn[i];
 		const int A = alphaOf(i);
-		circle(b, down ? ImColor(255, 255, 255, std::min(255, A + 60)) : ImColor(20, 20, 20, A), ImColor(255, 255, 255, std::min(255, A + 50)), std::max(2.0f, b.r * 0.06f));
+		circle(b, down ? Cf(255, 255, 255, std::min(255, A + 60)) : Cf(20, 20, 20, A), Cf(255, 255, 255, std::min(255, A + 50)), std::max(2.0f, b.r * 0.06f));
 		const float fs = b.r * (i == B_CROUCH ? 0.34f : 0.42f);
 		const ImVec2 ts = r->calculateTextSize(kLbl[i], fs);
 		r->drawText(ImVec2(b.cx - ts.x * 0.5f, b.cy - ts.y * 0.5f),
-		            down ? ImColor(0, 0, 0, 255) : ImColor(255, 255, 255, std::min(255, A + 80)), kLbl[i], true, fs);
+		            down ? Cf(0, 0, 0, 255) : Cf(255, 255, 255, std::min(255, A + 80)), kLbl[i], fm > 0.99f, fs);
 		if (editing && snap.sel == i) ring(b, 1.18f, std::max(3.0f, b.r * 0.08f));
 	}
 

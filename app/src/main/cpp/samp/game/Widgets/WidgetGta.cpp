@@ -189,10 +189,11 @@ void CWidgetButton__Update_hook(CWidgetButton* thiz) {
 void (*CTouchInterface__Update)();
 void PadAimFrameTick();   // game/pad.cpp
 void ModernControlsSoundTick();   // gui/samp_widgets/moderncontrols.cpp
+void ModernControlsBrakeTick();   // gui/samp_widgets/moderncontrols.cpp
 void CTouchInterface__Update_hook()
 {
     CTouchInterface__Update();
-    if(pNetGame && pGame) { PadAimFrameTick(); ModernControlsSoundTick(); }
+    if(pNetGame && pGame) { PadAimFrameTick(); ModernControlsSoundTick(); ModernControlsBrakeTick(); }
     if(!pNetGame || !pGame || !CTouchInterface::m_pWidgets) return;
     CPlayerPed *pPlayerPed = pGame->FindPlayerPed();
     if(!pPlayerPed) return;

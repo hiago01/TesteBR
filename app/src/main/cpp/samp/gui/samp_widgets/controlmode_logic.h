@@ -70,6 +70,7 @@ namespace CtlLogic
 		float deadzone = 0.12f;            // 0 .. 0.45
 		float maxDist  = 1.0f;             // 0.6 .. 1.6 (distancia analogica maxima, x raio da base)
 		bool  aimDrag  = true;             // Ataque tambem arrasta a mira (estilo Free Fire); desligado = Ataque so atira
+		bool  fadeBrake = true;            // botoes do HUD moderno somem (so o desenho) durante a animacao de freada (RUN_STOP/RUN_STOPR) e voltam ao fim
 		float aimSens  = 1.0f;             // 0.3 .. 3.0 (sensibilidade do arrasto da mira)
 		float aimSmooth = 0.0f;            // 0 .. 0.85 (suavizacao; 0 = desligada)
 		CtlVec   btnPos[B_COUNT] = {
