@@ -16,6 +16,8 @@ public:
 	void setColor(const ImColor& color) { m_color = color; }
 	void setColorFocused(const ImColor& color) { m_colorFocused = color; }
 	void setCaptionColor(const ImColor& color) { m_label->setColor(color); }
+	// true = nao desenha o botao (fundo, moldura e texto); o toque e o callback continuam iguais
+	void setDrawHidden(bool hidden) { m_drawHidden = hidden; }
 
 	virtual void performLayout() override;
 
@@ -24,6 +26,7 @@ public:
 	virtual void touchPopEvent() override;
 
 private:
+	bool m_drawHidden = false;
 	Label* m_label;
 	std::function<void()> m_callback;
 

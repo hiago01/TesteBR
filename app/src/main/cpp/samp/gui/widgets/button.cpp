@@ -27,6 +27,8 @@ void Button::performLayout()
 
 void Button::draw(ImGuiRenderer* renderer)
 {
+	if (m_drawHidden) return;   // so esconde o desenho; layout, toque e callback nao mudam
+
 	renderer->drawRect(absolutePosition(), absolutePosition() + size(),
 		focused() ? m_colorFocused : m_color, true);
 

@@ -1,3 +1,5 @@
-v7: copie game/pad.cpp (+ game/Widgets/WidgetGta.cpp do v6) para app/src/main/cpp/samp/game/.
-Mira do moderno agora usa a posicao nativa de cada arma (igual ao classico): kCenterCrosshair=false.
+Esconde so o desenho dos botoes << / Spawn / >> (tela de selecao de classe).
+Copie para app/src/main/cpp/samp/: gui/widgets/button.h, gui/widgets/button.cpp, gui/samp_widgets/spawn.cpp. Originais em backup/.
+Toque e callbacks (SendPrevClass/SendSpawn/SendNextClass) NAO foram alterados: a area continua clicavel, so invisivel.
+Para voltar a mostrar: remover as 3 linhas setDrawHidden(true) em spawn.cpp.
 NAO verificado: compilacao NDK e comportamento no aparelho.

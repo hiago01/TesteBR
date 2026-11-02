@@ -11,6 +11,11 @@ Spawn::Spawn()
 	m_buttonSpawn = new Button(std::string((const char*)u8"Spawn"), UISettings::fontSize() / 2);
 	m_buttonNext = new Button(std::string((const char*)u8">>"), UISettings::fontSize() / 2);
 
+	// Botoes << / Spawn / >> escondidos (so o desenho); as funcoes abaixo seguem iguais
+	m_buttonPrev->setDrawHidden(true);
+	m_buttonSpawn->setDrawHidden(true);
+	m_buttonNext->setDrawHidden(true);
+
 	m_buttonPrev->setCallback([]() { if (pNetGame) pNetGame->SendPrevClass(); });
 	m_buttonSpawn->setCallback([]() { if (pNetGame) pNetGame->SendSpawn(); });
 	m_buttonNext->setCallback([]() { if (pNetGame) pNetGame->SendNextClass(); });
