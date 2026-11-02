@@ -270,7 +270,7 @@ namespace CtlLogic
 		ModernConfig cfg;
 		ModernLayout lay;
 		bool editing = false;
-		uint32_t disabledMask = 0;      // bit i = botao i ausente (ex.: microfone com voz desligada): nao desenha nem recebe toque
+		uint32_t disabledMask = 0;      // bit i = botao i ausente (reservado; hoje nenhum botao e escondido): nao desenha nem recebe toque
 
 		// ---- editor de HUD (so com editing=true) ----
 		int sel = B_ATTACK;             // controle selecionado: 0..B_COUNT-1 botao, B_COUNT joystick, -1 nenhum

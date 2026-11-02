@@ -1,7 +1,13 @@
-# CINFO.BIN / MINFO.BIN ausentes nao geram mensagem
+# Voice sempre ativo (VoiceChatEnable removido)
 
-- GameFilePolicy: cinfo.bin, minfo.bin e cinfo.sig (qualquer pasta) entram na lista de arquivos "gerados pelo jogo":
-  nao sao baixados, nao sao sobrescritos (ja era assim para CINFO.BIN e models/MINFO.BIN; agora vale em qualquer caminho).
-- RepairEngine.verify (tela CORRECOES): arquivo "gerado" ausente conta como OK; nao aparece como "ausente".
-  Arquivos comuns ausentes continuam sendo listados.
-Testes JVM (PackTest): 104 ok, 0 falhas (102 anteriores + 2 novos). Nao verificado: compilacao Gradle/no aparelho.
+Copie `app/` por cima do projeto. Originais em `backup_originais/` (controlmode_logic.h: so um comentario mudou).
+
+- settings.h/.cpp: campo bVoiceChatEnable e a leitura de [gui] VoiceChatEnable removidos.
+  Mantidos: VoiceChatKey, VoiceChatSize, VoiceChatPosX/Y (a tecla nao foi alterada).
+- voicebutton.h: o botao TALK (HUD classico) nao checa mais a opcao; so deixa de desenhar no HUD moderno, como antes.
+- moderncontrols.cpp: o botao MIC do HUD moderno nunca e escondido (disabledMask = 0).
+- FixedSettings.java: deixa de gravar VoiceChatEnable e APAGA a chave do SAMP/settings.ini do jogador ao abrir
+  (e a unica referencia ao nome que sobra, so para limpar o arquivo).
+
+Testes de controles de PC: 324/324 e 29/29 OK. NAO verificado: compilacao NDK/Gradle, aparelho,
+e a chamada Profile.Section.remove do ini4j (compilacao Java).

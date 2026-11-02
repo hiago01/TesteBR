@@ -78,7 +78,6 @@ CSettings::CSettings()
 
 	m_Settings.iDialog = reader.GetBoolean("gui", "Dialog", true);
 
-	m_Settings.bVoiceChatEnable = reader.GetBoolean("gui", "VoiceChatEnable", true);
 	m_Settings.iVoiceChatKey = reader.GetInteger("gui", "VoiceChatKey", 66);
 	m_Settings.fVoiceChatSize = reader.GetReal("gui", "VoiceChatSize", 30.0f);
 	m_Settings.fVoiceChatPosX = reader.GetReal("gui", "VoiceChatPosX", 1520.0f);

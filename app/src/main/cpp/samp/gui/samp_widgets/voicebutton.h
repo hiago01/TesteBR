@@ -30,7 +30,6 @@ public:
 
 	virtual void draw(ImGuiRenderer* renderer) override
 	{
-		if(!pSettings->Get().bVoiceChatEnable) return;
 		if (ControlMode::IsModern()) return;   // MODERNO: o icone e o botao Microfone moderno (desenhado por ModernControls)
 
 		if (countdown > 0 && recording() == 1) countdown--;

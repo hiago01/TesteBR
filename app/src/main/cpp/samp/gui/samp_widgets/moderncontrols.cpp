@@ -289,8 +289,7 @@ void ModernControls::draw(ImGuiRenderer* r)
 		const uint32_t ver = ControlMode::ConfigVersion();
 		if (ver != g_seenVer) { g_ctl.ApplyConfig(ControlMode::GetConfig()); g_seenVer = ver; }
 		g_ctl.SetScreen(screen.x, screen.y);
-		const bool micOn = pSettings && pSettings->Get().bVoiceChatEnable;
-		g_ctl.disabledMask = micOn ? 0u : (1u << B_MIC);
+		g_ctl.disabledMask = 0u;                              // voz sempre ativa: o botao Microfone nunca e escondido
 		wasActive = g_active.load();
 		if (wasActive && !show) ReleaseAllLocked();          // saiu do modo/entrou em veiculo/abriu UI: solta tudo
 		if (!editing && g_editing.load() == false) g_ctl.editing = false;

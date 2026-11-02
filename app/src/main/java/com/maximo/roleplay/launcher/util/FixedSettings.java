@@ -7,7 +7,7 @@ import org.ini4j.Wini;
 import java.io.File;
 import java.io.IOException;
 
-/** Opcoes travadas: teclado NATIVO do jogo (sem teclado do Android), Voice chat ligado; versao sempre a ultima. */
+/** Opcoes travadas: teclado NATIVO do jogo (sem teclado do Android), Voice chat sempre ativo (sem opcao); versao sempre a ultima. */
 public final class FixedSettings {
     public static final String[] VERSIONS = {"0.3.7", "0.3.7-R1", "0.3.7-R3", "0.3.7-R4", "0.3.7-R5"};
     public static final int LAST_VERSION = VERSIONS.length - 1;
@@ -29,7 +29,8 @@ public final class FixedSettings {
             Wini w = new Wini(f);
             w.put("gui", "androidkeyboard", true);
             w.put("gui", "autoaim", true);
-            w.put("gui", "VoiceChatEnable", true);
+            org.ini4j.Profile.Section gui = w.get("gui");
+            if (gui != null) gui.remove("VoiceChatEnable");   // chave removida: a voz e sempre ativa; limpa o que versoes antigas gravaram
             w.put("client", "autoaim", true);
             w.put("client", "version", VERSIONS[LAST_VERSION]);
             w.store();
