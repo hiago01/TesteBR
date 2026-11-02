@@ -261,6 +261,30 @@ public class UpdateActivity extends AppCompatActivity{
             return;
         }
 
+        // Anti-laco: se o Android ja abriu o instalador 2x para ESTE mesmo APK e o jogador voltou para ca, a instalacao nao esta
+        // concluindo (causa tipica: o app instalado foi assinado com outra chave -> "pacote em conflito"; ou o instalador do aparelho
+        // nao troca o APK). Em vez de repetir para sempre, explica e oferece desinstalar para instalar o novo do zero.
+        try {
+            android.content.SharedPreferences sp = getSharedPreferences("com.maximo.roleplay", MODE_PRIVATE);
+            long len = (mGameApk != null) ? mGameApk.length() : 0L;
+            int tries = (sp.getLong("apk_install_len", -1L) == len) ? sp.getInt("apk_install_tries", 0) : 0;
+            if (tries >= 2 && !isFinishing() && !isDestroyed()) {
+                sp.edit().putInt("apk_install_tries", 0).apply();
+                com.maximo.roleplay.launcher.util.NoticeDialog.show(this, getString(R.string.mx_loop_title), getString(R.string.mx_loop_msg),
+                        false, getString(R.string.mx_loop_btn), new Runnable() {
+                            @Override public void run() {
+                                try {
+                                    startActivity(new Intent(Intent.ACTION_DELETE, Uri.parse("package:" + getPackageName())));
+                                } catch (RuntimeException e) {
+                                    Log.e("x1y2z", "cannot open uninstall", e);
+                                }
+                            }
+                        });
+                return;
+            }
+            sp.edit().putLong("apk_install_len", len).putInt("apk_install_tries", tries + 1).apply();
+        } catch (RuntimeException ignored) { }
+
         try {
             Uri uri = FileProvider.getUriForFile(getApplicationContext(),
                     getApplicationContext().getPackageName() + ".provider", mGameApk);
