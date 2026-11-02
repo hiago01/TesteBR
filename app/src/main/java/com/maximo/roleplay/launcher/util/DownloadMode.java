@@ -3,8 +3,6 @@ package com.maximo.roleplay.launcher.util;
 import android.content.Context;
 import android.content.SharedPreferences;
 
-import java.util.Locale;
-
 /**
  * Modo de download escolhido pelo jogador na tela "Atualizacao obrigatoria".
  *  - LEGACY (padrao, nada escolhido): comportamento anterior (arquivo a arquivo, com tudo).
@@ -42,9 +40,6 @@ public final class DownloadMode {
 
     /** Caminho (relativo a files/) que pertence as skins: texdb/skins/... e SAMP/skins/... (sem diferenciar caixa). */
     public static boolean isSkinPath(String relPath) {
-        if (relPath == null) return false;
-        String p = relPath.replace('\\', '/').toLowerCase(Locale.ROOT);
-        while (p.startsWith("/")) p = p.substring(1);
-        return p.startsWith("texdb/skins/") || p.startsWith("samp/skins/");
+        return com.maximo.roleplay.launcher.pack.GameFilePolicy.isSkin(relPath);
     }
 }

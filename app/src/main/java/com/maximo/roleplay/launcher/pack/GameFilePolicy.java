@@ -74,8 +74,24 @@ public final class GameFilePolicy {
         return JUNK_BASENAMES.contains(slash >= 0 ? l.substring(slash + 1) : l);
     }
 
+    /**
+     * true = as SKINS (texdb/skins/ e SAMP/skins/) NAO sao baixadas nem extraidas dos pacotes (opcao "download_skins": false
+     * no maximo_config.json, ou DOWNLOAD SEGURO). Ajustado pelo UpdateService antes de cada instalacao; padrao false.
+     */
+    private static volatile boolean skipSkins = false;
+    public static void setSkipSkins(boolean v) { skipSkins = v; }
+    public static boolean isSkipSkins() { return skipSkins; }
+
+    /** Caminho das skins: texdb/skins/... e SAMP/skins/... (sem diferenciar caixa). */
+    public static boolean isSkin(String relPath) {
+        if (relPath == null) return false;
+        String p = relPath.replace('\\', '/').toLowerCase(Locale.ROOT);
+        while (p.startsWith("/")) p = p.substring(1);
+        return p.startsWith("texdb/skins/") || p.startsWith("samp/skins/");
+    }
+
     public static boolean isProtected(String relPath) {
-        return isInternal(relPath) || (protectGenerated && isGenerated(relPath));
+        return isInternal(relPath) || (protectGenerated && isGenerated(relPath)) || (skipSkins && isSkin(relPath));
     }
 
     /**

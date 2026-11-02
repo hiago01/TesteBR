@@ -846,6 +846,20 @@ public class PackTest {
             r("verify: cinfo.sig ausente NAO vira problema; arquivo comum ausente continua sendo", sigNotBad && aBad && vr.bad.size() == 1, "bad=" + vr.bad.size());
         }
 
+        r("skins: isSkin reconhece texdb/skins e SAMP/skins (qualquer caixa) e nada mais",
+                GameFilePolicy.isSkin("texdb/skins/skins.dxt.dat") && GameFilePolicy.isSkin("SAMP/skins/skin.dff")
+                && GameFilePolicy.isSkin("/Texdb/Skins/x") && !GameFilePolicy.isSkin("texdb/gta3/gta3.txt")
+                && !GameFilePolicy.isSkin("SAMP/settings.ini") && !GameFilePolicy.isSkin("texdb/skinsX/a") && !GameFilePolicy.isSkin(null), "");
+        {
+            GameFilePolicy.setSkipSkins(false);
+            boolean off = !GameFilePolicy.isProtected("texdb/skins/skins.txt");
+            GameFilePolicy.setSkipSkins(true);
+            boolean on = GameFilePolicy.isProtected("texdb/skins/skins.txt") && GameFilePolicy.isProtected("SAMP/skins/a.dff")
+                    && !GameFilePolicy.isProtected("texdb/gta3/gta3.txt") && !GameFilePolicy.isProtected("SAMP/settings.ini".replace("settings.ini", "x.txt"));
+            GameFilePolicy.setSkipSkins(false);
+            r("skins: com skipSkins ligado viram 'protegidas' (nao extraidas); desligado nao mudam nada", off && on, "off=" + off + " on=" + on);
+        }
+
         System.out.println("\n" + pass + " ok, " + fail + " falhas");
         if (fail > 0) System.exit(1);
     }

@@ -128,6 +128,8 @@ public class UpdateService extends Service {
     private boolean mUsePacks = false;
     /** DownloadMode.* lido do maximo_config a cada verificacao (LEGACY / SAFE / FULL). */
     private String mDlMode = com.maximo.roleplay.launcher.util.DownloadMode.LEGACY;
+    /** true = skins (texdb/skins, SAMP/skins) fora do download: "download_skins": false no JSON ou DOWNLOAD SEGURO. */
+    private boolean mSkipSkins = false;
     private boolean mPackHasSampStep = false; // pacotes seguidos da etapa SAMP (so para a mensagem da tela)
     private boolean mSampStep = false;        // baixando a pasta SAMP depois dos pacotes
     private int mListTotalFiles = 0;
@@ -438,6 +440,11 @@ public class UpdateService extends Service {
                         mPackConfig = null;
                         mPackSelection = null;
                         mDlMode = com.maximo.roleplay.launcher.util.DownloadMode.get(UpdateService.this);
+                        // maximo_config.json -> "download_skins": false desliga o download das skins (texdb/skins e SAMP/skins) para TODOS.
+                        // true ou ausente = depende da escolha do jogador (SEGURO sem skins, COMPLETO com skins).
+                        boolean skinsOn = jSONObject.optBoolean("download_skins", true);
+                        mSkipSkins = !skinsOn || com.maximo.roleplay.launcher.util.DownloadMode.SAFE.equals(mDlMode);
+                        Log.d(TAG, "download_skins=" + skinsOn + " modo=" + mDlMode + " -> pular skins=" + mSkipSkins);
                         if (com.maximo.roleplay.launcher.util.DownloadMode.FULL.equals(mDlMode)) {
                             parsePackConfig(response);
                         }
@@ -585,9 +592,8 @@ public class UpdateService extends Service {
             if (!GameFilePolicy.wantedForDevice(path, mGpuType)) {
                 continue;
             }
-            // DOWNLOAD SEGURO: so o jogo. As skins (texdb/skins e SAMP/skins) ficam de fora e nao contam como "faltando".
-            if (com.maximo.roleplay.launcher.util.DownloadMode.SAFE.equals(mDlMode)
-                    && com.maximo.roleplay.launcher.util.DownloadMode.isSkinPath(path)) {
+            // Skins (texdb/skins e SAMP/skins) fora (DOWNLOAD SEGURO ou "download_skins": false): nao contam como "faltando".
+            if (mSkipSkins && GameFilePolicy.isSkin(path)) {
                 continue;
             }
             considered++;
@@ -1054,6 +1060,7 @@ public class UpdateService extends Service {
         mPackHasSampStep = mDlFiles.size() > 1; // alem do marcador "(packs)" ha arquivos da SAMP/
         mSampStep = false;
         GameFilePolicy.setProtectGenerated(!mPackConfig.includeAll);
+        GameFilePolicy.setSkipSkins(mSkipSkins); // o zip da GPU e baixado inteiro, mas as skins nao sao extraidas
         final PackInstaller.Config cfg = new PackInstaller.Config();
         cfg.filesDir = base;
         cfg.version = mPackConfig.version;
@@ -1126,6 +1133,7 @@ public class UpdateService extends Service {
                     failure = new PackException("unexpected: " + e, e);
                 }
                 GameFilePolicy.setProtectGenerated(true); // o fluxo antigo (atualizacao) NUNCA sobrescreve arquivos gerados pelo jogo
+                GameFilePolicy.setSkipSkins(false);
                 final PackException fail = failure;
                 if (cancel.isCancelled()) return;
                 postToService(new Runnable() {
