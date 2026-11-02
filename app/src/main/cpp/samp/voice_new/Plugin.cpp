@@ -96,6 +96,14 @@ void Plugin::MainLoop()
 {
     if(!Samp::IsLoaded()) return;
 
+    {   // diagnostico: estado a cada ~5 s (1 linha) para saber por que o botao nao envia nada
+        static int s_diagTick = 0;
+        if (s_diagTick++ % 300 == 0)
+            LogVoice("[sv:diag:loop] icone=%d mute=%d micEnable=%d recordStatus=%d recording=%d", (int)MicroIcon::IsShowed(),
+                (int)Plugin::muteStatus, (int)PluginConfig::GetMicroEnable(), (int)Plugin::recordStatus,
+                (pUI && pUI->voicebutton()) ? (int)pUI->voicebutton()->recording() : -1);
+    }
+
     while(const auto controlPacket = Network::ReceiveControlPacket())
     {
         Plugin::ControlPacketHandler(*&*controlPacket);

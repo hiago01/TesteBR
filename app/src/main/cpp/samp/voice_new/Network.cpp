@@ -81,7 +81,10 @@ void Network::Free() noexcept
 bool Network::SendControlPacket(const uint16_t packet, const void *dataAddr, const uint16_t dataSize) noexcept
 {
     if(Network::connectionStatus != ConnectionStatus::Connected)
+    {
+        LogVoice("[sv:diag:net] SendControlPacket recusado: status=%d (precisa ser Connected, so vira depois do pluginInit)", (int)Network::connectionStatus);
         return false;
+    }
 
     RakNet::BitStream bsSend;
 
@@ -299,6 +302,7 @@ bool Network::OnRaknetReceive(Packet* packet) noexcept
 {
 //    if(*packet->data != kRaknetPacketId)
 //        return true;
+    LogVoice("[sv:diag:net] pacote de voz recebido do servidor (len=%u, status=%d)", (unsigned)packet->length, (int)Network::connectionStatus);
     auto controlPacketPtr = new ControlPacket();
 
     RakNet::BitStream bs((unsigned char*)packet->data, packet->length, false);
@@ -311,10 +315,12 @@ bool Network::OnRaknetReceive(Packet* packet) noexcept
     //  memcpy(controlPacketPtr, packet->data, sizeof(ControlPacket));
     //controlPacketPtr = reinterpret_cast<ControlPacket*>(packet->data + sizeof(uint8_t));
 
+    LogVoice("[sv:diag:net] tipo=%d tamanho=%d", (int)controlPacketPtr->packet, (int)controlPacketPtr->length);
     switch(controlPacketPtr->packet)
     {
         case SV::ControlPacketType::serverInfo:
         {
+            LogVoice("[sv:diag:net] serverInfo recebido (ip=%s)", Network::serverIp.c_str());
             const auto& stData = *reinterpret_cast<SV::ServerInfoPacket*>(controlPacketPtr->data);
             if(controlPacketPtr->length != sizeof(stData)) return false;
 
@@ -354,6 +360,7 @@ bool Network::OnRaknetReceive(Packet* packet) noexcept
             const auto& stData = *reinterpret_cast<SV::PluginInitPacket*>(controlPacketPtr->data);
             if(controlPacketPtr->length != sizeof(stData)) return false;
 
+            LogVoice("[sv:diag:net] pluginInit recebido (bitrate=%u mute=%d)", stData.bitrate, (int)stData.mute);
             FLog("[sv:dbg:network:pluginInit] : plugin init packet "
                 "(bitrate:%u;mute:%hhu)", stData.bitrate, stData.mute);
 

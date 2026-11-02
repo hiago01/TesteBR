@@ -12,7 +12,10 @@ bool Record::Init(const uint32_t bitrate) noexcept
         return false;
 
     if(BASS_IsStarted() == 0)
+    {
+        LogVoice("[sv:diag:record] Record::Init falhou: BASS_IsStarted()==0 (BASS nao iniciado)");
         return false;
+    }
 
     LogVoice("[sv:dbg:record:init] : module initializing...");
 
