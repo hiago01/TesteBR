@@ -440,11 +440,11 @@ public class UpdateService extends Service {
                         mPackConfig = null;
                         mPackSelection = null;
                         mDlMode = com.maximo.roleplay.launcher.util.DownloadMode.get(UpdateService.this);
-                        // maximo_config.json -> "download_skins": false desliga o download das skins (texdb/skins e SAMP/skins) para TODOS.
-                        // true ou ausente = depende da escolha do jogador (SEGURO sem skins, COMPLETO com skins).
-                        boolean skinsOn = jSONObject.optBoolean("download_skins", true);
-                        mSkipSkins = !skinsOn || com.maximo.roleplay.launcher.util.DownloadMode.SAFE.equals(mDlMode);
-                        Log.d(TAG, "download_skins=" + skinsOn + " modo=" + mDlMode + " -> pular skins=" + mSkipSkins);
+                        // maximo_config.json -> "download_skins": true = skins SEMPRE (ate no SEGURO); false = nunca;
+                        // "auto"/ausente = escolha do jogador (SEGURO sem skins, COMPLETO com skins).
+                        Object skinsCfg = jSONObject.opt("download_skins");
+                        mSkipSkins = GameFilePolicy.shouldSkipSkins(skinsCfg, com.maximo.roleplay.launcher.util.DownloadMode.SAFE.equals(mDlMode));
+                        Log.d(TAG, "download_skins=" + skinsCfg + " modo=" + mDlMode + " -> pular skins=" + mSkipSkins);
                         if (com.maximo.roleplay.launcher.util.DownloadMode.FULL.equals(mDlMode)) {
                             parsePackConfig(response);
                         }

@@ -82,6 +82,21 @@ public final class GameFilePolicy {
     public static void setSkipSkins(boolean v) { skipSkins = v; }
     public static boolean isSkipSkins() { return skipSkins; }
 
+    /**
+     * Decide se as skins ficam de fora. "download_skins" no maximo_config.json:
+     * true = baixa as skins SEMPRE (ate no DOWNLOAD SEGURO); false = nunca; "auto"/ausente/outro = escolha do jogador
+     * (SEGURO sem skins, COMPLETO com skins).
+     * @param cfg valor do JSON (Boolean, String ou null)  @param safeMode jogador escolheu DOWNLOAD SEGURO
+     */
+    public static boolean shouldSkipSkins(Object cfg, boolean safeMode) {
+        if (cfg != null) {
+            String s = String.valueOf(cfg).trim().toLowerCase(Locale.ROOT);
+            if (s.equals("true")) return false;
+            if (s.equals("false")) return true;
+        }
+        return safeMode;
+    }
+
     /** Caminho das skins: texdb/skins/... e SAMP/skins/... (sem diferenciar caixa). */
     public static boolean isSkin(String relPath) {
         if (relPath == null) return false;

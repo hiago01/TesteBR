@@ -337,8 +337,7 @@ public class RepairFragment extends Fragment {
         List<RepairEngine.Entry> merged = RepairEngine.merge(samp, files);
         // Skins fora ("download_skins": false no JSON ou DOWNLOAD SEGURO): nao entram na verificacao/reparo.
         Object ds = cfg == null ? null : cfg.get("download_skins");
-        boolean skinsOn = !(Boolean.FALSE.equals(ds) || "false".equalsIgnoreCase(String.valueOf(ds)));
-        if (!skinsOn || com.maximo.roleplay.launcher.util.DownloadMode.SAFE.equals(com.maximo.roleplay.launcher.util.DownloadMode.get(a))) {
+        if (com.maximo.roleplay.launcher.pack.GameFilePolicy.shouldSkipSkins(ds, com.maximo.roleplay.launcher.util.DownloadMode.SAFE.equals(com.maximo.roleplay.launcher.util.DownloadMode.get(a)))) {
             List<RepairEngine.Entry> noSkins = new ArrayList<>();
             for (RepairEngine.Entry en : merged) if (!com.maximo.roleplay.launcher.pack.GameFilePolicy.isSkin(en.path)) noSkins.add(en);
             merged = noSkins;

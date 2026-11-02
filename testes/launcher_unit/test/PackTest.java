@@ -860,6 +860,12 @@ public class PackTest {
             r("skins: com skipSkins ligado viram 'protegidas' (nao extraidas); desligado nao mudam nada", off && on, "off=" + off + " on=" + on);
         }
 
+        r("skins: JSON true forca ate no SEGURO; false nunca; auto/ausente/outro = escolha do jogador",
+                !GameFilePolicy.shouldSkipSkins(Boolean.TRUE, true) && !GameFilePolicy.shouldSkipSkins("true", true) && !GameFilePolicy.shouldSkipSkins(Boolean.TRUE, false)
+                && GameFilePolicy.shouldSkipSkins(Boolean.FALSE, false) && GameFilePolicy.shouldSkipSkins("false", false) && GameFilePolicy.shouldSkipSkins(" FALSE ", true)
+                && GameFilePolicy.shouldSkipSkins("auto", true) && !GameFilePolicy.shouldSkipSkins("auto", false)
+                && GameFilePolicy.shouldSkipSkins(null, true) && !GameFilePolicy.shouldSkipSkins(null, false) && GameFilePolicy.shouldSkipSkins("xyz", true), "");
+
         System.out.println("\n" + pass + " ok, " + fail + " falhas");
         if (fail > 0) System.exit(1);
     }
