@@ -1,4 +1,5 @@
-Fix: sair da mira ao soltar o Ataque. Substitua app/src/main/cpp/samp/game/pad.cpp por game/pad.cpp deste zip.
-Causa provavel: patches.cpp:316 desliga CCamera::ClearPlayerWeaponMode (dentro de CPlayerPed::ClearWeaponTarget), entao o modo de arma nunca era limpo.
-Agora, ao soltar o Ataque, chama-se essa funcao real uma vez. Log: "[CONTROLES] mira: soltou o Ataque -> ClearPlayerWeaponMode".
+v4: copie game/pad.cpp e game/Widgets/WidgetGta.cpp para app/src/main/cpp/samp/game/ (incluindo o pad.cpp do v3).
+Tick de saida da mira agora roda todo frame (CTouchInterface::Update) e chama CCamera::ClearPlayerWeaponMode ao soltar o Ataque.
+Logs esperados no samp_log: "sair da mira: ClearPlayerWeaponMode ok" e "mira: soltou o Ataque -> ClearPlayerWeaponMode".
+Se esses logs nao aparecerem, o APK instalado nao e este build.
 NAO verificado: compilacao NDK e comportamento no aparelho.

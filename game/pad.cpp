@@ -554,6 +554,14 @@ static bool AimStateTick()
     return false;
 }
 
+// Chamado TODO frame na thread do jogo (CTouchInterface::Update): garante que a saida da mira roda mesmo que o motor
+// nao consulte mais nenhum dos pad-hooks depois que a mira ja esta ligada.
+void PadAimFrameTick()
+{
+    if (!ModernInput::Active() && !g_aimForced) return;
+    AimStateTick();
+}
+
 bool (*CPad__GetEnterTargeting)(uintptr_t thiz);
 bool CPad__GetEnterTargeting_hook(uintptr_t thiz)
 {
