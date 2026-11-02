@@ -1,4 +1,3 @@
-v6 (minimo): copie game/pad.cpp e game/Widgets/WidgetGta.cpp para app/src/main/cpp/samp/game/ (substituem v3/v4/v5).
-Sai da mira = ClearWeaponTarget + apagar bit 3 de [task+0x48] (igual ao GetExitTargeting nativo), checado todo frame.
-Removido: ClearPlayerWeaponMode (o caminho nativo nao chama).
+v7: copie game/pad.cpp (+ game/Widgets/WidgetGta.cpp do v6) para app/src/main/cpp/samp/game/.
+Mira do moderno agora usa a posicao nativa de cada arma (igual ao classico): kCenterCrosshair=false.
 NAO verificado: compilacao NDK e comportamento no aparelho.

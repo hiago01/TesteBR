@@ -489,6 +489,8 @@ static bool IsFirearm(CPedGTA* ped)
     const int t = (int)ped->m_aWeapons[ped->m_nActiveWeaponSlot].dwType;
     return t >= 22 && t <= 38;      // ids de arma do GTA SA/SA-MP: pistola(22) ... minigun(38)
 }
+// false = a mira usa a posicao NATIVA de cada arma (igual ao classico). Com true a mira era forcada para 0.5/0.5 e ficava em cima do jogador.
+static const bool kCenterCrosshair = false;
 static void ApplyCenteredAim(bool on)
 {
     static float* px = nullptr; static float* py = nullptr; static bool tried = false, applied = false;
@@ -583,7 +585,7 @@ bool CPad__GetEnterTargeting_hook(uintptr_t thiz)
         uint8_t old = CWorld::PlayerInFocus;
         CWorld::PlayerInFocus = byteCurPlayer;
         uintptr_t result = CPad__GetEnterTargeting(thiz);
-        ApplyCenteredAim(ModernInput::Active());
+        ApplyCenteredAim(kCenterCrosshair && ModernInput::Active());
         if (byteCurPlayer == 0 && AimStateTick()) result = 1;   // MODERNO: Ataque segurado = mirar (so o ped LOCAL, nunca um remoto)
         LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = result;
         CWorld::PlayerInFocus = old;
