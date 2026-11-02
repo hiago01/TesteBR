@@ -741,8 +741,8 @@ uint32_t CPad__GetLookRight_hook(uintptr_t thiz)
     }
 }
 
-uint16_t(*CPad__GetCarGunLeftRight)(unsigned int a1, int a2, int a3);
-uint16_t CPad__GetCarGunLeftRight_hook(unsigned int a1, int a2, int a3)
+uint16_t(*CPad__GetCarGunLeftRight)(uintptr_t a1, int a2, int a3);
+uint16_t CPad__GetCarGunLeftRight_hook(uintptr_t a1, int a2, int a3)
 {
 	if (CWorld::PlayerInFocus)
 	{
@@ -778,8 +778,8 @@ uint16_t CPad__GetCarGunLeftRight_hook(unsigned int a1, int a2, int a3)
 	}
 }
 
-uint16_t(*CPad__GetCarGunUpDown)(unsigned int a1, int a2, void *a3, float a4, int a5);
-uint16_t CPad__GetCarGunUpDown_hook(unsigned int a1, int a2, void *a3, float a4, int a5)
+uint16_t(*CPad__GetCarGunUpDown)(uintptr_t a1, int a2, void *a3, float a4, int a5);
+uint16_t CPad__GetCarGunUpDown_hook(uintptr_t a1, int a2, void *a3, float a4, int a5)
 {
 	if (CWorld::PlayerInFocus)
 	{

@@ -1611,8 +1611,8 @@ CVector& FindPlayerSpeed_hook(int a1)
 	return FindPlayerSpeed(a1);
 }
 
-int (*RwFrameAddChild)(int a1, int a2);
-int RwFrameAddChild_hook(int a1, int a2)
+int (*RwFrameAddChild)(uintptr_t a1, uintptr_t a2);
+int RwFrameAddChild_hook(uintptr_t a1, uintptr_t a2)
 {
 	if(a1 == 0 || a2 == 0) return 0;
 	return RwFrameAddChild(a1, a2);
@@ -1771,19 +1771,20 @@ uintptr_t CTxdStore__TxdStoreFindCB_hook(const char* name)
 
 
 
-int (*CCustomRoadsignMgr_RenderRoadsignAtomic)(int a1, int a2);
-int CCustomRoadsignMgr_RenderRoadsignAtomic_hook(int a1, int a2)
+int (*CCustomRoadsignMgr_RenderRoadsignAtomic)(uintptr_t a1, uintptr_t a2);
+int CCustomRoadsignMgr_RenderRoadsignAtomic_hook(uintptr_t a1, uintptr_t a2)
 {
 	if ( a1 )
 		return CCustomRoadsignMgr_RenderRoadsignAtomic(a1, a2);
+	return 0;
 }
 
-int (*_RwTextureDestroy)(int a1);
-int _RwTextureDestroy_hook(int a1)
+int (*_RwTextureDestroy)(uintptr_t a1);
+int _RwTextureDestroy_hook(uintptr_t a1)
 {
 	int result; // r0
 
-	if ( (unsigned int)(a1 + 1) >= 2 )
+	if ( (uintptr_t)(a1 + 1) >= 2 )
 		result = _RwTextureDestroy(a1);
 	else
 		result = 0;
@@ -1793,7 +1794,7 @@ int _RwTextureDestroy_hook(int a1)
 int (*CPed_UpdatePosition)(CPedGTA* a1);
 int CPed_UpdatePosition_hook(CPedGTA* a1)
 {
-	int result; // r0
+	int result = 0; // r0
 
 	if ( GamePool_FindPlayerPed() == a1 )
 		result = CPed_UpdatePosition(a1);
@@ -1921,8 +1922,8 @@ void CTaskSimpleUseGun__SetMoveAnim_hook(uintptr_t *thiz, uintptr_t *a2)
 	CTaskSimpleUseGun__SetMoveAnim(thiz, a2);
 }
 
-int (*CAnimManager_UncompressAnimation)(int result);
-int CAnimManager_UncompressAnimation_hook(int result)
+int (*CAnimManager_UncompressAnimation)(uintptr_t result);
+int CAnimManager_UncompressAnimation_hook(uintptr_t result)
 {
 	if ( result )
 		return CAnimManager_UncompressAnimation(result);
@@ -2237,8 +2238,8 @@ void CTaskSimpleUseGun__RemoveStanceAnims_hook(uintptr* thiz, void* ped, float a
     CTaskSimpleUseGun__RemoveStanceAnims(thiz, ped, a3);
 }
 
-int (*CCollision__ProcessVerticalLine)(float *a1, float *a2, int a3, int a4, int *a5, int a6, int a7, int a8);
-int CCollision__ProcessVerticalLine_hook(float *a1, float *a2, int a3, int a4, int *a5, int a6, int a7, int a8)
+int (*CCollision__ProcessVerticalLine)(float *a1, float *a2, uintptr_t a3, uintptr_t a4, int *a5, int a6, int a7, uintptr_t a8);
+int CCollision__ProcessVerticalLine_hook(float *a1, float *a2, uintptr_t a3, uintptr_t a4, int *a5, int a6, int a7, uintptr_t a8)
 {
     int result; // r0
 

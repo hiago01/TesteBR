@@ -289,15 +289,20 @@ public class SplashActivity extends AppCompatActivity {
                         final AlertDialog alert = new AlertDialog.Builder(SplashActivity.this)
                                 .setView(v).setCancelable(false).create();
                         alert.setCanceledOnTouchOutside(false);
-                        v.findViewById(R.id.mx_upd_req_btn).setOnClickListener(new View.OnClickListener() {
+                        // DOWNLOAD SEGURO: baixa so o que falta/mudou (fluxo normal, nao apaga nada).
+                        v.findViewById(R.id.mx_upd_safe_btn).setOnClickListener(new View.OnClickListener() {
                             @Override
                             public void onClick(View view) {
                                 mDialogShowing = false;
-                                Intent intent = new Intent(SplashActivity.this, UpdateActivity.class);
-                                intent.putExtra("mode", UpdateActivity.UpdateMode.GameDataUpdate.name());
-                                startActivity(intent);
-                                finish();
+                                startGameDataUpdate();
                                 alert.dismiss();
+                            }
+                        });
+                        // DOWNLOAD COMPLETO: pede confirmacao, apaga o jogo (mantem configuracoes) e baixa tudo.
+                        v.findViewById(R.id.mx_upd_full_btn).setOnClickListener(new View.OnClickListener() {
+                            @Override
+                            public void onClick(View view) {
+                                confirmFullDownload(alert);
                             }
                         });
                         alert.show();
@@ -421,6 +426,65 @@ public class SplashActivity extends AppCompatActivity {
             final int vc = currentVersionCode();
             return vc > 0 && getSharedPreferences("com.maximo.roleplay", MODE_PRIVATE).getInt(PREF_WIPED_VC, -1) != vc;
         } catch (Throwable t) { return false; }
+    }
+
+    private void startGameDataUpdate() {
+        Intent intent = new Intent(SplashActivity.this, UpdateActivity.class);
+        intent.putExtra("mode", UpdateActivity.UpdateMode.GameDataUpdate.name());
+        startActivity(intent);
+        finish();
+    }
+
+    /** DOWNLOAD COMPLETO: confirma, apaga os arquivos do jogo (ClientWipe mantem configuracoes/favoritos) e baixa tudo de novo. */
+    private void confirmFullDownload(final AlertDialog parent) {
+        if (isFinishing() || isDestroyed()) return;
+        new AlertDialog.Builder(SplashActivity.this)
+                .setTitle(R.string.mx_upd_full_title)
+                .setMessage(R.string.mx_upd_full_msg)
+                .setCancelable(false)
+                .setNegativeButton(R.string.mx_upd_full_no, null)
+                .setPositiveButton(R.string.mx_upd_full_yes, new android.content.DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(android.content.DialogInterface d, int which) {
+                        runFullDownload(parent);
+                    }
+                }).show();
+    }
+
+    private void runFullDownload(final AlertDialog parent) {
+        final java.io.File dir = getExternalFilesDir(null);
+        final android.widget.Button b1 = parent.findViewById(R.id.mx_upd_safe_btn);
+        final android.widget.Button b2 = parent.findViewById(R.id.mx_upd_full_btn);
+        if (b1 != null) b1.setEnabled(false);
+        if (b2 != null) b2.setEnabled(false);
+        new Thread(new Runnable() {
+            @Override public void run() {
+                int failed = 0;
+                try {
+                    com.maximo.roleplay.launcher.pack.ClientWipe.Result r = com.maximo.roleplay.launcher.pack.ClientWipe.wipe(dir);
+                    failed = r.failed;
+                    Log.i(TAG, "DOWNLOAD COMPLETO: " + r);
+                } catch (Throwable t) {
+                    Log.e(TAG, "DOWNLOAD COMPLETO: wipe falhou", t);
+                    failed = 1;
+                }
+                final int f = failed;
+                runOnUiThread(new Runnable() { @Override public void run() {
+                    if (isFinishing() || isDestroyed()) return;
+                    if (f > 0) {
+                        // nao baixa por cima de uma limpeza incompleta: o jogador pode tentar de novo ou usar o SEGURO
+                        if (b1 != null) b1.setEnabled(true);
+                        if (b2 != null) b2.setEnabled(true);
+                        Toast.makeText(SplashActivity.this, getString(R.string.mx_upd_full_fail, f), Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    mDialogShowing = false;
+                    com.maximo.roleplay.launcher.config.Config.clientUpToDate = false;
+                    startGameDataUpdate();
+                    parent.dismiss();
+                } });
+            }
+        }, "full-download-wipe").start();
     }
 
     private void wipeThenStart() {
