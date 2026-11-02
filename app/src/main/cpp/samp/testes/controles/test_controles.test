@@ -96,69 +96,100 @@ int main()
 	  CHECK(e.OnTouch(2, 2, e.lay.base.cx, e.lay.base.cy)); CHECK(e.OnTouch(3, 2, 600, 700)); CHECK(e.OnTouch(1, 2, 600, 700));
 	  CHECK(std::fabs(e.cfg.joyPos.x - 600.0f / 2400) < 1e-3); }
 
-	// --- editor de HUD: selecao, tamanho, opacidade, painel, HUD 1..4 ---
+	// --- editor de HUD (painel no estilo da referencia) ---
 	{
 		const float W = 2400, Hh = 1080;
 		ModernController e; e.SetScreen(W, Hh); e.editing = true;
 		HudLayout store[kHudCount]; e.BeginEdit(store, 0);
-		const EditPanel P = MakeEditPanel(W, Hh);
 		auto mid = [](const CtlRect& r, float& cx, float& cy) { cx = (r.l + r.r) / 2; cy = (r.t + r.b) / 2; };
-		float cx, cy;
-		// painel dentro da tela e sem cobrir os controles padrao
-		CHECK(P.box.l >= 0 && P.box.r <= W && P.box.t >= 0 && P.box.b <= Hh);
-		for (int i = 0; i < B_COUNT; i++) { const CtlCircle& b = e.lay.btn[i]; CHECK(b.cy - b.r > P.box.b || b.cx + b.r < P.box.l || b.cx - b.r > P.box.r); }
-		CHECK(e.lay.base.cy - e.lay.base.r > P.box.b);
-		{ EditPanel R = MakeEditPanel(1080, 2400); CHECK(R.box.l >= 0 && R.box.r <= 1080 && R.box.b <= 2400); }   // retrato tambem cabe
-		// selecionar: tocar num botao seleciona e marca; nada de gameplay
+		auto tap = [&](const CtlRect& r) { float x, y; mid(r, x, y); e.OnTouch(2, 1, x, y); e.OnTouch(1, 1, x, y); };
+		float cy;
+		EditPanel P = e.Panel();
+		// geometria: dentro da tela (paisagem e retrato), expandido e recolhido, sem cobrir os controles padrao
+		auto inside = [](const EditPanel& q, float w, float h) { return q.box.l >= 0 && q.box.r <= w && q.box.t >= 0 && q.tab.b <= h; };
+		CHECK(inside(P, W, Hh)); CHECK(inside(MakeEditPanel(1080, 2400), 1080, 2400)); CHECK(inside(MakeEditPanel(W, Hh, 0, 0, true), W, Hh));
+		for (int i = 0; i < B_COUNT; i++) { const CtlCircle& b = e.lay.btn[i]; CHECK(b.cy - b.r > P.tab.b || b.cx + b.r < P.box.l || b.cx - b.r > P.box.r); }
+		CHECK(e.lay.base.cy - e.lay.base.r > P.tab.b);
+		// todos os itens dentro do painel e sem se sobrepor entre si
+		{ const CtlRect* it[] = { &P.exit, &P.hudPrev, &P.hudLbl, &P.hudNext, &P.cloud, &P.share, &P.reset, &P.save, &P.chk, &P.opaTrk, &P.sizeTrk, &P.dpL, &P.dpR, &P.dpU, &P.dpD };
+		  const int n = sizeof it / sizeof it[0];
+		  for (int i = 0; i < n; i++) { CHECK(it[i]->l >= P.box.l && it[i]->r <= P.box.r && it[i]->t >= P.box.t && it[i]->b <= P.box.b); }
+		  for (int i = 0; i < n; i++) for (int j = i + 1; j < n; j++) { const CtlRect &a = *it[i], &b = *it[j]; CHECK(a.r <= b.l || b.r <= a.l || a.b <= b.t || b.b <= a.t); } }
+		// selecionar: tocar num botao seleciona; nada de gameplay; som
 		CHECK(e.sel == B_ATTACK);
-		CHECK(e.OnTouch(2, 1, e.lay.btn[B_JUMP].cx, e.lay.btn[B_JUMP].cy)); CHECK(e.sel == B_JUMP); CHECK(e.OnTouch(1, 1, 0, 0));
+		CHECK(e.OnTouch(2, 1, e.lay.btn[B_JUMP].cx, e.lay.btn[B_JUMP].cy)); CHECK(e.sel == B_JUMP && e.soundReq == 1); CHECK(e.OnTouch(1, 1, 0, 0));
 		CHECK(e.Read(false).held == 0);
 		CHECK(e.OnTouch(2, 1, e.lay.base.cx, e.lay.base.cy)); CHECK(e.sel == B_COUNT); CHECK(e.OnTouch(1, 1, 0, 0));
-		// arrastar mantem o ponto de pegada (nao "pula" o centro para o dedo)
-		{ const CtlCircle a = e.lay.btn[B_CROUCH]; const float ox = e.cfg.btnPos[B_CROUCH].x;
+		// arrastar mantem o ponto de pegada e marca "alterado"
+		{ e.dirty = false; const CtlCircle a = e.lay.btn[B_CROUCH]; const float ox = e.cfg.btnPos[B_CROUCH].x;
 		  CHECK(e.OnTouch(2, 1, a.cx + 10, a.cy)); CHECK(e.OnTouch(3, 1, a.cx + 10 + 100, a.cy)); CHECK(e.OnTouch(1, 1, a.cx + 110, a.cy));
-		  CHECK(std::fabs(e.cfg.btnPos[B_CROUCH].x - (ox + 100.0f / W)) < 1e-3); CHECK(e.sel == B_CROUCH); }
-		// tamanho: so o selecionado muda; botoes +/- e barra
-		{ e.sel = B_ATTACK; const float rj = e.lay.btn[B_JUMP].r, ra = e.lay.btn[B_ATTACK].r;
-		  mid(P.sizeP, cx, cy); CHECK(e.OnTouch(2, 1, cx, cy)); CHECK(e.OnTouch(1, 1, cx, cy));
-		  CHECK(e.cfg.ctlScale[B_ATTACK] > 1.0f && e.lay.btn[B_ATTACK].r > ra); CHECK(e.lay.btn[B_JUMP].r == rj && e.cfg.ctlScale[B_JUMP] == 1.0f);
-		  mid(P.sizeM, cx, cy); e.OnTouch(2, 1, cx, cy); e.OnTouch(1, 1, cx, cy); e.OnTouch(2, 1, cx, cy); e.OnTouch(1, 1, cx, cy);
-		  CHECK(e.cfg.ctlScale[B_ATTACK] < 1.0f);
-		  cy = (P.sizeTrk.t + P.sizeTrk.b) / 2; e.OnTouch(2, 1, P.sizeTrk.l, cy); CHECK(e.cfg.ctlScale[B_ATTACK] == kScaleMin);
-		  e.OnTouch(3, 1, P.sizeTrk.r + 500, cy); CHECK(e.cfg.ctlScale[B_ATTACK] == kScaleMax); e.OnTouch(1, 1, P.sizeTrk.r, cy); }
-		// opacidade individual
-		{ e.sel = B_JUMP; cy = (P.opaTrk.t + P.opaTrk.b) / 2; e.OnTouch(2, 1, P.opaTrk.l, cy); CHECK(e.cfg.ctlAlpha[B_JUMP] == kAlphaMin); e.OnTouch(3, 1, P.opaTrk.r, cy); CHECK(e.cfg.ctlAlpha[B_JUMP] == kAlphaMax); e.OnTouch(1, 1, 0, 0);
+		  CHECK(std::fabs(e.cfg.btnPos[B_CROUCH].x - (ox + 100.0f / W)) < 1e-3); CHECK(e.sel == B_CROUCH && e.dirty); }
+		// barras: Tamanho e Opacidade do SELECIONADO
+		{ e.sel = B_ATTACK; P = e.Panel();
+		  cy = (P.sizeTrk.t + P.sizeTrk.b) / 2; CHECK(e.OnTouch(2, 1, P.sizeTrk.l, cy)); CHECK(e.cfg.ctlScale[B_ATTACK] == kScaleMin);
+		  e.OnTouch(3, 1, P.sizeTrk.r + 500, cy); CHECK(e.cfg.ctlScale[B_ATTACK] == kScaleMax); e.OnTouch(1, 1, P.sizeTrk.r, cy);
+		  CHECK(e.cfg.ctlScale[B_JUMP] == 1.0f);
+		  e.sel = B_JUMP; cy = (P.opaTrk.t + P.opaTrk.b) / 2; e.OnTouch(2, 1, P.opaTrk.l, cy); CHECK(e.cfg.ctlAlpha[B_JUMP] == kAlphaMin); e.OnTouch(3, 1, P.opaTrk.r, cy); CHECK(e.cfg.ctlAlpha[B_JUMP] == kAlphaMax); e.OnTouch(1, 1, 0, 0);
 		  CHECK(e.cfg.ctlAlpha[B_ATTACK] == 0.55f); }
-		// joystick tambem tem tamanho proprio
+		// joystick tambem
 		{ e.sel = B_COUNT; const float b0 = e.lay.base.r; e.SetSelScale(1.5f); CHECK(e.lay.base.r > b0 * 1.4f); e.SetSelScale(1.0f); }
-		// toque no painel nao vaza para o controle de tras e nao seleciona
-		{ e.sel = B_RUN; mid(P.hudLbl, cx, cy); CHECK(e.OnTouch(2, 1, cx, cy)); CHECK(e.OnTouch(1, 1, cx, cy)); CHECK(e.sel == B_RUN); }
-		// sem selecao: sliders nao fazem nada
-		{ e.sel = -1; const float s0 = e.cfg.ctlScale[B_RUN]; e.SetSelScale(2.0f); CHECK(e.cfg.ctlScale[B_RUN] == s0); }
+		// setas de posicao
+		{ e.sel = B_RUN; const CtlVec p0 = e.cfg.btnPos[B_RUN]; P = e.Panel();
+		  tap(P.dpR); CHECK(std::fabs(e.cfg.btnPos[B_RUN].x - (p0.x + kNudge)) < 1e-5);
+		  tap(P.dpL); tap(P.dpL); CHECK(std::fabs(e.cfg.btnPos[B_RUN].x - (p0.x - kNudge)) < 1e-5);
+		  tap(P.dpU); CHECK(std::fabs(e.cfg.btnPos[B_RUN].y - (p0.y - kNudge)) < 1e-5);
+		  tap(P.dpD); tap(P.dpD); CHECK(std::fabs(e.cfg.btnPos[B_RUN].y - (p0.y + kNudge)) < 1e-5);
+		  e.cfg.btnPos[B_RUN] = p0; }
+		// sem selecao: barras/setas nao fazem nada
+		{ e.sel = -1; const CtlVec p0 = e.cfg.btnPos[B_RUN]; const float s0 = e.cfg.ctlScale[B_RUN]; e.SetSelScale(2.0f); e.Nudge(0.1f, 0.1f); CHECK(e.cfg.ctlScale[B_RUN] == s0 && e.cfg.btnPos[B_RUN].x == p0.x); }
+		// Ajuste Inteligente: alinha ao arrastar quando ligado
+		{ e.sel = B_JUMP; P = e.Panel(); CHECK(!e.smart); tap(P.chkRow); CHECK(e.smart); P = e.Panel();
+		  const CtlVec tgt = e.cfg.btnPos[B_CROUCH]; const CtlCircle a = e.lay.btn[B_JUMP];
+		  e.OnTouch(2, 1, a.cx, a.cy); e.OnTouch(3, 1, (tgt.x + 0.006f) * W, (tgt.y - 0.5f) * Hh); e.OnTouch(1, 1, 0, 0);
+		  CHECK(std::fabs(e.cfg.btnPos[B_JUMP].x - tgt.x) < 1e-5);                         // alinhou em x
+		  tap(P.chkRow); CHECK(!e.smart);
+		  e.OnTouch(2, 1, e.lay.btn[B_JUMP].cx, e.lay.btn[B_JUMP].cy); e.OnTouch(3, 1, (tgt.x + 0.006f) * W, (tgt.y - 0.5f) * Hh); e.OnTouch(1, 1, 0, 0);
+		  CHECK(std::fabs(e.cfg.btnPos[B_JUMP].x - tgt.x) > 1e-4); }                       // desligado: nao alinha
 		// HUD 1..4 independentes
-		e.sel = B_ATTACK; e.cfg.btnPos[B_ATTACK] = { 0.5f, 0.5f }; e.cfg.ctlScale[B_ATTACK] = 1.7f;                 // HUD 1 editado
-		mid(P.hudNext, cx, cy); CHECK(e.OnTouch(2, 1, cx, cy)); CHECK(e.OnTouch(1, 1, cx, cy)); CHECK(e.hud == 1);
-		CHECK(e.cfg.btnPos[B_ATTACK].x == ModernConfig().btnPos[B_ATTACK].x && e.cfg.ctlScale[B_ATTACK] == 1.0f);      // HUD 2 intacto
-		e.cfg.btnPos[B_ATTACK] = { 0.3f, 0.3f };
-		mid(P.hudPrev, cx, cy); e.OnTouch(2, 1, cx, cy); e.OnTouch(1, 1, cx, cy); CHECK(e.hud == 0);
-		CHECK(std::fabs(e.cfg.btnPos[B_ATTACK].x - 0.5f) < 1e-4 && e.cfg.ctlScale[B_ATTACK] == 1.7f);                 // HUD 1 voltou como estava
-		mid(P.hudPrev, cx, cy); e.OnTouch(2, 1, cx, cy); e.OnTouch(1, 1, cx, cy); CHECK(e.hud == 3);                  // da a volta: 1 -> 4
-		mid(P.hudNext, cx, cy); e.OnTouch(2, 1, cx, cy); e.OnTouch(1, 1, cx, cy); CHECK(e.hud == 0);
-		// PADRAO restaura SO o HUD atual
-		e.SwitchHud(1); CHECK(std::fabs(e.cfg.btnPos[B_ATTACK].x - 0.3f) < 1e-4);
-		e.SwitchHud(0);
-		mid(P.reset, cx, cy); e.OnTouch(2, 1, cx, cy); e.OnTouch(1, 1, cx, cy);
+		e.smart = false; e.sel = B_ATTACK; e.cfg.btnPos[B_ATTACK] = { 0.5f, 0.5f }; e.cfg.ctlScale[B_ATTACK] = 1.7f;
+		P = e.Panel(); tap(P.hudNext); CHECK(e.hud == 1);
 		CHECK(e.cfg.btnPos[B_ATTACK].x == ModernConfig().btnPos[B_ATTACK].x && e.cfg.ctlScale[B_ATTACK] == 1.0f);
-		e.SwitchHud(1); CHECK(std::fabs(e.cfg.btnPos[B_ATTACK].x - 0.3f) < 1e-4);                                    // HUD 2 nao foi tocado
-		// OK / CANCELAR so disparam ao soltar dentro do botao
-		mid(P.ok, cx, cy); e.OnTouch(2, 1, cx, cy); CHECK(e.editAction == 0); e.OnTouch(1, 1, 5, 5); CHECK(e.editAction == 0);   // soltou fora
-		e.OnTouch(2, 1, cx, cy); e.OnTouch(1, 1, cx, cy); CHECK(e.editAction == 1); e.editAction = 0;
-		mid(P.cancel, cx, cy); e.OnTouch(2, 1, cx, cy); e.OnTouch(1, 1, cx, cy); CHECK(e.editAction == 2); e.editAction = 0;
-		// microfone desligado nao e selecionavel
-		e.disabledMask = 1u << B_MIC; e.sel = B_RUN; e.OnTouch(2, 1, e.lay.btn[B_MIC].cx, e.lay.btn[B_MIC].cy); CHECK(e.sel == B_RUN); e.OnTouch(1, 1, 0, 0); e.disabledMask = 0;
-		// um dedo por vez: o segundo dedo e consumido e nao muda nada
-		e.OnTouch(2, 1, e.lay.btn[B_JUMP].cx, e.lay.btn[B_JUMP].cy); CHECK(e.OnTouch(2, 2, e.lay.btn[B_RUN].cx, e.lay.btn[B_RUN].cy) && e.sel == B_JUMP); e.OnTouch(1, 2, 0, 0); e.OnTouch(1, 1, 0, 0);
-		// HudLayout <-> config
+		e.cfg.btnPos[B_ATTACK] = { 0.3f, 0.3f };
+		tap(P.hudPrev); CHECK(e.hud == 0);
+		CHECK(std::fabs(e.cfg.btnPos[B_ATTACK].x - 0.5f) < 1e-4 && e.cfg.ctlScale[B_ATTACK] == 1.7f);
+		tap(P.hudPrev); CHECK(e.hud == 3); tap(P.hudNext); CHECK(e.hud == 0);
+		// restaurar (reset) so o HUD atual; compartilhar copia o atual para todos
+		e.SwitchHud(1); CHECK(std::fabs(e.cfg.btnPos[B_ATTACK].x - 0.3f) < 1e-4); e.SwitchHud(0);
+		tap(P.reset); CHECK(e.cfg.btnPos[B_ATTACK].x == ModernConfig().btnPos[B_ATTACK].x && e.cfg.ctlScale[B_ATTACK] == 1.0f);
+		e.SwitchHud(1); CHECK(std::fabs(e.cfg.btnPos[B_ATTACK].x - 0.3f) < 1e-4);                                    // HUD 2 intacto
+		e.cfg.ctlScale[B_MIC] = 1.3f; tap(P.share);                                                                   // copia o HUD 2 para todos
+		e.SwitchHud(3); CHECK(std::fabs(e.cfg.btnPos[B_ATTACK].x - 0.3f) < 1e-4 && e.cfg.ctlScale[B_MIC] == 1.3f); e.SwitchHud(0);
+		// salvar so fica ativo se houve alteracao; nuvem = salvar e continuar; sair = descartar
+		e.dirty = false; e.editAction = 0; tap(P.save); CHECK(e.editAction == 0);                                    // desativado sem alteracao
+		e.dirty = true; tap(P.save); CHECK(e.editAction == 1); e.editAction = 0;
+		tap(P.cloud); CHECK(e.editAction == 3); e.editAction = 0;
+		tap(P.exit); CHECK(e.editAction == 2 && e.soundReq == 2); e.editAction = 0;
+		{ float x, y; mid(P.save, x, y); e.dirty = true; e.OnTouch(2, 1, x, y); e.OnTouch(1, 1, 5, 5); CHECK(e.editAction == 0); }   // soltou fora: nao dispara
+		// aba: recolhe / expande; recolhido so tem a linha 1
+		{ CHECK(!e.collapsed); tap(P.tab); CHECK(e.collapsed); EditPanel C = e.Panel(); CHECK(C.box.b < P.box.b);
+		  const int hudBefore = e.hud; tap(C.hudNext); CHECK(e.hud != hudBefore); tap(C.hudPrev);                       // linha 1 segue funcionando
+		  const bool sm = e.smart; float x, y; mid(P.chkRow, x, y); e.OnTouch(2, 1, x, y); e.OnTouch(1, 1, x, y); CHECK(e.smart == sm);   // itens escondidos nao reagem
+		  tap(C.tab); CHECK(!e.collapsed); }
+		// arrastar o painel pelo fundo: acompanha o dedo e fica sempre inteiro na tela
+		{ P = e.Panel(); const float x0 = P.chkRow.r + 5, y0 = (P.hint.t + P.hint.b) / 2;   // fundo vazio
+		  e.OnTouch(2, 1, x0, y0); CHECK(e.OnTouch(3, 1, x0 + 300, y0 + 200)); e.OnTouch(1, 1, x0 + 300, y0 + 200);
+		  EditPanel M = e.Panel(); CHECK(std::fabs((M.box.l - P.box.l) - 300) < 1.0f && std::fabs((M.box.t - P.box.t) - 200) < 1.0f);
+		  CHECK(e.hud == 0 && !e.editAction);                                                                          // arrastar nao aciona nada
+		  e.OnTouch(2, 1, M.hint.l + 5, (M.hint.t + M.hint.b) / 2); e.OnTouch(3, 1, -5000, -5000); e.OnTouch(1, 1, -5000, -5000);
+		  EditPanel N = e.Panel(); CHECK(inside(N, W, Hh) && N.box.l == 0 && N.box.t == 0);                             // limitado a tela
+		  e.OnTouch(2, 1, N.hint.l + 5, (N.hint.t + N.hint.b) / 2); e.OnTouch(3, 1, 99999, 99999); e.OnTouch(1, 1, 99999, 99999);
+		  CHECK(inside(e.Panel(), W, Hh)); }
+		// o painel nao deixa o toque vazar para o controle de tras; microfone desligado nao e selecionavel
+		{ e.panelOx = e.panelOy = 0; P = e.Panel(); e.sel = B_RUN; float x, y; mid(P.hint, x, y); e.OnTouch(2, 1, x, y); e.OnTouch(1, 1, x, y); CHECK(e.sel == B_RUN);
+		  e.disabledMask = 1u << B_MIC; e.OnTouch(2, 1, e.lay.btn[B_MIC].cx, e.lay.btn[B_MIC].cy); CHECK(e.sel == B_RUN); e.OnTouch(1, 1, 0, 0); e.disabledMask = 0;
+		  // um dedo por vez
+		  e.OnTouch(2, 1, e.lay.btn[B_JUMP].cx, e.lay.btn[B_JUMP].cy); CHECK(e.OnTouch(2, 2, e.lay.btn[B_RUN].cx, e.lay.btn[B_RUN].cy) && e.sel == B_JUMP); e.OnTouch(1, 2, 0, 0); e.OnTouch(1, 1, 0, 0); }
+		// HudLayout <-> config / clamps
 		ModernConfig q; q.btnPos[B_MIC] = { 0.2f, 0.2f }; q.ctlAlpha[B_MIC] = 0.9f; HudLayout hl = ExtractLayout(q); ModernConfig q2; ApplyLayout(q2, hl);
 		CHECK(q2.btnPos[B_MIC].x == 0.2f && q2.ctlAlpha[B_MIC] == 0.9f);
 		ModernConfig bad; bad.ctlScale[0] = 99; bad.ctlAlpha[1] = -3; bad.ctlScale[2] = NAN; bad.Clamp(); CHECK(bad.ctlScale[0] == 2.0f && bad.ctlAlpha[1] == 0.15f && bad.ctlScale[2] == 1.0f);

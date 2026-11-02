@@ -34,6 +34,7 @@ namespace
 	std::atomic<bool>     g_editing{ false };
 	std::atomic<int>      g_lr{ 0 }, g_ud{ 0 };
 	std::atomic<uint32_t> g_held{ 0 };
+	std::atomic<int>      g_soundReq{ 0 };      // pedido de som do editor (1 toque, 2 voltar/recolher); tocado na thread do jogo
 	std::atomic<bool>     g_runLock{ false };   // CORRIDA LOCK ligada: o personagem corre reto sem segurar o joystick
 	std::atomic<uint32_t> g_edges{ 0 };
 	std::atomic<int64_t>  g_jumpMs{ -1000000 };
@@ -147,6 +148,18 @@ int ModernControls::DrainAimTouches(AimTouch* out, int max)
 	return n;
 }
 
+// Som do editor: o pedido nasce na thread de toque e e tocado aqui, na thread do jogo (CTouchInterface::Update), com os mesmos
+// sons de interface ja usados pelo cliente na selecao de classe (1052 / 1053, via CGame::PlaySound).
+void ModernControlsSoundTick()
+{
+	const int req = g_soundReq.exchange(0);
+	if (!req || !pGame) return;
+	CPedGTA* ped = nullptr;
+	if (!LocalPed(ped)) return;
+	const RwMatrix mat = ped->GetMatrix().ToRwMatrix();
+	pGame->PlaySound(req == 2 ? 1053 : 1052, mat.pos.x, mat.pos.y, mat.pos.z);
+}
+
 // ----------------------------------------------------------------------------- widget
 ModernControls::ModernControls() : Widget() {}
 
@@ -179,13 +192,19 @@ bool ModernControls::onRawTouch(int type, int num, int x, int y)
 		// Em edicao NENHUM toque vai para o jogo: o controlador so move/seleciona/ajusta; OK e CANCELAR chegam por editAction.
 		const bool mine = g_ctl.OnTouch(type, num, fx, fy);
 		(void)mine;
-		if (g_ctl.editAction == 1)
+		if (g_ctl.soundReq) { g_soundReq.store(g_ctl.soundReq); g_ctl.soundReq = 0; }
+		if (g_ctl.editAction == 1 || g_ctl.editAction == 3)           // salvar (e sair / e continuar)
 		{
 			g_ctl.StoreHud();
 			HudLayout h[kHudCount]; for (int i = 0; i < kHudCount; i++) h[i] = g_ctl.hudStore[i];
 			ControlMode::CommitHuds(h, g_ctl.hud, g_ctl.cfg);          // grava no settings.ini
-			g_ctl.ApplyConfig(ControlMode::GetConfig()); g_seenVer = ControlMode::ConfigVersion();
-			g_ctl.editAction = 0; g_ctl.editing = false; g_editing.store(false);
+			g_seenVer = ControlMode::ConfigVersion();
+			if (g_ctl.editAction == 1)
+			{
+				g_ctl.ApplyConfig(ControlMode::GetConfig());
+				g_ctl.editAction = 0; g_ctl.editing = false; g_editing.store(false);
+			}
+			else { g_ctl.MarkSaved(); g_ctl.editAction = 0; }
 		}
 		else if (g_ctl.editAction == 2)
 		{
@@ -315,52 +334,113 @@ void ModernControls::draw(ImGuiRenderer* r)
 
 	if (editing)
 	{
-		const EditPanel P = MakeEditPanel(screen.x, screen.y);
-		const float fs = (P.box.b - P.box.t) * 0.085f;
-		auto rect = [&](const CtlRect& R, const ImColor& fill, const ImColor& line) {
-			r->drawRect(ImVec2(R.l, R.t), ImVec2(R.r, R.b), fill, true);
-			r->drawRect(ImVec2(R.l, R.t), ImVec2(R.r, R.b), line, false, 2.0f);
-		};
-		auto textC = [&](const CtlRect& R, const char* s, const ImColor& col) {
-			const ImVec2 ts = r->calculateTextSize(s, fs);
-			r->drawText(ImVec2((R.l + R.r) * 0.5f - ts.x * 0.5f, (R.t + R.b) * 0.5f - ts.y * 0.5f), col, s, false, fs);
-		};
-		const ImColor white(255, 255, 255, 255), btnFill(35, 45, 70, 235), btnLine(120, 150, 210, 255);
-		rect(P.box, ImColor(12, 16, 28, 225), btnLine);
-
-		// HUD 1..4
+		const EditPanel P = snap.Panel();
+		const float fs = screen.y * 0.030f;
+		const ImColor white(255, 255, 255, 255), black(0, 0, 0, 255), gray(205, 205, 205, 255), dark(18, 18, 18, 255);
 		char buf[48];
-		rect(P.hudPrev, btnFill, btnLine); textC(P.hudPrev, "<", white);
-		rect(P.hudNext, btnFill, btnLine); textC(P.hudNext, ">", white);
-		snprintf(buf, sizeof buf, "HUD %d", snap.hud + 1);
-		textC(P.hudLbl, buf, kYellow);
-
-		// Tamanho / Opacidade do controle selecionado (cinza se nada selecionado)
-		const bool has = snap.HasSel();
-		const ImColor txt = has ? white : ImColor(130, 130, 130, 255);
-		auto slider = [&](const char* label, const CtlRect& mnus, const CtlRect& pls, const CtlRect& trk, float t, float value) {
-			const ImVec2 ts = r->calculateTextSize(label, fs);
-			r->drawText(ImVec2(P.labelX, (trk.t + trk.b) * 0.5f - ts.y * 0.5f), txt, label, false, fs);
-			rect(mnus, btnFill, btnLine); textC(mnus, "-", txt);
-			rect(pls, btnFill, btnLine); textC(pls, "+", txt);
-			const float cy = (trk.t + trk.b) * 0.5f, th = (trk.b - trk.t) * 0.12f;
-			r->drawRect(ImVec2(trk.l, cy - th), ImVec2(trk.r, cy + th), ImColor(70, 80, 100, 255), true);
-			r->drawRect(ImVec2(trk.l, cy - th), ImVec2(trk.l + (trk.r - trk.l) * t, cy + th), kYellow, true);
-			const float kx = trk.l + (trk.r - trk.l) * t, kr = (trk.b - trk.t) * 0.28f;
-			circle(CtlCircle{ kx, cy, kr }, has ? kYellow : ImColor(130, 130, 130, 255), ImColor(255, 255, 255, 255), 2.0f);
-			snprintf(buf, sizeof buf, "%d%%", (int)std::lround(value * 100.0f));
-			const ImVec2 vs = r->calculateTextSize(buf, fs * 0.9f);
-			r->drawText(ImVec2((trk.l + trk.r) * 0.5f - vs.x * 0.5f, trk.t - vs.y * 0.05f), txt, buf, true, fs * 0.9f);
+		auto fillR = [&](const CtlRect& R, const ImColor& col) { r->drawRect(ImVec2(R.l, R.t), ImVec2(R.r, R.b), col, true); };
+		auto textAt = [&](float x, float y, const char* s, const ImColor& col, float f) { r->drawText(ImVec2(x, y), col, s, false, f); };
+		auto textC = [&](const CtlRect& R, const char* s, const ImColor& col, float f) {
+			const ImVec2 ts = r->calculateTextSize(s, f);
+			r->drawText(ImVec2((R.l + R.r) * 0.5f - ts.x * 0.5f, (R.t + R.b) * 0.5f - ts.y * 0.5f), col, s, false, f);
 		};
-		slider("Tamanho", P.sizeM, P.sizeP, P.sizeTrk, ScaleToT(snap.SelScale()), snap.SelScale());
-		slider("Opacidade", P.opaM, P.opaP, P.opaTrk, AlphaToT(snap.SelAlpha()), snap.SelAlpha());
+		auto line = [&](float x0, float y0, float x1, float y1, const ImColor& col, float lw) { r->drawLine(ImVec2(x0, y0), ImVec2(x1, y1), col, lw); };
+		auto disc = [&](float cx, float cy, float rad, const ImColor& col) {
+			constexpr int N = 20; ImVec2 p[N];
+			for (int i = 0; i < N; i++) { const float a = (float)i * 6.2831853f / (float)N; p[i] = ImVec2(cx + std::cos(a) * rad, cy + std::sin(a) * rad); }
+			r->drawConvexPolyFilled(p, N, col);
+		};
+		auto tri = [&](const CtlRect& R, int dir, const ImColor& col) {     // 0 esq, 1 dir, 2 cima, 3 baixo
+			const float cx = (R.l + R.r) * 0.5f, cy = (R.t + R.b) * 0.5f, u = std::min(R.r - R.l, R.b - R.t) * 0.22f;
+			if (dir == 0)      r->drawTriangle(ImVec2(cx - u, cy), ImVec2(cx + u, cy - u * 1.3f), ImVec2(cx + u, cy + u * 1.3f), col, true);
+			else if (dir == 1) r->drawTriangle(ImVec2(cx + u, cy), ImVec2(cx - u, cy - u * 1.3f), ImVec2(cx - u, cy + u * 1.3f), col, true);
+			else if (dir == 2) r->drawTriangle(ImVec2(cx, cy - u), ImVec2(cx - u * 1.3f, cy + u), ImVec2(cx + u * 1.3f, cy + u), col, true);
+			else               r->drawTriangle(ImVec2(cx, cy + u), ImVec2(cx - u * 1.3f, cy - u), ImVec2(cx + u * 1.3f, cy - u), col, true);
+		};
 
-		rect(P.cancel, ImColor(150, 60, 50, 235), btnLine); textC(P.cancel, "CANCELAR", white);
-		rect(P.reset, btnFill, btnLine);                    textC(P.reset, "PADRÃO", white);
-		rect(P.ok, ImColor(40, 140, 70, 235), btnLine);     textC(P.ok, "OK", white);
+		// fundo do painel (semi-transparente, sem moldura, como na referencia) + aba de recolher
+		fillR(P.box, ImColor(0, 0, 0, 215));
+		r->drawRect(ImVec2(P.tab.l, P.tab.t), ImVec2(P.tab.r, P.tab.b), ImColor(0, 0, 0, 215), true);
+		{
+			const float cx = (P.tab.l + P.tab.r) * 0.5f, cy = (P.tab.t + P.tab.b) * 0.5f, u = (P.tab.b - P.tab.t) * 0.22f;
+			const float s = P.collapsed ? 1.0f : -1.0f;                       // v = abrir, ^ = recolher
+			line(cx - u * 1.6f, cy - s * u * 0.7f, cx, cy + s * u * 0.7f, white, 2.5f);
+			line(cx, cy + s * u * 0.7f, cx + u * 1.6f, cy - s * u * 0.7f, white, 2.5f);
+		}
 
-		const char* msg = "Toque num controle para selecionar e arraste para mover";
-		const ImVec2 tm = r->calculateTextSize(msg, fs * 0.8f);
-		r->drawText(ImVec2(screen.x * 0.5f - tm.x * 0.5f, P.box.b + fs * 0.4f), ImColor(255, 255, 255, 255), msg, true, fs * 0.8f);
+		// linha 1: [sair] [<] HUD n [>] [nuvem = salvar e continuar]
+		auto iconBtn = [&](const CtlRect& R, const ImColor& bg) { fillR(R, bg); };
+		iconBtn(P.exit, gray); iconBtn(P.cloud, gray);
+		iconBtn(P.hudPrev, dark); iconBtn(P.hudLbl, black); iconBtn(P.hudNext, dark);
+		tri(P.hudPrev, 0, white); tri(P.hudNext, 1, white);
+		snprintf(buf, sizeof buf, "HUD %d", snap.hud + 1);
+		textC(P.hudLbl, buf, white, fs * 1.15f);
+		{   // sair: porta aberta + seta entrando
+			const float cx = (P.exit.l + P.exit.r) * 0.5f, cy = (P.exit.t + P.exit.b) * 0.5f, u = (P.exit.b - P.exit.t) * 0.30f;
+			ImVec2 d[4] = { ImVec2(cx - u * 0.1f, cy - u), ImVec2(cx + u, cy - u), ImVec2(cx + u, cy + u), ImVec2(cx - u * 0.1f, cy + u) };
+			r->drawPolyline(d, 4, black, false, 2.5f);
+			line(cx - u, cy, cx + u * 0.4f, cy, black, 2.5f); line(cx - u, cy, cx - u * 0.4f, cy - u * 0.45f, black, 2.5f); line(cx - u, cy, cx - u * 0.4f, cy + u * 0.45f, black, 2.5f);
+		}
+		{   // nuvem
+			const float cx = (P.cloud.l + P.cloud.r) * 0.5f, cy = (P.cloud.t + P.cloud.b) * 0.5f, u = (P.cloud.b - P.cloud.t) * 0.30f;
+			disc(cx - u * 0.55f, cy + u * 0.1f, u * 0.5f, black); disc(cx + u * 0.05f, cy - u * 0.2f, u * 0.62f, black); disc(cx + u * 0.65f, cy + u * 0.1f, u * 0.5f, black);
+			r->drawRect(ImVec2(cx - u * 0.55f, cy + u * 0.1f), ImVec2(cx + u * 0.65f, cy + u * 0.6f), black, true);
+		}
+
+		if (!P.collapsed)
+		{
+			// linha 2: [compartilhar = copiar HUD para todos] [restaurar] [salvar]
+			iconBtn(P.share, gray); iconBtn(P.reset, gray);
+			iconBtn(P.save, snap.dirty ? ImColor(255, 190, 0, 255) : ImColor(60, 60, 60, 255));
+			{
+				const float cx = (P.share.l + P.share.r) * 0.5f, cy = (P.share.t + P.share.b) * 0.5f, u = (P.share.b - P.share.t) * 0.28f;
+				line(cx - u * 0.7f, cy, cx + u * 0.7f, cy - u * 0.6f, black, 2.5f); line(cx - u * 0.7f, cy, cx + u * 0.7f, cy + u * 0.6f, black, 2.5f);
+				disc(cx - u * 0.7f, cy, u * 0.34f, black); disc(cx + u * 0.7f, cy - u * 0.6f, u * 0.34f, black); disc(cx + u * 0.7f, cy + u * 0.6f, u * 0.34f, black);
+			}
+			{
+				const float cx = (P.reset.l + P.reset.r) * 0.5f, cy = (P.reset.t + P.reset.b) * 0.5f, u = (P.reset.b - P.reset.t) * 0.30f;
+				constexpr int N = 24; ImVec2 p[N];
+				for (int i = 0; i < N; i++) { const float a = (0.5f + 5.2f * (float)i / (float)(N - 1)); p[i] = ImVec2(cx + std::cos(a) * u, cy + std::sin(a) * u); }
+				r->drawPolyline(p, N, black, false, 3.0f);
+				r->drawTriangle(ImVec2(p[N - 1].x + u * 0.45f, p[N - 1].y - u * 0.05f), ImVec2(p[N - 1].x - u * 0.15f, p[N - 1].y - u * 0.5f), ImVec2(p[N - 1].x - u * 0.15f, p[N - 1].y + u * 0.35f), black, true);
+			}
+			{
+				const ImColor ic = snap.dirty ? black : ImColor(110, 110, 110, 255);
+				const float cx = (P.save.l + P.save.r) * 0.5f, cy = (P.save.t + P.save.b) * 0.5f, u = (P.save.b - P.save.t) * 0.30f;
+				r->drawRect(ImVec2(cx - u, cy - u), ImVec2(cx + u, cy + u), ic, false, 2.5f);
+				r->drawRect(ImVec2(cx - u * 0.5f, cy - u), ImVec2(cx + u * 0.5f, cy - u * 0.35f), ic, false, 2.0f);
+				r->drawRect(ImVec2(cx - u * 0.6f, cy + u * 0.1f), ImVec2(cx + u * 0.6f, cy + u), ic, false, 2.0f);
+			}
+
+			// Ajuste Inteligente
+			r->drawRect(ImVec2(P.chk.l, P.chk.t), ImVec2(P.chk.r, P.chk.b), white, false, 2.0f);
+			if (snap.smart)
+			{
+				fillR(CtlRect{ P.chk.l + 3, P.chk.t + 3, P.chk.r - 3, P.chk.b - 3 }, ImColor(255, 190, 0, 255));
+			}
+			textAt(P.chk.r + fs * 0.5f, (P.chkRow.t + P.chkRow.b) * 0.5f - fs * 0.55f, "Ajuste Inteligente", white, fs);
+			textAt(P.hint.l, (P.hint.t + P.hint.b) * 0.5f - fs * 0.4f, "Ajustar ao alinhar com outros controles", ImColor(200, 200, 200, 255), fs * 0.8f);
+
+			// Opacidade / Tamanho do controle selecionado
+			const bool has = snap.HasSel();
+			const ImColor txt = has ? white : ImColor(120, 120, 120, 255);
+			auto slider = [&](const char* label, const CtlRect& lbl, const CtlRect& trk, float t, float value) {
+				textAt(lbl.l, (lbl.t + lbl.b) * 0.5f - fs * 0.55f, label, txt, fs);
+				snprintf(buf, sizeof buf, "%d%%", (int)std::lround(value * 100.0f));
+				const ImVec2 vs = r->calculateTextSize(buf, fs * 0.9f);
+				textAt(trk.r - vs.x, (lbl.t + lbl.b) * 0.5f - fs * 0.5f, buf, txt, fs * 0.9f);
+				const float cy = (trk.t + trk.b) * 0.5f, th = std::max(2.0f, (trk.b - trk.t) * 0.18f);
+				fillR(CtlRect{ trk.l, cy - th, trk.r, cy + th }, ImColor(20, 20, 20, 255));
+				fillR(CtlRect{ trk.l, cy - th, trk.l + (trk.r - trk.l) * t, cy + th }, has ? ImColor(255, 190, 0, 255) : ImColor(90, 90, 90, 255));
+				const float kx = trk.l + (trk.r - trk.l) * t, kw = std::max(3.0f, (trk.b - trk.t) * 0.22f);
+				fillR(CtlRect{ kx - kw, cy - (trk.b - trk.t) * 0.45f, kx + kw, cy + (trk.b - trk.t) * 0.45f }, ImColor(235, 235, 235, 255));
+			};
+			slider("Opacidade", P.opaLbl, P.opaTrk, AlphaToT(snap.SelAlpha()), snap.SelAlpha());
+			slider("Tamanho", P.sizeLbl, P.sizeTrk, ScaleToT(snap.SelScale()), snap.SelScale());
+
+			// setas de posicao
+			fillR(P.dpL, black); fillR(P.dpR, black); fillR(P.dpU, black); fillR(P.dpD, black);
+			tri(P.dpL, 0, white); tri(P.dpR, 1, white); tri(P.dpU, 2, white); tri(P.dpD, 3, white);
+		}
 	}
 }

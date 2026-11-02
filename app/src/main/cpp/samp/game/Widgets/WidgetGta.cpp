@@ -188,10 +188,11 @@ void CWidgetButton__Update_hook(CWidgetButton* thiz) {
 // (cobre widgets que o jogo nao religa/desliga por SetEnabled a cada quadro e subclasses com Update proprio, como a buzina).
 void (*CTouchInterface__Update)();
 void PadAimFrameTick();   // game/pad.cpp
+void ModernControlsSoundTick();   // gui/samp_widgets/moderncontrols.cpp
 void CTouchInterface__Update_hook()
 {
     CTouchInterface__Update();
-    if(pNetGame && pGame) PadAimFrameTick();
+    if(pNetGame && pGame) { PadAimFrameTick(); ModernControlsSoundTick(); }
     if(!pNetGame || !pGame || !CTouchInterface::m_pWidgets) return;
     CPlayerPed *pPlayerPed = pGame->FindPlayerPed();
     if(!pPlayerPed) return;
