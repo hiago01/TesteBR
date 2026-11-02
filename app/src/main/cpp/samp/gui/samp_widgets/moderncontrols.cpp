@@ -52,6 +52,7 @@ namespace
 	}
 
 	constexpr int kJumpHoldMs = 120;
+	constexpr int kJumpCooldownMs = 900;   // toques repetidos dentro deste tempo NAO geram novo pulo (evita o pulo duplo/rolamento)
 
 	int64_t NowMs()
 	{
@@ -98,8 +99,14 @@ namespace
 		const Output o = g_ctl.Read(true);
 		g_lr.store(o.lr); g_ud.store(o.ud); g_held.store(o.held);
 		if (o.pressedEdge) {
-			g_edges.fetch_or(o.pressedEdge);
-			if (o.pressedEdge & (1u << B_JUMP)) g_jumpMs.store(NowMs());
+			uint32_t edge = o.pressedEdge;
+			if (edge & (1u << B_JUMP))
+			{
+				const int64_t now = NowMs();
+				if (now - g_jumpMs.load() < kJumpCooldownMs) edge &= ~(1u << B_JUMP);   // 2o toque rapido: descartado
+				else g_jumpMs.store(now);
+			}
+			if (edge) g_edges.fetch_or(edge);
 		}
 		// microfone: mesmo caminho do botao original (VoiceButton), so que acionado por este botao
 		if (pUI && pUI->voicebutton())

@@ -1,5 +1,3 @@
-v5: copie game/pad.cpp e game/Widgets/WidgetGta.cpp para app/src/main/cpp/samp/game/ (substituem os do v3/v4).
-Causa (vista na desmontagem do CPad::GetExitTargeting nativo, que o modo CLASSICO usa): ao "sair" o nativo chama CPlayerPed::ClearWeaponTarget e apaga o bit 3 de [task+0x48]. O hook devolvia true sem fazer isso.
-Agora, ao soltar o Ataque, o cliente faz o mesmo + CCamera::ClearPlayerWeaponMode.
-Logs esperados: "sair da mira: ... ClearWeaponTarget ok" e "mira: soltou o Ataque -> ClearWeaponTarget + flag...".
+Fix pulo duplo: copie gui/samp_widgets/moderncontrols.cpp para app/src/main/cpp/samp/gui/samp_widgets/ (substitui).
+Toques no Pulo dentro de 900 ms do pulo anterior sao descartados (kJumpCooldownMs).
 NAO verificado: compilacao NDK e comportamento no aparelho.
