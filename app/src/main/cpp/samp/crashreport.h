@@ -135,7 +135,8 @@ namespace Health
 	{
 		if (!name) return true;
 		const char* base = name; for (const char* p = name; *p; ++p) if (*p == '/' || *p == '\\') base = p + 1;
-		static const char* opt[] = { "Adjustable.cfg", "GTASAsf10.b", "gta3.ini", "CUTSCENE.IMG" };
+		static const char* opt[] = { "Adjustable.cfg", "GTASAsf10.b", "gta3.ini", "CUTSCENE.IMG",
+		                            "gta_sa.set", "CINFO.BIN", "MINFO.BIN" };   // gta_sa.set = opcoes (criado ao salvar); CINFO/MINFO = caches que o jogo recria sozinho
 		for (const char* o : opt) if (strcasecmp(base, o) == 0) return true;
 		return strncasecmp(base, "scache", 6) == 0;
 	}
