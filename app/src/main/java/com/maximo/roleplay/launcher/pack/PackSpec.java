@@ -2,7 +2,7 @@ package com.maximo.roleplay.launcher.pack;
 
 import java.util.Locale;
 
-/** Um pacote zip descrito no client_config.json ("packs"). */
+/** Um pacote zip descrito no maximo_config.json ("packs"). */
 public final class PackSpec {
     public final String name;
     /** 0 = core, 1 = dxt, 2 = etc, 3 = pvr. */

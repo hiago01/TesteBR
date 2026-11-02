@@ -126,6 +126,8 @@ public class UpdateService extends Service {
     private List<PackSpec> mPackSelection = null;
     /** true = esta rodada de dados do jogo e a PRIMEIRA instalacao e sera feita por pacotes ZIP. */
     private boolean mUsePacks = false;
+    /** DownloadMode.* lido do maximo_config a cada verificacao (LEGACY / SAFE / FULL). */
+    private String mDlMode = com.maximo.roleplay.launcher.util.DownloadMode.LEGACY;
     private boolean mPackHasSampStep = false; // pacotes seguidos da etapa SAMP (so para a mensagem da tela)
     private boolean mSampStep = false;        // baixando a pasta SAMP depois dos pacotes
     private int mListTotalFiles = 0;
@@ -418,7 +420,7 @@ public class UpdateService extends Service {
         });
     }
 
-    /** Baixa client_config.json (e, se withFiles, a lista de arquivos) de forma assincrona. */
+    /** Baixa maximo_config.json (e, se withFiles, a lista de arquivos) de forma assincrona. */
     private void loadClientConfig(final boolean withFiles, final int session, final Runnable onSuccess) {
         mQueue.add(newRequest(AppEndpoints.clientConfigUrl(this), session, new Response.Listener<String>() {
             @Override
@@ -431,9 +433,14 @@ public class UpdateService extends Service {
                     if (mUpdateGameSha.length() != 64) mUpdateGameSha = "";
                     mUpdateGameSize = jSONObject.optLong("launcher_size", 0);
                     if (withFiles) {
-                        // Pacotes ZIP (packs) e samp.json DESATIVADOS: tudo vem do files.json (url_cache_files) em <base>/filestestes/<path>.
+                        // samp.json DESATIVADO: a pasta SAMP/ vem do files.json (url_cache_files) em <base>/filestestes/<path>.
+                        // Pacotes ZIP (packs): SO no DOWNLOAD COMPLETO (escolha do jogador). Seguro/padrao = arquivo a arquivo.
                         mPackConfig = null;
                         mPackSelection = null;
+                        mDlMode = com.maximo.roleplay.launcher.util.DownloadMode.get(UpdateService.this);
+                        if (com.maximo.roleplay.launcher.util.DownloadMode.FULL.equals(mDlMode)) {
+                            parsePackConfig(response);
+                        }
                         String string = jSONObject.getString("url_cache_files");
                         if (!isHttpUrl(string)) {
                             failCheck("client_config: invalid url_cache_files");
@@ -447,7 +454,7 @@ public class UpdateService extends Service {
                     }
                 } catch (JSONException e) {
                     Log.e(TAG, "client_config parse error", e);
-                    failCheck("client_config.json is invalid (" + e.getMessage() + ")");
+                    failCheck("maximo_config.json is invalid (" + e.getMessage() + ")");
                 }
             }
         }, "client_config"));
@@ -578,6 +585,11 @@ public class UpdateService extends Service {
             if (!GameFilePolicy.wantedForDevice(path, mGpuType)) {
                 continue;
             }
+            // DOWNLOAD SEGURO: so o jogo. As skins (texdb/skins e SAMP/skins) ficam de fora e nao contam como "faltando".
+            if (com.maximo.roleplay.launcher.util.DownloadMode.SAFE.equals(mDlMode)
+                    && com.maximo.roleplay.launcher.util.DownloadMode.isSkinPath(path)) {
+                continue;
+            }
             considered++;
             File file = new File(base, path);
             String serverSha = o.optString("sha256", "").trim().toLowerCase(java.util.Locale.ROOT);
@@ -643,7 +655,7 @@ public class UpdateService extends Service {
         ArrayList<String> sf = new ArrayList<>(), sn = new ArrayList<>(), sh = new ArrayList<>();
         ArrayList<Long> sz = new ArrayList<>();
         long sampBytes = 0;
-        if (mSampList != null) {
+        {   // pasta SAMP/ (samp.json OU files.json): baixada depois dos pacotes, arquivo a arquivo
             for (int i = 0; i < mUpdateFiles.size(); i++) {
                 if (SampList.isSampPath(mUpdateFiles.get(i))) {
                     sf.add(mUpdateFiles.get(i)); sn.add(mUpdateFilesName.get(i));
@@ -773,7 +785,7 @@ public class UpdateService extends Service {
             return;
         }
         if (!isHttpUrl(mUpdateGameURL)) {
-            reportError("Invalid launcher update URL in client_config.json", false);
+            reportError("Invalid launcher update URL in maximo_config.json", false);
             return;
         }
         final File file = new File(dir, "launcher.apk");

@@ -503,7 +503,7 @@ public class MainActivity extends AppCompatActivity {
     // ------------------------------------------------------------------------------------
 
     /**
-     * Baixa o servers.json (timeout + tentativas limitadas), valida, exibe SOMENTE o primeiro
+     * Baixa o servidores.json (timeout + tentativas limitadas), valida, exibe SOMENTE o primeiro
      * servidor e consulta seu estado real por UDP. Nao bloqueia a thread principal e nunca
      * se auto-reagenda: falhas viram uma linha de erro com opcao de tentar novamente.
      *
@@ -538,7 +538,7 @@ public class MainActivity extends AppCompatActivity {
                     replaceServer(info);
                     startStatusQuery(info, gen);
                 } catch (ServerConfigParser.ConfigException e) {
-                    Log.w(TAG, "Invalid servers.json: " + e.getMessage());
+                    Log.w(TAG, "Invalid servidores.json: " + e.getMessage());
                     setPlaceholder(SAMPServerInfo.Status.ERROR, e.getMessage(), "Tap to retry");
                 }
             }
@@ -546,7 +546,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onErrorResponse(VolleyError error) {
                 if (mDestroyed || gen != mLoadGeneration) return;
-                Log.w(TAG, "servers.json request failed: " + error);
+                Log.w(TAG, "servidores.json request failed: " + error);
                 setPlaceholder(SAMPServerInfo.Status.ERROR, "Could not load server list (" + describe(error) + ")", "Tap to retry");
             }
         }) {

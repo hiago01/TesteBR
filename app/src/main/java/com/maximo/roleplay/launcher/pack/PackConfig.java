@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/** Interpreta os campos "version" e "packs" do client_config.json. Sem packs => fluxo antigo (arquivo a arquivo). */
+/** Interpreta os campos "version" e "packs" do maximo_config.json. Sem packs => fluxo antigo (arquivo a arquivo). */
 public final class PackConfig {
     public final String version;       // versao do CONTEUDO (null se ausente)
     public final List<PackSpec> packs; // vazio se ausente
@@ -17,7 +17,7 @@ public final class PackConfig {
         this.packs = packs;
     }
 
-    /** @param json o texto COMPLETO do client_config.json (aceita {"client_config":{...}} ou o objeto direto). */
+    /** @param json o texto COMPLETO do maximo_config.json (aceita {"client_config":{...}} ou o objeto direto). */
     public static PackConfig parse(String json) throws PackException {
         Object root = MiniJson.parse(json);
         Map<String, Object> m = MiniJson.asMap(root);

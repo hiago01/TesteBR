@@ -26,6 +26,8 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
+import com.maximo.roleplay.launcher.util.DownloadMode;
+import com.maximo.roleplay.launcher.util.UiSounds;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.app.ActivityCompat;
@@ -289,21 +291,52 @@ public class SplashActivity extends AppCompatActivity {
                         final AlertDialog alert = new AlertDialog.Builder(SplashActivity.this)
                                 .setView(v).setCancelable(false).create();
                         alert.setCanceledOnTouchOutside(false);
-                        // DOWNLOAD SEGURO: baixa so o que falta/mudou (fluxo normal, nao apaga nada).
-                        v.findViewById(R.id.mx_upd_safe_btn).setOnClickListener(new View.OnClickListener() {
+                        // Dois cartoes selecionaveis (SEGURO / COMPLETO) + botao CONFIRMAR. Toque = som. Nada inicia sem confirmar.
+                        UiSounds.init(SplashActivity.this);
+                        final View cardSafe = v.findViewById(R.id.mx_upd_card_safe);
+                        final View cardFull = v.findViewById(R.id.mx_upd_card_full);
+                        final View checkSafe = v.findViewById(R.id.mx_upd_check_safe);
+                        final View checkFull = v.findViewById(R.id.mx_upd_check_full);
+                        final android.widget.Button confirm = v.findViewById(R.id.mx_upd_confirm_btn);
+                        final String[] choice = { null };
+                        confirm.setEnabled(false);
+                        View.OnClickListener pick = new View.OnClickListener() {
                             @Override
                             public void onClick(View view) {
-                                mDialogShowing = false;
-                                startGameDataUpdate();
-                                alert.dismiss();
+                                boolean safe = (view == cardSafe);
+                                String c = safe ? DownloadMode.SAFE : DownloadMode.FULL;
+                                if (c.equals(choice[0])) return;
+                                choice[0] = c;
+                                cardSafe.setSelected(safe);
+                                cardFull.setSelected(!safe);
+                                checkSafe.setVisibility(safe ? View.VISIBLE : View.INVISIBLE);
+                                checkFull.setVisibility(safe ? View.INVISIBLE : View.VISIBLE);
+                                confirm.setEnabled(true);
+                                confirm.setText(safe ? R.string.mx_upd_confirm_safe : R.string.mx_upd_confirm_full);
+                                UiSounds.play(UiSounds.CLICK);
+                            }
+                        };
+                        cardSafe.setOnClickListener(pick);
+                        cardFull.setOnClickListener(pick);
+                        confirm.setOnClickListener(new View.OnClickListener() {
+                            @Override
+                            public void onClick(View view) {
+                                if (choice[0] == null) return;
+                                UiSounds.play(UiSounds.CONFIRM);
+                                if (DownloadMode.SAFE.equals(choice[0])) {
+                                    // SEGURO: nao apaga nada; baixa so o jogo (sem skins), arquivo a arquivo.
+                                    DownloadMode.set(SplashActivity.this, DownloadMode.SAFE);
+                                    mDialogShowing = false;
+                                    startGameDataUpdate();
+                                    alert.dismiss();
+                                } else {
+                                    // COMPLETO: confirma, apaga o jogo e baixa tudo pelos pacotes (packs).
+                                    confirmFullDownload(alert);
+                                }
                             }
                         });
-                        // DOWNLOAD COMPLETO: pede confirmacao, apaga o jogo (mantem configuracoes) e baixa tudo.
-                        v.findViewById(R.id.mx_upd_full_btn).setOnClickListener(new View.OnClickListener() {
-                            @Override
-                            public void onClick(View view) {
-                                confirmFullDownload(alert);
-                            }
+                        alert.setOnDismissListener(new android.content.DialogInterface.OnDismissListener() {
+                            @Override public void onDismiss(android.content.DialogInterface d) { UiSounds.release(); }
                         });
                         alert.show();
                         if (alert.getWindow() != null) {
@@ -453,10 +486,8 @@ public class SplashActivity extends AppCompatActivity {
 
     private void runFullDownload(final AlertDialog parent) {
         final java.io.File dir = getExternalFilesDir(null);
-        final android.widget.Button b1 = parent.findViewById(R.id.mx_upd_safe_btn);
-        final android.widget.Button b2 = parent.findViewById(R.id.mx_upd_full_btn);
+        final android.widget.Button b1 = parent.findViewById(R.id.mx_upd_confirm_btn);
         if (b1 != null) b1.setEnabled(false);
-        if (b2 != null) b2.setEnabled(false);
         new Thread(new Runnable() {
             @Override public void run() {
                 int failed = 0;
@@ -474,11 +505,11 @@ public class SplashActivity extends AppCompatActivity {
                     if (f > 0) {
                         // nao baixa por cima de uma limpeza incompleta: o jogador pode tentar de novo ou usar o SEGURO
                         if (b1 != null) b1.setEnabled(true);
-                        if (b2 != null) b2.setEnabled(true);
                         Toast.makeText(SplashActivity.this, getString(R.string.mx_upd_full_fail, f), Toast.LENGTH_LONG).show();
                         return;
                     }
                     mDialogShowing = false;
+                    DownloadMode.set(SplashActivity.this, DownloadMode.FULL); // so grava depois da limpeza ter dado certo
                     com.maximo.roleplay.launcher.config.Config.clientUpToDate = false;
                     startGameDataUpdate();
                     parent.dismiss();

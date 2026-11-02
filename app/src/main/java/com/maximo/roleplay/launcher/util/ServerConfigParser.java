@@ -7,7 +7,7 @@ import org.json.JSONObject;
 import java.util.regex.Pattern;
 
 /**
- * Le e valida o servers.json. Regra: apenas o PRIMEIRO elemento de "query" e usado;
+ * Le e valida o servidores.json. Regra: apenas o PRIMEIRO elemento de "query" e usado;
  * os demais sao ignorados (e nao validados).
  *
  * Obrigatorios: name (texto), ip (IPv4 ou hostname), port (1..65535).
@@ -43,32 +43,32 @@ public final class ServerConfigParser {
     private ServerConfigParser() {}
 
     public static ServerConfig parse(String body) throws ConfigException {
-        if (body == null || body.trim().isEmpty()) throw new ConfigException("servers.json is empty");
+        if (body == null || body.trim().isEmpty()) throw new ConfigException("servidores.json is empty");
         JSONObject root;
         try {
             root = new JSONObject(body.trim());
         } catch (JSONException e) {
-            throw new ConfigException("servers.json is not valid JSON");
+            throw new ConfigException("servidores.json is not valid JSON");
         }
         JSONArray query = root.optJSONArray("query");
-        if (query == null) throw new ConfigException("servers.json: missing \"query\" array");
-        if (query.length() == 0) throw new ConfigException("servers.json: \"query\" is empty");
+        if (query == null) throw new ConfigException("servidores.json: missing \"query\" array");
+        if (query.length() == 0) throw new ConfigException("servidores.json: \"query\" is empty");
         JSONObject o = query.optJSONObject(0);
-        if (o == null) throw new ConfigException("servers.json: first entry is not an object");
+        if (o == null) throw new ConfigException("servidores.json: first entry is not an object");
 
         String name = requireString(o, "name").trim();
-        if (name.isEmpty()) throw new ConfigException("servers.json: \"name\" is empty");
+        if (name.isEmpty()) throw new ConfigException("servidores.json: \"name\" is empty");
         if (name.length() > MAX_NAME) name = name.substring(0, MAX_NAME);
 
         String ip = requireString(o, "ip").trim();
-        if (!isValidAddress(ip)) throw new ConfigException("servers.json: invalid \"ip\"");
+        if (!isValidAddress(ip)) throw new ConfigException("servidores.json: invalid \"ip\"");
 
         int port = requireInt(o, "port");
-        if (port < 1 || port > 65535) throw new ConfigException("servers.json: \"port\" must be 1-65535");
+        if (port < 1 || port > 65535) throw new ConfigException("servidores.json: \"port\" must be 1-65535");
 
         int number = optInt(o, "number", 1);
         int max = optInt(o, "maxplayers", 0);
-        if (max < 0) throw new ConfigException("servers.json: \"maxplayers\" must be >= 0");
+        if (max < 0) throw new ConfigException("servidores.json: \"maxplayers\" must be >= 0");
         boolean password = o.optBoolean("password", false);
 
         return new ServerConfig(number, name, ip, port, max, password);
@@ -94,14 +94,14 @@ public final class ServerConfigParser {
     }
 
     private static String requireString(JSONObject o, String key) throws ConfigException {
-        if (!o.has(key) || o.isNull(key)) throw new ConfigException("servers.json: missing \"" + key + "\"");
+        if (!o.has(key) || o.isNull(key)) throw new ConfigException("servidores.json: missing \"" + key + "\"");
         Object v = o.opt(key);
-        if (!(v instanceof String)) throw new ConfigException("servers.json: \"" + key + "\" must be text");
+        if (!(v instanceof String)) throw new ConfigException("servidores.json: \"" + key + "\" must be text");
         return (String) v;
     }
 
     private static int requireInt(JSONObject o, String key) throws ConfigException {
-        if (!o.has(key) || o.isNull(key)) throw new ConfigException("servers.json: missing \"" + key + "\"");
+        if (!o.has(key) || o.isNull(key)) throw new ConfigException("servidores.json: missing \"" + key + "\"");
         return toInt(o.opt(key), key);
     }
 
@@ -114,18 +114,18 @@ public final class ServerConfigParser {
         if (v instanceof Integer) return (Integer) v;
         if (v instanceof Long) {
             long l = (Long) v;
-            if (l < Integer.MIN_VALUE || l > Integer.MAX_VALUE) throw new ConfigException("servers.json: \"" + key + "\" out of range");
+            if (l < Integer.MIN_VALUE || l > Integer.MAX_VALUE) throw new ConfigException("servidores.json: \"" + key + "\" out of range");
             return (int) l;
         }
         if (v instanceof Double) {
             double d = (Double) v;
-            if (d != Math.rint(d) || Math.abs(d) > Integer.MAX_VALUE) throw new ConfigException("servers.json: \"" + key + "\" must be an integer");
+            if (d != Math.rint(d) || Math.abs(d) > Integer.MAX_VALUE) throw new ConfigException("servidores.json: \"" + key + "\" must be an integer");
             return (int) d;
         }
         if (v instanceof String) {
             try { return Integer.parseInt(((String) v).trim()); } catch (NumberFormatException ignored) { }
         }
-        throw new ConfigException("servers.json: \"" + key + "\" must be a number");
+        throw new ConfigException("servidores.json: \"" + key + "\" must be a number");
     }
 
     private static String shorten(String s) { return s.length() > 40 ? s.substring(0, 40) + "..." : s; }
