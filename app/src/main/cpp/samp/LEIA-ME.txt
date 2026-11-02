@@ -1,3 +1,4 @@
-Fix pulo duplo: copie gui/samp_widgets/moderncontrols.cpp para app/src/main/cpp/samp/gui/samp_widgets/ (substitui).
-Toques no Pulo dentro de 900 ms do pulo anterior sao descartados (kJumpCooldownMs).
+v6 (minimo): copie game/pad.cpp e game/Widgets/WidgetGta.cpp para app/src/main/cpp/samp/game/ (substituem v3/v4/v5).
+Sai da mira = ClearWeaponTarget + apagar bit 3 de [task+0x48] (igual ao GetExitTargeting nativo), checado todo frame.
+Removido: ClearPlayerWeaponMode (o caminho nativo nao chama).
 NAO verificado: compilacao NDK e comportamento no aparelho.

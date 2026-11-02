@@ -531,16 +531,12 @@ static bool AimWantedNow()
 // Como o hook devolvia true sem passar pelo original, a flag nunca era apagada e o ped ficava na pose de mira.
 static void ClearLocalAimMode()
 {
-    static void (*fnCam)(void*) = nullptr; static void* cam = nullptr;
     static void (*fnClr)(void*) = nullptr; static bool tried = false;
     if (!tried)
     {
         tried = true;
-        fnCam = (void(*)(void*))dlsym(CHook::lib, "_ZN7CCamera21ClearPlayerWeaponModeEv");
-        cam   = dlsym(CHook::lib, "TheCamera");
         fnClr = (void(*)(void*))dlsym(CHook::lib, "_ZN10CPlayerPed17ClearWeaponTargetEv");
-        FLog("[CONTROLES] sair da mira: ClearPlayerWeaponMode %s, TheCamera %s, ClearWeaponTarget %s",
-             fnCam ? "ok" : "NAO achado", cam ? "ok" : "NAO achado", fnClr ? "ok" : "NAO achado");
+        FLog("[CONTROLES] sair da mira: ClearWeaponTarget %s", fnClr ? "ok" : "NAO achado");
     }
     CPedGTA* ped = GamePool_FindPlayerPed();
     if (ped && fnClr)
@@ -549,8 +545,7 @@ static void ClearLocalAimMode()
         uintptr_t task = *(uintptr_t*)((uintptr_t)ped + 0x540);
         if (task) *(uint16_t*)(task + 0x48) &= 0xFFF7;
     }
-    if (fnCam && cam) fnCam(cam);
-    FLog("[CONTROLES] mira: soltou o Ataque -> ClearWeaponTarget + flag de mira apagada + ClearPlayerWeaponMode");
+    FLog("[CONTROLES] mira: soltou o Ataque -> ClearWeaponTarget + flag de mira apagada");
 }
 
 static bool AimStateTick()
