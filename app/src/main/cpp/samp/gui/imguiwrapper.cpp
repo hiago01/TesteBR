@@ -104,6 +104,16 @@ void ImGuiWrapper::render()
 		}
 	}*/
 
+	// VOZ: sem isto Plugin::OnRender() nunca roda -> Timer::Tick() fica em 0 e o keep-alive UDP do sampvoice nunca e enviado
+	// (o servidor nao identifica o jogador, nao manda o pluginInit) e Plugin::MainLoop() (botao do microfone) nao executa.
+	if (pNetGame) {
+		for (const auto& renderCallback : Render::renderCallbacks) {
+			if (renderCallback != nullptr) {
+				renderCallback();
+			}
+		}
+	}
+
 	drawList();
 	ImGui::EndFrame();
 	ImGui::Render();
