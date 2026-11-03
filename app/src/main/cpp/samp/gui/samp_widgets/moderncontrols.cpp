@@ -7,11 +7,15 @@
 #include "maximomenu.h"
 #include "controlsselector.h"
 #include "../../game/Plugins/RpAnimBlendPlugin/RpAnimBlend.h"
+#include "../../game/RW/RenderWare.h"
+#include "../../vendor/stb/stb_image.h"   // implementacao (STB_IMAGE_IMPLEMENTATION) esta em game/sprite2d.cpp
+#include "ctlicons.h"
 
 #include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <mutex>
 #include <vector>
 
@@ -87,6 +91,69 @@ namespace
 		if (!lp || !lp->GetPlayerPed() || !lp->GetPlayerPed()->m_pPed) return false;
 		ped = lp->GetPlayerPed()->m_pPed;
 		return true;
+	}
+
+	// ---- icones dos botoes (atlas embutido, mesmo caminho de textura da HUD) ----
+	RwRaster* s_icoRaster = nullptr;
+	bool      s_icoFailed = false;
+
+	RwRaster* CreateIconRaster()
+	{
+		int w = 0, h = 0, ch = 0;
+		unsigned char* px = stbi_load_from_memory(CtlIcons::kPng, (int)CtlIcons::kPngSize, &w, &h, &ch, 4);
+		if (!px) { FLog("[CTLICONS] stbi falhou: %s", stbi_failure_reason()); return nullptr; }
+		if (!RwImageCreate || !RwImageAllocatePixels || !RwImageFindRasterFormat || !RwRasterCreate || !RwRasterSetFromImage)
+		{
+			FLog("[CTLICONS] funcoes RenderWare indisponiveis");
+			stbi_image_free(px);
+			return nullptr;
+		}
+		RwImage* image = RwImageCreate(w, h, 32);
+		if (!image || !RwImageAllocatePixels(image)) { if (image) RwImageDestroy(image); stbi_image_free(px); return nullptr; }
+		for (int y = 0; y < h; ++y) memcpy(image->cpPixels + (size_t)y * image->stride, px + (size_t)y * w * 4, (size_t)w * 4);
+		stbi_image_free(px);
+
+		int rw = w, rh = h, rd = 32, rf = 0;
+		RwImageFindRasterFormat(image, rwRASTERTYPETEXTURE, &rw, &rh, &rd, &rf);
+		rf &= ~(rwRASTERFORMATMIPMAP | rwRASTERFORMATAUTOMIPMAP);
+		if (rf & (rwRASTERFORMATPAL8 | rwRASTERFORMATPAL4))
+		{
+			rf &= ~(rwRASTERFORMATPAL8 | rwRASTERFORMATPAL4 | rwRASTERFORMATPIXELFORMATMASK);
+			rf |= rwRASTERFORMAT8888;
+			rd = 32;
+		}
+		if ((rf & rwRASTERFORMATPIXELFORMATMASK) == 0) rf |= rwRASTERFORMAT8888;
+
+		RwRaster* raster = RwRasterCreate(rw, rh, rd, rf);
+		if (!raster) { RwImageDestroy(image); return nullptr; }
+		if (!RwRasterSetFromImage(raster, image))
+		{
+			if (RwRasterDestroy) RwRasterDestroy(raster);
+			RwImageDestroy(image);
+			return nullptr;
+		}
+		RwImageDestroy(image);
+		FLog("[CTLICONS] atlas %dx%d criado", w, h);
+		return raster;
+	}
+
+	RwRaster* IconRaster()
+	{
+		if (s_icoRaster) return s_icoRaster;
+		if (s_icoFailed) return nullptr;
+		s_icoRaster = CreateIconRaster();
+		if (!s_icoRaster) s_icoFailed = true;     // nao tenta todo quadro: os botoes voltam a mostrar o texto
+		return s_icoRaster;
+	}
+
+	// Arma na mao que bate (maos 0 e corpo a corpo 1-15) -> icone de soco; qualquer outra -> icone de tiro.
+	bool PunchWeapon(CPedGTA* ped)
+	{
+		if (!ped) return true;
+		const int slot = (int)ped->m_nActiveWeaponSlot;
+		if (slot < 0 || slot >= 13) return true;
+		const int t = (int)ped->m_aWeapons[slot].dwType;
+		return t >= 0 && t <= 15;
 	}
 
 	// MIRAR so aparece com arma que mira. Sem mira (botao escondido): maos (0), corpo a corpo (1-15), arremesso (16-18),
@@ -415,10 +482,36 @@ void ModernControls::draw(ImGuiRenderer* r)
 		const float bk = (((snap.blockedMask >> i) & 1u) != 0) ? 0.3f : 1.0f;      // bloqueado (pulando/na parede): esmaecido
 		auto Cb = [&](int R, int G, int B2, int A2) { return ImColor(R, G, B2, (int)std::lround((float)A2 * fm * bk)); };
 		circle(b, down ? Cb(255, 255, 255, std::min(255, A + 60)) : Cb(20, 20, 20, A), Cb(255, 255, 255, std::min(255, A + 50)), std::max(2.0f, b.r * 0.06f));
-		const float fs = b.r * (i == B_CROUCH ? 0.34f : 0.42f);
-		const ImVec2 ts = r->calculateTextSize(kLbl[i], fs);
-		r->drawText(ImVec2(b.cx - ts.x * 0.5f, b.cy - ts.y * 0.5f),
-		            down ? Cb(0, 0, 0, 255) : Cb(255, 255, 255, std::min(255, A + 80)), kLbl[i], (fm * bk) > 0.99f, fs);
+		RwRaster* ico = IconRaster();
+		if (ico)
+		{
+			// icone no centro, sem texto. AGACHAR vira "levantar" quando ja esta agachado; ATAQUE: soco (maos/corpo a corpo) ou tiro.
+			int ic = CtlIcons::I_RUN;
+			switch (i)
+			{
+				case B_RUN:     ic = CtlIcons::I_RUN; break;
+				case B_JUMP:    ic = CtlIcons::I_JUMP; break;
+				case B_CROUCH:  ic = (pedOk && ped->bIsDucking) ? CtlIcons::I_STAND : CtlIcons::I_CROUCH; break;
+				case B_ATTACK:  ic = PunchWeapon(pedOk ? ped : nullptr) ? CtlIcons::I_FIST : CtlIcons::I_GUN; break;
+				case B_MIC:     ic = CtlIcons::I_MIC; break;
+				case B_RUNLOCK: ic = CtlIcons::I_RUNLOCK; break;
+				case B_AIM:     ic = CtlIcons::I_AIM; break;
+				default: break;
+			}
+			const float half = b.r * 0.78f;                 // icone (com o contorno preto) ocupa ~78% do raio de cada lado
+			const float iw = 1.0f / (float)CtlIcons::kWidth, ih = 1.0f / (float)CtlIcons::kHeight;
+			const float ux = (float)((ic % 3) * CtlIcons::kCell), uy = (float)((ic / 3) * CtlIcons::kCell);
+			r->drawImage(ImVec2(b.cx - half, b.cy - half), ImVec2(b.cx + half, b.cy + half), (ImTextureID)ico,
+			             Cb(255, 255, 255, std::min(255, A + 120)),
+			             ImVec2(ux * iw, uy * ih), ImVec2((ux + (float)CtlIcons::kCell) * iw, (uy + (float)CtlIcons::kCell) * ih));
+		}
+		else
+		{   // plano B (textura indisponivel): texto como antes
+			const float fs = b.r * (i == B_CROUCH ? 0.34f : 0.42f);
+			const ImVec2 ts = r->calculateTextSize(kLbl[i], fs);
+			r->drawText(ImVec2(b.cx - ts.x * 0.5f, b.cy - ts.y * 0.5f),
+			            down ? Cb(0, 0, 0, 255) : Cb(255, 255, 255, std::min(255, A + 80)), kLbl[i], (fm * bk) > 0.99f, fs);
+		}
 		if (editing && snap.sel == i) ring(b, 1.18f, std::max(3.0f, b.r * 0.08f));
 	}
 
