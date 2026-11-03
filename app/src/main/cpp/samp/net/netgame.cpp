@@ -65,6 +65,7 @@ static constexpr unsigned kStableFrameMaxDtMs = 80; // quadro "estavel" = menos 
 CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, const char* szPass)
 {
 	FLog("CNetGame initializing..");
+	ClearRemovedBuildings();   // as remocoes de predio valem so para o servidor atual
 
 	// voice
 	//Network::OnRaknetConnect(szHostOrIp, iPort);
@@ -133,6 +134,7 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, 
 // 0.3.7
 CNetGame::~CNetGame()
 {
+	ClearRemovedBuildings();
 	// voice
 	//Network::OnRaknetDisconnect();
 

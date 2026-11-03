@@ -12,7 +12,7 @@
 // ONDE COLOCAR (dentro de Android/data/com.maximo.roleplay/files/):
 //     texdb/ipl/<nome_do_ipl>.ipl    e    SAMP/ipl/<nome_do_ipl>.ipl      (ordem: texdb, depois SAMP, alfabetica;
 //     em conflito no mesmo indice o ULTIMO vence)
-// MARCADOR (arquivo vazio):  SAMP/ipl_off.on  = desliga tudo
+// (sem chave para desligar: o IPL esta sempre ativo; nao ha SAMP/ipl_off.on nem chave 'ipl' no diag.ini)
 // LOG (samp_log.txt): prefixo [IPL]
 //
 // Cobre so IPL BINARIO em streaming (os "*_stream*.ipl" do gta3.img/gta_int.img). IPL em texto carregado pelo gta.dat
@@ -74,7 +74,6 @@ namespace CustomIpl
     inline std::map<std::string, std::vector<size_t>> g_byIpl;   // chave -> indices em g_src (ordem de prioridade)
     inline std::string g_sig;
     inline bool g_scanned = false;
-    inline bool g_off = false;                                    // SAMP/ipl_off.on presente
     inline std::chrono::steady_clock::time_point g_lastHide{};
     inline std::chrono::steady_clock::time_point g_lastCheck{};
     inline std::set<std::string> g_seenNames;                     // diagnostico: nomes de IPL ja vistos
@@ -160,7 +159,6 @@ namespace CustomIpl
     // Reavalia a lista de arquivos no maximo a cada 2 s (arquivo novo/editado entra sem reiniciar o jogo)
     inline bool Refresh()
     {
-        if ((g_off = Marker("ipl_off.on"))) { static bool said = false; if (!said) { said = true; FLog("[IPL] SAMP/ipl_off.on presente: mistura DESLIGADA"); } return false; }
         const auto now = std::chrono::steady_clock::now();
         if (g_scanned && now - g_lastCheck < std::chrono::seconds(2)) return !g_byIpl.empty();
         g_lastCheck = now;
@@ -265,7 +263,7 @@ namespace CustomIpl
         std::lock_guard<std::mutex> lk(g_m);
         const auto now = std::chrono::steady_clock::now();            // chamado 1x por linha 'inst' de TODO IPL texto: so reavalia a cada 2 s
         if (!g_scanned || now - g_lastHide >= std::chrono::seconds(2)) { g_lastHide = now; Refresh(); }
-        if (g_off || g_hide.empty() || !CustomIplParse::HideMatch(g_hide, modelId, pos)) return modelId;
+        if (g_hide.empty() || !CustomIplParse::HideMatch(g_hide, modelId, pos)) return modelId;
         if (!ModelIdExists(kInvisibleModel))
         {
             static bool said = false; if (!said) { said = true; FLog("[IPL] hide: modelo invisivel %d NAO existe neste cliente -> hide ignorado (nada foi escondido)", kInvisibleModel); }

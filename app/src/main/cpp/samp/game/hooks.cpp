@@ -779,7 +779,7 @@ void (*CEntity_Render)(CEntityGTA* pEntity);
 int g_iLastRenderedObject;
 void CEntity_Render_hook(CEntityGTA* pEntity)
 {
-    if(iBuildingToRemoveCount > 1)
+    if(iBuildingToRemoveCount > 0)       // era > 1: a 1a remocao nunca valia
     {
         if(pEntity && *(uintptr_t*)pEntity != g_libGTASA+0x8300A0 && !pNetGame->GetObjectPool()->GetObjectFromGtaPtr(pEntity))
         {
@@ -788,7 +788,7 @@ void CEntity_Render_hook(CEntityGTA* pEntity)
                 float fDistance = GetDistance(entry.vecPos, pEntity->GetMatrix().m_pos);
                 if(fDistance <= entry.fRange)
                 {
-                    if(pEntity->GetModelId() == entry.usModelIndex)
+                    if((entry.usModelIndex == 0xFFFF && (pEntity->IsBuilding() || pEntity->IsDummy())) || pEntity->GetModelId() == entry.usModelIndex)   // 0xFFFF = qualquer predio (nunca ped/veiculo)
                     {
                         pEntity->m_bUsesCollision = 0;
                         pEntity->m_bCollisionProcessed = 0;

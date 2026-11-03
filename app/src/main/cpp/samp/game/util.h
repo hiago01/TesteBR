@@ -93,6 +93,7 @@ int GetAnimIdxByName(const char* szName);
 bool IsGameEntityArePlaceable(CEntityGTA *pEntity);
 
 void RemoveBuilding(uint32_t dwModel, RwV3d vecPos, float fRange);
+void ClearRemovedBuildings();
 void RemoveObjectInRange(int iModel, RwV3d vecPos, float fRange);
 void RemoveOccludersInRadius(RwV3d vecPos, float fRadius);
 

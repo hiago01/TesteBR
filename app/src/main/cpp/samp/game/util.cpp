@@ -2128,30 +2128,31 @@ REMOVEBUILDING_DATA BuildingToRemove[1000];
 
 std::list<REMOVE_BUILDING_DATA> RemoveBuildingData;
 
+// Remocao de predio pedida pelo servidor (RemoveBuildingForPlayer). Aplicada na hora do render (CEntity_Render_hook): casa por modelo
+// (-1 = qualquer modelo) dentro do raio. O LOD do predio tem MODELO PROPRIO: o servidor precisa remover o modelo do LOD tambem
+// (mesmo padrao do SA-MP), a mesma regra de modelo+raio vale para ele.
 void RemoveBuilding(uint32_t dwModel, RwV3d vecPos, float fRange)
 {
-    /*if(dwModel == 19300) return; // We cant delete technical models!
-
-    if(iBuildingToRemoveCount >= 1000)
-        return;
-
-    RemoveObjectInRange(dwModel, vecPos, fRange);
-
-    BuildingToRemove[iBuildingToRemoveCount].dwModel = dwModel;
-    BuildingToRemove[iBuildingToRemoveCount].vecPos.x = vecPos.x;
-    BuildingToRemove[iBuildingToRemoveCount].vecPos.y = vecPos.y;
-    BuildingToRemove[iBuildingToRemoveCount].vecPos.z = vecPos.z;
-    BuildingToRemove[iBuildingToRemoveCount].fRange = fRange;
-    iBuildingToRemoveCount++;*/
-
+    constexpr size_t kMaxRemoved = 4000;                       // teto: o hook de render varre a lista inteira a cada entidade
     REMOVE_BUILDING_DATA entry;
-    entry.usModelIndex = dwModel;
+    entry.usModelIndex = (dwModel == 0xFFFFFFFFu) ? 0xFFFF : (unsigned short)dwModel;   // 0xFFFF = qualquer modelo (era (unsigned short)-1 e nunca casava)
     entry.fRange = fRange;
     entry.vecPos = vecPos;
 
-    iBuildingToRemoveCount++;
+    for (const auto& e : RemoveBuildingData)                   // o servidor reenvia a lista a cada spawn: ignora o que ja esta registrado
+        if (e.usModelIndex == entry.usModelIndex && e.fRange == entry.fRange &&
+            e.vecPos.x == entry.vecPos.x && e.vecPos.y == entry.vecPos.y && e.vecPos.z == entry.vecPos.z) return;
+    if (RemoveBuildingData.size() >= kMaxRemoved) return;
 
     RemoveBuildingData.push_back(entry);
+    iBuildingToRemoveCount = (int)RemoveBuildingData.size();
+}
+
+// Zera as remocoes (nova conexao / desconexao): elas valem so para o servidor atual.
+void ClearRemovedBuildings()
+{
+    RemoveBuildingData.clear();
+    iBuildingToRemoveCount = 0;
 }
 
 #include "Pools.h"
@@ -2214,7 +2215,7 @@ void RemoveOccludersInRadius(RwV3d vecPos, float fRadius)
 {
     if(COcclusion::NumOccludersOnMap >= 1)
     {
-        for(int i = 0; i <= COcclusion::NumOccludersOnMap; i++)
+        for(int i = 0; i < COcclusion::NumOccludersOnMap; i++)
         {
             CVector vecOccluderPos;
             vecOccluderPos.x = (float)COcclusion::aOccluders[i].fMidX * 0.25;

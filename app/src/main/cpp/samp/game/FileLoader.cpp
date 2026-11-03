@@ -127,7 +127,7 @@ CEntityGTA* CFileLoader::LoadObjectInstance1(const char* line) {
     // entao o indice das demais (os lods dos IPLs de streaming) nao muda.
     {
         const float p3[3] = { instance.m_vecPosition.x, instance.m_vecPosition.y, instance.m_vecPosition.z };
-        if (Diag::On("ipl")) instance.m_nModelId = CustomIpl::HideModelFor(instance.m_nModelId, p3);
+        instance.m_nModelId = CustomIpl::HideModelFor(instance.m_nModelId, p3);
     }
 
     /*if (iBuildingToRemoveCount >= 1) {

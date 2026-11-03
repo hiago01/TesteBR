@@ -526,7 +526,7 @@ void CStreaming::InjectHooks() {
     // SEMPRE: guarda do CINFO.BIN (invalida cache velho) - protecao, nao e desligavel pelo diag (para testar col: tire os arquivos de SAMP/col)
     CustomCol::InstallCinfoGuard();
     // IPL por instancia (texdb/ipl/*.ipl): mistura no CIplStore::LoadIpl (ver CustomIpl.h / LEIA-ME_IPL.md)
-    if (Diag::On("ipl")) CustomIpl::Install();
+    CustomIpl::Install();
     CHook::Redirect("_ZN10CStreaming12MakeSpaceForEi", &CStreaming::MakeSpaceFor);
     //CHook::Redirect("_ZN10CStreaming22LoadAllRequestedModelsEb", &CStreaming::LoadAllRequestedModels);
 }
