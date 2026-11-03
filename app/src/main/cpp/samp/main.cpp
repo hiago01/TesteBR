@@ -278,7 +278,7 @@ void DoInitStuff()
 		CrashReport::Mark("connect", pSettings->Get().iPort);
 		pNetGame = new CNetGame(pSettings->Get().szHost, pSettings->Get().iPort, pSettings->Get().szNickName, pSettings->Get().szPassword/*g_pass*/);/*cryptor::create("H0ND4").decrypt()*//*""*/
 		bNetworkInited = true;
-		ReportLoadingStage(LOADING_STAGE_NET_CREATED);
+		// (a etapa NET_CREATED agora e reportada por CNetGame::ProcessConnecting quando a espera inicial termina)
 
         FLog("DoInitStuff end");
 	}

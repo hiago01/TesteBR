@@ -44,6 +44,10 @@ unsigned char GetPacketID(Packet *p)
 
 extern CJavaWrapper *pJavaWrapper;
 
+// Tempo (ms) que o jogador fica na tela de carregamento, FORA do servidor, antes de o RakNet comecar a conectar.
+// Da folga para texturas/streaming/UI terminarem de carregar. 0 = comportamento antigo (conecta ~1 s depois).
+static constexpr int kConnectDelayMs = 5000;
+
 CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, const char* szPass)
 {
 	FLog("CNetGame initializing..");
@@ -94,6 +98,8 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, 
 	m_bNameTagStatus = true;
 
 	m_dwLastConnectAttempt = GetTickCount();
+	m_dwConnectNotBefore = (int)GetTickCount() + kConnectDelayMs;
+	FLog("[CONNECT] RakNet so conecta em %d ms (tela de carregamento enquanto isso)", kConnectDelayMs);
 	SetGameState(GAMESTATE_WAIT_CONNECT);
 	m_bLanMode = false;
 
@@ -496,6 +502,16 @@ void CNetGame::ProcessLoadingScreen()
 // 0.3.7
 void CNetGame::ProcessConnecting()
 {
+	// Espera inicial: jogador segue na tela de carregamento, sem pacote nenhum enviado ao servidor.
+	if ((int)(GetTickCount() - (unsigned)m_dwConnectNotBefore) < 0) return;
+	static bool s_delayReported = false;
+	if (!s_delayReported)
+	{
+		s_delayReported = true;
+		FLog("[CONNECT] espera concluida: iniciando o RakNet");
+		if (pJavaWrapper) pJavaWrapper->SetLoadingStage(LOADING_STAGE_NET_CREATED);   // texto "conectando" so agora
+	}
+
 	if (GetTickCount() - m_dwLastConnectAttempt > 1000/*3000*/)
 	{
 		//if (pUI) pUI->chat()->addDebugMessage("Connecting to %s:%d...", m_szHostOrIp, m_iPort);

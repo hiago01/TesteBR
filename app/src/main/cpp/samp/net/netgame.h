@@ -173,6 +173,7 @@ private:
 	bool		m_bNameTagStatus;
 	int			m_iGameState;
 	int			m_dwLastConnectAttempt;
+	int			m_dwConnectNotBefore;      // o RakNet so inicia a conexao depois deste tick (tempo para o jogo terminar de carregar)
 	uint32_t	m_dwMapIcon[MAX_MAP_ICONS];
 
 	struct NET_POOLS
