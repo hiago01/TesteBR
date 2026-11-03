@@ -4,6 +4,7 @@
 
 #include "../game/common.h"
 #include "../game/game.h"
+#include "../net/netgame.h"
 
 #include "Playback.h"
 
@@ -12,6 +13,7 @@
 #include "main.h"
 
 extern CGame *pGame;
+extern CNetGame *pNetGame;
 
 bool Playback::Init() noexcept
 {
@@ -63,6 +65,23 @@ void Playback::Tick() noexcept
         reinterpret_cast<const BASS_3DVECTOR*>(&TheCamera.GetMatrix().m_forward),
         reinterpret_cast<const BASS_3DVECTOR*>(&TheCamera.GetMatrix().m_up)
     );*/
+
+    // Ouvinte 3D = jogador local. Antes ficava em (0,0,0) (listener comentado), entao as vozes,
+    // posicionadas em coordenadas do mundo, ficavam sempre "longe" e muito baixas/inaudiveis.
+    if(pNetGame)
+    {
+        CPlayerPool* pPlayerPool = pNetGame->GetPlayerPool();
+        CLocalPlayer* pLocal = pPlayerPool ? pPlayerPool->GetLocalPlayer() : nullptr;
+        CPlayerPed* pPed = pLocal ? pLocal->GetPlayerPed() : nullptr;
+        if(pPed && pPed->m_pPed)
+        {
+            RwMatrix m = pPed->m_pPed->GetMatrix().ToRwMatrix();
+            const BASS_3DVECTOR listenerPos { m.pos.x, m.pos.y, m.pos.z };
+            const BASS_3DVECTOR listenerFront { m.up.x, m.up.y, m.up.z };   // frente do ped no GTA = eixo "up" da matriz
+            const BASS_3DVECTOR listenerTop { 0.f, 0.f, 1.f };
+            BASS_Set3DPosition(&listenerPos, nullptr, &listenerFront, &listenerTop);
+        }
+    }
 
     BASS_Apply3D();
 }
