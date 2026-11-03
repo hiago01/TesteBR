@@ -16,6 +16,11 @@
         android:scaleType="centerCrop"
         android:src="@drawable/mx_loading_bg" />
 
+    <com.maximo.roleplay.game.ui.LoadingVideoView
+        android:id="@+id/mx_loading_video"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
     <androidx.constraintlayout.widget.Guideline
         android:id="@+id/mx_ld_g_top"
         android:layout_width="wrap_content"

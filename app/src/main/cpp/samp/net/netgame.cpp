@@ -46,7 +46,10 @@ extern CJavaWrapper *pJavaWrapper;
 
 // Tempo (ms) que o jogador fica na tela de carregamento, FORA do servidor, antes de o RakNet comecar a conectar.
 // Da folga para texturas/streaming/UI terminarem de carregar. 0 = comportamento antigo (conecta ~1 s depois).
-static constexpr int kConnectDelayMs = 5000;
+static constexpr int kConnectDelayMs = 5000;    // minimo na tela de carregamento
+static constexpr int kConnectMaxMs   = 15000;   // teto: 5 s + ate 10 s extras esperando o jogo estabilizar
+static constexpr int kStableFramesNeeded = 45;  // quadros seguidos estaveis (apos o minimo) para liberar o RakNet
+static constexpr unsigned kStableFrameMaxDtMs = 80; // quadro "estavel" = menos de 80 ms desde o anterior
 
 CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, const char* szPass)
 {
@@ -99,7 +102,11 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, 
 
 	m_dwLastConnectAttempt = GetTickCount();
 	m_dwConnectNotBefore = (int)GetTickCount() + kConnectDelayMs;
-	FLog("[CONNECT] RakNet so conecta em %d ms (tela de carregamento enquanto isso)", kConnectDelayMs);
+	m_dwConnectMaxAt = (int)GetTickCount() + kConnectMaxMs;
+	m_dwStableFrames = 0;
+	m_bConnectReleased = false;
+	m_dwLastProcTick = GetTickCount();
+	FLog("[CONNECT] RakNet conecta apos min %d ms (jogo estavel) e no maximo %d ms", kConnectDelayMs, kConnectMaxMs);
 	SetGameState(GAMESTATE_WAIT_CONNECT);
 	m_bLanMode = false;
 
@@ -502,13 +509,22 @@ void CNetGame::ProcessLoadingScreen()
 // 0.3.7
 void CNetGame::ProcessConnecting()
 {
-	// Espera inicial: jogador segue na tela de carregamento, sem pacote nenhum enviado ao servidor.
-	if ((int)(GetTickCount() - (unsigned)m_dwConnectNotBefore) < 0) return;
-	static bool s_delayReported = false;
-	if (!s_delayReported)
+	// Espera adaptativa: minimo kConnectDelayMs; depois libera quando o jogo esta estavel
+	// (kStableFramesNeeded quadros seguidos rapidos) ou, no pior caso, ao atingir o teto kConnectMaxMs.
+	if (!m_bConnectReleased)
 	{
-		s_delayReported = true;
-		FLog("[CONNECT] espera concluida: iniciando o RakNet");
+		unsigned now = GetTickCount();
+		unsigned dt = now - m_dwLastProcTick;
+		m_dwLastProcTick = now;
+		if (dt < kStableFrameMaxDtMs) m_dwStableFrames++; else m_dwStableFrames = 0;
+
+		bool minPassed = (int)(now - (unsigned)m_dwConnectNotBefore) >= 0;
+		bool maxPassed = (int)(now - (unsigned)m_dwConnectMaxAt) >= 0;
+		if (!minPassed) return;
+		if (!maxPassed && m_dwStableFrames < kStableFramesNeeded) return;
+
+		m_bConnectReleased = true;
+		FLog("[CONNECT] liberado: %s (estaveis=%d) - iniciando o RakNet", maxPassed ? "teto atingido" : "jogo estavel", m_dwStableFrames);
 		if (pJavaWrapper) pJavaWrapper->SetLoadingStage(LOADING_STAGE_NET_CREATED);   // texto "conectando" so agora
 	}
 

@@ -173,6 +173,10 @@ private:
 	bool		m_bNameTagStatus;
 	int			m_iGameState;
 	int			m_dwLastConnectAttempt;
+	int			m_dwConnectMaxAt;          // teto: conecta no maximo neste tick, mesmo sem o jogo estabilizar
+	bool		m_bConnectReleased;        // espera de conexao ja liberada
+	int			m_dwStableFrames;          // quadros seguidos com tempo de quadro baixo (jogo estavel)
+	unsigned	m_dwLastProcTick;          // tick da chamada anterior de ProcessConnecting
 	int			m_dwConnectNotBefore;      // o RakNet so inicia a conexao depois deste tick (tempo para o jogo terminar de carregar)
 	uint32_t	m_dwMapIcon[MAX_MAP_ICONS];
 
