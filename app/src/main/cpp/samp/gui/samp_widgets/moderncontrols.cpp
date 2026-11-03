@@ -414,6 +414,9 @@ void ModernControls::draw(ImGuiRenderer* r)
 		g_ctl.disabledMask = (!editing && g_runLock.load()) ? (1u << B_RUN) : 0u;
 		// MIRAR: escondido (sem desenhar nem receber toque) quando a arma atual nao mira; no editor de HUD continua visivel.
 		if (!editing && pedOk && !AimAllowedFor(ped)) { g_ctl.disabledMask |= (1u << B_AIM); g_aimLock.store(false); }
+		if (!editing && g_runLock.load()) { g_ctl.disabledMask |= (1u << B_AIM); g_aimLock.store(false); }   // Lock (corrida) ativo: o botao MIRAR some (nao desenha nem recebe toque)
+		// Mira ativa (MIRAR travada, ou ATAQUE segurado com arma de fogo): o botao CORRER tambem some (nao desenha nem recebe toque); ao sair da mira volta.
+		if (!editing && (g_aimLock.load() || (((g_held.load() >> B_ATTACK) & 1u) && pedOk && !PunchWeapon(ped)))) g_ctl.disabledMask |= (1u << B_RUN);
 		// P1/P2 (entrar como motorista/passageiro): so a pe, vivo, sem UI e com um veiculo do SA-MP a ate kShowDist metros; no editor aparecem sempre.
 		if (!editing)
 		{
@@ -504,7 +507,6 @@ void ModernControls::draw(ImGuiRenderer* r)
 	for (int i = 0; i < B_COUNT; i++)
 	{
 		if (((snap.disabledMask >> i) & 1u)) continue;
-		if (i == B_AIM && !editing && g_aimLock.load()) continue;   // mira travada: o botao some (o toque no mesmo lugar ainda desliga); ao sair da mira volta
 		const bool down = (i == B_RUNLOCK) ? g_runLock.load() : (i == B_AIM) ? g_aimLock.load() : snap.BtnDown(i);   // LOCK/MIRAR ficam acesos enquanto ligados
 		const CtlCircle& b = L.btn[i];
 		const int A = alphaOf(i);

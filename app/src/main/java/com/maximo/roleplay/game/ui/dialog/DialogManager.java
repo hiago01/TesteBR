@@ -420,6 +420,25 @@ public class DialogManager {
         });
     }
 
+    /**
+     * Altura do teclado do Android (px; 0 = fechado), vinda do SAMP.java. Com a janela em adjustNothing a tela do jogo nao sobe mais;
+     * so o CARTAO do dialogo de texto/senha sobe o que for preciso para o campo ficar acima do teclado, e volta ao lugar com o teclado fechado.
+     */
+    public void onKeyboardInset(int h) {
+        View card = cardView();
+        if (h <= 0 || mMainLayout.getVisibility() != View.VISIBLE || !(this.mDialogStyle == 1 || this.mDialogStyle == 3)) {
+            card.setTranslationY(0.0f);
+            return;
+        }
+        int[] loc = new int[2];
+        this.mDialogInput.getLocationOnScreen(loc);
+        float baseTop = loc[1] - card.getTranslationY();                       // posicao do campo SEM o deslocamento atual
+        int bottom = (int) baseTop + this.mDialogInput.getHeight();
+        int screenH = this.activity.getWindow().getDecorView().getHeight();
+        int limit = screenH - h - (int) (this.activity.getResources().getDisplayMetrics().density * 8);
+        card.setTranslationY(bottom > limit ? (float) (limit - bottom) : 0.0f);
+    }
+
     private boolean mNativeKbOpen = false;
 
     private View cardView() {   // o cartao inteiro (cabecalho + corpo), nao so o corpo
