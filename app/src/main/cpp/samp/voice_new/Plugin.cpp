@@ -114,6 +114,15 @@ void Plugin::MainLoop()
         const auto& voicePacketRef = *voicePacket;
 
         const auto iter = Plugin::streamTable.find(voicePacketRef->stream);
+        {
+            static uint32_t diagRecv = 0, diagMiss = 0;
+            if(iter == Plugin::streamTable.end()) {
+                if((diagMiss++ % 20) == 0)
+                    LogVoice("[sv:diag:recv] voz recebida mas stream %u nao existe na tabela (perdidos=%u)", (unsigned)voicePacketRef->stream, diagMiss);
+            } else if((diagRecv++ % 20) == 0) {
+                LogVoice("[sv:diag:recv] voz recebida: stream=%u sender=%u len=%u (total=%u)", (unsigned)voicePacketRef->stream, (unsigned)voicePacketRef->sender, (unsigned)voicePacketRef->length, diagRecv);
+            }
+        }
         if(iter == Plugin::streamTable.end()) continue;
 
         iter->second->Push(*&voicePacketRef);
