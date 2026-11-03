@@ -39,6 +39,7 @@ namespace
 	std::atomic<bool>     g_busy{ false };      // personagem pulando/no ar ou segurando na parede (ver ModernControlsBrakeTick)
 	std::atomic<bool>     g_busyJumpUsed{ false };   // o unico pulo permitido neste estado ja foi usado
 	std::atomic<bool>     g_brake{ false };     // personagem na animacao de freada (RUN_STOP/RUN_STOPR); escrito na thread do jogo, lido no desenho
+	std::atomic<bool>     g_aimLock{ false };   // MIRAR travada (botao MIRAR alterna); atirar ou sair do modo desliga
 	std::atomic<bool>     g_runLock{ false };   // CORRIDA LOCK ligada: o personagem corre reto sem segurar o joystick
 	std::atomic<uint32_t> g_edges{ 0 };
 	std::atomic<int64_t>  g_jumpMs{ -1000000 };
@@ -94,6 +95,8 @@ namespace
 		g_lr.store(o.lr); g_ud.store(o.ud); g_held.store(o.held);
 		if (o.pressedEdge) {
 			uint32_t edge = o.pressedEdge;
+			if (edge & (1u << B_AIM)) { g_aimLock.store(!g_aimLock.load()); edge &= ~(1u << B_AIM); }   // toggle: 1 toque trava, outro solta
+			if (edge & (1u << B_ATTACK)) g_aimLock.store(false);                                     // atirou: a mira travada desativa
 			if (edge & (1u << B_RUNLOCK)) { g_runLock.store(!g_runLock.load()); edge &= ~(1u << B_RUNLOCK); }   // toggle
 			if (edge & (1u << B_JUMP))
 			{
@@ -116,6 +119,7 @@ namespace
 	void ReleaseAllLocked()
 	{
 		g_runLock.store(false);                 // saiu do modo/veiculo/UI: o lock desliga
+		g_aimLock.store(false);
 		EndAimLocked();
 		g_ctl.CancelAll();
 		Publish();
@@ -142,7 +146,7 @@ bool ModernInput::JumpJustDown()  { return g_active.load() && ConsumeEdge(B_JUMP
 bool ModernInput::JumpHeld()      { return g_active.load() && (NowMs() - g_jumpMs.load()) < kJumpHoldMs; }
 bool ModernInput::CrouchJustDown(){ return g_active.load() && ConsumeEdge(B_CROUCH); }
 bool ModernInput::AttackHeld()    { return g_active.load() && (g_held.load() & (1u << B_ATTACK)); }
-bool ModernInput::AimWanted()      { return g_active.load() && (g_held.load() & (1u << B_ATTACK)); }
+bool ModernInput::AimWanted()      { return g_active.load() && ((g_held.load() & (1u << B_ATTACK)) || g_aimLock.load()); }   // Ataque segurado OU mira travada
 bool ModernInput::AttackJustDown(){ return g_active.load() && ConsumeEdge(B_ATTACK); }
 
 int ModernControls::DrainAimTouches(AimTouch* out, int max)
@@ -201,7 +205,7 @@ void ModernControlsBrakeTick()
 	bool busy = !s_busyCapped && (air || (s_busySeen > 0 && now - s_busySeen < 150));
 	if (busy) { if (s_busySince < 0) s_busySince = now; if (now - s_busySince > 8000) { busy = false; s_busyCapped = true; } }   // trava: no maximo 8 s
 	else s_busySince = -1;
-	if (busy && !s_busyPrev) { g_runLock.store(false); g_busyJumpUsed.store(false); }   // entrou: LOCK desliga e o unico pulo volta a valer
+	if (busy && !s_busyPrev) { g_runLock.store(false); g_aimLock.store(false); g_busyJumpUsed.store(false); }   // entrou: LOCK desliga e o unico pulo volta a valer
 	if (!busy) g_busyJumpUsed.store(false);
 	s_busyPrev = busy;
 	g_busy.store(busy);
@@ -386,11 +390,11 @@ void ModernControls::draw(ImGuiRenderer* r)
 	}
 
 	// botoes
-	static const char* const kLbl[B_COUNT] = { "CORRER", "PULO", "AGACHAR", "ATAQUE", "MIC", "LOCK" };
+	static const char* const kLbl[B_COUNT] = { "CORRER", "PULO", "AGACHAR", "ATAQUE", "MIC", "LOCK", "MIRAR" };
 	for (int i = 0; i < B_COUNT; i++)
 	{
 		if (((snap.disabledMask >> i) & 1u)) continue;
-		const bool down = (i == B_RUNLOCK) ? g_runLock.load() : snap.BtnDown(i);   // LOCK fica aceso enquanto ligado
+		const bool down = (i == B_RUNLOCK) ? g_runLock.load() : (i == B_AIM) ? g_aimLock.load() : snap.BtnDown(i);   // LOCK/MIRAR ficam acesos enquanto ligados
 		const CtlCircle& b = L.btn[i];
 		const int A = alphaOf(i);
 		const float bk = (((snap.blockedMask >> i) & 1u) != 0) ? 0.3f : 1.0f;      // bloqueado (pulando/na parede): esmaecido
