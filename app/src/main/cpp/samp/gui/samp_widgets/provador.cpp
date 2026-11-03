@@ -56,6 +56,7 @@ namespace
 	int                  g_sel = -1;                // slot selecionado (indice em SkinSlots::kSlots)
 	float                g_scrollList = 0.0f;
 	float                g_scrollVar  = 0.0f;
+	bool                 g_scrollToUsed = false;    // ao (re)entrar na pagina / trocar de item: rola lista e grade ate o item USADO e sua variante (id do <n>.png)
 	std::vector<int>     g_catSlots;                // slots da categoria atual (indices em kSlots)
 	CCustomSkin::UiState g_st;                      // ultimo estado REAL publicado pelo CCustomSkin
 	bool                 g_haveSt = false;
@@ -166,6 +167,7 @@ namespace
 		if (g_sel < 0) g_sel = firstOk;
 		g_scrollList = 0.0f;
 		g_scrollVar  = 0.0f;
+		g_scrollToUsed = true;
 	}
 
 	void Request(const std::string& op, const char* okToast)
@@ -195,8 +197,8 @@ namespace
 		switch (u->state)
 		{
 			case kEquipped:
-				if (u->varMod > 0) s += "  -  EQUIPADO, rosto " + std::to_string(u->variant % u->varMod) + " (tom " + std::to_string(u->variant / u->varMod) + ")";
-				else               s += "  -  EQUIPADO, variante " + std::to_string(u->variant);
+				if (u->varMod > 0) s += "  -  USADO ATUALMENTE, rosto " + std::to_string(u->variant % u->varMod) + " (tom " + std::to_string(u->variant / u->varMod) + ")";
+				else               s += "  -  USADO ATUALMENTE, variante " + std::to_string(u->variant);
 				break;
 			case kDisabled: s += "  -  desligado"; break;
 			case kCovered:  s += "  -  coberto por outra peça"; break;
@@ -421,6 +423,28 @@ void Provador::draw(ImGuiRenderer* r)
 	const float varContent = varRows * (cellH + cellGap);
 	const float varView = varBot - varTop;
 	const float varMax = std::max(0.0f, varContent - varView);
+	if (g_scrollToUsed)
+	{   // volta ao item USADO: deixa a linha dele e a celula da variante em uso (id do <n>.png) dentro da vista
+		g_scrollToUsed = false;
+		for (int i = 0; i < nRows; ++i)
+			if (g_catSlots[(size_t)i] == g_sel)
+			{
+				const float top0 = i * rowH, bot0 = top0 + rowH;
+				if (top0 < g_scrollList) g_scrollList = top0;
+				else if (bot0 > g_scrollList + listView) g_scrollList = bot0 - listView;
+				break;
+			}
+		g_scrollList = std::clamp(g_scrollList, 0.0f, listMax);
+		if (selU && selU->variant >= 0)
+			for (int i = 0; i < nVars; ++i)
+				if (selU->variants[(size_t)i] == selU->variant)
+				{
+					const float top0 = (i / cols) * (cellH + cellGap), bot0 = top0 + cellH;
+					if (top0 < g_scrollVar) g_scrollVar = top0;
+					else if (bot0 > g_scrollVar + varView) g_scrollVar = bot0 - varView;
+					break;
+				}
+	}
 	g_scrollVar = std::clamp(g_scrollVar, 0.0f, varMax);
 
 	// botoes
@@ -543,7 +567,7 @@ void Provador::draw(ImGuiRenderer* r)
 				const int k2 = g_catSlots[(size_t)h.idx];
 				const SlotState* u = StateOf(k2);
 				if (!u || !u->hasMaterial) { Toast("Este item não existe no modelo carregado", true); break; }
-				g_sel = k2; g_scrollVar = 0.0f;
+				g_sel = k2; g_scrollVar = 0.0f; g_scrollToUsed = true;
 				if (!ready) { Toast("Skin não instalada: toque em PREPARAR", true); break; }
 				if (busy || u->state == kEquipped) break;   // ja equipado: so seleciona (visivel != equipado)
 				if (!u->variants.empty()) PreviewSlot(k2, std::to_string(u->variant >= 0 ? u->variant : u->variants.front()));
@@ -701,12 +725,13 @@ void Provador::draw(ImGuiRenderer* r)
 		if (!u)           st = "...";
 		else if (!avail)  st = "indisponível";
 		else if (IsToneSlotName(SlotAt(k2).name) && u->variant >= 1) { st = "TOM " + std::to_string(u->variant); stc = cBlue; }   // mesmo coberto por roupa
-		else if (u->state == kEquipped) { st = "EQUIPADO " + std::to_string(VarLabel(u, u->variant)); stc = cBlue; }
+		else if (u->state == kEquipped) { st = "USADO ATUALMENTE " + std::to_string(VarLabel(u, u->variant)); stc = cBlue; }
 		else if (u->state == kCovered)  st = "coberto";
+		else if (u->state == kDisabled && SkinSlots::GroupOf(SlotAt(k2).name) >= 0) st = "";   // grupo exclusivo: so o USADO e marcado; os demais ficam sem rotulo
 		else if (u->state == kDisabled) st = "desligado";
 		else if (u->partial)            st = "parcial";      // ex.: pele das pernas parcialmente coberta por uma bermuda
 		else                            st = "padrão";       // visível com a textura original = nada equipado
-		if (u && avail && u->previewed) { st += " *"; stc = cAmber; }
+		if (u && avail && u->previewed && !st.empty()) { st += " *"; stc = cAmber; }
 		const ImVec2 ts = r->calculateTextSize(st, fsS);
 		r->drawText(ImVec2(panX + panW - pad - ts.x, ry + (rowH - ts.y) * 0.5f), stc, st, false, fsS);
 	}
