@@ -33,7 +33,6 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
     private static final String TAG = "SAMP";
     private static SAMP instance;
 
-    public static final boolean NATIVE_KEYBOARD = false;
     private CustomKeyboard mKeyboard;
     private DialogManager mDialog;
     private HeightProvider mHeightProvider;
@@ -143,17 +142,6 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
 
     private native void onInputEnd(byte[] str);
 
-    // Teclado NATIVO (C++) para os campos dos dialogos: o texto volta em onDialogKeyboardResult; o fechamento em onDialogKeyboardClosed.
-    public native int openDialogKeyboard(byte[] initial, boolean mask, byte[] hint);   // Y do topo do teclado (px) ou -1
-    public native void closeDialogKeyboard();
-
-    public void onDialogKeyboardResult(final byte[] text) {
-        runOnUiThread(new Runnable() { @Override public void run() { if (mDialog != null) mDialog.onNativeKeyboardResult(text); } });
-    }
-
-    public void onDialogKeyboardClosed() {
-        runOnUiThread(new Runnable() { @Override public void run() { if (mDialog != null) mDialog.onNativeKeyboardClosed(); } });
-    }
     @Override
     public void OnInputEnd(String str)
     {
@@ -239,10 +227,8 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
 
         //mHeightProvider = new HeightProvider(this);
 
-        // CHAVE GERAL do teclado: false = teclado do ANDROID em todo o projeto (chat + dialogos, View Java CustomKeyboard);
-        // true = teclado NATIVO (C++/ImGui). O lado C++ tem a chave Keyboard::kNativeEnabled (keyboard.h): mantenha as duas iguais.
         markGameRunning(true);   // se o processo cair, o launcher avisa na proxima abertura (ver MainActivity)
-        mKeyboard = NATIVE_KEYBOARD ? null : new CustomKeyboard(this);
+        mKeyboard = new CustomKeyboard(this);
 
         mDialog = new DialogManager(this);
 
