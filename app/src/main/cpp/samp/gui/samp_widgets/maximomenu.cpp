@@ -585,6 +585,7 @@ namespace
 	int   g_sub = 0;
 	float g_scroll = 0.0f;
 	int64_t g_quitArmedUntil = 0;
+	int64_t g_resetArmedUntil = 0;     // confirmacao de "Moderno: restaurar ajustes"
 	bool  g_applied = false;
 
 	struct Drag
@@ -750,7 +751,7 @@ void MaximoMenu::draw(ImGuiRenderer* r)
 			{
 				if (g_drag.kind == 1) { g_open.store(false); if (g_dirty) SaveCfg(); g_drag = Drag(); return; }
 				if (g_drag.kind == 2 && g_drag.idx == T_MAPA) { g_open.store(false); if (g_dirty) SaveCfg(); g_drag = Drag(); WorldMapWidget::Open(); return; }
-				if (g_drag.kind == 2) { g_tab = g_drag.idx; g_scroll = 0.0f; g_quitArmedUntil = 0; }
+				if (g_drag.kind == 2) { g_tab = g_drag.idx; g_scroll = 0.0f; g_quitArmedUntil = 0; g_resetArmedUntil = 0; }
 				if (g_drag.kind == 3) { g_sub = g_drag.idx; g_scroll = 0.0f; }
 				if (g_drag.kind == 4 && g_drag.idx >= 0)
 				{
@@ -772,7 +773,11 @@ void MaximoMenu::draw(ImGuiRenderer* r)
 						}
 						if (row.id == ID_CTLMODE) { g_open.store(false); if (g_dirty) SaveCfg(); g_drag = Drag(); ControlsSelector::Open(); return; }
 						if (row.id == ID_MC_EDIT && ControlMode::IsModern()) { g_open.store(false); if (g_dirty) SaveCfg(); g_drag = Drag(); ModernControls::StartEdit(); return; }
-						if (row.id == ID_MC_RESET) ControlMode::ResetConfig();
+						if (row.id == ID_MC_RESET)            // pede confirmacao: 1o toque arma, 2o toque (ate 3 s) restaura
+						{
+							if (NowMs() < g_resetArmedUntil) { ControlMode::ResetConfig(); g_resetArmedUntil = 0; }
+							else g_resetArmedUntil = NowMs() + 3000;
+						}
 						if (row.id == ID_VOIP_RESETP) VoiceMix::ResetPlayers();
 						if (row.id == ID_RESUME) { g_open.store(false); if (g_dirty) SaveCfg(); g_drag = Drag(); return; }
 						if (row.id == ID_QUIT)
@@ -906,8 +911,9 @@ void MaximoMenu::draw(ImGuiRenderer* r)
 			const char* s = ">";
 			if (row.id == ID_CTLMODE) s = ControlMode::IsModern() ? "Moderno >" : "Clássico >";
 			if (row.id == ID_QUIT && NowMs() < g_quitArmedUntil) s = "Toque de novo para sair";
+			if (row.id == ID_MC_RESET && NowMs() < g_resetArmedUntil) s = "Toque de novo para confirmar";
 			const ImVec2 ts = r->calculateTextSize(s, fs);
-			r->drawText(ImVec2(panX + panW - pad - ts.x, ty), (row.id == ID_QUIT) ? ImColor(235, 90, 80, 255) : cText, s, false, fs);
+			r->drawText(ImVec2(panX + panW - pad - ts.x, ty), (row.id == ID_QUIT || (row.id == ID_MC_RESET && NowMs() < g_resetArmedUntil)) ? ImColor(235, 90, 80, 255) : cText, s, false, fs);
 		}
 	}
 	r->popClipRect();

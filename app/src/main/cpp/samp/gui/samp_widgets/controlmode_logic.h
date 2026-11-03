@@ -65,42 +65,42 @@ namespace CtlLogic
 		CtlVec   joyPos   { 0.13f, 0.72f };   // centro da base do joystick (fracao da tela)
 		float joyScale = 1.0f;             // 0.5 .. 1.6
 		float btnScale = 1.0f;             // 0.5 .. 1.6
-		float alpha    = 0.55f;            // 0.15 .. 1.0 (transparencia)
+		float alpha    = 0.15f;            // 0.15 .. 1.0 (transparencia; padrao 15%)
 		float sens     = 1.0f;             // 0.5 .. 2.0 (sensibilidade da intensidade)
 		float deadzone = 0.12f;            // 0 .. 0.45
 		float maxDist  = 1.0f;             // 0.6 .. 1.6 (distancia analogica maxima, x raio da base)
 		bool  aimDrag  = true;             // Ataque tambem arrasta a mira (estilo Free Fire); desligado = Ataque so atira
 		float aimSens  = 1.0f;             // 0.3 .. 3.0 (sensibilidade do arrasto da mira)
 		float aimSmooth = 0.0f;            // 0 .. 0.85 (suavizacao; 0 = desligada)
-		CtlVec   btnPos[B_COUNT] = {
-			{ 0.77f, 0.86f },   // corrida
-			{ 0.78f, 0.64f },   // pulo
-			{ 0.90f, 0.88f },   // agachar
-			{ 0.90f, 0.68f },   // ataque
-			{ 0.93f, 0.42f },   // microfone
-			{ 0.66f, 0.80f },   // corrida lock (liga/desliga: corre reto sozinho)
-			{ 0.82f, 0.46f },   // mirar (toque: trava a mira; atirar desativa)
-			{ 0.95f, 0.545f },  // P1: entrar como motorista (posicao do botao nativo)
-			{ 0.86f, 0.545f },  // P2: entrar como passageiro
+		CtlVec   btnPos[B_COUNT] = {     // padrao = HUD 1 do print do editor (posicoes estimadas a partir da imagem 1600x720)
+			{ 0.769f, 0.819f }, // corrida
+			{ 0.792f, 0.635f }, // pulo
+			{ 0.899f, 0.879f }, // agachar
+			{ 0.902f, 0.658f }, // ataque
+			{ 0.929f, 0.418f }, // microfone
+			{ 0.122f, 0.436f }, // corrida lock (liga/desliga: corre reto sozinho)
+			{ 0.719f, 0.563f }, // mirar (toque: trava a mira; atirar desativa)
+			{ 0.677f, 0.731f }, // P1: entrar como motorista
+			{ 0.611f, 0.728f }, // P2: entrar como passageiro
 		};
 
 		// Por controle (0..B_COUNT-1 = botoes, B_COUNT = joystick): multiplicador de tamanho e opacidade propria.
 		float ctlScale[B_COUNT + 1];       // 0.5 .. 2.0 (x joy_escala / botoes_escala)
 		float ctlAlpha[B_COUNT + 1];       // 0.15 .. 1.0 (opacidade absoluta do controle)
-		ModernConfig() { for (int i = 0; i <= B_COUNT; i++) { ctlScale[i] = 1.0f; ctlAlpha[i] = 0.55f; } }
+		ModernConfig() { for (int i = 0; i <= B_COUNT; i++) { ctlScale[i] = 1.0f; ctlAlpha[i] = 0.15f; } ctlScale[B_RUNLOCK] = 1.32f; }
 
 		void Clamp()
 		{
 			auto fin = [](float v, float d) { return std::isfinite(v) ? v : d; };
 			joyScale = Clampf(fin(joyScale, 1.0f), 0.5f, 1.6f);
 			btnScale = Clampf(fin(btnScale, 1.0f), 0.5f, 1.6f);
-			alpha    = Clampf(fin(alpha, 0.55f),   0.15f, 1.0f);
+			alpha    = Clampf(fin(alpha, 0.15f),   0.15f, 1.0f);
 			sens     = Clampf(fin(sens, 1.0f),     0.5f, 2.0f);
 			deadzone = Clampf(fin(deadzone, 0.12f), 0.0f, 0.45f);
 			maxDist  = Clampf(fin(maxDist, 1.0f),  0.6f, 1.6f);
 			aimSens  = Clampf(fin(aimSens, 1.0f),  0.3f, 3.0f);
 			aimSmooth = Clampf(fin(aimSmooth, 0.0f), 0.0f, 0.85f);
-			for (int i = 0; i <= B_COUNT; i++) { ctlScale[i] = Clampf(fin(ctlScale[i], 1.0f), 0.5f, 2.0f); ctlAlpha[i] = Clampf(fin(ctlAlpha[i], 0.55f), 0.15f, 1.0f); }
+			for (int i = 0; i <= B_COUNT; i++) { ctlScale[i] = Clampf(fin(ctlScale[i], 1.0f), 0.5f, 2.0f); ctlAlpha[i] = Clampf(fin(ctlAlpha[i], 0.15f), 0.15f, 1.0f); }
 			joyPos.x = Clampf(fin(joyPos.x, 0.13f), 0.05f, 0.95f);
 			joyPos.y = Clampf(fin(joyPos.y, 0.72f), 0.10f, 0.95f);
 			for (auto& p : btnPos) { p.x = Clampf(fin(p.x, 0.5f), 0.03f, 0.97f); p.y = Clampf(fin(p.y, 0.5f), 0.05f, 0.97f); }

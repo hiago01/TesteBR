@@ -473,7 +473,7 @@ void ModernControls::draw(ImGuiRenderer* r)
 	}
 	const float fm = s_fm;
 	auto Cf = [&](int R, int G, int B, int A) { return ImColor(R, G, B, (int)std::lround((float)A * fm)); };
-	const ImColor kYellow(255, 204, 0, 255);
+	const ImColor kYellow(30, 144, 255, 255);       // (nome antigo) agora AZUL: contorno do controle selecionado
 	auto circle = [&](const CtlCircle& ci, const ImColor& fill, const ImColor& line, float lw) {
 		constexpr int N = 40;
 		ImVec2 p[N];
@@ -481,7 +481,7 @@ void ModernControls::draw(ImGuiRenderer* r)
 		r->drawConvexPolyFilled(p, N, fill);
 		r->drawPolyline(p, N, line, true, lw);
 	};
-	auto ring = [&](const CtlCircle& ci, float grow, float lw) {   // contorno amarelo do controle selecionado (so na edicao)
+	auto ring = [&](const CtlCircle& ci, float grow, float lw) {   // contorno azul do controle selecionado (so na edicao)
 		constexpr int N = 48;
 		ImVec2 p[N];
 		const float rr = ci.r * grow;
@@ -604,7 +604,7 @@ void ModernControls::draw(ImGuiRenderer* r)
 		{
 			// linha 2: [compartilhar = copiar HUD para todos] [restaurar] [salvar]
 			iconBtn(P.share, gray); iconBtn(P.reset, gray);
-			iconBtn(P.save, snap.dirty ? ImColor(255, 190, 0, 255) : ImColor(60, 60, 60, 255));
+			iconBtn(P.save, snap.dirty ? ImColor(30, 144, 255, 255) : ImColor(60, 60, 60, 255));
 			{
 				const float cx = (P.share.l + P.share.r) * 0.5f, cy = (P.share.t + P.share.b) * 0.5f, u = (P.share.b - P.share.t) * 0.28f;
 				line(cx - u * 0.7f, cy, cx + u * 0.7f, cy - u * 0.6f, black, 2.5f); line(cx - u * 0.7f, cy, cx + u * 0.7f, cy + u * 0.6f, black, 2.5f);
@@ -629,7 +629,7 @@ void ModernControls::draw(ImGuiRenderer* r)
 			r->drawRect(ImVec2(P.chk.l, P.chk.t), ImVec2(P.chk.r, P.chk.b), white, false, 2.0f);
 			if (snap.smart)
 			{
-				fillR(CtlRect{ P.chk.l + 3, P.chk.t + 3, P.chk.r - 3, P.chk.b - 3 }, ImColor(255, 190, 0, 255));
+				fillR(CtlRect{ P.chk.l + 3, P.chk.t + 3, P.chk.r - 3, P.chk.b - 3 }, ImColor(30, 144, 255, 255));
 			}
 			textAt(P.chk.r + fs * 0.5f, (P.chkRow.t + P.chkRow.b) * 0.5f - fs * 0.55f, "Ajuste Inteligente", white, fs);
 			textAt(P.hint.l, (P.hint.t + P.hint.b) * 0.5f - fs * 0.4f, "Ajustar ao alinhar com outros controles", ImColor(200, 200, 200, 255), fs * 0.8f);
@@ -644,7 +644,7 @@ void ModernControls::draw(ImGuiRenderer* r)
 				textAt(trk.r - vs.x, (lbl.t + lbl.b) * 0.5f - fs * 0.5f, buf, txt, fs * 0.9f);
 				const float cy = (trk.t + trk.b) * 0.5f, th = std::max(2.0f, (trk.b - trk.t) * 0.18f);
 				fillR(CtlRect{ trk.l, cy - th, trk.r, cy + th }, ImColor(20, 20, 20, 255));
-				fillR(CtlRect{ trk.l, cy - th, trk.l + (trk.r - trk.l) * t, cy + th }, has ? ImColor(255, 190, 0, 255) : ImColor(90, 90, 90, 255));
+				fillR(CtlRect{ trk.l, cy - th, trk.l + (trk.r - trk.l) * t, cy + th }, has ? ImColor(30, 144, 255, 255) : ImColor(90, 90, 90, 255));
 				const float kx = trk.l + (trk.r - trk.l) * t, kw = std::max(3.0f, (trk.b - trk.t) * 0.22f);
 				fillR(CtlRect{ kx - kw, cy - (trk.b - trk.t) * 0.45f, kx + kw, cy + (trk.b - trk.t) * 0.45f }, ImColor(235, 235, 235, 255));
 			};
