@@ -20,6 +20,7 @@
 #include "CustomCol.h"
 #include "CustomSkinStream.h"
 #include "SkinTexDb.h"
+#include "SafeTexDb.h"
 
 void ApplySAMPPatchesInGame();
 void InitScripting();
@@ -91,10 +92,7 @@ void CGame::Initialize()
 {
 	FLog("CGame initializing..");
 
-    // diagnostico do touch.img: IDE x diretorio do IMG de cada entrada (roda depois dos IDEs e dos diretorios)
     Diag::Flush();   // [DIAG] foi decidido antes de existir arquivo de log: grava agora
-    if (Diag::On("touch") && CustomImg::ImgPresent())
-        CustomImg::Audit("CGame::Initialize");
 
     // countrye_10.col / CE_brewery: leitura passo a passo em SAMP/col, SAMP e texdb (somente log; nova leitura so com SAMP/col_reload.on)
     CustomCol::Audit("CGame::Initialize");
@@ -678,21 +676,21 @@ bool CGame::InitialiseRenderWare() {
     CVisibilityPlugins::Initialise();
 
 #if VER_SAMP
-    TextureDatabaseRuntime::Load("mobile", false, TextureDatabaseFormat::DF_Default);
-    TextureDatabaseRuntime::Load("txd", false, TextureDatabaseFormat::DF_Default);
-    TextureDatabaseRuntime::Load("gta3", false, TextureDatabaseFormat::DF_Default);
-    TextureDatabaseRuntime::Load("gta_int", false, TextureDatabaseFormat::DF_Default);
-    TextureDatabaseRuntime::Load("cutscene", false, TextureDatabaseFormat::DF_Default);
-    TextureDatabaseRuntime::Load("player", false, TextureDatabaseFormat::DF_PVR);
-    TextureDatabaseRuntime::Load("menu", false, TextureDatabaseFormat::DF_PVR);
+    SafeTexDb::Load("mobile", false, TextureDatabaseFormat::DF_Default);
+    SafeTexDb::Load("txd", false, TextureDatabaseFormat::DF_Default);
+    SafeTexDb::Load("gta3", false, TextureDatabaseFormat::DF_Default);
+    SafeTexDb::Load("gta_int", false, TextureDatabaseFormat::DF_Default);
+    SafeTexDb::Load("cutscene", false, TextureDatabaseFormat::DF_Default);
+    SafeTexDb::Load("player", false, TextureDatabaseFormat::DF_PVR);
+    SafeTexDb::Load("menu", false, TextureDatabaseFormat::DF_PVR);
 #else
-    TextureDatabaseRuntime::Load("samp", false, TextureDatabaseFormat::DF_Default);
-    TextureDatabaseRuntime::Load("mobile", false, TextureDatabaseFormat::DF_Default);
-    TextureDatabaseRuntime::Load("txd", false, TextureDatabaseFormat::DF_Default);
-    TextureDatabaseRuntime::Load("gta3", false, TextureDatabaseFormat::DF_Default);
-    TextureDatabaseRuntime::Load("gta_int", false, TextureDatabaseFormat::DF_Default);
-    TextureDatabaseRuntime::Load("player", false, TextureDatabaseFormat::DF_PVR);
-    TextureDatabaseRuntime::Load("menu", false, TextureDatabaseFormat::DF_PVR);
+    SafeTexDb::Load("samp", false, TextureDatabaseFormat::DF_Default);
+    SafeTexDb::Load("mobile", false, TextureDatabaseFormat::DF_Default);
+    SafeTexDb::Load("txd", false, TextureDatabaseFormat::DF_Default);
+    SafeTexDb::Load("gta3", false, TextureDatabaseFormat::DF_Default);
+    SafeTexDb::Load("gta_int", false, TextureDatabaseFormat::DF_Default);
+    SafeTexDb::Load("player", false, TextureDatabaseFormat::DF_PVR);
+    SafeTexDb::Load("menu", false, TextureDatabaseFormat::DF_PVR);
     //TextureDatabaseRuntime::Load("cutscene", false, TextureDatabaseFormat::DF_Default);
 
     /*TextureDatabaseRuntime* radar = TextureDatabaseRuntime::Load("radar", false, TextureDatabaseFormat::DF_ETC);
@@ -707,16 +705,7 @@ bool CGame::InitialiseRenderWare() {
     TextureDatabaseRuntime::Register(cars);*/
 #endif
 
-    // banco de texturas do touch.img (texdb/touch/). fullyLoad=false: so o indice; texturas sob demanda.
-    if (CustomImg::DbPresent())
-    {
-        const auto db = TextureDatabaseRuntime::Load(CustomImg::kDbName, false, TextureDatabaseFormat::DF_Default);
-        FLog("[TOUCH] banco '%s' %s", CustomImg::kDbName, db ? "carregado" : "FALHOU ao carregar");
-    }
-    else
-    {
-        FLog("[TOUCH] pasta texdb/touch nao encontrada: banco ignorado");
-    }
+    // (banco de texturas "touch" removido: o jogo nao le mais texdb/touch)
 
     // banco de texturas das roupas/skins (texdb/skins/). So personagens; independe de CustomImg::kCustomContent.
     SkinTexDb::Load();
