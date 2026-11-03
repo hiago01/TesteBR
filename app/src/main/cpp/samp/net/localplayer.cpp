@@ -1730,7 +1730,7 @@ void CLocalPlayer::SendExitVehicleNotification(VEHICLEID VehicleID)
 
 	CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
 	CVehicle* pVehicle = pVehiclePool->GetAt(VehicleID);
-	if (pVehicle)
+	if (pVehicle && m_pPlayerPed)
 	{
 		if (!m_pPlayerPed->IsAPassenger())
 			m_LastVehicle = VehicleID;
@@ -2110,9 +2110,11 @@ void CLocalPlayer::SendUnoccupiedData(VEHICLEID vehicleId, CVehicle *pVehicle)
 
 void CLocalPlayer::MaybeSendExitVehicle() {
     static bool oldExitVehicleState = false;
+    if (!m_pPlayerPed || !m_pPlayerPed->m_pPed) return;
     bool exitVehicleState = m_pPlayerPed->m_pPed->IsExitingVehicle();
 
     if(exitVehicleState && !oldExitVehicleState) {
+        if (!m_pPlayerPed->m_pPed->pVehicle) { oldExitVehicleState = exitVehicleState; return; }
         auto vehicleId = pNetGame->GetVehiclePool()->FindIDFromGtaPtr(m_pPlayerPed->m_pPed->pVehicle);
 
         if(vehicleId != INVALID_VEHICLE_ID) {

@@ -918,27 +918,26 @@ void CTaskComplexLeaveCar_hook(uintptr_t** thiz, CVehicleGTA* pVehicle, int iTar
 
 	if (dwRetAddr == 0x409A42+1 || dwRetAddr == 0x40A818+1)
 	{
-		if (pNetGame)
+		CPedGTA* pLocalGtaPed = (CPedGTA*)GamePool_FindPlayerPed();
+		if (pNetGame && pVehicle && pLocalGtaPed && (CVehicleGTA*)pLocalGtaPed->pVehicle == pVehicle)
 		{
-			if ((CVehicleGTA*)GamePool_FindPlayerPed()->pVehicle == pVehicle)
+			CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
+			CPlayerPool* pPlayerPool = pNetGame->GetPlayerPool();
+			CLocalPlayer* pLocalPlayer = pPlayerPool ? pPlayerPool->GetLocalPlayer() : nullptr;
+			VEHICLEID VehicleID = pVehiclePool ? pVehiclePool->FindIDFromGtaPtr((CVehicleGTA*)pLocalGtaPed->pVehicle) : INVALID_VEHICLE_ID;
+			if (VehicleID != INVALID_VEHICLE_ID && pLocalPlayer && pLocalPlayer->GetPlayerPed())
 			{
-				CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
-				VEHICLEID VehicleID = pVehiclePool->FindIDFromGtaPtr((CVehicleGTA*)GamePool_FindPlayerPed()->pVehicle);
-				if (VehicleID != INVALID_VEHICLE_ID)
+				CVehicle* pNetVeh = pVehiclePool->GetAt(VehicleID);
+				if (pNetVeh && pNetVeh->m_pVehicle)
 				{
-					CVehicle* pVehicle = pVehiclePool->GetAt(VehicleID);
-					CLocalPlayer* pLocalPlayer = pNetGame->GetPlayerPool()->GetLocalPlayer();
-					if (pVehicle && pLocalPlayer)
+					if (pNetVeh->IsATrainPart())
 					{
-						if (pVehicle->IsATrainPart())
-						{
-							RwMatrix mat = pVehicle->m_pVehicle->GetMatrix().ToRwMatrix();
-							pLocalPlayer->GetPlayerPed()->RemoveFromVehicleAndPutAt(mat.pos.x + 2.5f, mat.pos.y + 2.5f, mat.pos.z);
-						}
-						else
-						{
-							pLocalPlayer->SendExitVehicleNotification(VehicleID);
-						}
+						RwMatrix mat = pNetVeh->m_pVehicle->GetMatrix().ToRwMatrix();
+						pLocalPlayer->GetPlayerPed()->RemoveFromVehicleAndPutAt(mat.pos.x + 2.5f, mat.pos.y + 2.5f, mat.pos.z);
+					}
+					else
+					{
+						pLocalPlayer->SendExitVehicleNotification(VehicleID);
 					}
 				}
 			}

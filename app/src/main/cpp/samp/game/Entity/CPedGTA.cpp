@@ -13,6 +13,7 @@ void CPedGTA::GetBonePosition(RwV3d *posn, uint32 boneTag, bool bCalledFromCamer
 }
 
 bool CPedGTA::IsEnteringCar() {
+    if (!m_pIntelligence) return false;
     if ( GetTaskManager().CTaskManager::FindActiveTaskByType(TASK_COMPLEX_ENTER_CAR_AS_DRIVER) )
         return true;
 
@@ -20,6 +21,7 @@ bool CPedGTA::IsEnteringCar() {
 }
 
 bool CPedGTA::IsExitingVehicle() {
+    if (!m_pIntelligence) return false;
     if ( GetTaskManager().CTaskManager::FindActiveTaskByType(TASK_COMPLEX_LEAVE_CAR) )
         return true;
 

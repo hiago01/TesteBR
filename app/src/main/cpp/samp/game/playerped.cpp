@@ -2022,6 +2022,7 @@ bool CPlayerPed::IsExitingVehicle()
 	//if(m_pPed && m_pPed->Tasks && m_pPed->Tasks->pdwJumpJetPack)
 		//return GetTaskTypeFromTask(m_pPed->Tasks->pdwJumpJetPack) == 704;
 
+	if (!m_pPed) return false;
 	return m_pPed->IsExitingVehicle();
 }
 

@@ -1385,6 +1385,7 @@ void ScrRemovePlayerFromVehicle(RPCParameters* rpcParams)
 	CLocalPlayer* pLocalPlayer = pPlayerPool->GetLocalPlayer();
 	if (!pLocalPlayer) return;
 
+	if (!pLocalPlayer->GetPlayerPed()) return;
 	pLocalPlayer->GetPlayerPed()->ExitCurrentVehicle();
 }
 // 0.3.7
