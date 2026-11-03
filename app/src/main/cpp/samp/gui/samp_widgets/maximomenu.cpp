@@ -22,6 +22,8 @@
 #include <string>
 #include <vector>
 
+extern CNetGame *pNetGame;
+
 extern UI*            pUI;
 extern CGame*         pGame;
 extern CSettings*     pSettings;
