@@ -10,6 +10,7 @@
 #include "../../game/RW/RenderWare.h"
 #include "../../vendor/stb/stb_image.h"   // implementacao (STB_IMAGE_IMPLEMENTATION) esta em game/sprite2d.cpp
 #include "ctlicons.h"
+#include "passengerbutton_logic.h"
 
 #include <atomic>
 #include <chrono>
@@ -22,6 +23,8 @@
 using namespace CtlLogic;
 
 extern CNetGame* pNetGame;
+extern bool bNeedEnterVehicle;         // buttonpanel.cpp: P2 (consumido por CLocalPlayer::HandlePassengerEntry)
+extern bool bNeedEnterAsDriver;        // net/localplayer.cpp: P1 (consumido por CLocalPlayer::HandleDriverEntry)
 extern CGame*    pGame;
 extern UI*       pUI;
 extern CSettings* pSettings;
@@ -44,6 +47,7 @@ namespace
 	std::atomic<bool>     g_busyJumpUsed{ false };   // o unico pulo permitido neste estado ja foi usado
 	std::atomic<bool>     g_brake{ false };     // personagem na animacao de freada (RUN_STOP/RUN_STOPR); escrito na thread do jogo, lido no desenho
 	std::atomic<bool>     g_aimLock{ false };   // MIRAR travada (botao MIRAR alterna); atirar ou sair do modo desliga
+	std::atomic<int64_t>  g_enterMs{ -1000000 };   // ultimo P1/P2 aceito (recarga)
 	std::atomic<bool>     g_runLock{ false };   // CORRIDA LOCK ligada: o personagem corre reto sem segurar o joystick
 	std::atomic<uint32_t> g_edges{ 0 };
 	std::atomic<int64_t>  g_jumpMs{ -1000000 };
@@ -178,6 +182,16 @@ namespace
 			if (edge & (1u << B_AIM)) { g_aimLock.store(!g_aimLock.load()); edge &= ~(1u << B_AIM); }   // toggle: 1 toque trava, outro solta
 			if (edge & (1u << B_ATTACK)) g_aimLock.store(false);                                     // atirou: a mira travada desativa
 			if (edge & (1u << B_RUNLOCK)) { g_runLock.store(!g_runLock.load()); edge &= ~(1u << B_RUNLOCK); }   // toggle
+			if (edge & ((1u << B_P1) | (1u << B_P2)))                                                // entrar no veiculo: 1 pedido por toque, com recarga
+			{
+				const int64_t now = NowMs();
+				if (now - g_enterMs.load() >= PassengerLogic::kCooldownMs && !bNeedEnterVehicle && !bNeedEnterAsDriver)
+				{
+					g_enterMs.store(now);
+					if (edge & (1u << B_P1)) bNeedEnterAsDriver = true; else bNeedEnterVehicle = true;
+				}
+				edge &= ~((1u << B_P1) | (1u << B_P2));
+			}
 			if (edge & (1u << B_JUMP))
 			{
 				const int64_t now = NowMs();
@@ -400,6 +414,20 @@ void ModernControls::draw(ImGuiRenderer* r)
 		g_ctl.disabledMask = (!editing && g_runLock.load()) ? (1u << B_RUN) : 0u;
 		// MIRAR: escondido (sem desenhar nem receber toque) quando a arma atual nao mira; no editor de HUD continua visivel.
 		if (!editing && pedOk && !AimAllowedFor(ped)) { g_ctl.disabledMask |= (1u << B_AIM); g_aimLock.store(false); }
+		// P1/P2 (entrar como motorista/passageiro): so a pe, vivo, sem UI e com um veiculo do SA-MP a ate kShowDist metros; no editor aparecem sempre.
+		if (!editing)
+		{
+			bool showEnter = false;
+			if (pedOk && pNetGame && pNetGame->GetVehiclePool())
+			{
+				CVehiclePool* vp = pNetGame->GetVehiclePool();
+				CVehicle* v = vp->GetAt(vp->FindNearestToLocalPlayerPed());
+				const float dist = (v && v->m_pVehicle) ? v->m_pVehicle->GetDistanceFromLocalPlayerPed() : -1.0f;
+				const bool busyEnter = ped->IsEnteringCar() || ped->IsExitingVehicle();
+				showEnter = PassengerLogic::ShouldShow(true, UiBlocked(), vehicle, alive, dist, busyEnter);
+			}
+			if (!showEnter) g_ctl.disabledMask |= (1u << B_P1) | (1u << B_P2);
+		}
 		// pulando/na parede: bloqueia TODOS os botoes, menos o PULO (que vale uma vez so); o joystick segue livre
 		g_ctl.blockedMask = 0u;
 		if (!editing && g_busy.load())
@@ -472,7 +500,7 @@ void ModernControls::draw(ImGuiRenderer* r)
 	}
 
 	// botoes
-	static const char* const kLbl[B_COUNT] = { "CORRER", "PULO", "AGACHAR", "ATAQUE", "MIC", "LOCK", "MIRAR" };
+	static const char* const kLbl[B_COUNT] = { "CORRER", "PULO", "AGACHAR", "ATAQUE", "MIC", "LOCK", "MIRAR", "P1", "P2" };
 	for (int i = 0; i < B_COUNT; i++)
 	{
 		if (((snap.disabledMask >> i) & 1u)) continue;
@@ -496,6 +524,8 @@ void ModernControls::draw(ImGuiRenderer* r)
 				case B_MIC:     ic = CtlIcons::I_MIC; break;
 				case B_RUNLOCK: ic = CtlIcons::I_RUNLOCK; break;
 				case B_AIM:     ic = CtlIcons::I_AIM; break;
+				case B_P1:      ic = CtlIcons::I_P1; break;
+				case B_P2:      ic = CtlIcons::I_P2; break;
 				default: break;
 			}
 			const float half = b.r * 0.78f;                 // icone (com o contorno preto) ocupa ~78% do raio de cada lado

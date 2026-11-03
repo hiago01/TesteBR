@@ -7,6 +7,7 @@
 #include "../../net/localplayer.h"
 #include "../../util/CUtil.h"
 #include "passengerbutton_logic.h"
+#include "controlmode.h"
 
 #include <chrono>
 #include <algorithm>
@@ -81,6 +82,8 @@ PassengerButton::PassengerButton() : Widget()
 void PassengerButton::draw(ImGuiRenderer* r)
 {
 	CPedGTA* ped = nullptr; bool alive = false, inVeh = false, busy = false;
+	// Controles MODERNOS: P1/P2 sao botoes do proprio HUD moderno (editaveis; moderncontrols.cpp). Este botao antigo so vale no classico.
+	if (ControlMode::IsModern()) { m_available.store(false); m_finger.store(-1); return; }
 	const float dist = NearestVehicleDist(ped, alive, inVeh, busy);
 	const bool show = PassengerLogic::ShouldShow(ped != nullptr, UiBlocked(), inVeh, alive, dist, busy);
 	m_available.store(show);

@@ -196,6 +196,7 @@ public:
 	//void HandlePassengerEntry();
 	//bool EnterVehicleAsPassenger();
 	bool HandlePassengerEntry();
+	bool HandleDriverEntry();      // P1 do HUD moderno (bNeedEnterAsDriver)
 	bool GbuttonEnterVehicleAsPassenger();
 	bool EnterVehicleAsDriver();
 

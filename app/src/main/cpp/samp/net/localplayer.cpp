@@ -297,6 +297,7 @@ bool CLocalPlayer::Process()
                 }
 
                 HandlePassengerEntry();
+                HandleDriverEntry();
                 ProcessOnFootWorldBounds();
 
                 if (m_CurrentVehicle != 0xFFFF)
@@ -1242,6 +1243,35 @@ bool CLocalPlayer::HandlePassengerEntry()
 	}
 	m_pPlayerPed->EnterVehicle(pVehicle->m_dwGTAId, true);
 	SendEnterVehicleNotification(ClosetVehicleID, true);                                     // passa pelo limitador (ja checado acima)
+	return true;
+}
+
+// P1 do HUD moderno (entrar como MOTORISTA). Mesmas protecoes do P2: a flag vale por no maximo UM pedido e e sempre consumida.
+// O pedido ao servidor (RPC EnterVehicle, motorista) sai por SendEnterVehicleNotification; se o MaybeSendEnterVehicle tambem
+// o detectar pela tarefa do jogo, o EnterVehicleLimiter (mesmo veiculo+papel em 1,5 s) descarta o duplicado.
+bool bNeedEnterAsDriver = false;
+bool CLocalPlayer::HandleDriverEntry()
+{
+	if (!bNeedEnterAsDriver) return false;
+	bNeedEnterAsDriver = false;
+
+	if (!pNetGame || !pNetGame->GetVehiclePool() || !m_pPlayerPed || !m_pPlayerPed->m_pPed) return true;
+	CPedGTA* ped = m_pPlayerPed->m_pPed;
+	if (ped->m_fHealth <= 0.0f || ped->IsInVehicle()) return true;
+	if (m_pPlayerPed->IsEnteringVehicle() || m_pPlayerPed->IsExitingVehicle()) return true;
+
+	CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
+	VEHICLEID ClosetVehicleID = pVehiclePool->FindNearestToLocalPlayerPed();
+	CVehicle* pVehicle = pVehiclePool->GetAt(ClosetVehicleID);
+	if (!pVehicle || !pVehicle->m_pVehicle) return true;
+	if (pVehicle->m_pVehicle->GetDistanceFromLocalPlayerPed() >= 8.0f) return true;
+	if (!m_enterLimiter.Check(GetTickCount(), ClosetVehicleID, false)) return true;
+
+	if (m_pPlayerPed->GetCurrentWeapon() == WEAPON_PARACHUTE) {
+		m_pPlayerPed->SetArmedWeapon(0, false);
+	}
+	m_pPlayerPed->EnterVehicle(pVehicle->m_dwGTAId, false);
+	SendEnterVehicleNotification(ClosetVehicleID, false);
 	return true;
 }
 

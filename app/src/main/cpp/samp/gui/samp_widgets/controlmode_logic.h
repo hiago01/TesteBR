@@ -43,12 +43,12 @@ namespace CtlLogic
 	}
 
 	// ---------------------------------------------------------------- botoes ---------
-	// Interacao (entrar no veiculo) NAO esta aqui: nao existe hook de pad comprovado para forca-la; o widget nativo
-	// "hud_car" continua ativo no modo moderno (ver LEIA-ME_CONTROLES.md).
-	enum Btn : int { B_RUN = 0, B_JUMP, B_CROUCH, B_ATTACK, B_MIC, B_RUNLOCK, B_AIM, B_COUNT };
+	// P1 / P2 (entrar no veiculo como MOTORISTA / PASSAGEIRO): aparecem a pe, perto de um veiculo do SA-MP, e a acao e feita pelo
+	// cliente (CLocalPlayer::HandleDriverEntry / HandlePassengerEntry). No moderno o widget nativo "hud_car" fica oculto a pe.
+	enum Btn : int { B_RUN = 0, B_JUMP, B_CROUCH, B_ATTACK, B_MIC, B_RUNLOCK, B_AIM, B_P1, B_P2, B_COUNT };
 	inline const char* BtnKey(int b)
 	{
-		static const char* k[B_COUNT] = { "corrida", "pulo", "agachar", "ataque", "microfone", "corrida_lock", "mirar" };
+		static const char* k[B_COUNT] = { "corrida", "pulo", "agachar", "ataque", "microfone", "corrida_lock", "mirar", "p1", "p2" };
 		return (b >= 0 && b < B_COUNT) ? k[b] : "";
 	}
 
@@ -80,6 +80,8 @@ namespace CtlLogic
 			{ 0.93f, 0.42f },   // microfone
 			{ 0.66f, 0.80f },   // corrida lock (liga/desliga: corre reto sozinho)
 			{ 0.82f, 0.46f },   // mirar (toque: trava a mira; atirar desativa)
+			{ 0.95f, 0.545f },  // P1: entrar como motorista (posicao do botao nativo)
+			{ 0.86f, 0.545f },  // P2: entrar como passageiro
 		};
 
 		// Por controle (0..B_COUNT-1 = botoes, B_COUNT = joystick): multiplicador de tamanho e opacidade propria.
