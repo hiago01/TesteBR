@@ -504,6 +504,7 @@ void ModernControls::draw(ImGuiRenderer* r)
 	for (int i = 0; i < B_COUNT; i++)
 	{
 		if (((snap.disabledMask >> i) & 1u)) continue;
+		if (i == B_AIM && !editing && g_aimLock.load()) continue;   // mira travada: o botao some (o toque no mesmo lugar ainda desliga); ao sair da mira volta
 		const bool down = (i == B_RUNLOCK) ? g_runLock.load() : (i == B_AIM) ? g_aimLock.load() : snap.BtnDown(i);   // LOCK/MIRAR ficam acesos enquanto ligados
 		const CtlCircle& b = L.btn[i];
 		const int A = alphaOf(i);
@@ -531,7 +532,8 @@ void ModernControls::draw(ImGuiRenderer* r)
 			const float half = b.r * 0.78f;                 // icone (com o contorno preto) ocupa ~78% do raio de cada lado
 			const float iw = 1.0f / (float)CtlIcons::kWidth, ih = 1.0f / (float)CtlIcons::kHeight;
 			const float ux = (float)((ic % CtlIcons::kCols) * CtlIcons::kCell), uy = (float)((ic / CtlIcons::kCols) * CtlIcons::kCell);
-			r->drawImage(ImVec2(b.cx - half, b.cy - half), ImVec2(b.cx + half, b.cy + half), (ImTextureID)ico,
+			const float dx = (i == B_AIM) ? half * 0.125f : 0.0f;   // a mira (alvo) pesa para a esquerda no desenho: desloca ~6% da celula para a direita
+			r->drawImage(ImVec2(b.cx - half + dx, b.cy - half), ImVec2(b.cx + half + dx, b.cy + half), (ImTextureID)ico,
 			             Cb(255, 255, 255, std::min(255, A + 120)),
 			             ImVec2(ux * iw, uy * ih), ImVec2((ux + (float)CtlIcons::kCell) * iw, (uy + (float)CtlIcons::kCell) * ih));
 		}
