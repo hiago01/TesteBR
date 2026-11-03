@@ -15,10 +15,22 @@
 
 void CHook::UnFuck(uintptr_t addr, size_t len)
 {
-    if(mprotect((void*)(addr & 0xFFFFFFFFFFFFF000), len, PROT_READ | PROT_WRITE | PROT_EXEC) == 0)
+    // Android 15+ pode rodar com paginas de 16 KB: mprotect exige endereco alinhado ao tamanho REAL da
+    // pagina (a mascara fixa de 4 KB falhava com EINVAL) e o intervalo precisa cobrir [addr, addr+len),
+    // inclusive quando a escrita atravessa o limite de uma pagina.
+    static const uintptr_t pageSize = []() {
+        long p = sysconf(_SC_PAGESIZE);
+        return (uintptr_t)(p > 0 ? p : 4096);
+    }();
+
+    if (len == 0) len = 1;
+    const uintptr_t start = addr & ~(pageSize - 1);
+    const uintptr_t end   = (addr + len + pageSize - 1) & ~(pageSize - 1);
+
+    if(mprotect((void*)start, end - start, PROT_READ | PROT_WRITE | PROT_EXEC) == 0)
         return;
 
-    mprotect((void*)(addr & 0xFFFFFFFFFFFFF000), len, PROT_READ | PROT_WRITE);
+    mprotect((void*)start, end - start, PROT_READ | PROT_WRITE);
 }
 
 void CHook::InitHookStuff()
