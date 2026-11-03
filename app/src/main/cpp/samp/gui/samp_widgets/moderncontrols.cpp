@@ -89,6 +89,19 @@ namespace
 		return true;
 	}
 
+	// MIRAR so aparece com arma que mira. Sem mira (botao escondido): maos (0), corpo a corpo (1-15), arremesso (16-18),
+	// camera (43), oculos (44/45) e paraquedas (46). Mesma leitura de arma ativa usada em pad.cpp (IsFirearm).
+	bool AimAllowedFor(CPedGTA* ped)
+	{
+		if (!ped) return true;
+		const int slot = (int)ped->m_nActiveWeaponSlot;
+		if (slot < 0 || slot >= 13) return false;
+		const int t = (int)ped->m_aWeapons[slot].dwType;
+		if (t >= 0 && t <= 18) return false;
+		if (t >= 43 && t <= 46) return false;
+		return true;
+	}
+
 	void Publish()   // chamar com g_mu travado, depois de mudar o controlador
 	{
 		const Output o = g_ctl.Read(true);
@@ -318,6 +331,8 @@ void ModernControls::draw(ImGuiRenderer* r)
 		g_ctl.SetScreen(screen.x, screen.y);
 		// CORRIDA LOCK ligado: o botao CORRER some (nao desenha nem recebe toque); no editor de HUD ele continua visivel.
 		g_ctl.disabledMask = (!editing && g_runLock.load()) ? (1u << B_RUN) : 0u;
+		// MIRAR: escondido (sem desenhar nem receber toque) quando a arma atual nao mira; no editor de HUD continua visivel.
+		if (!editing && pedOk && !AimAllowedFor(ped)) { g_ctl.disabledMask |= (1u << B_AIM); g_aimLock.store(false); }
 		// pulando/na parede: bloqueia TODOS os botoes, menos o PULO (que vale uma vez so); o joystick segue livre
 		g_ctl.blockedMask = 0u;
 		if (!editing && g_busy.load())
