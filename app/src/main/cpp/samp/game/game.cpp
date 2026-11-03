@@ -18,6 +18,7 @@
 #include "sprite2d.h"
 #include "CustomImg.h"
 #include "CustomCol.h"
+#include "FreeModelIds.h"
 #include "CustomSkinStream.h"
 #include "SkinTexDb.h"
 #include "SafeTexDb.h"
@@ -96,6 +97,9 @@ void CGame::Initialize()
 
     // countrye_10.col / CE_brewery: leitura passo a passo em SAMP/col, SAMP e texdb (somente log; nova leitura so com SAMP/col_reload.on)
     CustomCol::Audit("CGame::Initialize");
+
+    // IDs de modelo livres (para objetos novos): so log + SAMP/model_ids_livres.txt (ver FreeModelIds.h)
+    FreeModelIds::Report("CGame::Initialize");
 
     // texdb/DFF/*.dff: DFF por entrada (ver CustomDff.h) - so log
     if (Diag::On("dff")) CustomSkinStream::AuditDff("CGame::Initialize");
