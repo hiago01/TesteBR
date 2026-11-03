@@ -1,6 +1,7 @@
 #include "Channel.h"
 
 #include "PluginConfig.h"
+#include "VoiceMix.h"
 #include "main.h"
 
 Channel::Channel(const uint32_t channelFlags)
@@ -105,6 +106,7 @@ void Channel::Push(const uint32_t packetNumber, const uint8_t* const dataPtr, co
         if(const int length = opus_decode(this->decoder, dataPtr, dataSize, this->decBuffer.data(),
                                           SV::kFrameSizeInSamples, true); length == static_cast<int>(SV::kFrameSizeInSamples))
         {
+            VoiceMix::Apply(this->decBuffer.data(), this->decBuffer.size(), (int)this->speaker);
             BASS_StreamPutData(this->handle, this->decBuffer.data(), SV::kFrameSizeInBytes);
         }
     }
@@ -112,7 +114,8 @@ void Channel::Push(const uint32_t packetNumber, const uint8_t* const dataPtr, co
     if(const int length = opus_decode(this->decoder, dataPtr, dataSize, this->decBuffer.data(),
                                       SV::kFrameSizeInSamples, false); length == static_cast<int>(SV::kFrameSizeInSamples))
     {
-        BASS_StreamPutData(this->handle, this->decBuffer.data(), SV::kFrameSizeInBytes);
+        VoiceMix::Apply(this->decBuffer.data(), this->decBuffer.size(), (int)this->speaker);
+            BASS_StreamPutData(this->handle, this->decBuffer.data(), SV::kFrameSizeInBytes);
     }
 
     const auto channelStatus = BASS_ChannelIsActive(this->handle);

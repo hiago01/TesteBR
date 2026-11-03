@@ -11,6 +11,7 @@
 #include "controlmode.h"
 #include "controlsselector.h"
 #include "moderncontrols.h"
+#include "../../voice_new/VoiceMix.h"
 
 #include <dlfcn.h>
 #include <algorithm>
@@ -205,6 +206,7 @@ namespace
 		g_doneId    = (int)ini.GetLongValue("maximo", "preset_done_id", 0);
 		g_skid.store(ini.GetLongValue("maximo", "skidmarks", 1) != 0);
 		g_cfg.stream = std::clamp((int)ini.GetLongValue("maximo", "vol_stream", 50), 0, 100);
+		VoiceMix::SetMaster((int)ini.GetLongValue("maximo", "vol_voip", 100));
 		long d = ini.GetLongValue("maximo", "draw_dist", -1), b = ini.GetLongValue("maximo", "brightness", -1);
 		int mn = 0, mx = 100;
 		if (d >= 0) { NativeRange(N_DRAW, mn, mx);   g_cfg.draw   = std::clamp((int)d, mn, mx); }
@@ -225,6 +227,7 @@ namespace
 
 		ini.SetLongValue("maximo", "skidmarks", g_skid.load() ? 1 : 0);
 		ini.SetLongValue("maximo", "vol_stream", g_cfg.stream);
+		ini.SetLongValue("maximo", "vol_voip", VoiceMix::GetMaster());
 		if (g_doneId > 0) ini.SetLongValue("maximo", "preset_done_id", g_doneId);
 		if (g_cfg.draw >= 0)   ini.SetLongValue("maximo", "draw_dist", g_cfg.draw);
 		if (g_cfg.bright >= 0) ini.SetLongValue("maximo", "brightness", g_cfg.bright);
@@ -321,7 +324,8 @@ namespace
 {
 	enum { K_INFO = 0, K_TOGGLE, K_SLIDER, K_ACTION, K_CHOICE };
 	enum { ID_NONE = 0, ID_SKID, ID_FPSCOUNT, ID_STREAM, ID_NATIVE, ID_RESUME, ID_QUIT, ID_PRESET, ID_CTLRESET,
-	       ID_CTLMODE, ID_MC_EDIT, ID_MC_RESET, ID_MC_JOYSCALE, ID_MC_BTNSCALE, ID_MC_ALPHA, ID_MC_SENS, ID_MC_DEAD, ID_MC_MAXD, ID_MC_JOYX, ID_MC_JOYY, ID_MC_AIMSENS, ID_MC_AIMSMOOTH, ID_MC_AIMDRAG };
+	       ID_CTLMODE, ID_MC_EDIT, ID_MC_RESET, ID_MC_JOYSCALE, ID_MC_BTNSCALE, ID_MC_ALPHA, ID_MC_SENS, ID_MC_DEAD, ID_MC_MAXD, ID_MC_JOYX, ID_MC_JOYY, ID_MC_AIMSENS, ID_MC_AIMSMOOTH, ID_MC_AIMDRAG,
+	       ID_VOIP_VOL, ID_VOIP_PRESET, ID_VOIP_HDR, ID_VOIP_RESETP, ID_VOIP_PLAYER };
 
 	struct Row { const char* label; int kind; int id; int nidx = -1; };
 
@@ -394,10 +398,41 @@ namespace
 		{ "Rádio / música",               K_SLIDER, ID_NATIVE, N_MUSIC },
 		{ "Sintonia automática",          K_TOGGLE, ID_NATIVE, N_RETUNE },
 		{ "Volume do servidor (streams)", K_SLIDER, ID_STREAM },
+		{ "Volume do VoIP (vozes)",       K_SLIDER, ID_VOIP_VOL },
+		{ "Preset de voz (geral)",        K_CHOICE, ID_VOIP_PRESET },
+		{ "Restaurar vozes dos jogadores", K_ACTION, ID_VOIP_RESETP },
 		{ "Estação de rádio",             K_INFO, ID_NONE },
 		{ "Áudio posicional",             K_INFO, ID_NONE },
 		{ "Frequência máxima / HRTF",     K_INFO, ID_NONE },
 	}};
+	// Pagina de audio dinamica: linhas fixas + uma linha (preset) por jogador online. Os nomes ficam em armazenamento estavel
+	// ate a proxima reconstrucao (feita a cada quadro, antes de qualquer uso das linhas).
+	const Page* BuildAudioPage()
+	{
+		static Page page;
+		static std::vector<std::string> names;
+		names.clear();
+		std::vector<int> ids;
+		if (pNetGame && pNetGame->GetPlayerPool())
+		{
+			CPlayerPool* pool = pNetGame->GetPlayerPool();
+			const int self = (int)pool->GetLocalPlayerID();
+			for (int id = 0; id < MAX_PLAYERS && id < VoiceMix::kMaxPlayers; id++)
+			{
+				if (id == self || !pool->GetSlotState((PLAYERID)id)) continue;
+				const char* n = pool->GetPlayerName((PLAYERID)id);
+				names.emplace_back(std::string(n ? n : "?") + " (" + std::to_string(id) + ")");
+				ids.push_back(id);
+			}
+		}
+		page.name = kPageAudio.name;
+		page.rows = kPageAudio.rows;
+		page.rows.push_back({ ids.empty() ? "Vozes dos jogadores: ninguém online" : "Vozes dos jogadores (toque p/ trocar o preset)", K_INFO, ID_VOIP_HDR });
+		for (size_t i = 0; i < ids.size(); i++)
+			page.rows.push_back({ names[i].c_str(), K_CHOICE, ID_VOIP_PLAYER, ids[i] });
+		return &page;
+	}
+
 	const Page kPageSair = { "Sair", {
 		{ "Voltar ao jogo",               K_ACTION, ID_RESUME },
 		{ "Sair do jogo",                 K_ACTION, ID_QUIT },
@@ -498,6 +533,9 @@ namespace
 			case ID_SKID:     return g_skid.load() ? 1 : 0;
 			case ID_FPSCOUNT: return (pSettings && pSettings->Get().iFPSCounter) ? 1 : 0;
 			case ID_STREAM:   return g_cfg.stream;
+			case ID_VOIP_VOL: return VoiceMix::GetMaster();
+			case ID_VOIP_PRESET: return VoiceMix::LevelOf(VoiceMix::GetMaster());
+			case ID_VOIP_PLAYER: return VoiceMix::LevelOf(VoiceMix::GetPlayer(r.nidx));
 			case ID_PRESET:   return CurrentPreset();
 			case ID_NATIVE:
 				if (r.nidx == N_DRAW)   { if (g_cfg.draw < 0)   InitFromEngine(); return g_cfg.draw; }
@@ -518,6 +556,9 @@ namespace
 			case ID_FPSCOUNT: if (pSettings) pSettings->Get().iFPSCounter = (v != 0); break;
 			case ID_STREAM:   g_cfg.stream = std::clamp(v, 0, 100); ApplyStream(g_cfg.stream); break;
 			case ID_PRESET:   ApplyPreset(v); break;
+			case ID_VOIP_VOL: VoiceMix::SetMaster(v); break;
+			case ID_VOIP_PRESET: if (v >= 0 && v < VoiceMix::kLevels) VoiceMix::SetMaster(VoiceMix::kLevelPct[v]); break;
+			case ID_VOIP_PLAYER: if (v >= 0 && v < VoiceMix::kLevels) VoiceMix::SetPlayer(r.nidx, VoiceMix::kLevelPct[v]); return;   // por sessao (IDs mudam): nao grava
 			case ID_NATIVE:
 				if (r.nidx == N_DRAW)        { int mn, mx; NativeRange(N_DRAW, mn, mx);   g_cfg.draw = std::clamp(v, mn, mx);   ApplyDraw(g_cfg.draw); }
 				else if (r.nidx == N_BRIGHT) { int mn, mx; NativeRange(N_BRIGHT, mn, mx); g_cfg.bright = std::clamp(v, mn, mx); NativeSet(N_BRIGHT, g_cfg.bright); }
@@ -530,6 +571,8 @@ namespace
 	void RangeOf(const Row& r, int& mn, int& mx)
 	{
 		if (r.id >= ID_MC_JOYSCALE && r.id <= ID_MC_AIMSMOOTH) { mn = 0; mx = 100; return; }
+		if (r.id == ID_VOIP_VOL) { mn = 0; mx = VoiceMix::kMaxPct; return; }
+		if (r.id == ID_VOIP_PRESET || r.id == ID_VOIP_PLAYER) { mn = 0; mx = VoiceMix::kLevels - 1; return; }
 		if (r.id == ID_PRESET) { mn = 0; mx = P_COUNT - 1; return; }   // 0..4 (a volta de "Personalizada" cai em 0)
 		if (r.id == ID_NATIVE) { NativeRange(r.nidx, mn, mx); return; }
 		mn = 0; mx = (r.id == ID_STREAM) ? 100 : 1;
@@ -622,7 +665,7 @@ void MaximoMenu::draw(ImGuiRenderer* r)
 	const Page* page;
 	switch (g_tab)
 	{
-		case T_AUDIO: page = &kPageAudio; break;
+		case T_AUDIO: page = BuildAudioPage(); break;
 		case T_SAIR:  page = &kPageSair; break;
 		case T_CONFIG: page = kSubs[std::clamp(g_sub, 0, 2)]; break;
 		case T_CONTROLES: page = &kPageControles; break;
@@ -728,6 +771,7 @@ void MaximoMenu::draw(ImGuiRenderer* r)
 						if (row.id == ID_CTLMODE) { g_open.store(false); if (g_dirty) SaveCfg(); g_drag = Drag(); ControlsSelector::Open(); return; }
 						if (row.id == ID_MC_EDIT && ControlMode::IsModern()) { g_open.store(false); if (g_dirty) SaveCfg(); g_drag = Drag(); ModernControls::StartEdit(); return; }
 						if (row.id == ID_MC_RESET) ControlMode::ResetConfig();
+						if (row.id == ID_VOIP_RESETP) VoiceMix::ResetPlayers();
 						if (row.id == ID_RESUME) { g_open.store(false); if (g_dirty) SaveCfg(); g_drag = Drag(); return; }
 						if (row.id == ID_QUIT)
 						{
@@ -820,9 +864,15 @@ void MaximoMenu::draw(ImGuiRenderer* r)
 		{
 			int mn, mx; RangeOf(row, mn, mx);
 			const int v = GetValue(row);
-			char buf[24];
+			char buf[48];
 			const char* s = buf;
-			if (row.id == ID_PRESET) s = (v >= 0 && v < P_COUNT) ? kPresets[v].name : "Personalizada";
+			if (row.id == ID_VOIP_PRESET || row.id == ID_VOIP_PLAYER)
+			{
+				const int pct = (row.id == ID_VOIP_PLAYER) ? VoiceMix::GetPlayer(row.nidx) : VoiceMix::GetMaster();
+				if (v >= 0 && v < VoiceMix::kLevels) snprintf(buf, sizeof(buf), "%s (%d%%)", VoiceMix::kLevelName[v], pct);
+				else snprintf(buf, sizeof(buf), "Personalizado (%d%%)", pct);
+			}
+			else if (row.id == ID_PRESET) s = (v >= 0 && v < P_COUNT) ? kPresets[v].name : "Personalizada";
 			else if (row.nidx == N_SHADOW && v == 2) s = "Avançado";
 			else if (row.nidx == N_TLAYOUT) s = (v == 0) ? "Clássico" : "Alternativo";
 			else if (row.nidx == N_STEER)   s = (v == 0) ? "Analógico" : (v == 1) ? "Botões" : "Inclinação";
@@ -845,7 +895,7 @@ void MaximoMenu::draw(ImGuiRenderer* r)
 
 			char buf[24];
 			// escala 0..100 mostra o valor do jogo direto; outras escalas viram porcentagem
-			snprintf(buf, sizeof(buf), "%d%%", (mx == 100 || row.nidx == N_ANALOG) ? v : (int)std::lround(100.0f * (v - mn) / (mx - mn)));
+			snprintf(buf, sizeof(buf), "%d%%", (mx == 100 || row.nidx == N_ANALOG || row.id == ID_VOIP_VOL) ? v : (int)std::lround(100.0f * (v - mn) / (mx - mn)));
 			const ImVec2 ts = r->calculateTextSize(buf, fs);
 			r->drawText(ImVec2(trackX - 10.0f * k - ts.x, ty), cText, buf, false, fs);
 		}
