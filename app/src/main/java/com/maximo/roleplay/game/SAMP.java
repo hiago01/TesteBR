@@ -35,7 +35,6 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
 
     public static final boolean NATIVE_KEYBOARD = false;
     private CustomKeyboard mKeyboard;
-    private int mKbHeight = 0;     // ultima altura do teclado do Android recebida
     private DialogManager mDialog;
     private HeightProvider mHeightProvider;
 
@@ -246,18 +245,6 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         mKeyboard = NATIVE_KEYBOARD ? null : new CustomKeyboard(this);
 
         mDialog = new DialogManager(this);
-
-        // Altura do teclado do Android (API 30+): sobe so o dialogo/barra do chat; a tela do jogo fica parada (manifest: adjustNothing).
-        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(getWindow().getDecorView(), (v, insets) -> {
-            int h = insets.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())
-                    ? insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime()).bottom : 0;
-            if (h != mKbHeight) {
-                mKbHeight = h;
-                if (mDialog != null) mDialog.onKeyboardInset(h);
-                if (mKeyboard != null) mKeyboard.onHeightChanged(h);
-            }
-            return androidx.core.view.ViewCompat.onApplyWindowInsets(v, insets);
-        });
 
         mAttachEdit = new AttachEdit(this);
 
