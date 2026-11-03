@@ -16,6 +16,7 @@
 
 #include <cctype>
 #include <cstring>
+#include <string>
 #include <vector>
 
 namespace SkinSlots
@@ -201,8 +202,11 @@ namespace SkinSlots
     // Cada grupo lista slots que existem em kSlots acima (nomes conferidos; slot inexistente é ignorado).
     // Calçados: tênis (boot*) e chinelo (slipper*) são UM grupo só: com tênis não se usa chinelo (e vice-versa).
     // Categorias com um único slot (hat1, necklace1, underwear, skin_*) já são exclusivas por natureza.
-    // Fora dos grupos de propósito: brow*/beard* (ev 0; beard1..5 dividem a mesma pasta), skin_leg (um slot só
-    // para as 10 pernas) e tat_* (cada tatuagem é uma região diferente do corpo).
+    // EXTRAS: sobrancelha (brow1..5) e barba (beard1..5) são grupos exclusivos: só UMA de cada vale por vez.
+    // Ao experimentar a próxima, a anterior fica DESLIGADA (o estado volta a ser "desligado", não "equipado").
+    // Fora dos grupos de propósito: skin_leg (um slot só para as 10 pernas) e tat_* (cada tatuagem é uma
+    // região diferente do corpo, e cada região já é um slot único com suas variantes).
+    // ATENÇÃO: o servidor (maximo_look.inc, gLookSlotGroup) precisa ter os MESMOS grupos (ids 44-48 e 49-53).
     // ---------------------------------------------------------------------------------------------------
     static const char* const kExclusiveGroups[] = {
         "backpack1,backpack2,backpack3",
@@ -215,6 +219,8 @@ namespace SkinSlots
         "mask1,mask2",
         "pants1,pants2,pants3,pants4,short1,short2,short3",
         "torso1,torso2,torso3,torso4",
+        "brow1,brow2,brow3,brow4,brow5",
+        "beard1,beard2,beard3,beard4,beard5",
     };
     static constexpr int kExclusiveGroupCount = (int)(sizeof(kExclusiveGroups) / sizeof(kExclusiveGroups[0]));
 
