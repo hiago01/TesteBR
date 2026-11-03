@@ -530,7 +530,7 @@ void ModernControls::draw(ImGuiRenderer* r)
 			}
 			const float half = b.r * 0.78f;                 // icone (com o contorno preto) ocupa ~78% do raio de cada lado
 			const float iw = 1.0f / (float)CtlIcons::kWidth, ih = 1.0f / (float)CtlIcons::kHeight;
-			const float ux = (float)((ic % 3) * CtlIcons::kCell), uy = (float)((ic / 3) * CtlIcons::kCell);
+			const float ux = (float)((ic % CtlIcons::kCols) * CtlIcons::kCell), uy = (float)((ic / CtlIcons::kCols) * CtlIcons::kCell);
 			r->drawImage(ImVec2(b.cx - half, b.cy - half), ImVec2(b.cx + half, b.cy + half), (ImTextureID)ico,
 			             Cb(255, 255, 255, std::min(255, A + 120)),
 			             ImVec2(ux * iw, uy * ih), ImVec2((ux + (float)CtlIcons::kCell) * iw, (uy + (float)CtlIcons::kCell) * ih));
