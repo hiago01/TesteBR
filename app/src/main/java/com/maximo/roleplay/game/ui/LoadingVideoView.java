@@ -11,7 +11,7 @@ import android.view.TextureView;
 import com.maximo.roleplay.R;
 
 /**
- * Video de fundo da tela de carregamento: tela cheia (center-crop), em loop e mudo.
+ * Video de fundo da tela de carregamento: tela cheia (center-crop), em loop, com audio.
  * Qualquer falha de reproducao e engolida: a view fica transparente e o ImageView de fundo aparece.
  */
 public class LoadingVideoView extends TextureView implements TextureView.SurfaceTextureListener {
@@ -37,7 +37,7 @@ public class LoadingVideoView extends TextureView implements TextureView.Surface
             player = MediaPlayer.create(getContext(), R.raw.loading_video);
             if (player == null) return;
             player.setSurface(surface);
-            player.setVolume(0f, 0f);
+            player.setVolume(1f, 1f);
             player.setLooping(true);
             videoW = player.getVideoWidth();
             videoH = player.getVideoHeight();

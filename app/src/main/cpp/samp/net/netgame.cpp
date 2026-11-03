@@ -1,5 +1,6 @@
 #include "../main.h"
 #include "../game/game.h"
+#include "../game/Streaming.h"
 #include "netgame.h"
 #include "../gui/gui.h"
 #include "../audiostream.h"
@@ -49,6 +50,16 @@ extern CJavaWrapper *pJavaWrapper;
 static constexpr int kConnectDelayMs = 5000;    // minimo na tela de carregamento
 static constexpr int kConnectMaxMs   = 15000;   // teto: 5 s + ate 10 s extras esperando o jogo estabilizar
 static constexpr int kStableFramesNeeded = 45;  // quadros seguidos estaveis (apos o minimo) para liberar o RakNet
+
+// Streaming do motor ocioso: nenhum modelo pedido pendente e os 2 canais de leitura parados.
+// (ms_numModelsRequested e ms_channel sao as variaveis reais do libGTASA, ja redirecionadas em Streaming.cpp)
+static bool StreamingIdle()
+{
+	if (CStreaming::ms_numModelsRequested > 0) return false;
+	for (const auto& ch : CStreaming::ms_channel)
+		if (!ch.IsIdle()) return false;
+	return true;
+}
 static constexpr unsigned kStableFrameMaxDtMs = 80; // quadro "estavel" = menos de 80 ms desde o anterior
 
 CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, const char* szPass)
@@ -510,13 +521,14 @@ void CNetGame::ProcessLoadingScreen()
 void CNetGame::ProcessConnecting()
 {
 	// Espera adaptativa: minimo kConnectDelayMs; depois libera quando o jogo esta estavel
-	// (kStableFramesNeeded quadros seguidos rapidos) ou, no pior caso, ao atingir o teto kConnectMaxMs.
+	// (kStableFramesNeeded quadros seguidos rapidos COM o streaming ocioso) ou, no pior caso, ao atingir o teto kConnectMaxMs.
 	if (!m_bConnectReleased)
 	{
 		unsigned now = GetTickCount();
 		unsigned dt = now - m_dwLastProcTick;
 		m_dwLastProcTick = now;
-		if (dt < kStableFrameMaxDtMs) m_dwStableFrames++; else m_dwStableFrames = 0;
+		const bool streamIdle = StreamingIdle();
+		if (dt < kStableFrameMaxDtMs && streamIdle) m_dwStableFrames++; else m_dwStableFrames = 0;
 
 		bool minPassed = (int)(now - (unsigned)m_dwConnectNotBefore) >= 0;
 		bool maxPassed = (int)(now - (unsigned)m_dwConnectMaxAt) >= 0;
@@ -524,7 +536,7 @@ void CNetGame::ProcessConnecting()
 		if (!maxPassed && m_dwStableFrames < kStableFramesNeeded) return;
 
 		m_bConnectReleased = true;
-		FLog("[CONNECT] liberado: %s (estaveis=%d) - iniciando o RakNet", maxPassed ? "teto atingido" : "jogo estavel", m_dwStableFrames);
+		FLog("[CONNECT] liberado: %s (estaveis=%d, pedidos=%d, streamingOcioso=%d) - iniciando o RakNet", maxPassed ? "teto atingido" : "streaming carregado e jogo estavel", m_dwStableFrames, (int)CStreaming::ms_numModelsRequested, (int)StreamingIdle());
 		if (pJavaWrapper) pJavaWrapper->SetLoadingStage(LOADING_STAGE_NET_CREATED);   // texto "conectando" so agora
 	}
 
