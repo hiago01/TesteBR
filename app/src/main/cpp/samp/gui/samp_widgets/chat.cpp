@@ -15,10 +15,13 @@
 #include "../../game/CorpTex.h"
 #include "../../game/RadarSkin.h"
 #include <cstring>
+#include <cctype>
 #include <string>
 #include "../../game/camerazoom.h"
 #include "../../game/CustomAnimTest.h"
 #include "../../game/movemode.h"
+#include "controlmode.h"
+#include "controlsselector.h"
 extern UI* pUI;
 extern CGame* pGame;
 extern CNetGame* pNetGame;
@@ -281,6 +284,36 @@ if (input == "/roupas" || input.rfind("/roupas ", 0) == 0)
             {
                 pJavaWrapper->ShowClothesUI();
                 addDebugMessage("[ROUPAS] abrindo SAMP/NET/ROUPAS.HTML");
+            }
+
+            return;
+        }
+if (input == "/controles" || input.rfind("/controles ", 0) == 0 || input == "/controle" || input.rfind("/controle ", 0) == 0)
+        {
+            // troca do sistema de controles: /controles (abre a tela de escolha) | /controles classico | /controles moderno
+            size_t sp = input.find(' ');
+            std::string arg = (sp == std::string::npos) ? std::string() : input.substr(sp + 1);
+            while (!arg.empty() && arg.back() == ' ') arg.pop_back();
+            for (auto& ch : arg) ch = (char)tolower((unsigned char)ch);
+            ControlMode::EnsureLoaded();
+            if (arg == "classico" || arg == "clássico" || arg == "classic")
+            {
+                ControlMode::Set(CtlLogic::Mode::Classic);
+                addDebugMessage("[CONTROLES] Controle classico ativado.");
+            }
+            else if (arg == "moderno" || arg == "modern")
+            {
+                ControlMode::Set(CtlLogic::Mode::Modern);
+                addDebugMessage("[CONTROLES] Controle moderno ativado.");
+            }
+            else if (arg.empty())
+            {
+                ControlsSelector::Open();
+                addDebugMessage("[CONTROLES] Escolha o sistema de controles na tela. Atalho: /controles classico | /controles moderno");
+            }
+            else
+            {
+                addDebugMessage("[CONTROLES] Uso: /controles (abre a escolha) | /controles classico | /controles moderno");
             }
 
             return;

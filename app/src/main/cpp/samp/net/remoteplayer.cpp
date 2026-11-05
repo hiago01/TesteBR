@@ -794,6 +794,7 @@ void CRemotePlayer::StoreBulletFullSyncData(BULLET_SYNC_DATA* btSync)
 					// o hook de ProcessLineOfSight lia posicao/matriz de lixo e o tiro nunca acertava o ped local.
 					pEntity = reinterpret_cast<CEntityGTA *>(pGame->FindPlayerPed()->m_pPed);
 					FLog("[TIRO] jogador %d atirou no jogador local (arma %d, hit=%d)", (int)m_PlayerID, (int)btSync->byteWeaponID, (int)btSync->byteHitType);
+					{ extern void DanoFallback_Register(PLAYERID, int); DanoFallback_Register(m_PlayerID, (int)btSync->byteWeaponID); }
 				}
 				else if (btSync->PlayerID == m_PlayerID)
 				{

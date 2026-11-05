@@ -154,18 +154,8 @@ void ControlsSelector::draw(ImGuiRenderer* r)
 	ControlMode::EnsureLoaded();
 	const ImVec2 screen = ImGui::GetIO().DisplaySize;
 
-	// aparecer sozinho so na 1a vez (nao a cada inicio) e nunca sobre login/spawn/dialogo
-	static int64_t s_since = 0;
-	if (!g_open.load())
-	{
-		const bool inGame = InGame() && ControlMode::Loaded();
-		const bool ok = ShouldAutoShowSelector(ControlMode::Chosen(), inGame, UiBlocked());
-		if (!ok) { s_since = 0; return; }
-		if (s_since == 0) s_since = NowMs();
-		if (NowMs() - s_since < 2500) return;                     // da tempo do spawn terminar
-		Open();
-		if (!g_open.load()) return;
-	}
+	// NAO abre mais sozinho no inicio. So abre por pedido: opcao "Sistema de controles" do menu (configuracao) ou o comando /controles.
+	if (!g_open.load()) return;
 
 	SelectorState st;
 	SelectorLayout S;

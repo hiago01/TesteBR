@@ -88,8 +88,49 @@ CLocalPlayer::~CLocalPlayer()
 extern int g_iLagCompensationMode;
 extern bool DriveBy;
 
+// ---------------------------------------------------------------------------------------------
+// GARANTIA DE DANO: o atirador (BULLET_SYNC) diz que acertou o ped local. O caminho nativo do jogo deveria gerar o
+// evento de dano (ComputeDamageResponse -> SendTakeDamageEvent). Se em 200 ms nenhum evento de dano local foi enviado,
+// o cliente envia o evento ao servidor (arma 22..34 / 38). Evita duplicar: g_takeDamageSerial sobe a cada evento nativo.
+// ---------------------------------------------------------------------------------------------
+int g_takeDamageSerial = 0;
+namespace {
+	struct PendingHit { bool used; PLAYERID shooter; int weapon; int serial; uint32_t tick; };
+	PendingHit g_pendHit[8];
+	float WeaponDatDamage(int w)   // dano "weapon.dat" por bala (x0.33 = valor entregue ao servidor, igual ao SA-MP)
+	{
+		switch (w)
+		{
+			case 22: return 25.0f;  case 23: return 40.0f;  case 24: return 140.0f; case 25: return 150.0f;
+			case 26: return 150.0f; case 27: return 120.0f;  case 28: return 20.0f;  case 29: return 25.0f;
+			case 30: return 30.0f;  case 31: return 30.0f;   case 32: return 20.0f;  case 33: return 75.0f;
+			case 34: return 125.0f; case 38: return 140.0f;  default: return 0.0f;
+		}
+	}
+}
+void DanoFallback_Register(PLAYERID shooter, int weapon)
+{
+	if (WeaponDatDamage(weapon) <= 0.0f) return;
+	for (auto& p : g_pendHit) if (!p.used) { p.used = true; p.shooter = shooter; p.weapon = weapon; p.serial = g_takeDamageSerial; p.tick = (uint32_t)GetTickCount(); return; }
+}
+static void DanoFallback_Process(CLocalPlayer* lp)
+{
+	for (auto& p : g_pendHit)
+	{
+		if (!p.used) continue;
+		if (g_takeDamageSerial != p.serial) { p.used = false; continue; }          // o jogo ja gerou o evento: nada a fazer
+		if ((uint32_t)GetTickCount() - p.tick < 200u) continue;                                // da tempo ao jogo
+		p.used = false;
+		if (!pNetGame || !lp->GetPlayerPed() || lp->GetPlayerPed()->IsDead()) continue;
+		FLog("[DANO] fallback: jogo nao gerou o dano; enviando evento (atirador %d, arma %d)", (int)p.shooter, p.weapon);
+		lp->SendTakeDamageEvent(p.shooter, WeaponDatDamage(p.weapon), p.weapon, 3);
+		g_takeDamageSerial++;
+	}
+}
+
 bool CLocalPlayer::Process()
 {
+	DanoFallback_Process(this);
 	//UpdateVoice();
 
 	if (m_bIsActive && m_pPlayerPed != nullptr)

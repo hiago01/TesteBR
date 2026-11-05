@@ -238,6 +238,7 @@ void ApplyGlobalPatches()
     CHook::RET("_ZN17CVehicleModelInfo17SetCarCustomPlateEv"); // ป้ายทะเบียนเริ่มต้น
     // Remove os triangulos de "lock-on" (marcador do jogo desenhado acima da cabeca de quem esta sendo mirado)
     CHook::RET("_ZNK10CPlayerPed30DrawTriangleForMouseRecruitPedEv");
+    FLog("[PATCH] triangulo de lock-on (DrawTriangleForMouseRecruitPed) desativado");
 
     CHook::RET("_Z16SaveGameForPause10eSaveTypesPc"); // ไม่บันทึกเมื่อหยุดชั่วคราว หน้าจอดำ
 

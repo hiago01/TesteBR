@@ -4,8 +4,8 @@
 //  Tela "ESCOLHA SEUS CONTROLES": dois cartoes (CONTROLE CLASSICO / CONTROLE MODERNO) com previa, botao SELECIONAR,
 //  indicador do cartao marcado e botoes CONFIRMAR / VOLTAR. Responsiva (paisagem e retrato).
 //
-//  - Aparece SO quando o jogador ainda nao escolheu (primeira vez), ja em jogo e sem login/spawn/dialogo por cima;
-//    depois, so pela opcao "Sistema de controles" do menu (CONTROLES). Trocar nao exige reiniciar.
+//  - NAO abre sozinho. Abre so por pedido: opcao "Sistema de controles" do menu (configuracao) ou o comando /controles
+//    (/controles classico | /controles moderno troca direto, sem abrir a tela). Trocar nao exige reiniciar.
 //  - Enquanto aberta consome TODOS os toques (HandleRawTouch no inicio do hook de toque); nada vaza para o jogo.
 //  - VOLTAR nao altera o modo; na primeira vez ele so registra "ja escolhi" (continua no CLASSICO) para nao repetir.
 //  Logica pura: controlmode_logic.h (SelectorLayout/SelectorState), testada em testes/controles.

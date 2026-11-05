@@ -85,6 +85,7 @@ void CGame::StartGame()
 
     InstallHooks();
     ApplyGlobalPatches();
+    FLog("[BUILD] correcoes 05/11 ativas: triangulo lock-on removido, tiro forcado no ped local, garantia de dano, bicicleta (CBmx), mic no veiculo");
 
 	GameAimSyncInit();
 	InitScripting();
