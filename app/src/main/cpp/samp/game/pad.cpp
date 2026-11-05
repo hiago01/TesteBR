@@ -342,7 +342,8 @@ uint16_t CPad__GetAccelerate_hook(uintptr_t thiz)
                 CVehicleGTA* pGtaVehicle = pPlayerPed->GetGtaVehicle();
 				if (pGtaVehicle)
 				{
-					if (pGtaVehicle->m_nVehicleFlags.bEngineOn == 0)
+					if (pGtaVehicle->m_nVehicleFlags.bEngineOn == 0 &&
+						GetVehicleSubtype(pGtaVehicle) != VEHICLE_SUBTYPE_PUSHBIKE)   // bicicleta nao tem motor
 					{
 						wAccelerate = 0;
 					}
@@ -381,7 +382,8 @@ uint16_t CPad__GetBrake_hook(uintptr_t thiz)
                 CVehicleGTA* pGtaVehicle = pPlayerPed->GetGtaVehicle();
                 if (pGtaVehicle)
                 {
-                    if (pGtaVehicle->m_nVehicleFlags.bEngineOn == 0)
+                    if (pGtaVehicle->m_nVehicleFlags.bEngineOn == 0 &&
+                        GetVehicleSubtype(pGtaVehicle) != VEHICLE_SUBTYPE_PUSHBIKE)   // bicicleta nao tem motor
                     {
                         wBrake = 0;
                     }
@@ -895,9 +897,10 @@ void AllVehicles__ProcessControl_hook(uintptr_t thiz)
             call_addr = 0x693978;
             break;
 
-            // CBmx
+            // CBmx (bicicleta). CORRECAO: antes apontava para 0x693978 = CHeli::ProcessControl, entao a bicicleta
+            // rodava a logica de HELICOPTERO e nunca andava. O endereco certo e CBmx::ProcessControl (0x68A9AC).
         case 0x83C070:
-            call_addr = 0x693978;
+            call_addr = 0x68A9AC;
             break;
 
             // CMonsterTruck

@@ -39,6 +39,7 @@ namespace
 
 	// saida lida pelos hooks de CPad (thread do jogo)
 	std::atomic<bool>     g_active{ false };
+	std::atomic<bool>     g_micVeh{ false };   // dentro de veiculo (modo moderno): so o botao do MICROFONE aparece e recebe toque
 	std::atomic<bool>     g_editing{ false };
 	std::atomic<int>      g_lr{ 0 }, g_ud{ 0 };
 	std::atomic<uint32_t> g_held{ 0 };
@@ -327,7 +328,7 @@ bool ModernControls::IsEditing() { return g_editing.load(); }
 bool ModernControls::onRawTouch(int type, int num, int x, int y)
 {
 	const bool editing = g_editing.load();
-	if (!g_active.load() && !editing) return false;
+	if (!g_active.load() && !g_micVeh.load() && !editing) return false;
 	const float fx = (float)x, fy = (float)y;
 	std::lock_guard<std::mutex> l(g_mu);
 	g_ctl.editing = editing;
@@ -361,7 +362,17 @@ bool ModernControls::onRawTouch(int type, int num, int x, int y)
 
 	if (g_bTouchCancel) { ReleaseAllLocked(); return false; }
 	// Freada: botoes e joystick escondidos NAO aceitam toque novo. Dedos ja presos continuam (move/soltar) para nada ficar preso.
-	if (type == 2 && g_brake.load()) return false;
+	if (type == 2 && g_brake.load() && !g_micVeh.load()) return false;
+	if (g_micVeh.load() && !g_active.load())
+	{
+		// veiculo: so o dedo que comeca no MICROFONE (ou que ja o segura) e nosso; todo o resto vai para o jogo (direcao, freio...)
+		if (g_ctl.BtnFinger(B_MIC) != num)
+		{
+			const CtlCircle& mb = g_ctl.lay.btn[B_MIC];
+			const float dx = fx - mb.cx, dy = fy - mb.cy;
+			if (type != 2 || dx * dx + dy * dy > mb.r * mb.r * 1.44f) return false;
+		}
+	}
 	const int atkBefore = g_ctl.BtnFinger(B_ATTACK);
 	const bool mine = g_ctl.OnTouch(type, num, fx, fy);
 	Publish();
@@ -401,6 +412,8 @@ void ModernControls::draw(ImGuiRenderer* r)
 	const bool modernNow = ControlMode::IsModern() && pedOk && !selOpen;
 	const bool show = editing ? (modernNow && !MaximoMenu::IsOpen())
 	                          : (modernNow && ModernActiveOnFoot(Mode::Modern, vehicle, jet, alive) && !UiBlocked());
+	// Dentro de veiculo o HUD moderno some (volta o nativo), mas o MICROFONE (VOIP) continua aparecendo e funcionando.
+	const bool micVeh = !editing && !show && modernNow && vehicle && alive && !UiBlocked();
 
 	const ImVec2 screen = ImGui::GetIO().DisplaySize;
 	bool wasActive;
@@ -438,12 +451,19 @@ void ModernControls::draw(ImGuiRenderer* r)
 			g_ctl.blockedMask = ((1u << B_COUNT) - 1u) & ~(1u << B_JUMP);
 			if (g_busyJumpUsed.load()) g_ctl.blockedMask |= (1u << B_JUMP);
 		}
+		if (micVeh)    // veiculo: so o MIC existe (nao desenha nem recebe toque os outros)
+		{
+			g_ctl.disabledMask = ((1u << B_COUNT) - 1u) & ~(1u << B_MIC);
+			g_ctl.blockedMask = 0u;
+		}
 		wasActive = g_active.load();
-		if (wasActive && !show) ReleaseAllLocked();          // saiu do modo/entrou em veiculo/abriu UI: solta tudo
+		const bool wasMic = g_micVeh.load();
+		if ((wasActive && !show) || (wasMic && !micVeh && !show)) ReleaseAllLocked();          // saiu do modo/entrou em veiculo/abriu UI: solta tudo
 		if (!editing && g_editing.load() == false) g_ctl.editing = false;
 	}
 	g_active.store(show && !editing);
-	if (!show)
+	g_micVeh.store(micVeh);
+	if (!show && !micVeh)
 	{
 		if (editing && !modernNow)      // o editor foi interrompido (saiu do moderno/morreu...): descarta o rascunho
 		{
@@ -470,7 +490,7 @@ void ModernControls::draw(ImGuiRenderer* r)
 		float dt = s_fmMs ? (float)(nowMs - s_fmMs) / 1000.0f : 0.0f;
 		s_fmMs = nowMs;
 		dt = std::clamp(dt, 0.0f, 0.1f);
-		const bool hide = !editing && g_brake.load();
+		const bool hide = !editing && !micVeh && g_brake.load();
 		s_fm = hide ? std::max(0.0f, s_fm - dt / 0.12f) : std::min(1.0f, s_fm + dt / 0.15f);
 		if (editing) s_fm = 1.0f;
 	}
@@ -493,6 +513,7 @@ void ModernControls::draw(ImGuiRenderer* r)
 	};
 
 	// joystick: base translucida + centro movel (opacidade propria)
+	if (!micVeh)
 	{
 		const int Aj = alphaOf(B_COUNT);
 		circle(L.base, Cf(20, 20, 20, Aj / 2), Cf(255, 255, 255, Aj), std::max(2.0f, L.base.r * 0.03f));
