@@ -1,6 +1,6 @@
+#include <cmath>
 #include "Diag.h"
 #include <GLES2/gl2.h>
-#include <cstddef>
 #include <cstring>
 #include <atomic>
 #include <dlfcn.h>
@@ -54,7 +54,6 @@
 #include "CustomSkin.h"
 #include "Plugins/RpAnimBlendPlugin/RpAnimBlend.h"
 #include "CustomSkinStream.h"
-#include "CustomColNew.h"   // Dummy() para CEntity_Add_hook
 #include "CorpTex.h"
 //#include "CPedGTA.h"
 extern UI* pUI;
@@ -1367,6 +1366,29 @@ uint32_t CWorld__ProcessLineOfSight_hook(CVector* vecOrigin, CVector* vecEnd, CC
 			{
 				if (g_pCurrentBulletData)
 				{
+					// CORRECAO (dano): o atirador (BULLET_SYNC) diz que acertou o ped LOCAL. Se o raio local nao tocou
+					// o ped (hitbox da skin custom, lag), forca o acerto para o dano nativo + SendTakeDamageEvent ocorrerem.
+					if (g_pCurrentBulletData->pEntity != nullptr && ppEntity && colPoint &&
+						g_pCurrentBulletData->pEntity == (CEntityGTA*)GamePool_FindPlayerPed())
+					{
+						CPedGTA* pLocalHit = GamePool_FindPlayerPed();
+						if (*ppEntity != (CEntityGTA*)pLocalHit)
+						{
+							FLog("[TIRO] raio nao tocou o ped local: forcando acerto (result=%u)", (unsigned)result);
+							*ppEntity = (CEntityGTA*)pLocalHit;
+							colPoint->m_vecPoint.x = vecPosPlusOffset.x;
+							colPoint->m_vecPoint.y = vecPosPlusOffset.y;
+							colPoint->m_vecPoint.z = vecPosPlusOffset.z;
+							colPoint->m_vecNormal.x = vecOrigin->x - vecPosPlusOffset.x;
+							colPoint->m_vecNormal.y = vecOrigin->y - vecPosPlusOffset.y;
+							colPoint->m_vecNormal.z = vecOrigin->z - vecPosPlusOffset.z;
+							float nl = sqrtf(colPoint->m_vecNormal.x*colPoint->m_vecNormal.x + colPoint->m_vecNormal.y*colPoint->m_vecNormal.y + colPoint->m_vecNormal.z*colPoint->m_vecNormal.z);
+							if (nl > 0.0001f) { colPoint->m_vecNormal.x /= nl; colPoint->m_vecNormal.y /= nl; colPoint->m_vecNormal.z /= nl; }
+							colPoint->m_nPieceTypeB = 3; // PED_PIECE_TORSO
+							result = 1;
+						}
+						else FLog("[TIRO] raio tocou o ped local normalmente");
+					}
 					if (g_pCurrentBulletData->pEntity == nullptr)
 					{
                         CPedGTA* pLocalPed = GamePool_FindPlayerPed();
@@ -2351,77 +2373,6 @@ void FxEmitterBP_c__Render_hook(uintptr_t* a1, int a2, int a3, float a4, char a5
         return;
     }
     FxEmitterBP_c__Render(a1, a2, a3, a4, a5);
-}
-
-// ---------------------------------------------------------------------------
-// GUARDA do comparador sortLODs (libGTASA 0x4f5104), usado por CRenderer::RenderEverythingBarRoads: qsort(ms_aVisibleLodPtrs, n, 8, sortLODs).
-// O original le  entidade->m_pRwObject (+0x20) -> atomico -> geometria (+0x30) -> resEntry (+0x98) -> buffer (+0x5c) -> emu_ArraysGetID (= [buffer+0x30])
-// SEM checar nulos no ultimo passo: um LOD cuja geometria nao tem buffer de GPU (+0x5c nulo) derruba o jogo com SIGSEGV 'Fault address 0x30'.
-// Aqui a mesma ordenacao (decrescente pela id do buffer), mas chave 0 quando algum ponteiro da cadeia e' nulo; loga 1x por modelo.
-// ---------------------------------------------------------------------------
-static uint64_t SortLodKey(void* ent)
-{
-    static void* (*getFirstAtomic)(void*) = reinterpret_cast<void* (*)(void*)>(CHook::getSym("_Z14GetFirstAtomicP7RpClump"));
-    if (!ent) return 0;
-    char* e = static_cast<char*>(ent);
-    void* obj = *reinterpret_cast<void**>(e + 0x20);
-    if (!obj) return 0;
-    if (*static_cast<uint8_t*>(obj) != 1) { if (!getFirstAtomic) return 0; obj = getFirstAtomic(obj); if (!obj) return 0; }
-    void* geo = *reinterpret_cast<void**>(static_cast<char*>(obj) + 0x30);
-    if (!geo) return 0;
-    void* res = *reinterpret_cast<void**>(static_cast<char*>(geo) + 0x98);
-    if (!res) return 0;
-    void* buf = *reinterpret_cast<void**>(static_cast<char*>(res) + 0x5c);
-    if (!buf)
-    {
-        static int said = 0; static uint16_t seen[16]; static int nseen = 0;
-        const uint16_t mid = static_cast<CEntityGTA*>(ent)->m_nModelIndex;
-        bool dup = false; for (int i = 0; i < nseen; i++) if (seen[i] == mid) dup = true;
-        if (!dup && nseen < 16) { seen[nseen++] = mid; FLog("[SORTLODS] LOD com geometria SEM buffer de GPU: modelo id=%u entidade=%p (chave 0; evita SIGSEGV 0x30)", (unsigned)mid, ent); }
-        (void)said;
-        return 0;
-    }
-    return *reinterpret_cast<uint64_t*>(static_cast<char*>(buf) + 0x30);
-}
-static int SortLODsGuard(const void* a, const void* b)
-{
-    const uint64_t ka = SortLodKey(*static_cast<void* const*>(a));
-    const uint64_t kb = SortLodKey(*static_cast<void* const*>(b));
-    if (ka > kb) return -1;
-    if (ka < kb) return 1;
-    return 0;
-}
-static int (*SortLODs_orig)(const void*, const void*) = nullptr;
-
-// ---------------------------------------------------------------------------
-// CEntity::Add: o jogo cai em CEntity::GetBoundRect quando o modelo da entidade esta SEM colisao (m_pColModel nulo).
-// Rede de seguranca no ULTIMO momento (so' para quem realmente cairia): ate aqui o jogo ja teve a chance de atribuir a colisao
-// verdadeira ao modelo. Antes, a colisao "vazia" era dada na criacao da instancia (cedo demais) para todo modelo sem colisao
-// naquele instante, e os LODs ficavam com uma caixa de 1 m. O jogo zera o ponteiro no fim do LoadScene (DeleteCollisionModel).
-// ---------------------------------------------------------------------------
-static void (*CEntity_Add_orig)(CEntityGTA*) = nullptr;
-static void CEntity_Add_hook(CEntityGTA* e)
-{
-    if (e && (e->IsBuilding() || e->IsDummy() || e->IsObject()))   // so mapa: veiculo/ped/etc. nao sao tocados
-    {
-        const int id = e->m_nModelIndex;
-        if (id >= 0 && id < (int)TOTAL_DFF_MODEL_IDS)
-        {
-            CBaseModelInfo* mi = CModelInfo::ms_modelInfoPtrs[id];
-            if (mi && !mi->m_pColModel)
-            {
-                CColModel* d = CustomColNew::Dummy();
-                if (d)
-                {
-                    mi->m_pColModel = d;
-                    mi->bDoWeOwnTheColModel = 0;
-                    static int said = 0;
-                    if (said++ < 40) FLog("[ADD] modelo id=%d '%s' sem colisao em CEntity::Add: colisao vazia so' agora (evita crash em GetBoundRect)", id, mi->m_modelName);
-                }
-            }
-        }
-    }
-    CEntity_Add_orig(e);
 }
 
 bool (*RwResourcesFreeResEntry)(void* entry);
@@ -4009,8 +3960,6 @@ CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
 
     CHook::InlineHook("_ZN13FxEmitterBP_c6RenderEP8RwCamerajfh", &FxEmitterBP_c__Render_hook, &FxEmitterBP_c__Render);
     CHook::InlineHook("_Z23RwResourcesFreeResEntryP10RwResEntry", &RwResourcesFreeResEntry_hook, &RwResourcesFreeResEntry);
-    CHook::InlineHook("_Z8sortLODsPKvS0_", &SortLODsGuard, &SortLODs_orig);
-    CHook::InlineHook("_ZN7CEntity3AddEv", &CEntity_Add_hook, &CEntity_Add_orig);   // rede de seguranca contra GetBoundRect (ver CEntity_Add_hook)   // comparador do qsort dos LODs visiveis (ver SortLodKey)
 
     //CHook::InlineHook("_ZN9CRenderer24RenderEverythingBarRoadsEv", &CRenderer_RenderEverythingBarRoads_hook, &CRenderer_RenderEverythingBarRoads);
 
