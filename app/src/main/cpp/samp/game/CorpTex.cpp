@@ -35,6 +35,7 @@
 #include "CorpTexMap.h"     // mapa pack/ <-> aparencia (rosto, cabelo, pele, roupa) do corpo male; testado no host
 
 #include <algorithm>
+#include <cctype>
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
@@ -751,10 +752,26 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
             LookSlots::PlanWithDefaults(look.slots, ops);
             for (const LookSlots::Op& op : ops) {
                 RwTexture* t = op.kind == LookSlots::kHide ? hideTex : op.kind == LookSlots::kPack ? GetSlotPackTex(op.rel) : GetSlotOrigTex(op.mat);
+                if (model == kCorpModel && op.mat.find("underwear") != std::string::npos) continue;   // 271: sem roupa intima
                 if (!t) { if (op.kind != LookSlots::kOrig) ++nSlotMiss; continue; }
                 over[op.mat] = t; ++nSlot;
             }
         }
+    }
+    // CORRECAO (271): o policial NAO usa roupa intima (aparecia como formas cinza/brancas no quadril e nas costas).
+    // Oculta por nome (qualquer material com "underwear"/"intima"/"cueca") e por ultimo, para nada reaplicar por cima.
+    if (byIndex && model == kCorpModel && hideTex) {
+        int nUnder = 0;
+        for (size_t i = 0; i < mats.size(); ++i) {
+            const std::string& k = keys[i];
+            if (k.empty() || !mats[i]) continue;
+            std::string lk = k; for (char& ch : lk) ch = (char)std::tolower((unsigned char)ch);
+            if (lk.find("underwear") != std::string::npos || lk.find("intima") != std::string::npos || lk.find("cueca") != std::string::npos || lk.find("panty") != std::string::npos) {
+                over[k] = hideTex; ++nHidden; ++nUnder;
+            }
+        }
+        over["fantasy_m_underwear"] = hideTex;
+        FLog("[CORPTEX] jogador %d modelo 271: roupa intima ocultada (%d material(is))", (int)id, nUnder);
     }
 
     Entry en{id, e, e->m_pRwClump, look, {}, false, 0};
