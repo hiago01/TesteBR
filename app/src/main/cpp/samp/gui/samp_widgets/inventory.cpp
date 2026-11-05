@@ -57,6 +57,7 @@ namespace
 	int64_t     g_toastUntil = 0;
 
 	struct TouchEv { int type; int num; float x; float y; bool cancel; };
+	std::atomic<bool> g_fireLock{false};   // servidor: arma na mao sem municao -> botao de tiro travado
 	std::atomic<bool> g_open{false};
 	std::atomic<bool> g_flush{false};
 	std::atomic<bool> g_sendClose{false};
@@ -199,6 +200,7 @@ void InventoryUI::Reset()
 	std::lock_guard<std::mutex> l(g_dm);
 	g_state = State();
 	for (HotSlot& h : g_hot) h = HotSlot();
+	g_fireLock.store(false);
 	g_toastUntil = 0;
 }
 
@@ -312,6 +314,12 @@ void InventoryUI::OnServerPacket(const unsigned char* data, int bytes)
 		}
 		std::lock_guard<std::mutex> l(g_dm);
 		for (int i = 0; i < 5; i++) g_hot[i] = tmp[i];
+	}
+	else if (op == 7)   // TRAVA DO TIRO (sem municao)
+	{
+		uint8_t lk = 0;
+		if (!bs.Read(lk)) return;
+		g_fireLock.store(lk != 0);
 	}
 	else if (op == 5)   // TOAST
 	{
@@ -849,7 +857,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 				const float m = 6.0f * k;
 				const bool ghost = g_t.dragging && g_t.panel == P_HOT && g_t.src == i;
 				DrawIcon(r, h.icon, ImVec2(a.x + m, a.y + m), ImVec2(b.x - m, b.y - m), ghost ? 70 : (miss ? 90 : 255));
-				if (h.qty > 1)
+				if (h.qty > 1 || (eq && h.qty <= 0))   // equipada sem municao mostra x0
 				{
 					char q[12]; snprintf(q, sizeof(q), "x%d", h.qty);
 					const ImVec2 ts = r->calculateTextSize(q, 10.0f * k);
@@ -918,6 +926,8 @@ void InventoryUI::HotbarUse(int slot)
 	s_last = now;
 	if (pNetGame) { char b[32]; snprintf(b, sizeof b, "/invx hot %d", slot); pNetGame->SendChatCommand(b); }
 }
+
+bool InventoryFireLocked() { return g_fireLock.load(); }   // usado por game/pad.cpp (CPad::GetWeapon)
 
 void InventoryUI::RequestOpen()
 {

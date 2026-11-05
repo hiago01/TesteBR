@@ -636,6 +636,7 @@ uint32_t CPad__CycleWeaponLeftJustDown_hook(uintptr_t thiz)
 	}
 }
 
+bool InventoryFireLocked();   // gui/samp_widgets/inventory.cpp
 bool (*CPad__GetWeapon)(uintptr_t thiz, CPedGTA* pPed);
 bool CPad__GetWeapon_hook(uintptr_t thiz, CPedGTA* pPed)
 {
@@ -647,6 +648,7 @@ bool CPad__GetWeapon_hook(uintptr_t thiz, CPedGTA* pPed)
 	{
 		const bool localPed = (pPed == GamePool_FindPlayerPed());   // nunca age sobre ped remoto
 		if (localPed) AimStateTick();   // MODERNO: detecta soltar o Ataque (sair da mira) mesmo que "entrar" nao seja mais consultado
+		if (localPed && InventoryFireLocked()) { LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = 0; return false; }   // sem municao: tiro travado, arma continua na mao
 		if (localPed && ModernInput::Active())      // MODERNO: Ataque segurado = disparo/golpe continuo
 		{
 			LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = ModernInput::AttackHeld() ? 1 : 0;
