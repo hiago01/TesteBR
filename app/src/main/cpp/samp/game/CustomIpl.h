@@ -23,6 +23,7 @@
 #include <vector>
 #include <map>
 #include <set>
+#include "CustomColNew.h"
 #include <algorithm>
 #include <mutex>
 #include <chrono>
@@ -187,6 +188,13 @@ namespace CustomIpl
         }
         return ModelIdExists(fileId) ? fileId : -1;
     }
+    // modelo novo cuja colisao nao pode ser criada (CustomColNew): instancia ignorada, o jogo nao cai em CEntity::GetBoundRect
+    inline int ResolveModelSafe(const char* name, int fileId)
+    {
+        const int id = ResolveModel(name, fileId);
+        if (id >= 0 && CustomColNew::IsFailed(id)) return -1;
+        return id;
+    }
 
     // ----------------------------------------------------------------- hook
     // assinatura confirmada pelo simbolo exportado _ZN9CIplStore7LoadIplEiPhi:  bool LoadIpl(int slot, uchar* buf, int size) (retorna true)
@@ -201,9 +209,17 @@ namespace CustomIpl
 
     inline bool LoadIplHook(int slot, uint8_t* buf, int size)
     {
+        CustomIplParse::g_removeByMove = !Marker("remove_drop_off.on");
         uint8_t* useBuf = buf; int useSize = size; bool mixed = false; std::string key;
-        if (g_origLoadIpl && buf && size >= (int)CustomIplParse::kHdrSize && std::memcmp(buf, "bnry", 4) == 0)
+        static const bool kIplOff = Marker("ipl_off.on");
+        if (!kIplOff && g_origLoadIpl && buf && size >= (int)CustomIplParse::kHdrSize && std::memcmp(buf, "bnry", 4) == 0)
         {
+            // O jogo pode carregar IPLs em streaming (LoadScene -> SetupRelatedIpls) ANTES de CGame::Initialize chegar ao fim, que e' onde
+            // CustomColNew::Run roda. Modelo novo sem colisao derruba o jogo em CEntity::GetBoundRect (ex.: troca da prefeitura 3980 -> 12001).
+            // Por isso a colisao dos modelos de SAMP/extra_cols.txt e' ligada aqui, uma vez, antes da primeira mistura (idempotente:
+            // modelo que ja tem colisao e' mantido; o Run de CGame::Initialize depois so loga "ja tem colisao").
+            static bool s_colNewDone = false;
+            if (!s_colNewDone) { s_colNewDone = true; CustomColNew::Run("antes do IPL"); }
             try
             {
                 std::lock_guard<std::mutex> lk(g_m);
@@ -224,7 +240,7 @@ namespace CustomIpl
                         for (size_t i : it->second) files.push_back(&g_src[i].of);
                         CustomIplParse::MergeReport rep; std::string why;
                         const bool first = g_loggedKey.insert(key).second;
-                        if (CustomIplParse::Merge(buf, (size_t)size, files, ResolveModel, t_mix, rep, &why))
+                        if (CustomIplParse::Merge(buf, (size_t)size, files, ResolveModelSafe, t_mix, rep, &why))
                         {
                             const std::string bad = CustomIplParse::Validate(t_mix.data(), t_mix.size(), nullptr);
                             if (bad.empty())
@@ -275,18 +291,56 @@ namespace CustomIpl
         return kInvisibleModel;
     }
 
+    // HIDE SEM MODELO INVISIVEL. O modelo 19300 tem geometria SEM buffer de GPU: quando a instancia escondida e' um LOD (ex.: 5535,
+    // o LOD do posto antigo), o qsort de CRenderer::RenderEverythingBarRoads (sortLODs) le o buffer nulo e o jogo cai com
+    // SIGSEGV 'Fault address 0x30' (libGTASA+0x250610). Agora a instancia mantem o PROPRIO modelo e so desce kHideDrop metros: fica
+    // muito alem da distancia de desenho (LOD ou nao) e continua na mesma posicao da lista (o indice dos demais lods nao muda).
+    inline constexpr float kHideDrop = 3000.0f;
+    inline bool HideInstance(int modelId, float pos[3])
+    {
+        std::lock_guard<std::mutex> lk(g_m);
+        const auto now = std::chrono::steady_clock::now();
+        if (!g_scanned || now - g_lastHide >= std::chrono::seconds(2)) { g_lastHide = now; Refresh(); }
+        if (g_hide.empty() || !CustomIplParse::HideMatch(g_hide, modelId, pos)) return false;
+        const int n = ++g_hideCount[modelId];
+        if (n <= 5) FLog("[IPL] hide: instancia escondida: id=%d pos=(%.2f, %.2f, %.2f) -> mesmo modelo, z - %.0f (sem modelo invisivel)", modelId, pos[0], pos[1], pos[2], kHideDrop);
+        else if (n == 6) FLog("[IPL] hide: id=%d casou com mais de 5 instancias (so id, sem posicao?) - confira se e' isso mesmo; log omitido", modelId);
+        pos[2] -= kHideDrop;
+        return true;
+    }
+
     // Funil de TODA instancia criada pelo jogo: CFileLoader::LoadObjectInstance(CFileObjectInstance*, const char*) (0x4d20fc).
     // Confirmado no desassembly: a versao texto (0x4d206c) faz sscanf e chama este (bl 0x4d20fc); LoadIpl binario chama este via PLT.
     // Layout (lido do desassembly): +0x00 x, +0x04 y, +0x08 z (floats), +0x1C modelId (int32). Nao depende do FileLoader.cpp.
     inline void* (*g_origLoadObjInst)(void*, const char*) = nullptr;
     inline void* LoadObjInstHook(void* inst, const char* name)
     {
+        // INTERRUPTORES DE DIAGNOSTICO (arquivos vazios em SAMP/, lidos 1x por execucao; nenhum presente = comportamento normal):
+        //   inst_off.on = este hook nao faz nada | hide_off.on = sem 'hide' | remove_drop_off.on = 'remove' apaga em vez de afastar
+        //   colnew_off.on = nao liga extra_cols antes da 1a instancia | ipl_off.on = sem mistura de IPL binario
+        static const bool kInstOff = Marker("inst_off.on"), kNoHide = Marker("hide_off.on"), kNoColNew = Marker("colnew_off.on");
+        static bool s_said = false;
+        if (!s_said) { s_said = true; FLog("[IPL] interruptores: inst_off=%d hide_off=%d colnew_off=%d ipl_off=%d remove_drop_off=%d", (int)kInstOff, (int)kNoHide, (int)kNoColNew, (int)Marker("ipl_off.on"), (int)Marker("remove_drop_off.on")); }
+        if (kInstOff) return g_origLoadObjInst ? g_origLoadObjInst(inst, name) : nullptr;
+        // A colisao dos modelos novos (SAMP/extra_cols.txt) precisa existir ANTES da primeira instancia de QUALQUER IPL
+        // (texto em LoadScene ou binario em LoadIpl/SetupRelatedIpls). Quando o jogador salvou a posicao perto de um modelo novo
+        // (ex.: prefeitura 12001), o IPL dessa area carrega dentro de CFileLoader::LoadScene, ANTES de CGame::Initialize terminar
+        // (onde o Run antigo rodava). Idempotente: modelo que ja tem colisao e' mantido.
+        static bool s_colNewDone = false;
+        if (!s_colNewDone) { s_colNewDone = true; if (!kNoColNew) CustomColNew::Run("antes da 1a instancia"); }
         if (inst)
         {
             auto* b = static_cast<unsigned char*>(inst);
             float pos[3]; int32_t id;
             std::memcpy(pos, b, sizeof(pos)); std::memcpy(&id, b + 0x1C, sizeof(id));
-            const int nid = HideModelFor(id, pos);
+            int nid = id;
+            if (!kNoHide)
+            {
+                float p2[3] = { pos[0], pos[1], pos[2] };
+                if (HideInstance(id, p2)) std::memcpy(b + 8, &p2[2], sizeof(float));   // z da instancia (+0x08)
+            }
+            // SEM colisao "vazia" aqui: dar colisao a um modelo antes de o jogo atribuir a verdadeira fazia o LOD ficar com a caixa de 1 m
+            // (LODs sumiam). A rede de seguranca contra CEntity::GetBoundRect fica em CEntity::Add (hooks.cpp), so' para quem realmente cairia.
             if (nid != id) { const int32_t v = nid; std::memcpy(b + 0x1C, &v, sizeof(v)); }
         }
         return g_origLoadObjInst ? g_origLoadObjInst(inst, name) : nullptr;

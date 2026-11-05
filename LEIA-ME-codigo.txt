@@ -1,0 +1,12 @@
+CODIGO v12 (sobre o commit sem mapa - TesteBR-free_9). Nada foi compilado por mim.
+Extraia na raiz do projeto, aceitando substituir. Arquivos (todos em app/src/main/cpp/samp/game/):
+- CustomColNew.h  : NOVO. Liga a colisao dos modelos novos (SAMP/extra_cols.txt) antes da 1a instancia.
+- LedScreen.cpp/.h: NOVOS. Video do outdoor + logo + pisca-pisca do posto.
+- game.cpp        : inclui CustomColNew/LedScreen, carrega o banco de texturas do IMG extra e chama LedScreen::Process() (so acrescenta linhas).
+- CustomIpl.h     : mistura de IPL com os modelos novos; hide SEM o modelo 19300 (a instancia desce 3000 m); SEM colisao vazia (dummy) na criacao da instancia.
+- CustomIplParse.h: 'remove' do texdb/ipl AFASTA a instancia (3000 m abaixo, mesma posicao na lista) em vez de apagar. SAMP/remove_drop_off.on volta a apagar.
+- FileLoader.cpp  : o mesmo hide (IPL texto) sem 19300.
+- hooks.cpp       : guarda no sortLODs (evita o crash do trilho) e gancho em CEntity::Add: a colisao vazia so' e' dada, na hora do Add, a quem realmente cairia em GetBoundRect (log [ADD]).
+- CustomCol.h     : assinatura do CINFO.BIN cobre IMG/COL extras e so' vira definitiva se o cache ficar completo (cinfo.sig.pend).
+Ordem: compile o APK, depois instale o pacote de DADOS (mapa-dados-v12.zip).
+Interruptores de diagnostico (arquivo vazio em SAMP/): inst_off.on, hide_off.on, colnew_off.on, ipl_off.on, remove_drop_off.on.

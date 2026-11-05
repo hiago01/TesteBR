@@ -123,11 +123,11 @@ CEntityGTA* CFileLoader::LoadObjectInstance1(const char* line) {
             &instance.m_nLodInstanceIndex
     ) == 11);
 
-    // hide (texdb/ipl ou SAMP/ipl): troca so o MODELO por um invisivel; a instancia continua na mesma posicao da lista,
+    // hide (texdb/ipl ou SAMP/ipl): a instancia desce 3000 m (some); continua na mesma posicao da lista,
     // entao o indice das demais (os lods dos IPLs de streaming) nao muda.
     {
-        const float p3[3] = { instance.m_vecPosition.x, instance.m_vecPosition.y, instance.m_vecPosition.z };
-        instance.m_nModelId = CustomIpl::HideModelFor(instance.m_nModelId, p3);
+        float p3[3] = { instance.m_vecPosition.x, instance.m_vecPosition.y, instance.m_vecPosition.z };
+        if (CustomIpl::HideInstance(instance.m_nModelId, p3)) instance.m_vecPosition.z = p3[2];   // sem modelo 19300 (geometria vazia derruba o sortLODs)
     }
 
     /*if (iBuildingToRemoveCount >= 1) {

@@ -289,6 +289,11 @@ namespace CustomIplParse
     // resolve(nome, idDoArquivo) -> id do modelo valido no jogo, ou -1 (modelo inexistente => entrada ignorada)
     using Resolver = std::function<int(const char*, int)>;
 
+    // 'remove' AFASTA a instancia em vez de apagar da tabela: ela continua no mesmo lugar da lista (nenhum indice muda) e fica
+    // kRemoveDrop metros abaixo, muito alem da distancia de streaming/desenho. Desligavel (CustomIpl.h: SAMP/remove_drop_off.on).
+    inline bool  g_removeByMove = false;
+    inline constexpr float kRemoveDrop = 3000.0f;
+
     struct MergeReport
     {
         size_t origCount = 0, finalCount = 0, replaced = 0, removed = 0, added = 0, skipped = 0, lodFixed = 0;
@@ -385,7 +390,7 @@ namespace CustomIplParse
         // indices novos
         std::vector<int> oldToNew(N, -1); size_t k = 0;
         for (size_t i = 0; i < N; i++) if (act[i] != Act::Remove) oldToNew[i] = (int)k++;
-        const size_t finalCount = k + adds.size();
+        const size_t finalCount = (g_removeByMove ? N : k) + adds.size();
         if (finalCount > kMaxInstances) return fail("contagem final passaria de 32767 instancias");
 
         for (size_t i = 0; i < N; i++) { if (act[i] == Act::Replace) rep.replaced++; else if (act[i] == Act::Remove) rep.removed++; }
@@ -400,7 +405,11 @@ namespace CustomIplParse
         std::vector<Inst> fin; fin.reserve(finalCount);
         for (size_t i = 0; i < N; i++)
         {
-            if (act[i] == Act::Remove) continue;
+            if (act[i] == Act::Remove)
+            {
+                if (g_removeByMove) { Inst m = orig[i]; m.pos[2] -= kRemoveDrop; bool fm = false; m.lod = mapLod(orig[i].lod, fm); fin.push_back(m); }
+                continue;
+            }
             Inst x; bool fx = false;
             if (act[i] == Act::Replace) { x = repl[i]; x.lod = mapLod(replLod[i], fx); }
             else { x = orig[i]; x.lod = mapLod(orig[i].lod, fx); }

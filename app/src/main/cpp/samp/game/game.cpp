@@ -19,9 +19,13 @@
 #include "CustomImg.h"
 #include "CustomCol.h"
 #include "FreeModelIds.h"
+#include "CustomColNew.h"
+#include "LedScreen.h"
 #include "CustomSkinStream.h"
 #include "SkinTexDb.h"
 #include "SafeTexDb.h"
+#include <sys/stat.h>
+#include <strings.h>
 
 void ApplySAMPPatchesInGame();
 void InitScripting();
@@ -100,6 +104,9 @@ void CGame::Initialize()
 
     // IDs de modelo livres (para objetos novos): so log + SAMP/model_ids_livres.txt (ver FreeModelIds.h)
     FreeModelIds::Report("CGame::Initialize");
+
+    // colisao para modelos novos do IDE (SAMP/extra_cols.txt): precisa existir ANTES de o IPL colocar a instancia (ver CustomColNew.h)
+    CustomColNew::Run("CGame::Initialize");
 
     // texdb/DFF/*.dff: DFF por entrada (ver CustomDff.h) - so log
     if (Diag::On("dff")) CustomSkinStream::AuditDff("CGame::Initialize");
@@ -709,6 +716,32 @@ bool CGame::InitialiseRenderWare() {
     TextureDatabaseRuntime::Register(cars);*/
 #endif
 
+    // Bancos de texturas dos IMGs EXTRAS (SAMP/extra_imgs.txt): para "mapasmaximo.img" carrega texdb/mapasmaximo/ (se a pasta existe).
+    // Sem isso as texturas de modelos novos (ex.: mx_loja) nao tem de onde sair: o jogo as procura por nome nos bancos carregados.
+    // Usa o mesmo carregador A PROVA DE CRASH dos bancos do jogo (SafeTexDb): se falhar, so loga e segue sem o banco.
+    if (g_pszStorage && g_pszStorage[0]) {
+        const std::string root(g_pszStorage);
+        if (FILE* lf = fopen((root + "SAMP/extra_imgs.txt").c_str(), "r")) {
+            char line[256];
+            while (fgets(line, sizeof(line), lf)) {
+                std::string n(line);
+                while (!n.empty() && (n.back() == '\n' || n.back() == '\r' || n.back() == ' ' || n.back() == '\t')) n.pop_back();
+                size_t b = 0; while (b < n.size() && (n[b] == ' ' || n[b] == '\t')) b++;
+                n = n.substr(b);
+                if (n.empty() || n[0] == '#') continue;
+                const size_t sl = n.find_last_of("/\\");
+                std::string base = (sl == std::string::npos) ? n : n.substr(sl + 1);
+                if (base.size() < 5 || strcasecmp(base.c_str() + base.size() - 4, ".img") != 0) continue;
+                base.resize(base.size() - 4);
+                struct stat st {};
+                if (stat((root + "texdb/" + base).c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) { FLog("[TEXDB] IMG extra '%s': sem pasta texdb/%s: sem banco de texturas", base.c_str(), base.c_str()); continue; }
+                FLog("[TEXDB] IMG extra '%s': carregando banco texdb/%s", base.c_str(), base.c_str());
+                SafeTexDb::Load(base.c_str(), false, TextureDatabaseFormat::DF_Default);
+            }
+            fclose(lf);
+        }
+    }
+
     // (banco de texturas "touch" removido: o jogo nao le mais texdb/touch)
 
     // banco de texturas das roupas/skins (texdb/skins/). So personagens; independe de CustomImg::kCustomContent.
@@ -873,6 +906,8 @@ void CGame::Process() {
 
     ProcessMainThreadTasks();
     ClothesFrameTick();   // CJ real + skin DFF (thread do jogo, 1x por frame)
+    LedScreen::Process();    // telas de LED do posto (quadros PNG em loop)
+    CustomColNew::Probe();   // log [LOJA]: estado do modelo novo (a cada ~300 frames)
 
     uint32_t CurrentTimeInCycles;
     uint32_t v1; // r4

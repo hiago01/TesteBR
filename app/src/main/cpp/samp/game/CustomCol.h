@@ -463,13 +463,28 @@ namespace CustomCol
             while (auto* e = ::readdir(d))
             {
                 const size_t n = std::strlen(e->d_name);
-                if (n > 4 && ::strcasecmp(e->d_name + n - 4, ".ide") == 0) ides.push_back(r + "SAMP/" + e->d_name);
+                if (n > 4 && (::strcasecmp(e->d_name + n - 4, ".ide") == 0 || ::strcasecmp(e->d_name + n - 4, ".col") == 0)) ides.push_back(r + "SAMP/" + e->d_name);
             }
             ::closedir(d);
         }
         std::sort(ides.begin(), ides.end());
         for (const auto& p : ides) SigPart(acc, p);
-        acc += std::string("salt=LOADCOL-MIX-v3|off=") + (Marker("col_off.on") ? "1" : "0") + "\n";
+        // modelos novos (IDE/IMG/COL extra): o CINFO gravado numa execucao nao pode valer para outro conjunto de modelos
+        SigPart(acc, r + "SAMP/extra_cols.txt");
+        SigPart(acc, r + "SAMP/extra_imgs.txt");
+        if (DIR* d = ::opendir((r + "texdb").c_str()))
+        {
+            std::vector<std::string> imgs;
+            while (auto* e = ::readdir(d))
+            {
+                const size_t n = std::strlen(e->d_name);
+                if (n > 4 && ::strcasecmp(e->d_name + n - 4, ".img") == 0) imgs.push_back(r + "texdb/" + e->d_name);
+            }
+            ::closedir(d);
+            std::sort(imgs.begin(), imgs.end());
+            for (const auto& p : imgs) SigPart(acc, p);
+        }
+        acc += std::string("salt=LOADCOL-MIX-v4|off=") + (Marker("col_off.on") ? "1" : "0") + "\n";
         char hex[32];
         std::snprintf(hex, sizeof(hex), "%016llx", (unsigned long long)Fnv(acc));
         return hex;
@@ -494,6 +509,41 @@ namespace CustomCol
         return ::rename(tmp.c_str(), p.c_str()) == 0;
     }
 
+    // Remove os CINFO.BIN.bak-<hora>[-n] que as versoes anteriores deixavam a cada troca de assinatura.
+    // So' apaga arquivos cujo nome e' EXATAMENTE "<nome do cache>.bak-" + digitos/'-' (nunca outro arquivo).
+    inline void PruneOldBackups(const std::string& root, const char* const* rels, size_t nrels)
+    {
+        int removed = 0;
+        std::vector<std::string> seen;
+        for (size_t i = 0; i < nrels; i++)
+        {
+            std::string rel = rels[i];
+            const size_t sl = rel.rfind('/');
+            const std::string sub  = sl == std::string::npos ? std::string() : rel.substr(0, sl + 1);
+            const std::string base = sl == std::string::npos ? rel : rel.substr(sl + 1);
+            const std::string dir  = root + sub;
+            const std::string pre  = base + ".bak-";
+            const std::string key  = dir + "|" + pre;
+            bool dup = false; for (const auto& k : seen) if (strcasecmp(k.c_str(), key.c_str()) == 0) dup = true;
+            if (dup) continue;
+            seen.push_back(key);
+            DIR* d = ::opendir(dir.c_str());
+            if (!d) continue;
+            std::vector<std::string> kill;
+            while (auto* e = ::readdir(d))
+            {
+                const size_t n = std::strlen(e->d_name);
+                if (n <= pre.size() || ::strncasecmp(e->d_name, pre.c_str(), pre.size()) != 0) continue;
+                bool ok = true;
+                for (size_t k = pre.size(); k < n; k++) if (!((e->d_name[k] >= '0' && e->d_name[k] <= '9') || e->d_name[k] == '-')) { ok = false; break; }
+                if (ok) kill.push_back(e->d_name);
+            }
+            ::closedir(d);
+            for (const auto& nm : kill) if (::remove((dir + nm).c_str()) == 0) removed++;
+        }
+        if (removed) FLog("[CINFO] %d backup(s) antigo(s) CINFO.BIN.bak-* removido(s)", removed);
+    }
+
     inline void CinfoGuard()
     {
         static bool done = false;
@@ -507,7 +557,29 @@ namespace CustomCol
         const char* rels[] = { "CINFO.BIN", "cinfo.bin", "models/CINFO.BIN", "MODELS/CINFO.BIN", "texdb/CINFO.BIN" };
         const std::string sigPath = r + "SAMP/cinfo.sig";
         const std::string sigNow  = Signature();
-        const std::string sigOld  = ReadText(sigPath);
+        std::string sigOld  = ReadText(sigPath);
+        // A assinatura so vira "definitiva" na execucao SEGUINTE, e so se o CINFO.BIN gerado estiver completo.
+        // Antes ela era gravada antes de o jogo gerar o cache: se o jogo caisse durante a geracao, sobrava um
+        // CINFO.BIN vazio (stub ~13 KB) com assinatura "ok" e o jogo passava a usar esse cache quebrado.
+        const std::string pendPath = r + "SAMP/cinfo.sig.pend";
+        if (sigOld != sigNow && ReadText(pendPath) == sigNow)
+        {
+            bool good = false;
+            for (const char* rel : rels)
+            {
+                struct stat sp {};
+                if (::stat((r + rel).c_str(), &sp) == 0 && S_ISREG(sp.st_mode) && sp.st_size >= 100000) { good = true; break; }
+            }
+            if (good && WriteTextAtomic(sigPath, sigNow + "\n"))
+            {
+                ::remove(pendPath.c_str());
+                sigOld = sigNow;
+                FLog("[CINFO] cache anterior completo: assinatura %s confirmada", sigNow.c_str());
+            }
+            else FLog("[CINFO] cache anterior incompleto (geracao interrompida?): sera refeito");
+        }
+
+        PruneOldBackups(r, rels, sizeof(rels) / sizeof(rels[0]));   // remove CINFO.BIN.bak-<numero> deixados por versoes anteriores
 
         bool touched = false, anyFound = false;
         for (const char* rel : rels)
@@ -522,23 +594,32 @@ namespace CustomCol
                  sigNow.c_str(), sigOld.empty() ? "(nenhuma)" : sigOld.c_str(), (empty || stale) ? "INVALIDO" : "ok");
             if (!empty && !stale) continue;
 
-            // nome de backup que nunca sobrescreve um backup anterior (rename() sobrescreve em silencio)
-            std::string bak = p + ".bak-" + std::to_string((long long)::time(nullptr));
-            for (int n = 2; Exists(bak) && n < 1000; n++)
-                bak = p + ".bak-" + std::to_string((long long)::time(nullptr)) + "-" + std::to_string(n);
-            if (::rename(p.c_str(), bak.c_str()) == 0)
+            // O CINFO.BIN e' so' um cache que o proprio jogo recria: o arquivo velho nao tem valor. Antes era renomeado para
+            // CINFO.BIN.bak-<hora> a CADA mudanca de assinatura (619 KB cada, nunca apagados -> lixo acumulando no celular).
+            // Agora: apaga; se nao conseguir apagar, renomeia para UM unico CINFO.BIN.bak (sobrescreve o anterior).
+            if (::remove(p.c_str()) == 0)
             {
                 touched = true;
-                FLog("[CINFO] cache antigo guardado em %s; o jogo vai gerar um CINFO.BIN novo nesta execucao", bak.c_str());
+                FLog("[CINFO] cache antigo apagado; o jogo vai gerar um CINFO.BIN novo nesta execucao");
             }
             else
-                FLog("[CINFO] NAO consegui renomear %s (errno=%d): cache mantido como esta", p.c_str(), errno);
+            {
+                const std::string bak = p + ".bak";
+                if (::rename(p.c_str(), bak.c_str()) == 0)
+                {
+                    touched = true;
+                    FLog("[CINFO] nao consegui apagar (errno=%d): cache antigo movido para %s (copia unica, sobrescrita a cada troca)", errno, bak.c_str());
+                }
+                else
+                    FLog("[CINFO] NAO consegui apagar nem renomear %s (errno=%d): cache mantido como esta", p.c_str(), errno);
+            }
         }
         if (!anyFound) FLog("[CINFO] nenhum CINFO.BIN em %s: o jogo vai gerar um (assinatura=%s)", r.c_str(), sigNow.c_str());
 
         // so grava a assinatura quando a decisao foi concluida sem erro (evita "marcar como ok" um cache que nao foi trocado)
         if (sigOld != sigNow && (touched || !anyFound))
-            FLog("[CINFO] assinatura %s em %s", WriteTextAtomic(sigPath, sigNow + "\n") ? "gravada" : "NAO gravada", sigPath.c_str());
+            FLog("[CINFO] assinatura pendente %s em %s (confirma na proxima execucao se o cache ficar completo)",
+                 WriteTextAtomic(pendPath, sigNow + "\n") ? "gravada" : "NAO gravada", pendPath.c_str());
     }
 
     inline void (*g_origStartCache)() = nullptr;
