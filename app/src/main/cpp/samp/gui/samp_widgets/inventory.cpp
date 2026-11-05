@@ -47,6 +47,9 @@ namespace
 		Trade trade;
 	};
 
+	struct HotSlot { int id = 0, qty = 0, icon = 8, flags = 0; std::string name; };
+	HotSlot    g_hot[5];
+
 	std::mutex g_dm;
 	State      g_state;
 	std::string g_toastMsg;
@@ -150,7 +153,7 @@ namespace
 	{
 		RwRaster* tex = GetAtlas();
 		if (!tex) return;
-		if (icon < 0 || icon > 15) icon = 8;
+		if (icon < 0 || icon >= InvAtlas::kIcons) icon = 8;
 		const float cell = (float)InvAtlas::kCell, W = (float)InvAtlas::kWidth, H = (float)InvAtlas::kHeight;
 		const float cx = (float)(icon % InvAtlas::kCols) * cell, cy = (float)(icon / InvAtlas::kCols) * cell;
 		r->drawImage(a, b, (ImTextureID)tex, ImColor(255, 255, 255, alpha),
@@ -195,6 +198,7 @@ void InventoryUI::Reset()
 	}
 	std::lock_guard<std::mutex> l(g_dm);
 	g_state = State();
+	for (HotSlot& h : g_hot) h = HotSlot();
 	g_toastUntil = 0;
 }
 
@@ -295,6 +299,20 @@ void InventoryUI::OnServerPacket(const unsigned char* data, int bytes)
 		std::lock_guard<std::mutex> l(g_dm);
 		g_state.trade = std::move(t);
 	}
+	else if (op == 6)   // HOTBAR (5 slots rapidos)
+	{
+		uint8_t n = 0;
+		if (!bs.Read(n) || n > 5) return;
+		HotSlot tmp[5];
+		for (int i = 0; i < n; i++)
+		{
+			uint16_t id = 0, q = 0; uint8_t ic = 0, fl = 0;
+			if (!bs.Read(id) || !bs.Read(q) || !bs.Read(ic) || !bs.Read(fl) || !ReadStr(bs, tmp[i].name)) return;
+			tmp[i].id = id; tmp[i].qty = q; tmp[i].icon = ic; tmp[i].flags = fl;
+		}
+		std::lock_guard<std::mutex> l(g_dm);
+		for (int i = 0; i < 5; i++) g_hot[i] = tmp[i];
+	}
 	else if (op == 5)   // TOAST
 	{
 		uint8_t type = 0; std::string msg;
@@ -325,7 +343,7 @@ namespace
 	const ImColor cBtnOff (28, 28, 34, 200);
 
 	constexpr int INV_TRADE_VIS = 6;       // linhas de oferta exibidas (= INV_TRADE_SLOTS do servidor)
-	enum { P_INV = 1, P_GROUND = 2 };
+	enum { P_INV = 1, P_GROUND = 2, P_HOT = 3 };
 	enum { B_NONE = 0, B_USE, B_DROP, B_TRADE, B_QTY, B_PICK, B_OFFER, B_CLOSE,
 		   B_ACCEPT, B_REFUSE, B_CONFIRM, B_CANCEL, B_REFRESH };
 
@@ -337,7 +355,7 @@ namespace
 	struct Touch
 	{
 		int   finger = -1;
-		int   kind = 0;           // 1 grade inventario, 2 grade chao, 3 botao, 4 outro
+		int   kind = 0;           // 1 grade inventario, 2 grade chao, 3 botao, 4 outro, 5 slot rapido
 		int   panel = 0;
 		int   src = -1;           // slot / indice tocado
 		int   btn = B_NONE;
@@ -373,14 +391,32 @@ void InventoryUI::draw(ImGuiRenderer* r)
 	if (!g_open.load())
 	{
 		g_t = Touch(); g_sel = Sel(); g_scroll[1] = g_scroll[2] = 0.0f;
+		// avisos do servidor (equipou/guardou/erro de slot rapido) tambem aparecem com o inventario fechado
+		std::string tm; int tt = 0; int64_t tu = 0;
+		{
+			std::lock_guard<std::mutex> l(g_dm);
+			tm = g_toastMsg; tt = g_toastType; tu = g_toastUntil;
+		}
+		if (NowMs() < tu && !tm.empty())
+		{
+			const ImVec2 sc = pUI ? pUI->displaySize() : ImVec2(1920, 1080);
+			const float kk = sc.y / 575.0f, tfs = 12.0f * kk;
+			const ImVec2 ts = r->calculateTextSize(tm, tfs);
+			const float w = ts.x + 28.0f * kk, h = ts.y + 14.0f * kk, x = (sc.x - w) * 0.5f, y = sc.y * 0.62f;
+			const ImColor accent = tt == 1 ? cRed : (tt == 2 ? cGreen : cPurple);
+			r->drawRect(ImVec2(x, y), ImVec2(x + w, y + h), ImColor(18, 18, 24, 235), true);
+			r->drawRect(ImVec2(x, y + h - 2.0f * kk), ImVec2(x + w, y + h), accent, true);
+			r->drawText(ImVec2(x + 14.0f * kk, y + 7.0f * kk), cText, tm, false, tfs);
+		}
 		return;
 	}
 
 	// ---- snapshot do estado (evita segurar o mutex durante o desenho) ----
-	State S; std::string toast; int toastType = 0; int64_t toastUntil = 0;
+	State S; std::string toast; int toastType = 0; int64_t toastUntil = 0; HotSlot hot[5];
 	{
 		std::lock_guard<std::mutex> l(g_dm);
 		S = g_state; toast = g_toastMsg; toastType = g_toastType; toastUntil = g_toastUntil;
+		for (int i = 0; i < 5; i++) hot[i] = g_hot[i];
 	}
 
 	const ImVec2 scr = pUI ? pUI->displaySize() : ImVec2(1920, 1080);
@@ -458,6 +494,13 @@ void InventoryUI::draw(ImGuiRenderer* r)
 	const ImVec2 rightA(xr, y0), rightB(xr + panW, y0 + panH), leftA(xl, y0), leftB(xl + panW, y0 + panH);
 	const ImVec2 vpLA(gL.x, gL.y), vpLB(gL.x + gridW, gL.y + gridH), vpRA(gR.x, gR.y), vpRB(gR.x + gridW, gR.y + gridH);
 
+	// faixa dos slots rapidos (abaixo dos paineis): alvo de arrastar-e-soltar
+	const float hotW = 5 * slot + 4 * gap, hotX = (scr.x - hotW) * 0.5f, hotY = std::min(y0 + panH + 12.0f * k, scr.y - slot - 6.0f * k);
+	auto hotAt = [&](float x, float y) -> int {
+		if (y < hotY || y > hotY + slot || x < hotX || x > hotX + hotW) return -1;
+		const int c = (int)std::floor((x - hotX) / pitch);
+		return (c >= 0 && c < 5 && x - hotX - c * pitch <= slot) ? c : -1;
+	};
 	auto slotAt = [&](int panel, float x, float y) -> int {
 		const ImVec2 o = panel == P_INV ? gL : gR;
 		const ImVec2 b(o.x + gridW, o.y + gridH);
@@ -512,11 +555,18 @@ void InventoryUI::draw(ImGuiRenderer* r)
 	const int64_t now = NowMs();
 
 	// long-press: promove o toque a "arrastar item"
-	if (g_t.finger >= 0 && (g_t.kind == 1 || g_t.kind == 2) && !g_t.dragging && !g_t.scrolling && now - g_t.t0 >= 250)
+	if (g_t.finger >= 0 && (g_t.kind == 1 || g_t.kind == 2 || g_t.kind == 5) && !g_t.dragging && !g_t.scrolling && now - g_t.t0 >= 250)
 	{
-		const bool has = g_t.panel == P_INV ? (g_t.src >= 0 && g_t.src < S.slots && bySlot[g_t.src])
-											: (g_t.src >= 0 && g_t.src < (int)S.ground.size());
-		if (has) { g_t.dragging = true; g_sel.panel = g_t.panel; g_sel.idx = g_t.src; }
+		if (g_t.kind == 5)
+		{
+			if (g_t.src >= 0 && g_t.src < 5 && hot[g_t.src].id) g_t.dragging = true;
+		}
+		else
+		{
+			const bool has = g_t.panel == P_INV ? (g_t.src >= 0 && g_t.src < S.slots && bySlot[g_t.src])
+												: (g_t.src >= 0 && g_t.src < (int)S.ground.size());
+			if (has) { g_t.dragging = true; g_sel.panel = g_t.panel; g_sel.idx = g_t.src; }
+		}
 	}
 
 	for (const TouchEv& e : evs)
@@ -526,6 +576,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 			g_t = Touch();
 			g_t.finger = e.num; g_t.sx = g_t.cx = e.x; g_t.sy = g_t.cy = e.y; g_t.t0 = now;
 			if (const Btn* b = btnAt(e.x, e.y)) { g_t.kind = 3; g_t.btn = b->id; }
+			else if (hotAt(e.x, e.y) >= 0) { g_t.kind = 5; g_t.panel = P_HOT; g_t.src = hotAt(e.x, e.y); }
 			else if (In(e.x, e.y, vpLA, vpLB)) { g_t.kind = 1; g_t.panel = P_INV;    g_t.src = slotAt(P_INV, e.x, e.y);    g_t.scroll0 = g_scroll[P_INV]; }
 			else if (In(e.x, e.y, vpRA, vpRB)) { g_t.kind = 2; g_t.panel = P_GROUND; g_t.src = tradeMode ? -1 : slotAt(P_GROUND, e.x, e.y); g_t.scroll0 = g_scroll[P_GROUND]; }
 			else g_t.kind = 4;
@@ -560,9 +611,11 @@ void InventoryUI::draw(ImGuiRenderer* r)
 				const bool fromInv = t.panel == P_INV;
 				const Btn* b = btnAt(e.x, e.y);
 				const int dstInv = slotAt(P_INV, e.x, e.y);
+				const int dstHot = hotAt(e.x, e.y);
 				if (fromInv && t.src >= 0 && t.src < S.slots && bySlot[t.src])
 				{
-					if (b && b->enabled && b->id == B_USE)        doUse(t.src);          // arrastar ate "Usar"
+					if (dstHot >= 0)                              Send("/invx bar %d %d", dstHot, t.src);   // atribui ao slot rapido
+					else if (b && b->enabled && b->id == B_USE)        doUse(t.src);          // arrastar ate "Usar"
 					else if (b && b->enabled && (b->id == B_DROP || b->id == B_OFFER)) { if (b->id == B_DROP) doDrop(t.src); else doOffer(t.src); }
 					else if (dstInv >= 0 && dstInv != t.src && !tradeActive) Send("/invx move %d %d", t.src, dstInv);
 					else if (!b && In(e.x, e.y, rightA, rightB))  { if (tradeActive) { if (!T.myConf) doOffer(t.src); } else doDrop(t.src); }
@@ -572,6 +625,18 @@ void InventoryUI::draw(ImGuiRenderer* r)
 					if (In(e.x, e.y, leftA, leftB) && !tradeActive) doPick(t.src);       // chao -> inventario
 				}
 				g_sel = Sel();
+			}
+			else if (t.kind == 5)                                             // slot rapido
+			{
+				if (t.src < 0 || t.src >= 5 || !hot[t.src].id) {}
+				else if (t.dragging)
+				{
+					const int dh = hotAt(e.x, e.y);
+					if (dh < 0 || dh == t.src) { if (dh < 0) Send("/invx barclear %d", t.src); }   // soltou fora = limpa o slot
+					else { const int sl = [&]{ for (const Item& it : S.items) if (it.id == hot[t.src].id) return it.slot; return -1; }();
+					       if (sl >= 0) { Send("/invx bar %d %d", dh, sl); } else Send("/invx barclear %d", t.src); }
+				}
+				else Send("/invx hot %d", t.src);                              // toque = equipar/guardar/usar
 			}
 			else if (t.kind == 2 && tradeMode && !t.scrolling)               // painel de negociacao
 			{
@@ -766,6 +831,36 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		}
 	}
 
+	// ---- slots rapidos (alvo de arrastar) ----
+	{
+		const char* ttl = "SLOTS RÁPIDOS — arraste um item para cá  ·  toque no slot para equipar/usar  ·  arraste para fora para limpar";
+		r->drawText(ImVec2(hotX, hotY - 13.0f * k), cMute, ttl, false, 9.0f * k);
+		const int over = g_t.dragging ? hotAt(g_t.cx, g_t.cy) : -1;
+		for (int i = 0; i < 5; i++)
+		{
+			const ImVec2 a(hotX + i * pitch, hotY), b(a.x + slot, a.y + slot);
+			const HotSlot& h = hot[i];
+			const bool eq = (h.flags & 1) != 0, miss = h.id && h.qty <= 0 && !eq;
+			const bool tgt = over == i;
+			r->drawRect(a, b, tgt ? cPurpleF : cPanelBg, true);
+			r->drawRect(a, b, tgt ? cPurple : (eq ? cGreen : cSlotLn), false, (tgt || eq) ? 2.0f : 1.0f);
+			if (h.id)
+			{
+				const float m = 6.0f * k;
+				const bool ghost = g_t.dragging && g_t.panel == P_HOT && g_t.src == i;
+				DrawIcon(r, h.icon, ImVec2(a.x + m, a.y + m), ImVec2(b.x - m, b.y - m), ghost ? 70 : (miss ? 90 : 255));
+				if (h.qty > 1)
+				{
+					char q[12]; snprintf(q, sizeof(q), "x%d", h.qty);
+					const ImVec2 ts = r->calculateTextSize(q, 10.0f * k);
+					r->drawText(ImVec2(b.x - ts.x - 4.0f * k, b.y - ts.y - 3.0f * k), eq ? cGreen : cText, q, true, 10.0f * k);
+				}
+			}
+			char nb[4]; snprintf(nb, sizeof(nb), "%d", i + 1);
+			r->drawText(ImVec2(a.x + 4.0f * k, a.y + 2.0f * k), cMute, nb, false, 10.0f * k);
+		}
+	}
+
 	// ---- botoes ----
 	for (const Btn& b : btns)
 	{
@@ -784,6 +879,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		int icon = 8;
 		if (g_t.panel == P_INV && g_t.src >= 0 && g_t.src < S.slots && bySlot[g_t.src]) icon = bySlot[g_t.src]->icon;
 		else if (g_t.panel == P_GROUND && g_t.src >= 0 && g_t.src < (int)S.ground.size()) icon = S.ground[g_t.src].icon;
+		else if (g_t.panel == P_HOT && g_t.src >= 0 && g_t.src < 5) icon = hot[g_t.src].icon;
 		const float h = slot * 0.5f;
 		DrawIcon(r, icon, ImVec2(g_t.cx - h, g_t.cy - h), ImVec2(g_t.cx + h, g_t.cy + h), 230);
 	}
@@ -802,23 +898,25 @@ void InventoryUI::draw(ImGuiRenderer* r)
 }
 
 // ---- slots rapidos / botao Inventario (HUD moderno) ----
-bool InventoryUI::HotbarGet(int slot, int& icon, int& qty)
+bool InventoryUI::HotbarGet(int slot, int& icon, int& qty, int* flags)
 {
+	if (slot < 0 || slot >= 5) return false;
 	std::lock_guard<std::mutex> l(g_dm);
-	for (const Item& it : g_state.items)
-		if (it.slot == slot && it.qty > 0) { icon = it.icon; qty = it.qty; return true; }
-	return false;
+	const HotSlot& h = g_hot[slot];
+	if (!h.id) return false;
+	icon = h.icon; qty = h.qty; if (flags) *flags = h.flags;
+	return true;
 }
 
 void InventoryUI::HotbarUse(int slot)
 {
 	int icon = 0, qty = 0;
-	if (g_open.load() || !HotbarGet(slot, icon, qty)) return;
+	if (g_open.load() || !HotbarGet(slot, icon, qty)) return;     // slot vazio: nada a enviar
 	static int64_t s_last = 0;
 	const int64_t now = NowMs();
 	if (now - s_last < 250) return;                 // anti-repique
 	s_last = now;
-	Send("/invx use %d", slot);
+	if (pNetGame) { char b[32]; snprintf(b, sizeof b, "/invx hot %d", slot); pNetGame->SendChatCommand(b); }
 }
 
 void InventoryUI::RequestOpen()

@@ -30,9 +30,9 @@ public:
 	static bool OnBackPressed();               // true se estava aberto (e foi fechado)
 
 	// ---- slots rapidos / botao Inventario do HUD moderno (ModernControls: B_SLOTS e B_INV) ----
-	// Os slots rapidos espelham os primeiros slots do inventario do SERVIDOR (o estado vem do RPC 203; o servidor continua sendo
-	// a autoridade: usar = "/invx use N"). O estado persiste depois de fechar o inventario.
-	static bool HotbarGet(int slot, int& icon, int& qty);                 // true se ha item nesse slot
+	// Os 5 slots rapidos sao do SERVIDOR (RPC 203 op 6): cada um referencia um item (arma ou outro) atribuido arrastando-o no
+	// inventario. Usar = "/invx hot K" (equipa/guarda arma ou usa o item). O estado persiste depois de fechar o inventario.
+	static bool HotbarGet(int slot, int& icon, int& qty, int* flags = nullptr);   // true se ha item atribuido ao slot (flags: 1 equipada, 2 arma)
 	static void HotbarUse(int slot);                                      // usa o item do slot (se houver)
 	static void RequestOpen();                                            // pede ao servidor para abrir o inventario (/inv)
 	static void DrawHotbarIcon(ImGuiRenderer* r, int icon, const ImVec2& a, const ImVec2& b, int alpha);

@@ -556,11 +556,13 @@ void ModernControls::draw(ImGuiRenderer* r)
 				const bool dn = snap.BtnDown(B_SLOTS) && snap.slotPressed == k;
 				r->drawRoundedRect(a0, a1, dn ? Cb(40, 110, 230, std::min(255, A + 40)) : Cb(10, 16, 30, A), rnd, true);
 				r->drawRoundedRect(a0, a1, Cb(30, 144, 255, std::min(255, A + 90)), rnd, false, lw);
-				int icon = 8, qty = 0;
-				if (InventoryUI::HotbarGet(k, icon, qty))
+				int icon = 8, qty = 0, hfl = 0;
+				if (InventoryUI::HotbarGet(k, icon, qty, &hfl))
 				{
 					const float m = side * 0.14f;
-					InventoryUI::DrawHotbarIcon(r, icon, ImVec2(a0.x + m, a0.y + m), ImVec2(a1.x - m, a1.y - m), (int)std::lround((float)std::min(255, A + 170) * fm * bk));
+					const float fade = (qty <= 0 && !(hfl & 1)) ? 0.35f : 1.0f;      // item/municao em falta: apagado
+					if (hfl & 1) r->drawRoundedRect(a0, a1, Cb(90, 210, 120, 230), rnd, false, std::max(2.0f, lw * 1.6f));   // arma equipada
+					InventoryUI::DrawHotbarIcon(r, icon, ImVec2(a0.x + m, a0.y + m), ImVec2(a1.x - m, a1.y - m), (int)std::lround((float)std::min(255, A + 170) * fm * bk * fade));
 					if (qty > 1)
 					{
 						char q[12]; snprintf(q, sizeof q, "x%d", qty);
