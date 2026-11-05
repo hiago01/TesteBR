@@ -1733,13 +1733,17 @@ void ScrSetPlayerAttachedObject(RPCParameters* rpcParams)
             pPed = pNetGame->GetPlayerPool()->GetAt(id)->GetPlayerPed();
         }
     }
-    if (!pPed) return;
+    FLog("[ATTACH-RPC] jogador=%d local=%d slot=%u create=%d ped=%p", (int)id, (int)pNetGame->GetPlayerPool()->GetLocalPlayerID(), (unsigned)slot, (int)create, (void*)pPed);
+    if (!pPed) { FLog("[ATTACH-RPC] ped inexistente: ignorado"); return; }
     if (!create)
     {
         pPed->DeattachObject(slot);
         return;
     }
     bsData.Read((char*)& info, sizeof(ATTACHED_OBJECT_INFO));
+    FLog("[ATTACH-RPC] modelo=%d osso=%d off=%.2f,%.2f,%.2f rot=%.1f,%.1f,%.1f esc=%.2f,%.2f,%.2f", (int)info.dwModelId, (int)info.dwBoneId_MP,
+         info.vecOffset.x, info.vecOffset.y, info.vecOffset.z, info.vecRotation.x, info.vecRotation.y, info.vecRotation.z,
+         info.vecScale.x, info.vecScale.y, info.vecScale.z);
 
     pPed->AttachObject(&info, slot);
 }
