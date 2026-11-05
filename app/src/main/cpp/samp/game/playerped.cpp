@@ -2252,6 +2252,12 @@ void CPlayerPed::AttachObject(ATTACHED_OBJECT_INFO* pInfo, int iSlot)
     {
         DeattachObject(iSlot);
     }
+    // o modelo precisa estar carregado antes do create_object (modelos de arma 331-372 so ficam na memoria se alguem os pediu):
+    // sem isto o objeto anexado nao era criado/ficava invisivel (armas no corpo).
+    if (!CStreaming::TryLoadModel(pInfo->dwModelId)) {
+        FLog("[ATTACH] slot %d modelo %d: nao foi possivel carregar o modelo, objeto nao criado", iSlot, (int)pInfo->dwModelId);
+        return;
+    }
     auto& attach = m_aAttachedObject[iSlot] = CAttachedPlayerObject();
 
     attach.vecRotation  = pInfo->vecRotation;
@@ -2266,7 +2272,8 @@ void CPlayerPed::AttachObject(ATTACHED_OBJECT_INFO* pInfo, int iSlot)
     CVector vecPos = m_pPed->GetPosition();
     CVector vecRot{ 0.0f, 0.0f, 0.0f };
     attach.pObject = new CObject(pInfo->dwModelId, vecPos, vecRot, 200.0f, 1);
-    attach.pObject->m_pEntity->m_bUsesCollision = false;
+    if (attach.pObject->m_pEntity) attach.pObject->m_pEntity->m_bUsesCollision = false;
+    FLog("[ATTACH] slot %d modelo %d osso(samp)=%d interno=%d entidade=%p", iSlot, (int)pInfo->dwModelId, (int)attach.dwSampBone, (int)attach.dwBone, (void*)attach.pObject->m_pEntity);
 }
 
 void CPlayerPed::SetAttachOffset(int iSlot, CVector pos, CVector rot)
@@ -2392,7 +2399,7 @@ void CPlayerPed::ProcessAttach()
 
             pObject->m_pEntity->Add();
         }
-        else
+        else if (pObject && pObject->m_pEntity)
         {
             pObject->m_pEntity->SetPosn(0.0f, 0.0f, 0.0f);
         }
