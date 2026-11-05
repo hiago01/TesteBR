@@ -561,7 +561,7 @@ void ModernControls::draw(ImGuiRenderer* r)
 				{
 					const float m = side * 0.14f;
 					const float fade = (qty <= 0 && !(hfl & 1)) ? 0.35f : 1.0f;      // item/municao em falta: apagado
-					if (hfl & 1) r->drawRoundedRect(a0, a1, Cb(90, 210, 120, 230), rnd, false, std::max(2.0f, lw * 1.6f));   // arma equipada
+					if (hfl & 1) r->drawRoundedRect(a0, a1, (hfl & 4) ? Cb(255, 210, 70, 240) : Cb(90, 210, 120, 230), rnd, false, std::max(2.0f, lw * 1.6f));   // equipada: verde = no corpo, amarelo = na mao
 					InventoryUI::DrawHotbarIcon(r, icon, ImVec2(a0.x + m, a0.y + m), ImVec2(a1.x - m, a1.y - m), (int)std::lround((float)std::min(255, A + 170) * fm * bk * fade));
 					if (qty > 1 || ((hfl & 1) && qty <= 0))
 					{

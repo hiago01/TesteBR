@@ -644,7 +644,8 @@ void InventoryUI::draw(ImGuiRenderer* r)
 					else { const int sl = [&]{ for (const Item& it : S.items) if (it.id == hot[t.src].id) return it.slot; return -1; }();
 					       if (sl >= 0) { Send("/invx bar %d %d", dh, sl); } else Send("/invx barclear %d", t.src); }
 				}
-				else Send("/invx hot %d", t.src);                              // toque = equipar/guardar/usar
+				else if (hot[t.src].flags & 1) Send("/invx hotstow %d", t.src);   // inventario aberto: toque numa arma equipada = devolve ao inventario
+				else Send("/invx hot %d", t.src);                              // toque = equipar/usar
 			}
 			else if (t.kind == 2 && tradeMode && !t.scrolling)               // painel de negociacao
 			{
@@ -841,7 +842,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 
 	// ---- slots rapidos (alvo de arrastar) ----
 	{
-		const char* ttl = "SLOTS RÁPIDOS — arraste um item para cá  ·  toque no slot para equipar/usar  ·  arraste para fora para limpar";
+		const char* ttl = "SLOTS RÁPIDOS — arraste um item para cá  ·  toque: equipar/usar (arma equipada: devolve ao inventário)  ·  fora da faixa: limpar  ·  máx. 3 armas";
 		r->drawText(ImVec2(hotX, hotY - 13.0f * k), cMute, ttl, false, 9.0f * k);
 		const int over = g_t.dragging ? hotAt(g_t.cx, g_t.cy) : -1;
 		for (int i = 0; i < 5; i++)
@@ -851,7 +852,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 			const bool eq = (h.flags & 1) != 0, miss = h.id && h.qty <= 0 && !eq;
 			const bool tgt = over == i;
 			r->drawRect(a, b, tgt ? cPurpleF : cPanelBg, true);
-			r->drawRect(a, b, tgt ? cPurple : (eq ? cGreen : cSlotLn), false, (tgt || eq) ? 2.0f : 1.0f);
+			r->drawRect(a, b, tgt ? cPurple : ((h.flags & 4) ? ImColor(255, 210, 70, 255) : (eq ? cGreen : cSlotLn)), false, (tgt || eq) ? 2.0f : 1.0f);   // amarelo = na mao, verde = no corpo
 			if (h.id)
 			{
 				const float m = 6.0f * k;
