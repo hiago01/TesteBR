@@ -2339,18 +2339,29 @@ void CPlayerPed::ProcessAttach()
         {
             auto hierarchy = GetAnimHierarchyFromSkinClump(m_pPed->m_pRwClump);
 
+            // diagnostico (armas no corpo, slots 7..9): 1 linha a cada ~300 chamadas
+            static unsigned s_attDbg = 0;
+            const bool dbg = iter.first >= 7 && (s_attDbg++ % 300 == 0);
             int iID;
             if (hierarchy)
             {
 
                 iID = RpHAnimIDGetIndex(hierarchy, attach.dwBone);
+                if (iID == -1)       // esqueleto de skin custom sem o osso pedido: tenta os vizinhos (coluna 3 -> 2 -> 1; senao qualquer osso da coluna)
+                {
+                    static const int kFallback[] = { 3, 2, 1, 4, 5, 0 };
+                    for (int b : kFallback) { iID = RpHAnimIDGetIndex(hierarchy, b); if (iID != -1) break; }
+                    if (dbg) FLog("[ATTACH-PROC] slot %d: osso interno %d NAO existe no esqueleto; usando alternativo (iID=%d)", (int)iter.first, (int)attach.dwBone, iID);
+                }
             }
             else
             {
+                if (dbg) FLog("[ATTACH-PROC] slot %d: sem hierarquia de animacao no ped", (int)iter.first);
                 continue;
             }
             if (iID == -1)
             {
+                if (dbg) FLog("[ATTACH-PROC] slot %d: nenhum osso encontrado (iID=-1)", (int)iter.first);
                 continue;
             }
             pObject->m_pEntity->Remove();
@@ -2393,6 +2404,11 @@ void CPlayerPed::ProcessAttach()
             }
 
             pObject->m_pEntity->SetMatrix((CMatrix&)outMat); // copy to CMatrix
+            if (dbg) {
+                const CVector pp = m_pPed->GetPosition();
+                FLog("[ATTACH-PROC] slot %d modelo %d osso=%d iID=%d ped=(%.2f,%.2f,%.2f) objeto=(%.2f,%.2f,%.2f) add=%d", (int)iter.first, (int)attach.dwModelId, (int)attach.dwBone, iID,
+                     pp.x, pp.y, pp.z, outMat.pos.x, outMat.pos.y, outMat.pos.z, (int)m_pPed->IsAdded());
+            }
 
             pObject->m_pEntity->UpdateRW();
             pObject->m_pEntity->UpdateRwFrame();
