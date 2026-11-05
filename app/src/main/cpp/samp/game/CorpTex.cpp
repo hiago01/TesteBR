@@ -630,6 +630,15 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
     // (fantasy_m_torso2.png, fantasy_m_pants1.png ...) dentro de textures/272/<pasta>/ ou pack/corp/<pasta>/  ->  /corp <pasta>
     if (!look.corp.empty()) { c = EnsureCorp(look.corp); if (!c) FLog("[CORPTEX] corp '%s' indisponivel: ignorada", look.corp.c_str()); }
     const bool copMode = c != nullptr || !look.ov.empty();   // corp escolhida OU pecas trocadas por /cop: peca sem PNG fica oculta
+    // CORRECAO (skin 271 branca): sem corp escolhida o DFF so tem NOMES (fantasy_m_cop_*) e o texdb do jogo nao tem essas texturas;
+    // textura NULL = peca BRANCA. Entao o 271 sem corp usa uma corp PADRAO do banco texdb/skins (base > policia > primeira que existir)
+    // nas pecas padrao (kDefaultVisible) e OCULTA as demais pecas da policia (nunca ficam brancas).
+    Corp* dc = nullptr;
+    if (!copMode && byIndex && model == kCorpModel) {
+        for (const char* nm : {"base", "policia", "padrao"}) { if (CorpExists(nm)) { dc = EnsureCorp(nm); if (dc) break; } }
+        if (!dc) for (const std::string& n : ListCorps()) { dc = EnsureCorp(n); if (dc) break; }
+        FLog("[CORPTEX] jogador %d modelo 271 sem corp: corp padrao %s", (int)id, dc ? "carregada do banco" : "INDISPONIVEL (pecas da policia ficam ocultas; instale o banco texdb/skins)");
+    }
     for (size_t i = 0; i < mats.size(); ++i) {
         const std::string& k = keys[i];
         if (k.empty() || !mats[i]) continue;
@@ -639,8 +648,14 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
                 if (it != c->tex.end()) { over[k] = it->second; ++nCorp; if (const Box* b = FindPiece(k)) visible.push_back(b); continue; }
             }
             if (hideTex && byIndex && k.compare(0, std::strlen(kPiecePrefix), kPiecePrefix) == 0) { over[k] = hideTex; ++nHidden; }
-        } else if (byIndex && model == kCorpModel) {   // sem corp (ou corp indisponivel): vale o que o texdb mostra por padrao
-            for (const char* d : kDefaultVisible) if (k == d) if (const Box* b = FindPiece(k)) visible.push_back(b);
+        } else if (byIndex && model == kCorpModel) {   // sem corp (ou corp indisponivel): corp padrao nas pecas padrao; o resto oculto
+            bool isDef = false;
+            for (const char* d : kDefaultVisible) if (k == d) isDef = true;
+            if (isDef && dc) {
+                auto it = dc->tex.find(k);
+                if (it != dc->tex.end()) { over[k] = it->second; ++nCorp; if (const Box* b = FindPiece(k)) visible.push_back(b); continue; }
+            }
+            if (hideTex && k.compare(0, std::strlen(kPiecePrefix), kPiecePrefix) == 0) { over[k] = hideTex; ++nHidden; }
         }
     }
 
@@ -730,8 +745,10 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
         } else {
             std::vector<LookSlots::Op> ops;
             // modelo 7: o que o servidor nao citou = padrao (oculto), NUNCA o que estiver no molde (que e a roupa do jogador local)
-            if (model == kNormalModel) LookSlots::PlanWithDefaults(look.slots, ops);
-            else                       LookSlots::Plan(look.slots, ops);
+            // CORRECAO (271): o policial tem que ter o MESMO corpo do 7. Antes so o 7 usava o plano com padroes; no 271 os slots de
+            // corpo nao citados (outras cabecas/cabelos/sobrancelhas...) ficavam com a textura nativa = BRANCOS. Os materiais de roupa
+            // da policia (fantasy_m_cop_*) nao fazem parte dos slots, entao nao sao afetados.
+            LookSlots::PlanWithDefaults(look.slots, ops);
             for (const LookSlots::Op& op : ops) {
                 RwTexture* t = op.kind == LookSlots::kHide ? hideTex : op.kind == LookSlots::kPack ? GetSlotPackTex(op.rel) : GetSlotOrigTex(op.mat);
                 if (!t) { if (op.kind != LookSlots::kOrig) ++nSlotMiss; continue; }
@@ -791,10 +808,21 @@ void SynthesizeDefaults()
     const PLAYERID me = pool->GetLocalPlayerID();
     static const std::vector<LookSlots::St> kDefault = LookSlots::DefaultSlots();
     for (PLAYERID id = 0; id < MAX_PLAYERS; ++id) {
-        if (id == me || !pool->GetSlotState(id)) continue;
+        if (id != me && !pool->GetSlotState(id)) continue;
+        if (s_look[id].synthetic && s_look[id].slots.empty()) {              // padrao do 271 (sem slots): solta se o ped deixou de ser 271
+            CEntityGTA* e0 = GetEnt(id);
+            if (!e0 || (int)e0->GetModelId() != kCorpModel) ForgetWant(id);
+        }
         if (s_look[id].Active()) continue;                                   // ja tem estado (recebido ou sintetizado)
         CEntityGTA* e = GetEnt(id);
-        if (!e || (int)e->GetModelId() != kNormalModel || !e->m_pRwClump) continue;
+        if (!e || !e->m_pRwClump) continue;
+        if ((int)e->GetModelId() == kCorpModel) {                            // 271 sem NENHUM visual (nem o local): aparencia padrao, sem corp
+            Look l271; l271.tone = 1; l271.face = 1; l271.hairStyle = 1; l271.hairColor = 1; Sanitize(l271); l271.synthetic = true;
+            s_look[id] = std::move(l271); s_tried[id].valid = false;
+            if (std::find(s_wantIds.begin(), s_wantIds.end(), id) == s_wantIds.end()) s_wantIds.push_back(id);
+            continue;
+        }
+        if (id == me || (int)e->GetModelId() != kNormalModel) continue;
         Look l; l.slots = kDefault; l.synthetic = true;
         s_look[id] = std::move(l); s_tried[id].valid = false;
         if (std::find(s_wantIds.begin(), s_wantIds.end(), id) == s_wantIds.end()) s_wantIds.push_back(id);
