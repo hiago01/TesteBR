@@ -758,6 +758,20 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
             }
         }
     }
+    // CORRECAO (271, bracos/ombros/tronco da pele aparecendo POR CIMA da manga): os slots de pele (skin_torso/skin_leg/skin_feet)
+    // so conhecem as roupas do /skin7; as pecas da policia (fantasy_m_cop_*) nao entram na conta, entao body.arm*/shoulder*/torso*
+    // ficavam com a textura de pele e vazavam pelas mangas compridas (goe, gnr, gnr_negociador, base...). Igual ao modelo 7:
+    // regiao do corpo coberta por uma peca VISIVEL da corp = oculta. Mangas curtas (municipal, inem, mec) mantem o braco de fora.
+    if (byIndex && model == kCorpModel && hideTex) {
+        int nCov = 0;
+        for (const Box& r : kBodyRegions) {
+            bool covered = false;
+            for (const Box* p : visible) if (PieceCovers(*p, r)) { covered = true; break; }
+            if (!covered) continue;
+            over[r.name] = hideTex; ++nHidden; ++nCov;
+        }
+        FLog("[CORPTEX] jogador %d modelo 271: %d regiao(oes) de pele cobertas pela roupa foram ocultadas (%d peca(s) visivel(is))", (int)id, nCov, (int)visible.size());
+    }
     // CORRECAO (271): o policial NAO usa roupa intima (aparecia como formas cinza/brancas no quadril e nas costas).
     // Oculta por nome (qualquer material com "underwear"/"intima"/"cueca") e por ultimo, para nada reaplicar por cima.
     if (byIndex && model == kCorpModel && hideTex) {
