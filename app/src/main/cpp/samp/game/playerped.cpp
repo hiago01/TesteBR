@@ -2372,7 +2372,23 @@ void CPlayerPed::ProcessAttach()
             RwMatrix outMat;
             memcpy(&outMat, &hierarchy->pMatrixArray[iID], sizeof(RwMatrix));
 
-            CVector vecOut;
+            // Matriz do osso zerada/invalida (visto no log: objeto em (0,0.8,255) longe do ped): o ProjectMatrix sai sem calcular e o objeto
+            // nunca aparece. Plano B: posicao do osso pela funcao do proprio jogo (CPed::GetBonePosition, a mesma das tags de nome) e a
+            // orientacao do ped. Serve para armas no corpo (costas/quadril/coxa), que acompanham o giro do personagem.
+            auto absSum = [](const RwV3d& v) { return std::fabs(v.x) + std::fabs(v.y) + std::fabs(v.z); };
+            const bool degenerate = !(absSum(outMat.right) > 1e-3f && absSum(outMat.up) > 1e-3f && absSum(outMat.at) > 1e-3f) ||
+                                    !std::isfinite(outMat.pos.x) || !std::isfinite(outMat.pos.y) || !std::isfinite(outMat.pos.z);
+            if (degenerate)
+            {
+                outMat = m_pPed->GetMatrix().ToRwMatrix();
+                CVector bp{0.0f, 0.0f, 0.0f};
+                m_pPed->GetBonePosition(&bp, (uint32)attach.dwBone, false);
+                if (std::fabs(bp.x) + std::fabs(bp.y) + std::fabs(bp.z) < 0.01f) bp = m_pPed->GetPosition();
+                outMat.pos.x = bp.x; outMat.pos.y = bp.y; outMat.pos.z = bp.z;
+                if (dbg) FLog("[ATTACH-PROC] slot %d: matriz do osso invalida -> plano B (GetBonePosition) osso=%d pos=(%.2f,%.2f,%.2f)", (int)iter.first, (int)attach.dwBone, bp.x, bp.y, bp.z);
+            }
+
+            CVector vecOut{0.0f, 0.0f, 0.0f};
             ProjectMatrix(&vecOut, (CMatrix*)&outMat, &attach.vecOffset);
 
             outMat.pos = vecOut;
