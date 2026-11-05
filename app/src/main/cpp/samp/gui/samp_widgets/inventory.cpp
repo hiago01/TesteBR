@@ -800,3 +800,34 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		r->drawText(ImVec2(x + 14.0f * k, y + 7.0f * k), cText, toast, false, tfs);
 	}
 }
+
+// ---- slots rapidos / botao Inventario (HUD moderno) ----
+bool InventoryUI::HotbarGet(int slot, int& icon, int& qty)
+{
+	std::lock_guard<std::mutex> l(g_dm);
+	for (const Item& it : g_state.items)
+		if (it.slot == slot && it.qty > 0) { icon = it.icon; qty = it.qty; return true; }
+	return false;
+}
+
+void InventoryUI::HotbarUse(int slot)
+{
+	int icon = 0, qty = 0;
+	if (g_open.load() || !HotbarGet(slot, icon, qty)) return;
+	static int64_t s_last = 0;
+	const int64_t now = NowMs();
+	if (now - s_last < 250) return;                 // anti-repique
+	s_last = now;
+	Send("/invx use %d", slot);
+}
+
+void InventoryUI::RequestOpen()
+{
+	static int64_t s_last = 0;
+	const int64_t now = NowMs();
+	if (g_open.load() || !pNetGame || now - s_last < 700) return;
+	s_last = now;
+	pNetGame->SendChatCommand("/inv");
+}
+
+void InventoryUI::DrawHotbarIcon(ImGuiRenderer* r, int icon, const ImVec2& a, const ImVec2& b, int alpha) { DrawIcon(r, icon, a, b, alpha); }

@@ -45,10 +45,13 @@ namespace CtlLogic
 	// ---------------------------------------------------------------- botoes ---------
 	// P1 / P2 (entrar no veiculo como MOTORISTA / PASSAGEIRO): aparecem a pe, perto de um veiculo do SA-MP, e a acao e feita pelo
 	// cliente (CLocalPlayer::HandleDriverEntry / HandlePassengerEntry). No moderno o widget nativo "hud_car" fica oculto a pe.
-	enum Btn : int { B_RUN = 0, B_JUMP, B_CROUCH, B_ATTACK, B_MIC, B_RUNLOCK, B_AIM, B_P1, B_P2, B_COUNT };
+	enum Btn : int { B_RUN = 0, B_JUMP, B_CROUCH, B_ATTACK, B_MIC, B_RUNLOCK, B_AIM, B_P1, B_P2, B_INV, B_SLOTS, B_COUNT };
+	// B_INV  = botao INVENTARIO (mochila), padrao logo abaixo do minimapa; toque = pede ao servidor para abrir o inventario (/inv).
+	// B_SLOTS = barra de SLOTS RAPIDOS (kHotbarN casas) embaixo da tela; mostra os kHotbarN primeiros slots do inventario do servidor,
+	//           toque numa casa = usar o item (/invx use N). So A PE (some em veiculo / UI aberta). Editaveis como os outros (arrastar/tamanho/opacidade).
 	inline const char* BtnKey(int b)
 	{
-		static const char* k[B_COUNT] = { "corrida", "pulo", "agachar", "ataque", "microfone", "corrida_lock", "mirar", "p1", "p2" };
+		static const char* k[B_COUNT] = { "corrida", "pulo", "agachar", "ataque", "microfone", "corrida_lock", "mirar", "p1", "p2", "inventario", "slots" };
 		return (b >= 0 && b < B_COUNT) ? k[b] : "";
 	}
 
@@ -69,6 +72,8 @@ namespace CtlLogic
 		float sens     = 1.0f;             // 0.5 .. 2.0 (sensibilidade da intensidade)
 		float deadzone = 0.12f;            // 0 .. 0.45
 		float maxDist  = 1.0f;             // 0.6 .. 1.6 (distancia analogica maxima, x raio da base)
+		bool  showInv   = true;            // mostra o botao INVENTARIO (abaixo do minimapa)
+		bool  showSlots = true;            // mostra a barra de SLOTS RAPIDOS (embaixo)
 		bool  aimDrag  = true;             // Ataque tambem arrasta a mira (estilo Free Fire); desligado = Ataque so atira
 		float aimSens  = 1.0f;             // 0.3 .. 3.0 (sensibilidade do arrasto da mira)
 		float aimSmooth = 0.0f;            // 0 .. 0.85 (suavizacao; 0 = desligada)
@@ -82,12 +87,14 @@ namespace CtlLogic
 			{ 0.719f, 0.563f }, // mirar (toque: trava a mira; atirar desativa)
 			{ 0.677f, 0.731f }, // P1: entrar como motorista
 			{ 0.611f, 0.728f }, // P2: entrar como passageiro
+			{ 0.078f, 0.322f }, // inventario (abaixo do minimapa)
+			{ 0.500f, 0.915f }, // slots rapidos (embaixo, centro)
 		};
 
 		// Por controle (0..B_COUNT-1 = botoes, B_COUNT = joystick): multiplicador de tamanho e opacidade propria.
 		float ctlScale[B_COUNT + 1];       // 0.5 .. 2.0 (x joy_escala / botoes_escala)
 		float ctlAlpha[B_COUNT + 1];       // 0.15 .. 1.0 (opacidade absoluta do controle)
-		ModernConfig() { for (int i = 0; i <= B_COUNT; i++) { ctlScale[i] = 1.0f; ctlAlpha[i] = 0.15f; } ctlScale[B_RUNLOCK] = 1.32f; }
+		ModernConfig() { for (int i = 0; i <= B_COUNT; i++) { ctlScale[i] = 1.0f; ctlAlpha[i] = 0.15f; } ctlScale[B_RUNLOCK] = 1.32f; ctlAlpha[B_INV] = ctlAlpha[B_SLOTS] = 0.70f; ctlScale[B_SLOTS] = 1.15f; }
 
 		void Clamp()
 		{
@@ -163,6 +170,30 @@ namespace CtlLogic
 	{
 		const float dx = x - c.cx, dy = y - c.cy, R = c.r * padK;
 		return dx * dx + dy * dy <= R * R;
+	}
+
+	// ---- barra de slots rapidos (B_SLOTS): o "circulo" do layout guarda o centro e METADE do lado de cada casa (r) ----
+	constexpr int   kHotbarN   = 5;
+	constexpr float kHotbarGap = 0.16f;                       // espaco entre casas (fracao do lado da casa)
+	inline float HotbarSide(const CtlCircle& c)  { return 2.0f * c.r; }
+	inline float HotbarPitch(const CtlCircle& c) { return HotbarSide(c) * (1.0f + kHotbarGap); }
+	inline float HotbarWidth(const CtlCircle& c) { return HotbarSide(c) * kHotbarN + HotbarSide(c) * kHotbarGap * (kHotbarN - 1); }
+	inline float HotbarLeft(const CtlCircle& c)  { return c.cx - HotbarWidth(c) * 0.5f; }
+	inline int   HotbarIndexAt(const CtlCircle& c, float x)   // casa mais proxima do x (toque no espaco entre casas escolhe a vizinha)
+	{
+		int i = (int)std::floor((x - HotbarLeft(c)) / HotbarPitch(c));
+		return i < 0 ? 0 : (i >= kHotbarN ? kHotbarN - 1 : i);
+	}
+	// Acerto de um controle: circulo, exceto a barra de slots (retangulo da barra inteira).
+	inline bool BtnHit(const ModernLayout& L, int i, float x, float y, float padK = 1.2f)
+	{
+		const CtlCircle& c = L.btn[i];
+		if (i == B_SLOTS)
+		{
+			const float hw = HotbarWidth(c) * 0.5f + c.r * (padK - 1.0f), hh = c.r * padK;
+			return std::fabs(x - c.cx) <= hw && std::fabs(y - c.cy) <= hh;
+		}
+		return Hit(c, x, y, padK);
 	}
 
 	// ---------------------------------------------------------------- analogico -------
@@ -274,6 +305,7 @@ namespace CtlLogic
 		ModernLayout lay;
 		bool editing = false;
 		uint32_t disabledMask = 0;      // bit i = botao i ausente (ex.: CORRER com o LOCK ligado): nao desenha nem recebe toque
+		int slotPressed = -1;           // ultima casa da barra de slots tocada (0..kHotbarN-1), lida junto com a borda de B_SLOTS
 		uint32_t blockedMask = 0;       // bit i = botao i BLOQUEADO (pulando/na parede): continua desenhado (esmaecido), mas nao recebe toque novo
 
 		// ---- editor de HUD (so com editing=true) ----
@@ -393,11 +425,11 @@ namespace CtlLogic
 			int best = -1; float bestD = 1e30f;
 			for (int i = 0; i < B_COUNT; i++)
 			{
-				if (btnFinger[i] >= 0 || (disabledMask & (1u << i)) || (blockedMask & (1u << i)) || !Hit(lay.btn[i], x, y)) continue;
+				if (btnFinger[i] >= 0 || (disabledMask & (1u << i)) || (blockedMask & (1u << i)) || !BtnHit(lay, i, x, y)) continue;
 				const float dx = x - lay.btn[i].cx, dy = y - lay.btn[i].cy, d = dx * dx + dy * dy;
 				if (d < bestD) { bestD = d; best = i; }
 			}
-			if (best >= 0) { btnFinger[best] = num; pendingPressed |= (1u << best); return true; }
+			if (best >= 0) { if (best == B_SLOTS) slotPressed = HotbarIndexAt(lay.btn[B_SLOTS], x); btnFinger[best] = num; pendingPressed |= (1u << best); return true; }
 			// 2) joystick
 			if (stickFinger < 0)
 			{
@@ -505,7 +537,7 @@ namespace CtlLogic
 				int best = -1; float bestD = 1e30f;
 				for (int i = 0; i < B_COUNT; i++)
 				{
-					if ((disabledMask & (1u << i)) || !Hit(lay.btn[i], x, y)) continue;
+					if ((disabledMask & (1u << i)) || !BtnHit(lay, i, x, y)) continue;
 					const float dx = x - lay.btn[i].cx, dy = y - lay.btn[i].cy, d = dx * dx + dy * dy;
 					if (d < bestD) { bestD = d; best = i; }
 				}

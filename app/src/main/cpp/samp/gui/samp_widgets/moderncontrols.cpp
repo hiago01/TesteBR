@@ -6,6 +6,7 @@
 #include "controlmode.h"
 #include "maximomenu.h"
 #include "controlsselector.h"
+#include "inventory.h"
 #include "../../game/Plugins/RpAnimBlendPlugin/RpAnimBlend.h"
 #include "../../game/RW/RenderWare.h"
 #include "../../vendor/stb/stb_image.h"   // implementacao (STB_IMAGE_IMPLEMENTATION) esta em game/sprite2d.cpp
@@ -51,6 +52,8 @@ namespace
 	std::atomic<int64_t>  g_enterMs{ -1000000 };   // ultimo P1/P2 aceito (recarga)
 	std::atomic<bool>     g_runLock{ false };   // CORRIDA LOCK ligada: o personagem corre reto sem segurar o joystick
 	std::atomic<uint32_t> g_edges{ 0 };
+	std::atomic<bool>     g_invReq{ false };   // B_INV tocado (tratado na thread de desenho)
+	std::atomic<int>      g_slotReq{ -1 };     // B_SLOTS tocado: casa 0..kHotbarN-1 (tratado na thread de desenho)
 	std::atomic<int64_t>  g_jumpMs{ -1000000 };
 	CtlLogic::AimDrag     g_aim;
 	int                   g_aimFinger = -1;
@@ -193,6 +196,8 @@ namespace
 				}
 				edge &= ~((1u << B_P1) | (1u << B_P2));
 			}
+			if (edge & (1u << B_INV))   { g_invReq.store(true); edge &= ~(1u << B_INV); }                                   // inventario: aberto pelo servidor (/inv)
+			if (edge & (1u << B_SLOTS)) { g_slotReq.store(g_ctl.slotPressed); edge &= ~(1u << B_SLOTS); }                    // slot rapido: usa o item
 			if (edge & (1u << B_JUMP))
 			{
 				const int64_t now = NowMs();
@@ -444,6 +449,7 @@ void ModernControls::draw(ImGuiRenderer* r)
 			}
 			if (!showEnter) g_ctl.disabledMask |= (1u << B_P1) | (1u << B_P2);
 		}
+		if (!editing) { if (!g_ctl.cfg.showInv) g_ctl.disabledMask |= (1u << B_INV); if (!g_ctl.cfg.showSlots) g_ctl.disabledMask |= (1u << B_SLOTS); }   // desligados nos ajustes (no editor continuam visiveis)
 		// pulando/na parede: bloqueia TODOS os botoes, menos o PULO (que vale uma vez so); o joystick segue livre
 		g_ctl.blockedMask = 0u;
 		if (!editing && g_busy.load())
@@ -462,6 +468,13 @@ void ModernControls::draw(ImGuiRenderer* r)
 		if (!editing && g_editing.load() == false) g_ctl.editing = false;
 	}
 	g_active.store(show && !editing);
+	if (!editing)   // inventario / slots rapidos: as acoes saem na thread de desenho (nao na de toque)
+	{
+		if (g_invReq.exchange(false)) InventoryUI::RequestOpen();
+		const int sr = g_slotReq.exchange(-1);
+		if (sr >= 0 && show) InventoryUI::HotbarUse(sr);
+	}
+	else { g_invReq.store(false); g_slotReq.store(-1); }
 	g_micVeh.store(micVeh);
 	if (!show && !micVeh)
 	{
@@ -524,7 +537,7 @@ void ModernControls::draw(ImGuiRenderer* r)
 	}
 
 	// botoes
-	static const char* const kLbl[B_COUNT] = { "CORRER", "PULO", "AGACHAR", "ATAQUE", "MIC", "LOCK", "MIRAR", "P1", "P2" };
+	static const char* const kLbl[B_COUNT] = { "CORRER", "PULO", "AGACHAR", "ATAQUE", "MIC", "LOCK", "MIRAR", "P1", "P2", "INV", "SLOTS" };
 	for (int i = 0; i < B_COUNT; i++)
 	{
 		if (((snap.disabledMask >> i) & 1u)) continue;
@@ -533,7 +546,51 @@ void ModernControls::draw(ImGuiRenderer* r)
 		const int A = alphaOf(i);
 		const float bk = (((snap.blockedMask >> i) & 1u) != 0) ? 0.3f : 1.0f;      // bloqueado (pulando/na parede): esmaecido
 		auto Cb = [&](int R, int G, int B2, int A2) { return ImColor(R, G, B2, (int)std::lround((float)A2 * fm * bk)); };
+		if (i == B_SLOTS)       // barra de slots rapidos: casas arredondadas com os primeiros slots do inventario do servidor
+		{
+			const float side = HotbarSide(b), pitch = HotbarPitch(b), left = HotbarLeft(b), top = b.cy - b.r;
+			const float rnd = side * 0.18f, lw = std::max(2.0f, side * 0.04f);
+			for (int k = 0; k < kHotbarN; k++)
+			{
+				const ImVec2 a0(left + (float)k * pitch, top), a1(a0.x + side, a0.y + side);
+				const bool dn = snap.BtnDown(B_SLOTS) && snap.slotPressed == k;
+				r->drawRoundedRect(a0, a1, dn ? Cb(40, 110, 230, std::min(255, A + 40)) : Cb(10, 16, 30, A), rnd, true);
+				r->drawRoundedRect(a0, a1, Cb(30, 144, 255, std::min(255, A + 90)), rnd, false, lw);
+				int icon = 8, qty = 0;
+				if (InventoryUI::HotbarGet(k, icon, qty))
+				{
+					const float m = side * 0.14f;
+					InventoryUI::DrawHotbarIcon(r, icon, ImVec2(a0.x + m, a0.y + m), ImVec2(a1.x - m, a1.y - m), (int)std::lround((float)std::min(255, A + 170) * fm * bk));
+					if (qty > 1)
+					{
+						char q[12]; snprintf(q, sizeof q, "x%d", qty);
+						const float fq = side * 0.22f; const ImVec2 ts = r->calculateTextSize(q, fq);
+						r->drawText(ImVec2(a1.x - ts.x - side * 0.07f, a1.y - ts.y - side * 0.05f), Cb(255, 255, 255, std::min(255, A + 150)), q, true, fq);
+					}
+				}
+				char nb[4]; snprintf(nb, sizeof nb, "%d", k + 1);
+				r->drawText(ImVec2(a0.x + side * 0.09f, a0.y + side * 0.04f), Cb(255, 255, 255, std::min(255, A + 60)), nb, false, side * 0.2f);
+			}
+			if (editing && snap.sel == i)
+				r->drawRoundedRect(ImVec2(left - side * 0.1f, top - side * 0.1f), ImVec2(left + HotbarWidth(b) + side * 0.1f, top + side * 1.1f), kYellow, rnd * 1.2f, false, std::max(3.0f, b.r * 0.08f));
+			continue;
+		}
 		circle(b, down ? Cb(255, 255, 255, std::min(255, A + 60)) : Cb(20, 20, 20, A), Cb(255, 255, 255, std::min(255, A + 50)), std::max(2.0f, b.r * 0.06f));
+		if (i == B_INV)         // mochila (desenhada por primitivas) + etiqueta "INVENTARIO"
+		{
+			const float h = b.r * 0.62f; const ImColor wh = Cb(255, 255, 255, std::min(255, A + 150)), dk = Cb(20, 24, 40, std::min(255, A + 120));
+			r->drawRoundedRect(ImVec2(b.cx - h * 0.18f - h * 0.30f, b.cy - h * 1.02f), ImVec2(b.cx + h * 0.48f, b.cy - h * 0.40f), wh, h * 0.25f, false, std::max(2.0f, h * 0.14f));   // alca
+			r->drawRoundedRect(ImVec2(b.cx - h * 0.70f, b.cy - h * 0.58f), ImVec2(b.cx + h * 0.70f, b.cy + h * 0.98f), wh, h * 0.34f, true);                                             // corpo
+			r->drawRoundedRect(ImVec2(b.cx - h * 0.46f, b.cy + h * 0.10f), ImVec2(b.cx + h * 0.46f, b.cy + h * 0.66f), dk, h * 0.16f, false, std::max(2.0f, h * 0.12f));              // bolso
+			r->drawLine(ImVec2(b.cx - h * 0.70f, b.cy - h * 0.10f), ImVec2(b.cx + h * 0.70f, b.cy - h * 0.10f), dk, std::max(2.0f, h * 0.10f));                                           // aba
+			const char* lb = "INVENTÁRIO"; const float fl = b.r * 0.30f; const ImVec2 ts = r->calculateTextSize(lb, fl);
+			const ImVec2 p0(b.cx - ts.x * 0.5f - fl * 0.55f, b.cy + b.r * 1.05f), p1(b.cx + ts.x * 0.5f + fl * 0.55f, b.cy + b.r * 1.05f + ts.y + fl * 0.45f);
+			r->drawRoundedRect(p0, p1, Cb(10, 16, 30, std::min(255, A + 60)), (p1.y - p0.y) * 0.5f, true);
+			r->drawRoundedRect(p0, p1, Cb(30, 144, 255, std::min(255, A + 90)), (p1.y - p0.y) * 0.5f, false, std::max(1.5f, fl * 0.12f));
+			r->drawText(ImVec2(p0.x + fl * 0.55f, p0.y + fl * 0.22f), Cb(255, 255, 255, std::min(255, A + 150)), lb, false, fl);
+			if (editing && snap.sel == i) ring(b, 1.18f, std::max(3.0f, b.r * 0.08f));
+			continue;
+		}
 		RwRaster* ico = IconRaster();
 		if (ico)
 		{

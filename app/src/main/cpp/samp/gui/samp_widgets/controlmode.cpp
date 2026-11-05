@@ -57,6 +57,8 @@ namespace
 			g_cfg.deadzone = (float)ini.GetDoubleValue(s, "zona_morta", g_cfg.deadzone);
 			g_cfg.maxDist  = (float)ini.GetDoubleValue(s, "distancia_max", g_cfg.maxDist);
 			g_cfg.aimDrag  = ini.GetLongValue(s, "mira_arrastavel", g_cfg.aimDrag ? 1 : 0) != 0;
+			g_cfg.showInv   = ini.GetLongValue(s, "mostrar_inventario", g_cfg.showInv ? 1 : 0) != 0;
+			g_cfg.showSlots = ini.GetLongValue(s, "mostrar_slots", g_cfg.showSlots ? 1 : 0) != 0;
 			g_cfg.aimSens  = (float)ini.GetDoubleValue(s, "mira_sensibilidade", g_cfg.aimSens);
 			g_cfg.aimSmooth = (float)ini.GetDoubleValue(s, "mira_suavizacao", g_cfg.aimSmooth);
 			// Layouts HUD 1..4: chaves hud<N>_*. O HUD 1 usa as chaves antigas (joy_x, b_<botao>_x, transparencia...) como
@@ -68,6 +70,7 @@ namespace
 				g_cfg.btnPos[i].y = (float)ini.GetDoubleValue(s, (k + "_y").c_str(), g_cfg.btnPos[i].y);
 			}
 			for (int i = 0; i <= B_COUNT; i++) g_cfg.ctlAlpha[i] = g_cfg.alpha;      // opacidade antiga (global) como padrao
+			g_cfg.ctlAlpha[B_INV] = g_cfg.ctlAlpha[B_SLOTS] = 0.70f;                    // controles novos (inventario/slots): visiveis por padrao
 			g_cfg.Clamp();
 			const HudLayout legacy = ExtractLayout(g_cfg);
 			for (int n = 0; n < kHudCount; n++)
@@ -115,6 +118,8 @@ namespace
 		ini.SetDoubleValue(s, "zona_morta", g_cfg.deadzone);
 		ini.SetDoubleValue(s, "distancia_max", g_cfg.maxDist);
 		ini.SetLongValue(s, "mira_arrastavel", g_cfg.aimDrag ? 1 : 0);
+		ini.SetLongValue(s, "mostrar_inventario", g_cfg.showInv ? 1 : 0);
+		ini.SetLongValue(s, "mostrar_slots", g_cfg.showSlots ? 1 : 0);
 		ini.Delete(s, "fade_freada", true);     // chave removida: o fade na freada agora e sempre ativo; limpa o que versoes antigas gravaram
 		ini.SetDoubleValue(s, "mira_sensibilidade", g_cfg.aimSens);
 		ini.SetDoubleValue(s, "mira_suavizacao", g_cfg.aimSmooth);

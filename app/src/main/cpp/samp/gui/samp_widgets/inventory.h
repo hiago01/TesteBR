@@ -29,6 +29,14 @@ public:
 	static bool ConsumeFlushRequest();
 	static bool OnBackPressed();               // true se estava aberto (e foi fechado)
 
+	// ---- slots rapidos / botao Inventario do HUD moderno (ModernControls: B_SLOTS e B_INV) ----
+	// Os slots rapidos espelham os primeiros slots do inventario do SERVIDOR (o estado vem do RPC 203; o servidor continua sendo
+	// a autoridade: usar = "/invx use N"). O estado persiste depois de fechar o inventario.
+	static bool HotbarGet(int slot, int& icon, int& qty);                 // true se ha item nesse slot
+	static void HotbarUse(int slot);                                      // usa o item do slot (se houver)
+	static void RequestOpen();                                            // pede ao servidor para abrir o inventario (/inv)
+	static void DrawHotbarIcon(ImGuiRenderer* r, int icon, const ImVec2& a, const ImVec2& b, int alpha);
+
 	// RPC 203 (servidor -> cliente). data/bytes = payload completo.
 	static void OnServerPacket(const unsigned char* data, int bytes);
 
