@@ -2376,7 +2376,10 @@ void CPlayerPed::ProcessAttach()
             // nunca aparece. Plano B: posicao do osso pela funcao do proprio jogo (CPed::GetBonePosition, a mesma das tags de nome) e a
             // orientacao do ped. Serve para armas no corpo (costas/quadril/coxa), que acompanham o giro do personagem.
             auto absSum = [](const RwV3d& v) { return std::fabs(v.x) + std::fabs(v.y) + std::fabs(v.z); };
-            const bool degenerate = !(absSum(outMat.right) > 1e-3f && absSum(outMat.up) > 1e-3f && absSum(outMat.at) > 1e-3f) ||
+            // visto nos logs: as matrizes do hierarquia desse esqueleto vem com posicao (0,0,0) (o ProjectMatrix tambem recusa pos zero),
+            // entao as armas no corpo (slots 7..9) SEMPRE usam o plano B: posicao do osso pelo jogo + orientacao do ped.
+            const bool degenerate = iter.first >= 7 || !(absSum(outMat.right) > 1e-3f && absSum(outMat.up) > 1e-3f && absSum(outMat.at) > 1e-3f) ||
+                                    absSum(outMat.pos) < 1e-6f ||
                                     !std::isfinite(outMat.pos.x) || !std::isfinite(outMat.pos.y) || !std::isfinite(outMat.pos.z);
             if (degenerate)
             {
