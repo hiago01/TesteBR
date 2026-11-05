@@ -1,4 +1,7 @@
 #include "../game/Diag.h"
+#include "../vendor/armhook/patch.h"
+#include "../game/util.h"
+#include "../game/Enums/eWeaponType.h"
 #include "../main.h"
 #include "../game/game.h"
 #include "netgame.h"
@@ -1632,10 +1635,10 @@ void ScrSetArmedWeapon(RPCParameters* rpcParams)
 	bsData.Read(dwWeapon);
 	if (dwWeapon >= 0 && dwWeapon <= 46) {
 		CPlayerPed* pPlayerPed = pGame->FindPlayerPed();
-		// CPlayerPed::SetArmedWeapon e um stub vazio (nao fazia nada): o RPC SetPlayerArmedWeapon do servidor nunca trocava a arma da
-		// mao. Aqui chama direto CPed::SetCurrentWeapon (0 = punhos), que e o que o inventario usa para sacar/guardar a arma no corpo.
-		if (pPlayerPed && pPlayerPed->m_pPed) {
-			pPlayerPed->SetCurrentWeapon((uint8_t)dwWeapon);
+		// CPlayerPed::SetArmedWeapon e um stub vazio (nao fazia nada), e CPlayerPed::SetCurrentWeapon usa offset 32-bit (+1 Thumb): em arm64
+		// da SIGBUS. Usa o mesmo caminho do weaponbar.cpp (simbolo CPed::SetCurrentWeapon). 0 = punhos.
+		if (pPlayerPed && pPlayerPed->m_pPed && GamePool_Ped_GetAt(pPlayerPed->m_dwGTAId)) {
+			CHook::CallFunction<void>("_ZN4CPed16SetCurrentWeaponE11eWeaponType", pPlayerPed->m_pPed, (eWeaponType)dwWeapon);
 		}
 	}
 }
