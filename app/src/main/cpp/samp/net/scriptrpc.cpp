@@ -1632,8 +1632,10 @@ void ScrSetArmedWeapon(RPCParameters* rpcParams)
 	bsData.Read(dwWeapon);
 	if (dwWeapon >= 0 && dwWeapon <= 46) {
 		CPlayerPed* pPlayerPed = pGame->FindPlayerPed();
-		if (pPlayerPed) {
-			pPlayerPed->SetArmedWeapon(dwWeapon, false);
+		// CPlayerPed::SetArmedWeapon e um stub vazio (nao fazia nada): o RPC SetPlayerArmedWeapon do servidor nunca trocava a arma da
+		// mao. Aqui chama direto CPed::SetCurrentWeapon (0 = punhos), que e o que o inventario usa para sacar/guardar a arma no corpo.
+		if (pPlayerPed && pPlayerPed->m_pPed) {
+			pPlayerPed->SetCurrentWeapon((uint8_t)dwWeapon);
 		}
 	}
 }
