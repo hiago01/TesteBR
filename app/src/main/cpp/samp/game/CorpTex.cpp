@@ -832,6 +832,25 @@ void ForgetWant(PLAYERID id)
 // Jogador REMOTO do modelo 7 sem nenhum visual recebido (acabou de aparecer, o servidor ainda nao mandou, ou ele esta todo no
 // padrao): sem isto o ped usava o molde compartilhado = a roupa do jogador local ("todo mundo com a mesma roupa"). Aplica o
 // visual padrao do servidor (Look_ApplyDefault) ate o RPC 231/232 chegar; quando chegar, substitui. So thread do jogo.
+// Autocura: jogador remoto visivel que continua so com o visual SINTETICO (padrao) = o 231/232 dele nao chegou (ou chegou
+// antes do ped existir e foi descartado). Pede ao servidor ("/lookx need <id>") 4 vezes: 2 s, 5 s, 10 s e 20 s depois.
+// O servidor responde com o visual REAL (force). Contadores zeram quando chega visual real ou no stream-out.
+uint64_t s_synthSince[MAX_PLAYERS] = {};
+uint8_t  s_askN[MAX_PLAYERS]       = {};
+
+void ResetAsk(PLAYERID id) { if (id < MAX_PLAYERS) { s_synthSince[id] = 0; s_askN[id] = 0; } }
+
+void AskServerLook(PLAYERID id, uint64_t now)
+{
+    static const uint64_t kAt[4] = { 2000, 5000, 10000, 20000 };
+    if (!s_synthSince[id]) { s_synthSince[id] = now; return; }
+    if (s_askN[id] >= 4 || now - s_synthSince[id] < kAt[s_askN[id]]) return;
+    ++s_askN[id];
+    char buf[40]; std::snprintf(buf, sizeof(buf), "/lookx need %d", (int)id);
+    if (pNetGame) pNetGame->SendChatCommand(buf);
+    FLog("[CORPTEX] jogador %d ainda sem visual do servidor: pedido %d/4 (%s)", (int)id, (int)s_askN[id], buf);
+}
+
 void SynthesizeDefaults()
 {
     CPlayerPool* pool = pNetGame ? pNetGame->GetPlayerPool() : nullptr;
@@ -840,6 +859,10 @@ void SynthesizeDefaults()
     static const std::vector<LookSlots::St> kDefault = LookSlots::DefaultSlots();
     for (PLAYERID id = 0; id < MAX_PLAYERS; ++id) {
         if (id != me && !pool->GetSlotState(id)) continue;
+        if (id != me) {
+            if (s_look[id].synthetic) { if (GetEnt(id)) AskServerLook(id, NowMs()); else s_synthSince[id] = 0; }
+            else if (s_look[id].Active()) ResetAsk(id);
+        }
         if (s_look[id].synthetic && s_look[id].slots.empty()) {              // padrao do 271 (sem slots): solta se o ped deixou de ser 271
             CEntityGTA* e0 = GetEnt(id);
             if (!e0 || (int)e0->GetModelId() != kCorpModel) ForgetWant(id);
@@ -976,6 +999,7 @@ void Process()
             Look nl; nl.slots = s_look[c.id].slots;
             s_look[c.id] = std::move(nl); s_tried[c.id].valid = false;
         } else {                                            // Clear sem slots, ou Release (stream-out/nova conexao): solta tudo
+            if (c.kind == Cmd::Release) ResetAsk(c.id);
             ForgetWant(c.id);
         }
     }
