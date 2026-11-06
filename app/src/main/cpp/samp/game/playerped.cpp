@@ -2392,7 +2392,11 @@ void CPlayerPed::ProcessAttach()
             }
 
             CVector vecOut{0.0f, 0.0f, 0.0f};
-            ProjectMatrix(&vecOut, (CMatrix*)&outMat, &attach.vecOffset);
+            // conta direta (o ProjectMatrix do projeto sai sem calcular com esses dados e deixava o objeto em (0,0,0)):
+            // saida = right*x + up*y + at*z + pos   (RW: right = X, up = frente/Y, at = cima/Z)
+            vecOut.x = outMat.right.x * attach.vecOffset.x + outMat.up.x * attach.vecOffset.y + outMat.at.x * attach.vecOffset.z + outMat.pos.x;
+            vecOut.y = outMat.right.y * attach.vecOffset.x + outMat.up.y * attach.vecOffset.y + outMat.at.y * attach.vecOffset.z + outMat.pos.y;
+            vecOut.z = outMat.right.z * attach.vecOffset.x + outMat.up.z * attach.vecOffset.y + outMat.at.z * attach.vecOffset.z + outMat.pos.z;
 
             outMat.pos = vecOut;
 
