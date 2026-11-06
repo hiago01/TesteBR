@@ -2,6 +2,7 @@
 #include "../game/game.h"
 #include "../net/netgame.h"
 #include "gui.h"
+#include "../gui/samp_widgets/hudstate.h"
 #include "../playertags.h"
 #include "../net/playerbubblepool.h"
 #include "vendor/str_obfuscator/str_obfuscator.hpp"
@@ -217,6 +218,14 @@ void UI::drawList()
 	label = new Label("1.0.11", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
 	label->setPosition(ImVec2(0.0, 0.0));
 	this->addChild(label);*/
+
+	if (Hud::g.hideAll.load())
+	{
+		// jogador congelado (cutscene): nenhuma HUD; so dialogos/teclado continuam (senao o jogador ficaria preso)
+		if (m_dialog && m_dialog->visible()) m_dialog->draw(renderer());
+		if (m_keyboard && m_keyboard->visible()) m_keyboard->draw(renderer());
+		return;
+	}
 
 	if (pPlayerTags) pPlayerTags->Render(renderer());
 	if (pNetGame && pNetGame->GetTextLabelPool()) pNetGame->GetTextLabelPool()->Render(renderer());

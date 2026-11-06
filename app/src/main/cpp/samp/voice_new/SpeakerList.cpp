@@ -1,3 +1,4 @@
+#include "../gui/samp_widgets/hudstate.h"
 #include "../main.h"
 #include "../gui/gui.h"
 #include "../game/common.h"
@@ -72,6 +73,7 @@ void SpeakerList::Render()
 {
     if(!SpeakerList::initStatus || !SpeakerList::IsShowed())
         return;
+    if(Hud::g.hideAll.load()) return;   // jogador congelado (cutscene): sem icones de voz
 
     if(!pNetGame) return;
 

@@ -93,6 +93,7 @@ namespace Hud
 
 	void Reset()
 	{
+		g.hideAll.store(false);
 		g.visible.store(true);
 		g.hunger.store(100);
 		g.thirst.store(100);

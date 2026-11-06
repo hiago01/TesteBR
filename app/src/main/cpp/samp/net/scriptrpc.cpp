@@ -1522,6 +1522,7 @@ void ScrTogglePlayerControllable(RPCParameters* rpcParams)
 	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
 	bsData.Read(byteControllable);
 
+	Hud::g.hideAll.store(byteControllable == 0);   // congelado (cutscene etc.): esconde toda a HUD
 	pGame->FindPlayerPed()->TogglePlayerControllable(byteControllable);
 }
 

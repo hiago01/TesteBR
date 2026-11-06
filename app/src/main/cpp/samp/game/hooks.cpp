@@ -673,10 +673,14 @@ void Render2dStuff()
 
     //((void (*)()) (g_libGTASA + 0x51CFF0))(); // CHud::DrawRadar
     //CHook::CallFunction<void>("_ZN4CHud14DrawScriptTextEh", true);
-    CHook::CallFunction<void>("_ZN4CHud4DrawEv");
-    //	GPS::Draw();
-    //
-    ((void(*)(bool) )(g_libGTASA + 0x36FB00) )(false); // CTouchInterface::DrawAll
+    const bool hideHud = Hud::g.hideAll.load();   // jogador congelado (cutscene): nenhuma HUD
+    if (!hideHud)
+    {
+        CHook::CallFunction<void>("_ZN4CHud4DrawEv");   // radar, moldura do mapa, icones nativos
+        //	GPS::Draw();
+        //
+        ((void(*)(bool) )(g_libGTASA + 0x36FB00) )(false); // CTouchInterface::DrawAll (botoes de toque: pular, mira, etc.)
+    }
 
     CHook::CallFunction<void>("_Z12emu_GammaSeth", 1);
 
@@ -687,7 +691,7 @@ void Render2dStuff()
     if(pNetGame)
     {
         CTextDrawPool* pTextDrawPool = pNetGame->GetTextDrawPool();
-        if(pTextDrawPool) pTextDrawPool->Draw();
+        if(pTextDrawPool && !hideHud) pTextDrawPool->Draw();
     }
 
     if (pUI) pUI->render();

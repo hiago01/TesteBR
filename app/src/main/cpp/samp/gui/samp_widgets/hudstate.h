@@ -29,6 +29,7 @@ namespace Hud
 {
 	struct Data
 	{
+		std::atomic<bool>  hideAll{false};         // true enquanto o jogador esta CONGELADO (TogglePlayerControllable 0, ex.: cutscene): esconde TODA a HUD
 		std::atomic<bool>  visible{true};          // /hud on|off  ou flag do RPC 201
 		std::atomic<int>   hunger{100};            // 0..100
 		std::atomic<int>   thirst{100};            // 0..100
