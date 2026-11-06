@@ -6,6 +6,8 @@
 #include "../../vendor/stb/stb_image.h"   // implementacao em game/sprite2d.cpp
 #include "inventory.h"
 #include "inventory_atlas.h"
+#include "controlmode.h"
+#include "controlsselector.h"
 
 #include <algorithm>
 #include <chrono>
@@ -314,6 +316,11 @@ void InventoryUI::OnServerPacket(const unsigned char* data, int bytes)
 		}
 		std::lock_guard<std::mutex> l(g_dm);
 		for (int i = 0; i < 5; i++) g_hot[i] = tmp[i];
+	}
+	else if (op == 8)   // abre a tela de escolha de controles (= /controles); servidor envia ao fim da cutscene de conta nova
+	{
+		ControlMode::EnsureLoaded();
+		ControlsSelector::Open();
 	}
 	else if (op == 7)   // TRAVA DO TIRO (sem municao)
 	{
