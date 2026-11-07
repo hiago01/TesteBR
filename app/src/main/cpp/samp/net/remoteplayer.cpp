@@ -6,6 +6,7 @@
 #include "../vendor/encoding/encoding.h"
 #include "../game/CustomAnimSync.h"
 #include "../game/CorpTex.h"
+#include "../vendor/armhook/patch.h"
 
 extern UI* pUI;
 extern CGame *pGame;
@@ -54,6 +55,63 @@ CRemotePlayer::~CRemotePlayer()
 	}
 }
 
+// ---------------------------------------------------------------------------------------------
+// ARMA ATIVA DO JOGADOR REMOTO (v2)
+// Antes: CPlayerPed::SetArmedWeapon (stub VAZIO, nao faz nada) + GiveWeapon(arma, 9999). Dois defeitos:
+//  1) arma 0 (punhos): CPedGTA::GiveWeapon sai cedo (modelo -1) e nunca troca. Quando a municao do outro jogador acabava o
+//     sync passava a 0, o clone ficava com a arma antiga ativa e o log enchia de "GiveWeapon, iModelID -1, iWeaponID 0" por frame.
+//  2) arma que o clone ja tem num slot (ex.: municao do clone chegou a 0): so'  GiveWeapon nao reativava/rearmava a mao.
+// Agora: punhos -> CPed::SetCurrentWeapon(0) (mesmo caminho do ScrSetArmedWeapon); arma ja existente -> so ativa; arma nova ->
+// GiveWeapon. Para armas de fogo, repoe municao do clone (so' visual) e garante a arma NA MAO (m_bDontPlaceInHand).
+// ---------------------------------------------------------------------------------------------
+static void RemoteSetCurrentWeaponNative(CPedGTA* ped, uint8_t w)
+{
+	CHook::CallFunction<void>("_ZN4CPed16SetCurrentWeaponE11eWeaponType", ped, (eWeaponType)w);
+}
+static void RemoteApplyWeapon(CPlayerPed* pPlayerPed, uint8_t byteWeapon, PLAYERID id)
+{
+	if (!pPlayerPed || !pPlayerPed->m_pPed || byteWeapon > 46) return;
+	CPedGTA* ped = pPlayerPed->m_pPed;
+	static int s_log = 0;
+
+	const uint8_t cur = pPlayerPed->GetCurrentWeapon();
+	if (cur != byteWeapon)
+	{
+		const char* acao = "GiveWeapon";
+		if (byteWeapon == 0)
+		{
+			RemoteSetCurrentWeaponNative(ped, 0);
+			acao = "punhos";
+		}
+		else
+		{
+			bool jaTem = false;
+			for (int i = 0; i < 13; i++) if ((uint32_t)ped->m_aWeapons[i].dwType == byteWeapon) { jaTem = true; break; }
+			if (jaTem) { RemoteSetCurrentWeaponNative(ped, byteWeapon); acao = "reativa"; }
+			else pPlayerPed->GiveWeapon(byteWeapon, 9999);
+		}
+		if (s_log++ < 60)
+			FLog("[ARMA] jogador %d: arma %d -> %d (%s) agora=%d", (int)id, (int)cur, (int)byteWeapon, acao, (int)pPlayerPed->GetCurrentWeapon());
+	}
+
+	if ((byteWeapon >= 22 && byteWeapon <= 34) || byteWeapon == 38)
+	{
+		CWeapon* w = pPlayerPed->GetCurrentWeaponSlot();
+		if (w && (uint32_t)w->dwType == byteWeapon)
+		{
+			if (w->dwAmmo < 100u)
+				CHook::CallFunction<void>("_ZN4CPed7SetAmmoE11eWeaponTypej", ped, (eWeaponType)byteWeapon, (uint32_t)9999);
+			if (w->m_bDontPlaceInHand)
+			{
+				static int s_logHand = 0;
+				if (s_logHand++ < 20) FLog("[ARMA] jogador %d: arma %d estava com m_bDontPlaceInHand=1 (nada na mao) -> corrigido", (int)id, (int)byteWeapon);
+				w->m_bDontPlaceInHand = false;
+				RemoteSetCurrentWeaponNative(ped, byteWeapon);
+			}
+		}
+	}
+}
+
 void CRemotePlayer::Process()
 {
 	CPlayerPool* pPlayerPool = pNetGame->GetPlayerPool();
@@ -76,15 +134,8 @@ void CRemotePlayer::Process()
 
 			// UPDATE CURRENT WEAPON
 			uint8_t byteCurrentWeapon = m_ofSync.byteCurrentWeapon & 0x3F;
-			if (m_pPlayerPed->m_pPed->IsAdded() && m_pPlayerPed->GetCurrentWeapon() != byteCurrentWeapon) {
-				//m_pPlayerPed->SetArmedWeapon(byteCurrentWeapon, false);
-
-				// double check
-				if (m_pPlayerPed->GetCurrentWeapon() != byteCurrentWeapon) {
-					m_pPlayerPed->GiveWeapon(byteCurrentWeapon, 9999);
-					//m_pPlayerPed->SetArmedWeapon(byteCurrentWeapon, false);
-				}
-			}
+			if (m_pPlayerPed->m_pPed->IsAdded())
+				RemoteApplyWeapon(m_pPlayerPed, byteCurrentWeapon, m_PlayerID);
 
 			if(IS_TARGETING(m_pPlayerPed->m_pPed) &&
 				(m_pPlayerPed->GetCurrentWeapon() == 34 ||
@@ -152,15 +203,7 @@ void CRemotePlayer::Process()
 			}
 
 			uint8_t byteCurWeapon = m_icSync.byteCurrentWeapon & 0x3F;
-			if (m_pPlayerPed->GetCurrentWeapon() != byteCurWeapon)
-			{
-				m_pPlayerPed->SetArmedWeapon(byteCurWeapon, false);
-				if (m_pPlayerPed->GetCurrentWeapon() != byteCurWeapon)
-				{
-					m_pPlayerPed->GiveWeapon(byteCurWeapon, 9999);
-					m_pPlayerPed->SetArmedWeapon(byteCurWeapon, false);
-				}
-			}
+			RemoteApplyWeapon(m_pPlayerPed, byteCurWeapon, m_PlayerID);
 
 			m_byteUpdateFromNetwork = UPDATE_TYPE_NONE;
 		}
@@ -173,15 +216,8 @@ void CRemotePlayer::Process()
 			}
 
 			uint8_t byteCurrentWeapon = m_psSync.byteCurrentWeapon & 0x3F;
-			if(m_pPlayerPed->m_pPed->IsAdded() && m_pPlayerPed->GetCurrentWeapon() != byteCurrentWeapon)
-			{
-				m_pPlayerPed->SetArmedWeapon(byteCurrentWeapon, 0);
-				if(m_pPlayerPed->GetCurrentWeapon() != byteCurrentWeapon)
-				{
-					m_pPlayerPed->GiveWeapon(byteCurrentWeapon, 9999);
-					m_pPlayerPed->SetArmedWeapon(byteCurrentWeapon, 0);
-				}
-			}
+			if(m_pPlayerPed->m_pPed->IsAdded())
+				RemoteApplyWeapon(m_pPlayerPed, byteCurrentWeapon, m_PlayerID);
 
 			m_byteUpdateFromNetwork = UPDATE_TYPE_NONE;
 		}
@@ -201,7 +237,7 @@ void CRemotePlayer::Process()
                 //pPool->GetLocalPlayer()->GetPlayerPed()->GetMatrix(&localMat);
 
                 m_ofSync.byteCurrentWeapon = m_byteWeaponShotID;
-                m_pPlayerPed->SetCurrentWeapon(m_byteWeaponShotID);
+                RemoteApplyWeapon(m_pPlayerPed, m_byteWeaponShotID, m_PlayerID);   // (CPlayerPed::SetCurrentWeapon usa offset 32-bit: SIGBUS em arm64)
                 //ScriptCommand(&task_shoot_at_coord, m_pPlayerPed->m_dwGTAId, localMat.pos.x, localMat.pos.y, localMat.pos.z, 10);
                 m_pPlayerPed->SetCurrentAim(pGame->FindPlayerPed()->GetCurrentAim());
                 m_pPlayerPed->SetKeys(m_ofSync.lrAnalog, m_ofSync.udAnalog, (uint16_t)4);
@@ -826,18 +862,7 @@ void CRemotePlayer::StoreBulletFullSyncData(BULLET_SYNC_DATA* btSync)
 	}
 
 	if (m_pPlayerPed->m_pPed->IsAdded())
-	{
-		if (m_pPlayerPed->GetCurrentWeapon() != btSync->byteWeaponID)
-		{
-			m_pPlayerPed->SetArmedWeapon(btSync->byteWeaponID, true);
-
-			if (m_pPlayerPed->GetCurrentWeapon() != btSync->byteWeaponID)
-			{
-				m_pPlayerPed->GiveWeapon(btSync->byteWeaponID, 9999);
-				m_pPlayerPed->SetArmedWeapon(btSync->byteWeaponID, true);
-			}
-		}
-	}
+		RemoteApplyWeapon(m_pPlayerPed, btSync->byteWeaponID, m_PlayerID);
 
 	//m_byteWeaponShotID = btSync->byteWeaponID;
 
@@ -995,15 +1020,7 @@ void CRemotePlayer::PutInCurrentVehicle()
 			}
 
 			byteCurWeapon = byteCurWeapon & 0x3F;
-			if (m_pPlayerPed->GetCurrentWeapon() != byteCurWeapon)
-			{
-				m_pPlayerPed->SetArmedWeapon(byteCurWeapon, false);
-				if (m_pPlayerPed->GetCurrentWeapon() != byteCurWeapon)
-				{
-					m_pPlayerPed->GiveWeapon(byteCurWeapon, 9999);
-					m_pPlayerPed->SetArmedWeapon(byteCurWeapon, false);
-				}
-			}
+			RemoteApplyWeapon(m_pPlayerPed, byteCurWeapon, m_PlayerID);
 
 			uint32_t dwGTAId = pVehiclePool->FindGtaIDFromID(m_VehicleID);
 			m_pPlayerPed->PutDirectlyInVehicle(dwGTAId, m_byteSeatID);
