@@ -333,7 +333,9 @@ void CGame::SetGravity(float fGravity)
 
 bool CGame::IsGamePaused()
 {
-	return *(uint8_t*)(g_libGTASA + 0xBDC594);
+	// 0xBDC594 era o m_UserPause original da libGTASA, mas o GOT (0x84CD90) foi redirecionado para CTimer::m_UserPause
+	// (Timer.cpp). Ler o endereco antigo devolvia sempre 0. A variavel valida e a nossa.
+	return CTimer::m_UserPause;
 }
 
 bool CGame::IsGameLoaded()
@@ -879,6 +881,13 @@ extern UI *pUI;
 void MainLoop();
 void CGame::Process() {
     if(bIsGameExiting)return;
+
+    // Rede de seguranca: com o menu nativo desativado nada pode manter o jogo em user pause.
+    if (CTimer::kNativePauseMenuDisabled && CTimer::m_UserPause)
+    {
+        FLog("[PAUSE] m_UserPause preso em true com o menu desativado -> liberado");
+        CTimer::EndUserPause();
+    }
 
     MainLoop();
     if (pNetGame)

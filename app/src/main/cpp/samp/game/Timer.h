@@ -26,6 +26,10 @@ public:
     static float ms_fTimeScale;
     static bool m_CodePause;
     static bool m_UserPause;
+    // Menu de pausa NATIVO desativado (ver hooks.cpp / MobileMenu::InitForPause). Enquanto true, o jogo NUNCA
+    // entra em "user pause": quem fecha essa pausa no original e o proprio menu nativo (MobileMenu::Unload ->
+    // EndUserPause); sem o menu, nada a fecha e o mundo fica congelado (jogador parado, sem dano).
+    static constexpr bool kNativePauseMenuDisabled = true;
     static uint32_t m_FrameCounter;
     static uint32_t m_snTimeInMilliseconds;
     static uint32_t m_snPPPPreviousTimeInMilliseconds;

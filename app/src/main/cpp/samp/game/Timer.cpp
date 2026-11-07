@@ -8,6 +8,7 @@
 #include "../gui/gui.h"
 #include "../net/netgame.h"
 
+void FLog(const char* fmt, ...);
 extern CJavaWrapper *pJavaWrapper;
 extern UI *pUI;
 extern CNetGame* pNetGame;
@@ -99,6 +100,16 @@ void CTimer::Stop()
 // 0x561AF0
 void CTimer::StartUserPause()
 {
+    if (kNativePauseMenuDisabled)
+    {
+        // Nao pausa, nao esconde a UI, nao avisa o Java. Loga quem pediu (offset dentro da libGTASA).
+        static int s_log = 0;
+        if (s_log++ < 20)
+            FLog("[PAUSE] StartUserPause IGNORADO (menu nativo desativado) chamador=libGTASA+0x%lx",
+                 (unsigned long)((uintptr_t)__builtin_return_address(0) - g_libGTASA));
+        return;
+    }
+
     if (pUI) pUI->setVisible(false);
 
     if(pJavaWrapper && pNetGame)

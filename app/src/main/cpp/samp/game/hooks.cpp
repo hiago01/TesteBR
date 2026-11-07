@@ -1002,7 +1002,7 @@ uint32_t CHudColours__GetIntColour(uintptr* thiz, uint8 colour_id)
 //  por nos e a conexao com o servidor segue ativa. Mude para false para reverter.
 //  ATENCAO: nao validado em aparelho (sem NDK/aparelho neste ambiente) -- ver relatorio.
 // -------------------------------------------------------------------------------------
-static const bool kDisableNativePauseMenu = true;
+static const bool kDisableNativePauseMenu = CTimer::kNativePauseMenuDisabled;
 
 void (*MobileMenu__InitForPause)(void* thiz);
 void MobileMenu__InitForPause_hook(void* thiz)
