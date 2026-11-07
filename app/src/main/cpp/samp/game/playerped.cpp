@@ -135,6 +135,10 @@ CPlayerPed::~CPlayerPed()
     const int modelId = m_pPed ? (int)m_pPed->m_nModelIndex : -1;   // m_pPed pode ser nulo
 	FLog("Destroying PlayerPed(%d) modelo=%d ped=%p", m_bytePlayerNumber, modelId, (void*)m_pPed);
 
+	// CORRECAO (triangulo): CPopulation::RemovePed nao limpa o blip/seta criado por create_arrow_above_actor.
+	// Sem isto a seta ficava orfa a cada stream-out/respawn/remocao (e enchia o pool de blips).
+	HideMarker();
+
 	memset(&RemotePlayerKeys[m_bytePlayerNumber], 0, sizeof(PAD_KEYS));
 	// GameResetPlayerKeys
 	SetPlayerPedPtrRecord(m_bytePlayerNumber, 0);
@@ -240,7 +244,9 @@ void CPlayerPed::SetDead()
     uint8_t old = CWorld::PlayerInFocus;
     CWorld::PlayerInFocus = m_bytePlayerNumber;
     ScriptCommand(&kill_actor, m_dwGTAId);
-    CWorld::PlayerInFocus = 0;
+    CWorld::PlayerInFocus = old;   // CORRECAO: antes forcava 0 em vez de restaurar
+
+    HideMarker();                  // sem seta em cima do corpo; o Spawn() recria
 }
 // 0.3.7
 bool CPlayerPed::IsDead()
@@ -592,12 +598,20 @@ void CPlayerPed::SetImmunities(int BP, int FP, int EP, int CP, int MP)
 	}
 }
 // 0.3.7
-void CPlayerPed::ShowMarker(int nIndex)
+void CPlayerPed::HideMarker()
 {
 	if (m_dwArrow) {
 		ScriptCommand(&disable_marker, m_dwArrow);
 		m_dwArrow = 0;
 	}
+}
+
+void CPlayerPed::ShowMarker(int nIndex)
+{
+	HideMarker();
+
+	// CORRECAO: nao cria seta para ped invalido (a criacao do ped pode ter falhado -> actor 0)
+	if (!m_pPed || !m_dwGTAId || !GamePool_Ped_GetAt(m_dwGTAId)) return;
 
 	ScriptCommand(&create_arrow_above_actor, m_dwGTAId, &m_dwArrow);
 	ScriptCommand(&set_marker_color, m_dwArrow, nIndex);

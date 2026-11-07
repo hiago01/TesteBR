@@ -39,7 +39,7 @@ public:
 
 	// 0.3.7
 	CRemotePlayer* GetAt(PLAYERID playerId) {
-		if (playerId > MAX_PLAYERS || 
+		if (playerId >= MAX_PLAYERS || 
 			m_bPlayerSlotState[playerId] == false ||
 			m_pPlayers[playerId] == nullptr) {
 			return nullptr;
@@ -49,7 +49,7 @@ public:
 	}
 	// 0.3.7
 	bool GetSlotState(PLAYERID playerId) {
-		if (playerId > MAX_PLAYERS) {
+		if (playerId >= MAX_PLAYERS) {
 			return false;
 		}
 

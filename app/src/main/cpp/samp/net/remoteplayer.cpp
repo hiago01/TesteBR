@@ -1,3 +1,4 @@
+#include <cmath>
 #include "../main.h"
 #include "../game/game.h"
 #include "netgame.h"
@@ -786,9 +787,29 @@ void CRemotePlayer::StorePassengerFullSyncData(PASSENGER_SYNC_DATA* psSync)
 	SetState(PLAYER_STATE_PASSENGER);
 }
 // 0.3.7
+// --- validacao de BULLET_SYNC vindo da rede ---
+static inline bool IsFiniteVec(const CVector& v)
+{
+	return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z) &&
+		std::fabs(v.x) < 20000.0f && std::fabs(v.y) < 20000.0f && std::fabs(v.z) < 20000.0f;
+}
+// armas que realmente disparam projetil instantaneo (pistolas ... sniper, minigun, spray/extintor/camera nao)
+static inline bool IsValidBulletWeapon(uint8_t w)
+{
+	return (w >= 22 && w <= 34) || w == 38;
+}
+
 void CRemotePlayer::StoreBulletFullSyncData(BULLET_SYNC_DATA* btSync)
 {
-	if (!m_pPlayerPed || !m_pPlayerPed->m_pPed->IsAdded()) return;
+	// CORRECAO: m_pPed pode ser nulo (ped falhou/foi removido) -> antes dava null deref
+	if (!m_pPlayerPed || !m_pPlayerPed->m_pPed || !m_pPlayerPed->m_pPed->IsAdded()) return;
+	// ignora tiro de atirador morto (o estado NONE/SPAWNED NAO bloqueia: ped recem-streamado ainda nao tem estado)
+	if (m_pPlayerPed->IsDead()) return;
+
+	// CORRECAO: valida campos vindos da rede
+	if (btSync->byteHitType > BULLET_HIT_TYPE_PLAYER_OBJECT) return;
+	if (!IsValidBulletWeapon(btSync->byteWeaponID)) return;
+	if (!IsFiniteVec(btSync->vecOrigin) || !IsFiniteVec(btSync->vecPos) || !IsFiniteVec(btSync->vecOffset)) return;
 
 	BULLET_DATA btData;
 	memset(&btData, 0, sizeof(BULLET_DATA));
@@ -828,7 +849,9 @@ void CRemotePlayer::StoreBulletFullSyncData(BULLET_SYNC_DATA* btSync)
 				{
 					// CORRECAO (dano): antes passava &m_pPed (o ENDERECO do ponteiro, um CPedGTA**) como se fosse a entidade;
 					// o hook de ProcessLineOfSight lia posicao/matriz de lixo e o tiro nunca acertava o ped local.
-					pEntity = reinterpret_cast<CEntityGTA *>(pGame->FindPlayerPed()->m_pPed);
+					CPlayerPed* pLocalPed = pGame->FindPlayerPed();
+					if (!pLocalPed || !pLocalPed->m_pPed) return;   // CORRECAO: sem ped local nao ha alvo
+					pEntity = reinterpret_cast<CEntityGTA *>(pLocalPed->m_pPed);
 					FLog("[TIRO] jogador %d atirou no jogador local (arma %d, hit=%d)", (int)m_PlayerID, (int)btSync->byteWeaponID, (int)btSync->byteHitType);
 					{ extern void DanoFallback_Register(PLAYERID, int); DanoFallback_Register(m_PlayerID, (int)btSync->byteWeaponID); }
 				}

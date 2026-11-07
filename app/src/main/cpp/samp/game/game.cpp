@@ -420,9 +420,12 @@ CPlayerPed* CGame::NewPlayer(int iSkin, float fX, float fY, float fZ, float fRot
 	auto pPed = new CPlayerPed(bytePedSlot, iSkin, fX, fY, fZ, fRotation);
 	if (pPed && pPed->m_pPed) {
 		bUsedPlayerSlots[bytePedSlot] = true;
+		return pPed;
 	}
 
-    return pPed;
+	// CORRECAO: criacao falhou -> nao devolve um CPlayerPed sem ped (o chamador usava m_pPed/ShowMarker sem checar)
+	delete pPed;
+	return nullptr;
 }
 // 0.3.7
 bool CGame::RemovePlayer(CPlayerPed* pPed)

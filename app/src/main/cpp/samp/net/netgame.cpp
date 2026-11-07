@@ -897,15 +897,18 @@ void CNetGame::Packet_BulletSync(Packet* pkt)
 
 	if (GetGameState() != GAMESTATE_CONNECTED) return;
 
+	// CORRECAO: o retorno dos Read() abaixo e' checado (pacote curto/corrompido e' descartado)
 	BULLET_SYNC_DATA btSync;
 	uint8_t bytePacketId = 0;
 	PLAYERID PlayerID = 0;
 
-	bsData.Read(bytePacketId);
-	bsData.Read(PlayerID);
-	bsData.Read((char*)&btSync, sizeof(BULLET_SYNC_DATA));
+	memset(&btSync, 0, sizeof(btSync));
+	if (!bsData.Read(bytePacketId)) return;
+	if (!bsData.Read(PlayerID)) return;
+	if (!bsData.Read((char*)&btSync, sizeof(BULLET_SYNC_DATA))) return;
 
 	CPlayerPool* pPlayerPool = GetPlayerPool();
+	if (!pPlayerPool || PlayerID >= MAX_PLAYERS) return;
 	CRemotePlayer* pRemotePlayer = pPlayerPool->GetAt(PlayerID);
 	if (pRemotePlayer)
 		pRemotePlayer->StoreBulletFullSyncData(&btSync);

@@ -1467,6 +1467,7 @@ bool ComputeDamageResponse(CPedDamageResponseCalculator* calculator, CPedGTA* pP
 	bool isLocalPed = false;
 
 	if (!pNetGame) return false;
+	if (!pGamePed || !pPed || !calculator) return false;   // CORRECAO: ponteiros invalidos
 
     CPedGTA* pDamager = calculator->m_pDamager;
 	{
@@ -1496,7 +1497,7 @@ bool ComputeDamageResponse(CPedDamageResponseCalculator* calculator, CPedGTA* pP
 
 	if (isLocalPed)
 	{
-		PlayerID = FindPlayerIDFromGtaPtr(pDamager);
+		PlayerID = (pDamager ? FindPlayerIDFromGtaPtr(pDamager) : INVALID_PLAYER_ID);
 		{ extern void DanoFallback_NativeEvent(PLAYERID); DanoFallback_NativeEvent(PlayerID); }   // baixa 1 tiro pendente da garantia de dano (net/localplayer.cpp)
 		pLocalPlayer->SendTakeDamageEvent(PlayerID,
 										  calculator->m_fDamageFactor,
@@ -1512,7 +1513,8 @@ bool ComputeDamageResponse(CPedDamageResponseCalculator* calculator, CPedGTA* pP
 											  calculator->m_fDamageFactor,
 											  calculator->m_weaponType,
 											  calculator->m_pedPieceType);
-			if (pPlayerPool->GetAt(PlayerID)->IsNPC())
+			CRemotePlayer* pVictimRp = pPlayerPool->GetAt(PlayerID);   // CORRECAO: GetAt pode ser nulo
+			if (pVictimRp && pVictimRp->IsNPC())
 				return true;
 		}
 		else
@@ -1535,6 +1537,7 @@ bool ComputeDamageResponse(CPedDamageResponseCalculator* calculator, CPedGTA* pP
 	uint8_t byteTeam = pPlayerPool->GetLocalPlayer()->m_byteTeam;
 	if (byteTeam == NO_TEAM ||
 		PlayerID == INVALID_PLAYER_ID ||
+		!pPlayerPool->GetAt(PlayerID) ||
 		pPlayerPool->GetAt(PlayerID)->m_byteTeam != byteTeam) {
 		return false;
 	}

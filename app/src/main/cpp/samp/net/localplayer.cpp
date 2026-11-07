@@ -111,13 +111,23 @@ namespace {
 		}
 	}
 }
+// Contadores de diagnostico: por que um tiro registrado NAO virou evento de dano (resumo no log a cada 50 tiros).
+static int g_dfReg = 0, g_dfSent = 0, g_dfDropDead = 0, g_dfDropNoPed = 0, g_dfDropNative = 0, g_dfDropShooter = 0, g_dfOverwrite = 0;
 void DanoFallback_Register(PLAYERID shooter, int weapon)
 {
 	if (WeaponDatDamage(weapon) <= 0.0f) return;
+	// so confia no BULLET_SYNC se o atirador existe e esta vivo (evita dano forjado). SEM filtro de distancia.
+	{
+		CPlayerPool* pool = pNetGame ? pNetGame->GetPlayerPool() : nullptr;
+		CRemotePlayer* rp = pool ? pool->GetAt(shooter) : nullptr;
+		if (!rp || !rp->GetPlayerPed() || !rp->GetPlayerPed()->m_pPed || rp->GetPlayerPed()->IsDead()) { g_dfDropShooter++; return; }
+	}
+	g_dfReg++;
 	PendingHit* slot = nullptr;
 	for (auto& p : g_pendHit) if (!p.used) { slot = &p; break; }
 	if (!slot)                                   // cheio: reaproveita o mais antigo
 	{
+		g_dfOverwrite++;
 		slot = &g_pendHit[0];
 		for (auto& p : g_pendHit) if (p.tick < slot->tick) slot = &p;
 	}
@@ -128,7 +138,7 @@ void DanoFallback_NativeEvent(PLAYERID shooter)
 {
 	PendingHit* o = nullptr;
 	for (auto& p : g_pendHit) if (p.used && p.shooter == shooter && (!o || p.tick < o->tick)) o = &p;
-	if (o) o->used = false;
+	if (o) { o->used = false; g_dfDropNative++; }
 }
 static void DanoFallback_Process(CLocalPlayer* lp)
 {
@@ -137,9 +147,13 @@ static void DanoFallback_Process(CLocalPlayer* lp)
 		if (!p.used) continue;
 		if ((uint32_t)GetTickCount() - p.tick < 200u) continue;                                // da tempo ao jogo
 		p.used = false;
-		if (!pNetGame || !lp->GetPlayerPed() || lp->GetPlayerPed()->IsDead()) continue;
+		if (!pNetGame || !lp->GetPlayerPed()) { g_dfDropNoPed++; continue; }
+		if (lp->GetPlayerPed()->IsDead())     { g_dfDropDead++;  continue; }
 		FLog("[DANO] fallback: jogo nao gerou o dano; enviando evento (atirador %d, arma %d)", (int)p.shooter, p.weapon);
 		lp->SendTakeDamageEvent(p.shooter, WeaponDatDamage(p.weapon), p.weapon, 3);
+		if (++g_dfSent % 50 == 0)
+			FLog("[DANO] resumo: registrados=%d enviados=%d nativos=%d descartados(local morto=%d, sem ped=%d, atirador invalido=%d) sobrescritos=%d",
+				g_dfReg, g_dfSent, g_dfDropNative, g_dfDropDead, g_dfDropNoPed, g_dfDropShooter, g_dfOverwrite);
 	}
 }
 

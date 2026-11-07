@@ -91,6 +91,7 @@ public:
 	void SetTargetRotation(float fRotation);
 	void SetImmunities(int BP, int FP, int EP, int CP, int MP);
 	void ShowMarker(int nIndex);
+	void HideMarker();
 	void SetFightingStyle(int iStyle);
 	void SetRotation(float fRotation);
 	void DestroyFollowPedTask();
