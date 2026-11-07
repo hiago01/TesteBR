@@ -1,4 +1,5 @@
 ﻿#include "../main.h"
+#include <deque>
 #include "../game/game.h"
 #include "netgame.h"
 #include "localplayer.h"
@@ -97,9 +98,12 @@ extern bool DriveBy;
 // ---------------------------------------------------------------------------------------------
 int g_takeDamageSerial = 0;   // mantido por compatibilidade (nao e' mais usado para decidir)
 namespace {
-	struct PendingHit { bool used; PLAYERID shooter; int weapon; uint32_t tick; };
-	constexpr int kPendMax = 32;
-	PendingHit g_pendHit[kPendMax];
+	// CORRECAO (varios jogadores): a fila antiga tinha 32 posicoes fixas e, quando enchia, REESCREVIA o tick do pendente mais
+	// antigo. Com >=20 atiradores nenhum pendente chegava a envelhecer 200 ms (inanicao) e ~99,9% do dano era perdido; com 10
+	// atiradores uma travada de 400 ms ja perdia 15%. Agora e' uma fila FIFO (ordenada por tempo) com teto alto.
+	struct PendingHit { PLAYERID shooter; int weapon; uint32_t tick; };
+	constexpr size_t kPendMax = 1024;
+	std::deque<PendingHit> g_pendHit;
 	float WeaponDatDamage(int w)   // dano "weapon.dat" por bala (x0.33 = valor entregue ao servidor, igual ao SA-MP)
 	{
 		switch (w)
@@ -123,30 +127,22 @@ void DanoFallback_Register(PLAYERID shooter, int weapon)
 		if (!rp || !rp->GetPlayerPed() || !rp->GetPlayerPed()->m_pPed || rp->GetPlayerPed()->IsDead()) { g_dfDropShooter++; return; }
 	}
 	g_dfReg++;
-	PendingHit* slot = nullptr;
-	for (auto& p : g_pendHit) if (!p.used) { slot = &p; break; }
-	if (!slot)                                   // cheio: reaproveita o mais antigo
-	{
-		g_dfOverwrite++;
-		slot = &g_pendHit[0];
-		for (auto& p : g_pendHit) if (p.tick < slot->tick) slot = &p;
-	}
-	slot->used = true; slot->shooter = shooter; slot->weapon = weapon; slot->tick = (uint32_t)GetTickCount();
+	if (g_pendHit.size() >= kPendMax) { g_pendHit.pop_front(); g_dfOverwrite++; }   // teto: descarta o mais antigo, NUNCA reescreve tick
+	g_pendHit.push_back({ shooter, weapon, (uint32_t)GetTickCount() });
 }
-// O jogo gerou o evento nativo de dano de 'shooter': baixa so o tiro pendente mais antigo dele.
+// O jogo gerou o evento nativo de dano de 'shooter': baixa so o tiro pendente mais antigo dele (a fila e' ordenada por tempo).
 void DanoFallback_NativeEvent(PLAYERID shooter)
 {
-	PendingHit* o = nullptr;
-	for (auto& p : g_pendHit) if (p.used && p.shooter == shooter && (!o || p.tick < o->tick)) o = &p;
-	if (o) { o->used = false; g_dfDropNative++; }
+	for (auto it = g_pendHit.begin(); it != g_pendHit.end(); ++it)
+		if (it->shooter == shooter) { g_pendHit.erase(it); g_dfDropNative++; break; }
 }
 static void DanoFallback_Process(CLocalPlayer* lp)
 {
-	for (auto& p : g_pendHit)
+	while (!g_pendHit.empty())
 	{
-		if (!p.used) continue;
-		if ((uint32_t)GetTickCount() - p.tick < 200u) continue;                                // da tempo ao jogo
-		p.used = false;
+		const PendingHit p = g_pendHit.front();
+		if ((uint32_t)GetTickCount() - p.tick < 200u) break;                               // da tempo ao jogo (o resto e' mais novo)
+		g_pendHit.pop_front();
 		if (!pNetGame || !lp->GetPlayerPed()) { g_dfDropNoPed++; continue; }
 		if (lp->GetPlayerPed()->IsDead())     { g_dfDropDead++;  continue; }
 		FLog("[DANO] fallback: jogo nao gerou o dano; enviando evento (atirador %d, arma %d)", (int)p.shooter, p.weapon);
