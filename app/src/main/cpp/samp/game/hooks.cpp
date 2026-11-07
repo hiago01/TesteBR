@@ -2033,13 +2033,17 @@ static uint64_t SortLODKey(void* ent)
 int (*sortLODs_orig)(const void*, const void*) = nullptr;
 int sortLODs_hook(const void* a, const void* b)
 {
+	static bool s_said = false; if (!s_said) { s_said = true; FLog("[CRASHFIX] sortLODs: hook em uso"); }
 	const uint64_t ka = SortLODKey(*(void* const*)a), kb = SortLODKey(*(void* const*)b);
 	return ka < kb ? 1 : (ka > kb ? -1 : 0);
 }
 
 void InstallCrashFixHooks()
 {
-	CHook::InlineHook("_Z8sortLODsPKvS0_", &sortLODs_hook, &sortLODs_orig);
+	{   // sortLODs: endereco fixo da libGTASA deste projeto (_Z8sortLODsPKvS0_ = +0x4f5104); o resultado vai para o log
+		void* h = shadowhook_hook_func_addr((void*)(g_libGTASA + 0x4f5104), (void*)&sortLODs_hook, (void**)&sortLODs_orig);
+		FLog("[CRASHFIX] sortLODs (LOD sem ArrayState): hook %s", h ? "OK" : "ERRO (o crash em emu_ArraysGetID continua)");
+	}
 	// some crashfixes
 	CHook::InstallPLT(g_libGTASA + 0x66F5AC, (uintptr_t)CCustomRoadsignMgr_RenderRoadsignAtomic_hook, (uintptr_t*)&CCustomRoadsignMgr_RenderRoadsignAtomic);
 	CHook::InstallPLT(g_libGTASA + 0x67332C, (uintptr_t)_RwTextureDestroy_hook, (uintptr_t*)&_RwTextureDestroy);

@@ -1,6 +1,0 @@
-HEALTH v1
-fallback_models=2
-fallback_txd=1
-removed=1
-missing=1
-missing_list=teste_arquivo.dat
