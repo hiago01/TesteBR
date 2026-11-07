@@ -10,6 +10,7 @@
 #include "../../game/ClothesTest.h"
 #include "../../game/ClothesSync.h"
 #include "../../game/Hose.h"
+#include "../../game/Trena.h"
 #include "../../game/IdCard3D.h"
 #include "../../game/CustomSkin.h"
 #include "../../game/CorpTex.h"
@@ -166,6 +167,24 @@ if (input == "/skin7" || input.rfind("/skin7 ", 0) == 0)
             std::string reply = CCustomSkin::DebugCommand(args);
             addDebugMessage("%s", reply.c_str());
 
+            return;
+        }
+if (input == "/trena" || input.rfind("/trena ", 0) == 0)
+        {
+            // medidor de distancia: /trena a | /trena | /trena limpar | /trena ir <x> <y> <z>
+            const std::string args = input.size() > 6 ? input.substr(7) : std::string();
+            const std::string reply = Trena_Command(args);
+            size_t p0 = 0;
+            while (p0 <= reply.size()) { size_t p1 = reply.find('\n', p0); if (p1 == std::string::npos) p1 = reply.size(); addDebugMessage("%s", reply.substr(p0, p1 - p0).c_str()); p0 = p1 + 1; }
+            return;
+        }
+if (input == "/coord" || input.rfind("/coord ", 0) == 0)
+        {
+            // salva coordenadas em SAMP/coordenadas.txt: /coord [nome] | lista | apagar
+            const std::string args = input.size() > 6 ? input.substr(7) : std::string();
+            const std::string reply = Coord_Command(args);
+            size_t p0 = 0;
+            while (p0 <= reply.size()) { size_t p1 = reply.find('\n', p0); if (p1 == std::string::npos) p1 = reply.size(); addDebugMessage("%s", reply.substr(p0, p1 - p0).c_str()); p0 = p1 + 1; }
             return;
         }
 if (input == "/diag")
