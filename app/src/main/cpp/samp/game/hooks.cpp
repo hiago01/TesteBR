@@ -1497,7 +1497,7 @@ bool ComputeDamageResponse(CPedDamageResponseCalculator* calculator, CPedGTA* pP
 	if (isLocalPed)
 	{
 		PlayerID = FindPlayerIDFromGtaPtr(pDamager);
-		{ extern int g_takeDamageSerial; g_takeDamageSerial++; }   // avisa a garantia de dano (net/localplayer.cpp)
+		{ extern void DanoFallback_NativeEvent(PLAYERID); DanoFallback_NativeEvent(PlayerID); }   // baixa 1 tiro pendente da garantia de dano (net/localplayer.cpp)
 		pLocalPlayer->SendTakeDamageEvent(PlayerID,
 										  calculator->m_fDamageFactor,
 										  calculator->m_weaponType,

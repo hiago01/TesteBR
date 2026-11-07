@@ -90,13 +90,16 @@ extern bool DriveBy;
 
 // ---------------------------------------------------------------------------------------------
 // GARANTIA DE DANO: o atirador (BULLET_SYNC) diz que acertou o ped local. O caminho nativo do jogo deveria gerar o
-// evento de dano (ComputeDamageResponse -> SendTakeDamageEvent). Se em 200 ms nenhum evento de dano local foi enviado,
-// o cliente envia o evento ao servidor (arma 22..34 / 38). Evita duplicar: g_takeDamageSerial sobe a cada evento nativo.
+// evento de dano (ComputeDamageResponse -> SendTakeDamageEvent). Se em 200 ms o jogo nao gerou o evento daquele tiro,
+// o cliente envia o evento ao servidor (arma 22..34 / 38).
+// v2: cada tiro e' tratado sozinho. Um evento nativo baixa SO o tiro pendente mais antigo do mesmo atirador, e o fallback
+//     NAO mexe mais num contador global (antes: o 1o fallback descartava os demais tiros da rajada, ~50% do dano se perdia).
 // ---------------------------------------------------------------------------------------------
-int g_takeDamageSerial = 0;
+int g_takeDamageSerial = 0;   // mantido por compatibilidade (nao e' mais usado para decidir)
 namespace {
-	struct PendingHit { bool used; PLAYERID shooter; int weapon; int serial; uint32_t tick; };
-	PendingHit g_pendHit[8];
+	struct PendingHit { bool used; PLAYERID shooter; int weapon; uint32_t tick; };
+	constexpr int kPendMax = 32;
+	PendingHit g_pendHit[kPendMax];
 	float WeaponDatDamage(int w)   // dano "weapon.dat" por bala (x0.33 = valor entregue ao servidor, igual ao SA-MP)
 	{
 		switch (w)
@@ -111,20 +114,32 @@ namespace {
 void DanoFallback_Register(PLAYERID shooter, int weapon)
 {
 	if (WeaponDatDamage(weapon) <= 0.0f) return;
-	for (auto& p : g_pendHit) if (!p.used) { p.used = true; p.shooter = shooter; p.weapon = weapon; p.serial = g_takeDamageSerial; p.tick = (uint32_t)GetTickCount(); return; }
+	PendingHit* slot = nullptr;
+	for (auto& p : g_pendHit) if (!p.used) { slot = &p; break; }
+	if (!slot)                                   // cheio: reaproveita o mais antigo
+	{
+		slot = &g_pendHit[0];
+		for (auto& p : g_pendHit) if (p.tick < slot->tick) slot = &p;
+	}
+	slot->used = true; slot->shooter = shooter; slot->weapon = weapon; slot->tick = (uint32_t)GetTickCount();
+}
+// O jogo gerou o evento nativo de dano de 'shooter': baixa so o tiro pendente mais antigo dele.
+void DanoFallback_NativeEvent(PLAYERID shooter)
+{
+	PendingHit* o = nullptr;
+	for (auto& p : g_pendHit) if (p.used && p.shooter == shooter && (!o || p.tick < o->tick)) o = &p;
+	if (o) o->used = false;
 }
 static void DanoFallback_Process(CLocalPlayer* lp)
 {
 	for (auto& p : g_pendHit)
 	{
 		if (!p.used) continue;
-		if (g_takeDamageSerial != p.serial) { p.used = false; continue; }          // o jogo ja gerou o evento: nada a fazer
 		if ((uint32_t)GetTickCount() - p.tick < 200u) continue;                                // da tempo ao jogo
 		p.used = false;
 		if (!pNetGame || !lp->GetPlayerPed() || lp->GetPlayerPed()->IsDead()) continue;
 		FLog("[DANO] fallback: jogo nao gerou o dano; enviando evento (atirador %d, arma %d)", (int)p.shooter, p.weapon);
 		lp->SendTakeDamageEvent(p.shooter, WeaponDatDamage(p.weapon), p.weapon, 3);
-		g_takeDamageSerial++;
 	}
 }
 
