@@ -1,5 +1,5 @@
 --- a/app/src/main/cpp/samp/game/hooks.cpp	2026-11-07 18:58:12.573724724 -0300
-+++ b/app/src/main/cpp/samp/game/hooks.cpp	2026-11-07 19:14:00.046158876 -0300
++++ b/app/src/main/cpp/samp/game/hooks.cpp	2026-11-07 19:39:04.695201301 -0300
 @@ -18,6 +18,7 @@
  #include "../gui/samp_widgets/worldmap.h"
  #include "../gui/samp_widgets/MiniRoute.h"
@@ -8,7 +8,7 @@
  #include <chrono>
  #include "Textures/TextureDatabase.h"
  #include "Textures/TextureDatabaseEntry.h"
-@@ -2008,8 +2009,41 @@
+@@ -2008,6 +2009,44 @@
  	//CHook::InstallPLT(g_libGTASA + 0x677B6C, (uintptr_t)rqSetAlphaTest_hook, (uintptr_t*)&rqSetAlphaTest);
  }
  
@@ -41,12 +41,26 @@
 +	return ka < kb ? 1 : (ka > kb ? -1 : 0);
 +}
 +
++// InstallCrashFixHooks() fica dentro de InstallSAMPHooks(), que NAO e chamada em lugar nenhum: o hook tem de sair de InstallHooks().
++void InstallSortLodsFix()
++{
++	static bool done = false; if (done) return; done = true;
++	// sortLODs: endereco fixo da libGTASA deste projeto (_Z8sortLODsPKvS0_ = +0x4f5104); o resultado vai para o log
++	void* h = shadowhook_hook_func_addr((void*)(g_libGTASA + 0x4f5104), (void*)&sortLODs_hook, (void**)&sortLODs_orig);
++	FLog("[CRASHFIX] sortLODs (LOD sem ArrayState): hook %s", h ? "OK" : "ERRO (o crash em emu_ArraysGetID continua)");
++}
++
  void InstallCrashFixHooks()
  {
-+	{   // sortLODs: endereco fixo da libGTASA deste projeto (_Z8sortLODsPKvS0_ = +0x4f5104); o resultado vai para o log
-+		void* h = shadowhook_hook_func_addr((void*)(g_libGTASA + 0x4f5104), (void*)&sortLODs_hook, (void**)&sortLODs_orig);
-+		FLog("[CRASHFIX] sortLODs (LOD sem ArrayState): hook %s", h ? "OK" : "ERRO (o crash em emu_ArraysGetID continua)");
-+	}
  	// some crashfixes
- 	CHook::InstallPLT(g_libGTASA + 0x66F5AC, (uintptr_t)CCustomRoadsignMgr_RenderRoadsignAtomic_hook, (uintptr_t*)&CCustomRoadsignMgr_RenderRoadsignAtomic);
- 	CHook::InstallPLT(g_libGTASA + 0x67332C, (uintptr_t)_RwTextureDestroy_hook, (uintptr_t*)&_RwTextureDestroy);
+@@ -3791,8 +3830,10 @@
+ #include <EGL/egl.h>
+ #include <GLES2/gl2.h>   // If using OpenGL ES 2.0 or 3.0
+ void SetUpGLHooks();
++void InstallSortLodsFix();
+ void InstallHooks()
+ {
++InstallSortLodsFix();
+ if (Diag::On("dff")) CustomSkinStream::Install();
+ CHook::InlineHook(
+     "_Z25HandleTextureEnhancementsP8RwRaster",

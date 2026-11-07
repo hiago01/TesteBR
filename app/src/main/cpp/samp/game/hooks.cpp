@@ -2038,12 +2038,17 @@ int sortLODs_hook(const void* a, const void* b)
 	return ka < kb ? 1 : (ka > kb ? -1 : 0);
 }
 
+// InstallCrashFixHooks() fica dentro de InstallSAMPHooks(), que NAO e chamada em lugar nenhum: o hook tem de sair de InstallHooks().
+void InstallSortLodsFix()
+{
+	static bool done = false; if (done) return; done = true;
+	// sortLODs: endereco fixo da libGTASA deste projeto (_Z8sortLODsPKvS0_ = +0x4f5104); o resultado vai para o log
+	void* h = shadowhook_hook_func_addr((void*)(g_libGTASA + 0x4f5104), (void*)&sortLODs_hook, (void**)&sortLODs_orig);
+	FLog("[CRASHFIX] sortLODs (LOD sem ArrayState): hook %s", h ? "OK" : "ERRO (o crash em emu_ArraysGetID continua)");
+}
+
 void InstallCrashFixHooks()
 {
-	{   // sortLODs: endereco fixo da libGTASA deste projeto (_Z8sortLODsPKvS0_ = +0x4f5104); o resultado vai para o log
-		void* h = shadowhook_hook_func_addr((void*)(g_libGTASA + 0x4f5104), (void*)&sortLODs_hook, (void**)&sortLODs_orig);
-		FLog("[CRASHFIX] sortLODs (LOD sem ArrayState): hook %s", h ? "OK" : "ERRO (o crash em emu_ArraysGetID continua)");
-	}
 	// some crashfixes
 	CHook::InstallPLT(g_libGTASA + 0x66F5AC, (uintptr_t)CCustomRoadsignMgr_RenderRoadsignAtomic_hook, (uintptr_t*)&CCustomRoadsignMgr_RenderRoadsignAtomic);
 	CHook::InstallPLT(g_libGTASA + 0x67332C, (uintptr_t)_RwTextureDestroy_hook, (uintptr_t*)&_RwTextureDestroy);
@@ -3825,8 +3830,10 @@ void TestPlayerClothesDesc()
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>   // If using OpenGL ES 2.0 or 3.0
 void SetUpGLHooks();
+void InstallSortLodsFix();
 void InstallHooks()
 {
+InstallSortLodsFix();
 if (Diag::On("dff")) CustomSkinStream::Install();
 CHook::InlineHook(
     "_Z25HandleTextureEnhancementsP8RwRaster",
