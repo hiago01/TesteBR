@@ -61,43 +61,6 @@ namespace
 
     bool s_inSkinLoad = false;        // true enquanto o jogo converte um modelo com a nossa skin
 
-    // DIAGNOSTICO: slots de TXD cujo banco (nome em slot+0x24) nao existe. SetCurrentTxd faz Register(GetDatabase(banco do slot)): banco inexistente = nulo na lista.
-    // Layout (libGTASA arm64, CTxdStore::AddTxdSlot): pool em *(*(GOT+0x4e8)); objetos +0, flags +8 (byte<0 = livre), tamanho +0x10; slot de 64 bytes: nome +0x10, banco +0x24.
-    void DumpBadTxdSlots(const char* why)
-    {
-        static int runs = 0;
-        if (runs++ >= 3) return;
-        uintptr_t* gotPtr = *reinterpret_cast<uintptr_t**>(g_libGTASA + 0x8514e8);
-        if (!gotPtr) { FLog("[TXDDIAG] pool de TXD indisponivel"); return; }
-        uintptr_t pool = *gotPtr;
-        if (!pool) { FLog("[TXDDIAG] pool de TXD nulo"); return; }
-        uint8_t* objs = *reinterpret_cast<uint8_t**>(pool);
-        int8_t*  flags = *reinterpret_cast<int8_t**>(pool + 8);
-        const int size = *reinterpret_cast<int*>(pool + 0x10);
-        if (!objs || !flags || size <= 0 || size > 20000) { FLog("[TXDDIAG] pool incoerente (size=%d)", size); return; }
-        FLog("[TXDDIAG] (%s) varrendo %d slots de TXD", why, size);
-        int bad = 0, used = 0;
-        for (int i = 0; i < size; ++i)
-        {
-            if (flags[i] < 0) continue;
-            ++used;
-            const char* nm = reinterpret_cast<const char*>(objs + (size_t)i * 64 + 0x10);
-            char db[24]; std::memcpy(db, objs + (size_t)i * 64 + 0x24, 20); db[20] = 0;
-            void* d = CHook::CallFunction<void*>(g_libGTASA + 0x287AF4, (const char*)db);
-            if (!d && bad++ < 40) FLog("[TXDDIAG] slot %d nome='%.19s' banco='%s' -> NAO EXISTE", i, nm, db);
-        }
-        FLog("[TXDDIAG] slots usados=%d, com banco inexistente=%d", used, bad);
-        for (int id = 12320; id <= 12370; ++id)
-        {
-            CBaseModelInfo* mi = CModelInfo::GetModelInfo(id);
-            if (!mi) continue;
-            const int t = (int)mi->m_nTxdIndex;
-            if (t < 0 || t >= size || flags[t] < 0) { FLog("[TXDDIAG] modelo %d '%s': txd=%d INVALIDO", id, mi->m_modelName, t); continue; }
-            char db[24]; std::memcpy(db, objs + (size_t)t * 64 + 0x24, 20); db[20] = 0;
-            FLog("[TXDDIAG] modelo %d '%s': txd=%d '%.19s' banco='%s'", id, mi->m_modelName, t, objs + (size_t)t * 64 + 0x10, db);
-        }
-    }
-
     // Lista de bancos de textura registrados (suposicao: GOT 0x851CF8 -> TDBArray {numAlloced, numEntries, dataPtr}).
     // Loga so quando MUDA (n ou nulos) para achar QUANDO um banco nulo entra na lista.
     void CheckRegistered(const char* tag, int model)
@@ -267,48 +230,8 @@ namespace
         return true;
     }
 
-    int   s_curModel = -1;                                   // ultimo modelo que o jogo converteu (diagnostico do Register nulo)
-    void (*s_registerOrig)(void*) = nullptr;
-    void* (*s_getDbOrig)(const char*) = nullptr;
-    void* GetDatabase_hook(const char* name)
-    {
-        void* r = s_getDbOrig(name);
-        if (!r)
-        {
-            static int n = 0;
-            if (n++ < 40)
-            {
-                uintptr_t lr = (uintptr_t)__builtin_return_address(0);
-                FLog("[TXDDIAG] GetDatabase('%s') = NULO chamador=libGTASA+0x%lx modelo=%d",
-                     name ? name : "(null)", (unsigned long)(lr - g_libGTASA), s_curModel);
-            }
-            r = s_getDbOrig("txd");
-        }
-        return r;
-    }
-
-    // TextureDatabaseRuntime::Register(db): com db nulo o jogo poe um banco NULO na lista de registrados e o proximo GetTexture
-    // (+0x110 de um ponteiro nulo) derruba o jogo / as texturas de corona e sombra falham (quadrados brancos). Ignora o nulo e loga quem chamou.
-    void Register_hook(void* db)
-    {
-        if (!db)
-        {
-            static int n = 0;
-            if (n++ < 20)
-            {
-                const uintptr_t lr = reinterpret_cast<uintptr_t>(__builtin_return_address(0));
-                CBaseModelInfo* mi = (s_curModel >= 0 && s_curModel < (int)TOTAL_DFF_MODEL_IDS) ? CModelInfo::GetModelInfo(s_curModel) : nullptr;
-                FLog("[TXDDIAG] Register(NULL) BLOQUEADO: chamador=libGTASA+0x%lx ultimo modelo convertido=%d '%s' txd=%d",
-                     (unsigned long)(lr - g_libGTASA), s_curModel, mi ? mi->m_modelName : "?", mi ? (int)mi->m_nTxdIndex : -1);
-            }
-            return;
-        }
-        s_registerOrig(db);
-    }
-
     bool Convert_hook(char* buf, int model, int a3)
     {
-        s_curModel = model;
         Skin* sk = FindSkin(model);
         if (!sk || !EnsureFile(*sk))
         {
@@ -392,8 +315,6 @@ namespace CustomSkinStream
 
         void* s1 = shadowhook_hook_func_addr((void*)(g_libGTASA + OFF_CONVERT_BUFFER), (void*)&Convert_hook, (void**)&s_convertOrig);
         void* s2 = shadowhook_hook_func_addr((void*)(g_libGTASA + OFF_GET_TEXTURE),    (void*)&GetTexture_hook, (void**)&s_getTexOrig);
-        void* s3 = shadowhook_hook_func_addr((void*)(g_libGTASA + 0x2865D8), (void*)&Register_hook, (void**)&s_registerOrig);
-        void* s4 = shadowhook_hook_func_addr((void*)(g_libGTASA + 0x287AF4), (void*)&GetDatabase_hook, (void**)&s_getDbOrig);
-        FLog("[SKIN7S] hooks: ConvertBufferToObject=%s GetTexture=%s Register=%s GetDatabase=%s", s1 ? "OK" : "ERRO", s2 ? "OK" : "ERRO", s3 ? "OK" : "ERRO", s4 ? "OK" : "ERRO");
+        FLog("[SKIN7S] hooks: ConvertBufferToObject=%s GetTexture=%s", s1 ? "OK" : "ERRO", s2 ? "OK" : "ERRO");
     }
 }
