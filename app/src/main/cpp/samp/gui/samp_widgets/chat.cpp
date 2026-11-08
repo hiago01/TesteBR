@@ -187,6 +187,13 @@ if (input == "/coord" || input.rfind("/coord ", 0) == 0)
             while (p0 <= reply.size()) { size_t p1 = reply.find('\n', p0); if (p1 == std::string::npos) p1 = reply.size(); addDebugMessage("%s", reply.substr(p0, p1 - p0).c_str()); p0 = p1 + 1; }
             return;
         }
+if (input == "/lodinfo")
+        {
+            const std::string reply = LodInfo_Command("");
+            size_t p0 = 0;
+            while (p0 <= reply.size()) { size_t p1 = reply.find('\n', p0); if (p1 == std::string::npos) p1 = reply.size(); addDebugMessage("%s", reply.substr(p0, p1 - p0).c_str()); p0 = p1 + 1; }
+            return;
+        }
 if (input == "/diag")
         {
             addDebugMessage("%s", Diag::Summary().c_str());

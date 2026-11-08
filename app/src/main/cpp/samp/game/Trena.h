@@ -13,3 +13,7 @@ std::string Trena_Command(const std::string& args);
 //   /coord lista         -> mostra os ultimos 8 salvos
 //   /coord apagar        -> esvazia o arquivo
 std::string Coord_Command(const std::string& args);
+
+// Diagnostico de LOD/distancia da favela (modelos 12010-12119 e LODs 12200-12309):
+//   /lodinfo  -> escala de distancia ativa, quantas instancias existem, quantas tem LOD ligado, e a instancia mais proxima
+std::string LodInfo_Command(const std::string& args);

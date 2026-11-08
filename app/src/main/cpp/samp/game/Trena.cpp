@@ -1,6 +1,10 @@
 #include "Trena.h"
 #include "../main.h"
 #include "game.h"
+#include "Pools.h"
+#include "Models/ModelInfo.h"
+#include "../vendor/armhook/patch.h"
+#include <dlfcn.h>
 #include "../net/netgame.h"
 #include "../net/localplayer.h"
 #include <cmath>
@@ -125,4 +129,61 @@ std::string Coord_Command(const std::string& args)
 	if (!f) return "[COORD] nao consegui abrir " + path;
 	f << line << "\n";
 	return std::string(emVeiculo ? "[COORD] (veiculo) salvo: " : "[COORD] salvo: ") + line;
+}
+
+std::string LodInfo_Command(const std::string&)
+{
+	float px, py, pz;
+	if (!Here(px, py, pz)) return "[LODINFO] jogador local indisponivel";
+
+	char b[300];
+	std::string r;
+	float* ls = (float*)dlsym(CHook::lib, "_ZN9CRenderer15ms_lodDistScaleE");
+	uintptr_t cam = CHook::getSym("TheCamera");
+	const float camMul = cam ? *(float*)(cam + 0xf4) : -1.0f;     // o que o motor realmente multiplica (SetupMapEntityVisibility le TheCamera+0xf4)
+	std::snprintf(b, sizeof(b), "[LODINFO] escala de distancia: ms_lodDistScale=%.3f, camera=%.3f (distancia real = distancia do IDE x camera)", ls ? *ls : -1.0f, camMul);
+	r = b;
+
+	int nChild = 0, nChildLod = 0, nLod = 0, nLodBig = 0, nParentWithKids = 0;
+	float best = 1e9f; CEntityGTA* be = nullptr;
+	auto scan = [&](CEntityGTA* e)
+	{
+		const int id = e->m_nModelIndex;
+		if (id >= 12010 && id <= 12119)
+		{
+			nChild++;
+			if ((uintptr_t)e->m_pLod > 0x10000) nChildLod++;
+			const CVector p = e->GetPosition();
+			const float d = std::sqrt((p.x - px) * (p.x - px) + (p.y - py) * (p.y - py) + (p.z - pz) * (p.z - pz));
+			if (d < best) { best = d; be = e; }
+		}
+		else if (id >= 12200 && id <= 12309)
+		{
+			nLod++;
+			if (e->m_bIsBIGBuilding) nLodBig++;
+			if (e->m_nNumLodChildren > 0) nParentWithKids++;
+		}
+	};
+	if (auto* bp = GetBuildingPool()) for (int i = 0; i < bp->GetSize(); i++) if (auto* e = bp->GetAt(i)) scan((CEntityGTA*)e);
+	if (auto* dp = GetDummyPool())    for (int i = 0; i < dp->GetSize(); i++) if (auto* e = dp->GetAt(i)) scan((CEntityGTA*)e);
+
+	std::snprintf(b, sizeof(b), "[LODINFO] casas da favela: %d (com LOD ligado: %d). LODs: %d (com filhos: %d, marcados como predio grande: %d)", nChild, nChildLod, nLod, nParentWithKids, nLodBig);
+	r += "\n"; r += b;
+	if (!be) return r + "\n[LODINFO] nenhuma casa da favela carregada";
+
+	CBaseModelInfo* mi = CModelInfo::GetModelInfo(be->m_nModelIndex);
+	const float dd = mi ? mi->m_fDrawDistance : -1.0f;
+	std::snprintf(b, sizeof(b), "[LODINFO] casa mais proxima: modelo %d a %.1f m; distancia no IDE %.0f m -> vale %.0f m; LOD ligado: %s; filhos: %d",
+	              (int)be->m_nModelIndex, best, dd, dd * (camMul > 0 ? camMul : 1.0f), ((uintptr_t)be->m_pLod > 0x10000) ? "sim" : "NAO", (int)be->m_nNumLodChildren);
+	r += "\n"; r += b;
+	if ((uintptr_t)be->m_pLod > 0x10000)
+	{
+		CEntityGTA* lo = be->m_pLod;
+		CBaseModelInfo* lm = CModelInfo::GetModelInfo(lo->m_nModelIndex);
+		const float ld = lm ? lm->m_fDrawDistance : -1.0f;
+		std::snprintf(b, sizeof(b), "[LODINFO] o LOD dela: modelo %d, IDE %.0f m -> vale %.0f m, predio grande: %s, filhos: %d",
+		              (int)lo->m_nModelIndex, ld, ld * (camMul > 0 ? camMul : 1.0f), lo->m_bIsBIGBuilding ? "sim" : "NAO", (int)lo->m_nNumLodChildren);
+		r += "\n"; r += b;
+	}
+	return r;
 }
