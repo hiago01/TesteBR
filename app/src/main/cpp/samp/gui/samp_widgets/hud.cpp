@@ -610,8 +610,9 @@ namespace
 			if (!MiniMapTap::RectOk(ru, gw, gh)) return;
 			s_anchL = ru.l * (screen.x / gw); s_anchT = ru.t * (screen.y / gh);
 		}
-		const float mapL = s_anchL >= 0.0f ? s_anchL : 12.0f * S;
-		const float mapT = s_anchT >= 0.0f ? s_anchT : 40.0f * S;
+		// a pe: posicao FIXA (sempre a mesma), um pouco para a direita; no carro: acima do minimapa
+		const float mapL = allowed ? s_anchL : 22.0f * S;
+		const float mapT = allowed ? s_anchT : 40.0f * S;
 
 		// posicao do jogador -> texto (recalcula a cada 250 ms)
 		static char s_txt[64] = "San Andreas";
