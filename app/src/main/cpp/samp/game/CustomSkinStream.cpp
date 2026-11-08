@@ -269,6 +269,23 @@ namespace
 
     int   s_curModel = -1;                                   // ultimo modelo que o jogo converteu (diagnostico do Register nulo)
     void (*s_registerOrig)(void*) = nullptr;
+    void* (*s_getDbOrig)(const char*) = nullptr;
+    void* GetDatabase_hook(const char* name)
+    {
+        void* r = s_getDbOrig(name);
+        if (!r)
+        {
+            static int n = 0;
+            if (n++ < 40)
+            {
+                uintptr_t lr = (uintptr_t)__builtin_return_address(0);
+                FLog("[TXDDIAG] GetDatabase('%s') = NULO chamador=libGTASA+0x%lx modelo=%d",
+                     name ? name : "(null)", (unsigned long)(lr - g_libGTASA), s_curModel);
+            }
+            r = s_getDbOrig("txd");
+        }
+        return r;
+    }
 
     // TextureDatabaseRuntime::Register(db): com db nulo o jogo poe um banco NULO na lista de registrados e o proximo GetTexture
     // (+0x110 de um ponteiro nulo) derruba o jogo / as texturas de corona e sombra falham (quadrados brancos). Ignora o nulo e loga quem chamou.
@@ -376,6 +393,7 @@ namespace CustomSkinStream
         void* s1 = shadowhook_hook_func_addr((void*)(g_libGTASA + OFF_CONVERT_BUFFER), (void*)&Convert_hook, (void**)&s_convertOrig);
         void* s2 = shadowhook_hook_func_addr((void*)(g_libGTASA + OFF_GET_TEXTURE),    (void*)&GetTexture_hook, (void**)&s_getTexOrig);
         void* s3 = shadowhook_hook_func_addr((void*)(g_libGTASA + 0x2865D8), (void*)&Register_hook, (void**)&s_registerOrig);
-        FLog("[SKIN7S] hooks: ConvertBufferToObject=%s GetTexture=%s Register=%s", s1 ? "OK" : "ERRO", s2 ? "OK" : "ERRO", s3 ? "OK" : "ERRO");
+        void* s4 = shadowhook_hook_func_addr((void*)(g_libGTASA + 0x287AF4), (void*)&GetDatabase_hook, (void**)&s_getDbOrig);
+        FLog("[SKIN7S] hooks: ConvertBufferToObject=%s GetTexture=%s Register=%s GetDatabase=%s", s1 ? "OK" : "ERRO", s2 ? "OK" : "ERRO", s3 ? "OK" : "ERRO", s4 ? "OK" : "ERRO");
     }
 }
