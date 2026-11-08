@@ -594,17 +594,24 @@ namespace
 	// So aparece enquanto o minimapa esta sendo desenhado (retangulo publicado por game/sprite2d.cpp) e a regra do motorista permite.
 	void DrawLocationTag(ImGuiRenderer* r, const ImVec2& screen, float S)
 	{
-		if (!Hud::MapAllowed()) return;
+		const bool allowed = Hud::MapAllowed();                                       // true = minimapa visivel (motorista)
 		const bool mapOpen = WorldMapWidget::IsOpen();                                // mapa aberto: so o local; fechado: local + bussola
+		if (!allowed && mapOpen) return;                                              // a pe: a etiqueta some quando o mapa aparece na tela
 		using namespace std::chrono;
 		const int64_t now = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
-		if (now - MiniMapTap::gStamp.load() > MiniMapTap::kFreshMs) return;           // radar nao foi desenhado agora
-		const float gw = RsGlobal ? (float)RsGlobal->maximumWidth : 0.0f, gh = RsGlobal ? (float)RsGlobal->maximumHeight : 0.0f;
-		if (gw < 1.0f || gh < 1.0f) return;
-		const MiniMapTap::Rect ru{ MiniMapTap::gL.load(), MiniMapTap::gT.load(), MiniMapTap::gR.load(), MiniMapTap::gB.load() };
-		if (!MiniMapTap::RectOk(ru, gw, gh)) return;
-		const float sx = screen.x / gw, sy = screen.y / gh;
-		const float mapL = ru.l * sx, mapT = ru.t * sy;
+		// ancora: acima do minimapa (motorista). A pe nao ha minimapa: usa o ultimo canto conhecido dele (ou o canto da tela)
+		static float s_anchL = -1.0f, s_anchT = -1.0f;
+		if (allowed)
+		{
+			if (now - MiniMapTap::gStamp.load() > MiniMapTap::kFreshMs) return;       // radar nao foi desenhado agora
+			const float gw = RsGlobal ? (float)RsGlobal->maximumWidth : 0.0f, gh = RsGlobal ? (float)RsGlobal->maximumHeight : 0.0f;
+			if (gw < 1.0f || gh < 1.0f) return;
+			const MiniMapTap::Rect ru{ MiniMapTap::gL.load(), MiniMapTap::gT.load(), MiniMapTap::gR.load(), MiniMapTap::gB.load() };
+			if (!MiniMapTap::RectOk(ru, gw, gh)) return;
+			s_anchL = ru.l * (screen.x / gw); s_anchT = ru.t * (screen.y / gh);
+		}
+		const float mapL = s_anchL >= 0.0f ? s_anchL : 12.0f * S;
+		const float mapT = s_anchT >= 0.0f ? s_anchT : 40.0f * S;
 
 		// posicao do jogador -> texto (recalcula a cada 250 ms)
 		static char s_txt[64] = "San Andreas";
@@ -649,7 +656,7 @@ namespace
 		r->drawText(ImVec2(x0 + padL + pinW + gapPin, y0 + (h - ts.y) * 0.5f), kWhite, std::string(s_txt), false, fsz);
 
 		// ---- orientacao (bussola): mesma etiqueta, logo ao lado: "NE 045" + agulha que aponta para onde o carro vai ----
-		if (!mapOpen)
+		if (!mapOpen && allowed)                                                     // bussola so para o motorista (minimapa fechado)
 		{
 			static const char* const kDir[8] = { "N", "NE", "L", "SE", "S", "SO", "O", "NO" };
 			const int di = ((int)std::lround(s_bearing / 45.0f)) & 7;
