@@ -141,7 +141,12 @@ std::string LodInfo_Command(const std::string&)
 	float* ls = (float*)dlsym(CHook::lib, "_ZN9CRenderer15ms_lodDistScaleE");
 	uintptr_t cam = CHook::getSym("TheCamera");
 	const float camMul = cam ? *(float*)(cam + 0xf4) : -1.0f;     // o que o motor realmente multiplica (SetupMapEntityVisibility le TheCamera+0xf4)
-	std::snprintf(b, sizeof(b), "[LODINFO] escala de distancia: ms_lodDistScale=%.3f, camera=%.3f (distancia real = distancia do IDE x camera)", ls ? *ls : -1.0f, camMul);
+	// motor: CCamera::Process grava TheCamera+0xf4 = fatorTela * ms_lodDistScale (fatorTela = constante/FOV-tela; SetupMapEntityVisibility e
+	// SetupBigBuildingVisibility, casas E LODs, usam distancia_do_IDE x TheCamera+0xf4). ms_lodDistScale = slider*0.875*0.01 + 0.875 (0..100).
+	const float lsNow = ls ? *ls : -1.0f;
+	const float fatorTela = (lsNow > 0 && camMul > 0) ? camMul / lsNow : -1.0f;
+	const float slider = lsNow > 0 ? (lsNow - 0.875f) / (0.875f * 0.01f) : -1.0f;
+	std::snprintf(b, sizeof(b), "[LODINFO] opcao de distancia: %.0f/100 (ms_lodDistScale=%.3f); fator de tela/FOV=%.3f; multiplicador final da camera=%.3f", slider, lsNow, fatorTela, camMul);
 	r = b;
 
 	int nChild = 0, nChildLod = 0, nLod = 0, nLodBig = 0, nParentWithKids = 0;
@@ -167,12 +172,20 @@ std::string LodInfo_Command(const std::string&)
 	if (auto* bp = GetBuildingPool()) for (int i = 0; i < bp->GetSize(); i++) if (auto* e = bp->GetAt(i)) scan((CEntityGTA*)e);
 	if (auto* dp = GetDummyPool())    for (int i = 0; i < dp->GetSize(); i++) if (auto* e = dp->GetAt(i)) scan((CEntityGTA*)e);
 
+	{
+		auto* bp = GetBuildingPool(); auto* dp = GetDummyPool(); auto* op = GetObjectPoolGta();
+		std::snprintf(b, sizeof(b), "[LODINFO] pools usadas: predios %d/%d, dummies %d/%d, objetos %d/%d",
+		              bp ? (int)bp->GetNoOfUsedSpaces() : -1, bp ? (int)bp->GetSize() : -1, dp ? (int)dp->GetNoOfUsedSpaces() : -1, dp ? (int)dp->GetSize() : -1,
+		              op ? (int)op->GetNoOfUsedSpaces() : -1, op ? (int)op->GetSize() : -1);
+		r += "\n"; r += b;
+	}
 	std::snprintf(b, sizeof(b), "[LODINFO] casas da favela: %d (com LOD ligado: %d). LODs: %d (com filhos: %d, marcados como predio grande: %d)", nChild, nChildLod, nLod, nParentWithKids, nLodBig);
 	r += "\n"; r += b;
 	if (!be) return r + "\n[LODINFO] nenhuma casa da favela carregada";
 
 	CBaseModelInfo* mi = CModelInfo::GetModelInfo(be->m_nModelIndex);
 	const float dd = mi ? mi->m_fDrawDistance : -1.0f;
+	const float mMin = fatorTela > 0 ? fatorTela * 0.875f : 0.0f, mMax = fatorTela > 0 ? fatorTela * 1.75f : 0.0f;   // opcao 0 e opcao 100
 	std::snprintf(b, sizeof(b), "[LODINFO] casa mais proxima: modelo %d a %.1f m; distancia no IDE %.0f m -> vale %.0f m; LOD ligado: %s; filhos: %d",
 	              (int)be->m_nModelIndex, best, dd, dd * (camMul > 0 ? camMul : 1.0f), ((uintptr_t)be->m_pLod > 0x10000) ? "sim" : "NAO", (int)be->m_nNumLodChildren);
 	r += "\n"; r += b;
