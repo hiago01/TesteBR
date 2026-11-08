@@ -6,6 +6,7 @@
 #include "../../vendor/stb/stb_image.h"   // implementacao em game/sprite2d.cpp
 #include "inventory.h"
 #include "inventory_atlas.h"
+#include "../../util/CUtil.h"
 #include "controlmode.h"
 #include "controlsselector.h"
 
@@ -152,8 +153,71 @@ namespace
 		return s_atlas;
 	}
 
+	// --- Icones ORIGINAIS do GTA para armas (textura "<modelo>icon", a mesma da roda de armas) ---
+	// icone do atlas -> id da arma (ver Inv_RegisterWeapons em maximo_inv.inc). 0 = nao e arma.
+	int WeaponFromIcon(int icon)
+	{
+		static const unsigned char kMap[59] = {
+			0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,      // 0..15
+			4,5,22,25,28,30,34,35,16,18,           // 16..25
+			41,43,14,1,46,9,                       // 26..31
+			2,3,6,7,8,10,11,12,13,15,17,           // 32..42
+			23,24,26,27,29,31,32,33,36,37,38,39,40,42,44,45 // 43..58
+		};
+		return (icon >= 0 && icon < 59) ? kMap[icon] : 0;
+	}
+
+	const char* WeaponModel(int w)
+	{
+		static const char* const k[47] = {
+			nullptr, "brassknuckle", "golfclub", "nitestick", "knifecur", "bat", "shovel", "poolcue", "katana", "chnsaw",
+			"gun_dildo1", "gun_dildo2", "gun_vibe1", "gun_vibe2", "flowera", "gun_cane", "grenade", "teargas", "molotov", nullptr,
+			nullptr, nullptr, "colt45", "silenced", "desert_eagle", "chromegun", "sawnoff", "shotgspa", "micro_uzi", "mp5lng",
+			"ak47", "m4", "tec9", "cuntgun", "sniper", "rocketla", "heatseek", "flame", "minigun", "satchel",
+			"bomb", "spraycan", "fire_ex", "camera", "nvgoggles", "irgoggles", "gun_para"
+		};
+		return (w > 0 && w < 47) ? k[w] : nullptr;
+	}
+
+	RwTexture* GetGtaWeaponIcon(int w)
+	{
+		struct E { RwTexture* tex = nullptr; int tries = 0; uint32_t next = 0; };
+		static E s_e[47];
+		static uint32_t s_f = 0;
+		s_f++;
+		if (w <= 0 || w >= 47) return nullptr;
+		E& e = s_e[w];
+		if (e.tex) return e.tex;
+		const char* m = WeaponModel(w);
+		if (!m || e.tries >= 4 || s_f < e.next) return nullptr;
+		e.tries++; e.next = s_f + 240;
+		char name[48];
+		snprintf(name, sizeof(name), "%sicon", m);
+		static const char* const kDbs[] = { "gta3", "txd", "gta_int", "samp", "player", "mobile" };
+		for (const char* db : kDbs)
+		{
+			RwTexture* t = CUtil::LoadTextureFromDB(db, name);
+			if (t && t->raster) { e.tex = t; break; }
+		}
+		return e.tex;
+	}
+
 	void DrawIcon(ImGuiRenderer* r, int icon, const ImVec2& a, const ImVec2& b, int alpha = 255)
 	{
+		if (const int w = WeaponFromIcon(icon))
+		{
+			if (RwTexture* gt = GetGtaWeaponIcon(w))
+			{
+				// sprites do GTA sao largos: mantem a proporcao centralizada na celula
+				const float cw = b.x - a.x, ch = b.y - a.y;
+				float iw = (float)(gt->raster->width > 0 ? gt->raster->width : 1), ih = (float)(gt->raster->height > 0 ? gt->raster->height : 1);
+				const float k = std::min(cw / iw, ch / ih);
+				const float dw = iw * k, dh = ih * k;
+				const ImVec2 a2(a.x + (cw - dw) * 0.5f, a.y + (ch - dh) * 0.5f);
+				r->drawImage(a2, ImVec2(a2.x + dw, a2.y + dh), (ImTextureID)gt->raster, ImColor(255, 255, 255, alpha), ImVec2(0, 0), ImVec2(1, 1));
+				return;
+			}
+		}
 		RwRaster* tex = GetAtlas();
 		if (!tex) return;
 		if (icon < 0 || icon >= InvAtlas::kIcons) icon = 8;
@@ -356,6 +420,11 @@ namespace
 	const ImColor cRed    (235, 90, 90, 255);
 	const ImColor cBtn    (38, 38, 48, 235);
 	const ImColor cBtnOff (28, 28, 34, 200);
+	const ImColor cPink   (236, 40, 96, 255);
+	const ImColor cPinkF  (236, 40, 96, 90);
+	const ImColor cCellBg (255, 255, 255, 18);
+	const ImColor cCellLn (255, 255, 255, 62);
+	const ImColor cTint   (26, 14, 40, 150);
 
 	constexpr int INV_TRADE_VIS = 6;       // linhas de oferta exibidas (= INV_TRADE_SLOTS do servidor)
 	enum { P_INV = 1, P_GROUND = 2, P_HOT = 3 };
@@ -437,21 +506,22 @@ void InventoryUI::draw(ImGuiRenderer* r)
 	const ImVec2 scr = pUI ? pUI->displaySize() : ImVec2(1920, 1080);
 	const float k = scr.y / 575.0f;
 
-	// ---- geometria (tudo proporcional a altura da tela; 5 colunas, 4 linhas visiveis) ----
-	const int   cols = 5, visRows = 4;
-	const float slot = 58.0f * k, gap = 4.0f * k, pad = 10.0f * k, pitch = slot + gap;
+	// ---- geometria: layout de referencia 1280x720 centralizado (u = escala) ----
+	const float u  = std::min(scr.y / 720.0f, scr.x / 1100.0f);
+	const float ox = scr.x * 0.5f - 640.0f * u, oy = (scr.y - 720.0f * u) * 0.5f;
+	auto PX = [&](float v) { return ox + v * u; };
+	auto PY = [&](float v) { return oy + v * u; };
+	const int   cols = 6, visRows = 8;
+	const float slot = 58.0f * u, gap = 4.0f * u, pad = 0.0f, pitch = slot + gap;
 	const float gridW = cols * slot + (cols - 1) * gap;
 	const float gridH = visRows * slot + (visRows - 1) * gap;
-	const float headH = 36.0f * k, infoH = 24.0f * k, barH = 36.0f * k;
-	const float panW = gridW + 2.0f * pad + 8.0f * k;       // + trilho de rolagem
-	const float panH = headH + gridH + 8.0f * k + infoH + 6.0f * k + barH + pad;
-	const float betw = 22.0f * k;
-	const float totW = panW * 2.0f + betw;
-	const float xl = std::max(6.0f * k, (scr.x - totW) * 0.5f), xr = xl + panW + betw;
-	const float y0 = std::max(4.0f * k, (scr.y - panH) * 0.5f);
-	const ImVec2 gL(xl + pad, y0 + headH), gR(xr + pad, y0 + headH);       // origem das grades
-	const float barY = gL.y + gridH + 8.0f * k + infoH + 6.0f * k;
-	const float fs = 11.0f * k;
+	const float headH = 126.0f * u, infoH = 20.0f * u, barH = 34.0f * u;
+	const float panW = gridW;
+	const float panH = 720.0f * u;
+	const float xl = PX(296.0f), xr = PX(705.0f), y0 = oy;
+	const ImVec2 gL(xl, PY(126.0f)), gR(xr, PY(126.0f));       // origem das grades
+	const float infoY = PY(626.0f), barY = PY(652.0f);
+	const float fs = 11.0f * u;
 
 	const int rowsL = (S.slots + cols - 1) / cols;
 	const int groundCells = std::max(cols * visRows, ((int)S.ground.size() + cols - 1) / cols * cols);
@@ -479,9 +549,9 @@ void InventoryUI::draw(ImGuiRenderer* r)
 	// ---- botoes ----
 	std::vector<Btn> btns;
 	{
-		const float bw = (panW - 2.0f * pad - 3.0f * 4.0f * k) / 4.0f, bh = barH;
+		const float bw = (gridW - 2.0f * gap) / 3.0f, bh = barH;
 		auto mk = [&](int i, int id, const char* lab, bool en) {
-			const float bx = xl + pad + i * (bw + 4.0f * k);
+			const float bx = xl + i * (bw + gap);
 			btns.push_back({id, ImVec2(bx, barY), ImVec2(bx + bw, barY + bh), lab, en});
 		};
 		const bool invSel = g_sel.panel == P_INV;
@@ -491,13 +561,14 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		if (tradeActive) mk(1, B_OFFER, "OFERTAR", invSel && !T.myConf);
 		else             mk(1, B_DROP, "DROPAR", invSel);
 		mk(2, B_TRADE, "NEGOCIAR", !tradeMode);
-		mk(3, B_QTY, g_allQty ? "QTD: TUDO" : "QTD: 1", true);
-		btns.push_back({B_CLOSE, ImVec2(xl + panW - pad - 78.0f * k, y0 + 6.0f * k), ImVec2(xl + panW - pad, y0 + 6.0f * k + 24.0f * k), "FECHAR", true});
+		btns.push_back({B_QTY, ImVec2(PX(474.0f), PY(87.0f)), ImVec2(PX(584.0f), PY(116.0f)), "", true});
+		btns.push_back({B_QTY, ImVec2(PX(883.0f), PY(87.0f)), ImVec2(PX(993.0f), PY(116.0f)), "", true});
+		btns.push_back({B_CLOSE, ImVec2(PX(1100.0f), PY(26.0f)), ImVec2(PX(1220.0f), PY(58.0f)), "", true});
 
 		// botoes do painel direito (negociacao)
-		const float rbw = (panW - 2.0f * pad - 4.0f * k) / 2.0f;
+		const float rbw = (gridW - gap) / 2.0f;
 		auto mr = [&](int i, int id, const char* lab, bool en) {
-			const float bx = xr + pad + i * (rbw + 4.0f * k);
+			const float bx = xr + i * (rbw + gap);
 			btns.push_back({id, ImVec2(bx, barY), ImVec2(bx + rbw, barY + bh), lab, en});
 		};
 		if (T.mode == 2)      { mr(0, B_ACCEPT, "ACEITAR", true); mr(1, B_REFUSE, "RECUSAR", true); }
@@ -509,15 +580,18 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		for (const Btn& b : btns) if (In(x, y, b.a, b.b)) return &b;
 		return nullptr;
 	};
-	const ImVec2 rightA(xr, y0), rightB(xr + panW, y0 + panH), leftA(xl, y0), leftB(xl + panW, y0 + panH);
+	const ImVec2 rightA(PX(690.0f), y0), rightB(PX(1100.0f), y0 + panH), leftA(PX(180.0f), y0), leftB(PX(690.0f), y0 + panH);
 	const ImVec2 vpLA(gL.x, gL.y), vpLB(gL.x + gridW, gL.y + gridH), vpRA(gR.x, gR.y), vpRB(gR.x + gridW, gR.y + gridH);
 
-	// faixa dos slots rapidos (abaixo dos paineis): alvo de arrastar-e-soltar
-	const float hotW = 5 * slot + 4 * gap, hotX = (scr.x - hotW) * 0.5f, hotY = std::min(y0 + panH + 12.0f * k, scr.y - slot - 6.0f * k);
+	// slots rapidos: coluna a esquerda da mochila (alvo de arrastar-e-soltar)
+	const float hotX = PX(191.0f), hotY0 = PY(224.0f), hotP = 69.0f * u;
 	auto hotAt = [&](float x, float y) -> int {
-		if (y < hotY || y > hotY + slot || x < hotX || x > hotX + hotW) return -1;
-		const int c = (int)std::floor((x - hotX) / pitch);
-		return (c >= 0 && c < 5 && x - hotX - c * pitch <= slot) ? c : -1;
+		for (int i = 0; i < 5; i++)
+		{
+			const float ay = hotY0 + i * hotP;
+			if (In(x, y, ImVec2(hotX, ay), ImVec2(hotX + slot, ay + slot))) return i;
+		}
+		return -1;
 	};
 	auto slotAt = [&](int panel, float x, float y) -> int {
 		const ImVec2 o = panel == P_INV ? gL : gR;
@@ -681,23 +755,44 @@ void InventoryUI::draw(ImGuiRenderer* r)
 	//  Desenho
 	// =================================================================================
 	r->drawRect(ImVec2(0, 0), scr, cDim, true);
-	for (int p = 0; p < 2; p++)
+	r->drawRect(ImVec2(0, 0), scr, cTint, true);
+	const float fu = 12.0f * u;      // texto padrao
+	const float fq = 11.0f * u;      // quantidade nas celulas
+
+	auto header = [&](float x, const std::string& title) -> float {
+		const float fh = 14.0f * u;
+		r->drawText(ImVec2(x, PY(95.0f)), cText, title, false, fh);
+		return r->calculateTextSize(title, fh).x;
+	};
+	auto lineTo = [&](float x0, float x1) {
+		r->drawLine(ImVec2(x0, PY(107.0f)), ImVec2(x1, PY(107.0f)), ImColor(255, 255, 255, 70), std::max(1.0f, 1.5f * u));
+	};
+	auto scrollbar = [&](float x, float scroll, float maxS, float content, bool alwaysFull) {
+		if (maxS <= 0.0f && !alwaysFull) return;
+		const float th = maxS > 0.0f ? std::max(18.0f * u, gridH * gridH / content) : gridH;
+		const float ty = maxS > 0.0f ? gL.y + (gridH - th) * (scroll / maxS) : gL.y;
+		r->drawRect(ImVec2(x, gL.y), ImVec2(x + 2.0f * u, gL.y + gridH), ImColor(255, 255, 255, 20), true);
+		r->drawRect(ImVec2(x, ty), ImVec2(x + 2.0f * u, ty + th), cPink, true);
+	};
+	auto drawQty = [&](const ImVec2& a, int q) {
+		char t[16]; snprintf(t, sizeof(t), "%dx", q);
+		r->drawText(ImVec2(a.x + 5.0f * u, a.y + 3.0f * u), cText, t, true, fq);
+	};
+
+	// ---- cabecalho esquerdo: Mochila ----
 	{
-		const float x = p == 0 ? xl : xr;
-		r->drawRect(ImVec2(x, y0), ImVec2(x + panW, y0 + panH), cPanelBg, true);
-		r->drawRect(ImVec2(x, y0), ImVec2(x + panW, y0 + 2.0f * k), cPurple, true);
+		const float tw = header(xl, "Mochila");
+		lineTo(xl + tw + 10.0f * u, PX(462.0f));
+		char w1[24], w2[32];
+		snprintf(w1, sizeof(w1), "%s", Kg(S.weight).c_str());
+		snprintf(w2, sizeof(w2), "/%skg", Kg(S.cap).c_str());
+		const ImVec2 t1 = r->calculateTextSize(w1, fu), t2 = r->calculateTextSize(w2, fu);
+		const float wx = PX(665.0f) - t1.x - t2.x, wy = PY(101.0f);
+		r->drawText(ImVec2(wx, wy), S.weight > S.cap ? cRed : cText, w1, false, fu);
+		r->drawText(ImVec2(wx + t1.x, wy), cPink, w2, false, fu);
 	}
 
-	// ---- cabecalho esquerdo ----
-	r->drawText(ImVec2(xl + pad, y0 + 9.0f * k), cText, "Seu Inventário", false, 15.0f * k);
-	{
-		char buf[48]; snprintf(buf, sizeof(buf), "%s / %s", Kg(S.weight).c_str(), Kg(S.cap).c_str());
-		const ImVec2 ts = r->calculateTextSize(buf, fs);
-		r->drawText(ImVec2(xl + panW - pad - 86.0f * k - ts.x, y0 + 11.0f * k), S.weight > S.cap ? cRed : cMute, buf, false, fs);
-	}
-	r->drawRect(ImVec2(xl + pad, y0 + headH - 4.0f * k), ImVec2(xl + pad + 110.0f * k, y0 + headH - 3.0f * k), cText, true);
-
-	// ---- grade do inventario (rolagem real, recorte) ----
+	// ---- grade da mochila (rolagem real, recorte) ----
 	r->pushClipRect(vpLA, vpLB, true);
 	for (int i = 0; i < S.slots; i++)
 	{
@@ -706,34 +801,21 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		const ImVec2 b(a.x + slot, a.y + slot);
 		if (b.y < vpLA.y || a.y > vpLB.y) continue;
 		const bool sel = g_sel.panel == P_INV && g_sel.idx == i;
-		const bool ghost = g_t.dragging && g_t.panel == P_INV && g_t.src == i;
-		r->drawRect(a, b, sel ? cPurpleF : cSlotBg, true);
-		r->drawRect(a, b, sel ? cPurple : cSlotLn, false, sel ? 2.0f : 1.0f);
+		r->drawRect(a, b, sel ? cPinkF : cCellBg, true);
+		r->drawRect(a, b, sel ? cPink : cCellLn, false, sel ? 2.0f : 1.0f);
 		if (const Item* it = bySlot[i])
 		{
-			const float m = 6.0f * k;
-			DrawIcon(r, it->icon, ImVec2(a.x + m, a.y + m), ImVec2(b.x - m, b.y - m), ghost ? 70 : 255);
-			if (it->qty > 1)
-			{
-				char q[12]; snprintf(q, sizeof(q), "x%d", it->qty);
-				const ImVec2 ts = r->calculateTextSize(q, 10.0f * k);
-				r->drawText(ImVec2(b.x - ts.x - 4.0f * k, a.y + 3.0f * k), cText, q, true, 10.0f * k);
-			}
+			const bool ghost = g_t.dragging && g_t.panel == P_INV && g_t.src == i;
+			const float m = 8.0f * u;
+			DrawIcon(r, it->icon, ImVec2(a.x + m, a.y + m + 3.0f * u), ImVec2(b.x - m, b.y - m + 3.0f * u), ghost ? 70 : 255);
+			drawQty(a, it->qty);
 		}
 	}
 	r->popClipRect();
-	if (maxL > 0.0f)   // barra de rolagem
-	{
-		const float tx = gL.x + gridW + 3.0f * k, th = std::max(18.0f * k, gridH * gridH / contentL);
-		const float ty = gL.y + (gridH - th) * (g_scroll[P_INV] / maxL);
-		r->drawRect(ImVec2(tx, gL.y), ImVec2(tx + 3.0f * k, gL.y + gridH), ImColor(255, 255, 255, 25), true);
-		r->drawRect(ImVec2(tx, ty), ImVec2(tx + 3.0f * k, ty + th), cText, true);
-	}
+	scrollbar(PX(674.0f), g_scroll[P_INV], maxL, contentL, true);   // divisor rosa = barra de rolagem da mochila
 
 	// ---- info do item selecionado ----
 	{
-		const float iy = gL.y + gridH + 8.0f * k;
-		r->drawRect(ImVec2(xl + pad, iy), ImVec2(xl + panW - pad, iy + infoH), ImColor(255, 255, 255, 10), true);
 		std::string info = "Toque para selecionar. Segure e arraste para usar, dropar ou mover.";
 		if (g_sel.panel == P_INV && g_sel.idx >= 0 && g_sel.idx < S.slots && bySlot[g_sel.idx])
 		{
@@ -746,16 +828,16 @@ void InventoryUI::draw(ImGuiRenderer* r)
 			char b[96]; snprintf(b, sizeof(b), "No chão: %s  x%d", S.ground[g_sel.idx].name.c_str(), S.ground[g_sel.idx].qty);
 			info = b;
 		}
-		r->pushClipRect(ImVec2(xl + pad, iy), ImVec2(xl + panW - pad, iy + infoH), true);
-		r->drawText(ImVec2(xl + pad + 6.0f * k, iy + (infoH - 10.0f * k) * 0.5f), cMute, info, false, 10.0f * k);
+		r->pushClipRect(ImVec2(xl, infoY), ImVec2(xl + gridW, infoY + infoH), true);
+		r->drawText(ImVec2(xl, infoY + (infoH - 10.0f * u) * 0.5f), cMute, info, false, 10.0f * u);
 		r->popClipRect();
 	}
 
 	// ---- painel direito ----
 	if (!tradeMode)
 	{
-		r->drawText(ImVec2(xr + pad, y0 + 9.0f * k), cText, "Chão", false, 15.0f * k);
-		r->drawRect(ImVec2(xr + pad, y0 + headH - 4.0f * k), ImVec2(xr + pad + 44.0f * k, y0 + headH - 3.0f * k), cText, true);
+		const float tw = header(xr, "Chão");
+		lineTo(xr + tw + 10.0f * u, PX(873.0f));
 		r->pushClipRect(vpRA, vpRB, true);
 		for (int i = 0; i < groundCells; i++)
 		{
@@ -764,55 +846,45 @@ void InventoryUI::draw(ImGuiRenderer* r)
 			const ImVec2 b(a.x + slot, a.y + slot);
 			if (b.y < vpRA.y || a.y > vpRB.y) continue;
 			const bool sel = g_sel.panel == P_GROUND && g_sel.idx == i;
-			r->drawRect(a, b, sel ? cPurpleF : cSlotBg, true);
-			r->drawRect(a, b, sel ? cPurple : cSlotLn, false, sel ? 2.0f : 1.0f);
+			r->drawRect(a, b, sel ? cPinkF : cCellBg, true);
+			r->drawRect(a, b, sel ? cPink : cCellLn, false, sel ? 2.0f : 1.0f);
 			if (i < (int)S.ground.size())
 			{
 				const Drop& d = S.ground[i];
-				const float m = 6.0f * k;
-				DrawIcon(r, d.icon, ImVec2(a.x + m, a.y + m), ImVec2(b.x - m, b.y - m));
-				if (d.qty > 1)
-				{
-					char q[12]; snprintf(q, sizeof(q), "x%d", d.qty);
-					const ImVec2 ts = r->calculateTextSize(q, 10.0f * k);
-					r->drawText(ImVec2(b.x - ts.x - 4.0f * k, a.y + 3.0f * k), cText, q, true, 10.0f * k);
-				}
+				const float m = 8.0f * u;
+				DrawIcon(r, d.icon, ImVec2(a.x + m, a.y + m + 3.0f * u), ImVec2(b.x - m, b.y - m + 3.0f * u));
+				drawQty(a, d.qty);
 			}
 		}
 		r->popClipRect();
-		if (maxR > 0.0f)
-		{
-			const float tx = gR.x + gridW + 3.0f * k, th = std::max(18.0f * k, gridH * gridH / contentR);
-			const float ty = gR.y + (gridH - th) * (g_scroll[P_GROUND] / maxR);
-			r->drawRect(ImVec2(tx, gR.y), ImVec2(tx + 3.0f * k, gR.y + gridH), ImColor(255, 255, 255, 25), true);
-			r->drawRect(ImVec2(tx, ty), ImVec2(tx + 3.0f * k, ty + th), cText, true);
-		}
-		const float iy = gR.y + gridH + 8.0f * k;
-		r->drawText(ImVec2(xr + pad + 6.0f * k, iy + (infoH - 10.0f * k) * 0.5f), cMute,
-					S.ground.empty() ? "Nada por perto. Arraste um item para cá para dropar." : "Itens a até 3 m. Toque e use PEGAR, ou arraste para o inventário.", false, 10.0f * k);
+		scrollbar(gR.x + gridW + 9.0f * u, g_scroll[P_GROUND], maxR, contentR, false);
+		r->pushClipRect(ImVec2(xr, infoY), ImVec2(xr + gridW, infoY + infoH), true);
+		r->drawText(ImVec2(xr, infoY + (infoH - 10.0f * u) * 0.5f), cMute,
+					S.ground.empty() ? "Nada por perto. Arraste um item para cá para dropar." : "Itens a até 3 m. Toque e use PEGAR, ou arraste para a mochila.", false, 10.0f * u);
+		r->popClipRect();
 	}
 	else
 	{
 		char title[64];
 		snprintf(title, sizeof(title), "Negociação%s%s", T.partner.empty() ? "" : " - ", T.partner.c_str());
-		r->pushClipRect(ImVec2(xr + pad, y0), ImVec2(xr + panW - pad, y0 + headH), true);
-		r->drawText(ImVec2(xr + pad, y0 + 9.0f * k), cText, title, false, 15.0f * k);
+		r->pushClipRect(ImVec2(xr, y0), ImVec2(PX(875.0f), y0 + headH), true);
+		const float tw = header(xr, title);
 		r->popClipRect();
-		r->drawRect(ImVec2(xr + pad, y0 + headH - 4.0f * k), ImVec2(xr + pad + 60.0f * k, y0 + headH - 3.0f * k), cText, true);
+		lineTo(xr + std::min(tw, PX(875.0f) - xr) + 10.0f * u, PX(873.0f));
 
 		if (T.mode == 2)
 		{
 			char b[96]; snprintf(b, sizeof(b), "%s QUER NEGOCIAR COM VOCÊ!", T.partner.c_str());
-			const ImVec2 ts = r->calculateTextSize(b, 13.0f * k);
-			r->drawText(ImVec2(xr + (panW - ts.x) * 0.5f, gR.y + gridH * 0.4f), cText, b, false, 13.0f * k);
-			const ImVec2 t2 = r->calculateTextSize("Use ACEITAR ou RECUSAR.", fs);
-			r->drawText(ImVec2(xr + (panW - t2.x) * 0.5f, gR.y + gridH * 0.4f + 24.0f * k), cMute, "Use ACEITAR ou RECUSAR.", false, fs);
+			const ImVec2 ts = r->calculateTextSize(b, 14.0f * u);
+			r->drawText(ImVec2(xr + (panW - ts.x) * 0.5f, gR.y + gridH * 0.4f), cText, b, false, 14.0f * u);
+			const ImVec2 t2 = r->calculateTextSize("Use ACEITAR ou RECUSAR.", fu);
+			r->drawText(ImVec2(xr + (panW - t2.x) * 0.5f, gR.y + gridH * 0.4f + 26.0f * u), cMute, "Use ACEITAR ou RECUSAR.", false, fu);
 		}
 		else if (T.mode == 1)
 		{
 			const char* m = "Aguardando resposta...";
-			const ImVec2 ts = r->calculateTextSize(m, 13.0f * k);
-			r->drawText(ImVec2(xr + (panW - ts.x) * 0.5f, gR.y + gridH * 0.4f), cText, m, false, 13.0f * k);
+			const ImVec2 ts = r->calculateTextSize(m, 14.0f * u);
+			r->drawText(ImVec2(xr + (panW - ts.x) * 0.5f, gR.y + gridH * 0.4f), cText, m, false, 14.0f * u);
 		}
 		else
 		{
@@ -821,17 +893,17 @@ void InventoryUI::draw(ImGuiRenderer* r)
 				const std::vector<TItem>& L = side == 0 ? T.mine : T.theirs;
 				const float cx0 = gR.x + side * (colW + 6.0f * k);
 				const bool conf = side == 0 ? T.myConf : T.theirConf;
-				r->drawText(ImVec2(cx0, gR.y + 2.0f * k), cText, side == 0 ? "Você" : T.partner, false, fs);
+				r->drawText(ImVec2(cx0, gR.y + 2.0f * u), cText, side == 0 ? "Você" : T.partner, false, fu);
 				if (conf)
 				{
-					const ImVec2 ts = r->calculateTextSize("CONFIRMADO", 9.0f * k);
-					r->drawText(ImVec2(cx0 + colW - ts.x, gR.y + 4.0f * k), cGreen, "CONFIRMADO", false, 9.0f * k);
+					const ImVec2 ts = r->calculateTextSize("CONFIRMADO", 9.0f * u);
+					r->drawText(ImVec2(cx0 + colW - ts.x, gR.y + 4.0f * u), cGreen, "CONFIRMADO", false, 9.0f * u);
 				}
 				for (int i = 0; i < INV_TRADE_VIS; i++)
 				{
 					const ImVec2 a(cx0, listY + i * rowH), b(cx0 + colW, listY + i * rowH + rowH - 3.0f * k);
-					r->drawRect(a, b, cSlotBg, true);
-					r->drawRect(a, b, conf ? cGreen : cSlotLn, false, 1.0f);
+					r->drawRect(a, b, cCellBg, true);
+					r->drawRect(a, b, conf ? cGreen : cCellLn, false, 1.0f);
 					if (i < (int)L.size())
 					{
 						DrawIcon(r, L[i].icon, ImVec2(a.x + 2.0f * k, a.y + 2.0f * k), ImVec2(a.x + (rowH - 5.0f * k), b.y - 2.0f * k));
@@ -844,39 +916,42 @@ void InventoryUI::draw(ImGuiRenderer* r)
 				}
 			}
 			const char* hint = T.myConf ? "Oferta confirmada. Use EDITAR para alterar." : "Arraste/OFERTE itens. Toque na sua oferta para remover.";
-			r->pushClipRect(ImVec2(xr + pad, gR.y + gridH + 8.0f * k), ImVec2(xr + panW - pad, gR.y + gridH + 8.0f * k + infoH), true);
-			r->drawText(ImVec2(xr + pad + 6.0f * k, gR.y + gridH + 8.0f * k + (infoH - 10.0f * k) * 0.5f), cMute, hint, false, 10.0f * k);
+			r->pushClipRect(ImVec2(xr, infoY), ImVec2(xr + gridW, infoY + infoH), true);
+			r->drawText(ImVec2(xr, infoY + (infoH - 10.0f * u) * 0.5f), cMute, hint, false, 10.0f * u);
 			r->popClipRect();
 		}
 	}
 
-	// ---- slots rapidos (alvo de arrastar) ----
+	// ---- slots rapidos (coluna vertical, numeros rosa) ----
 	{
-		const char* ttl = "SLOTS RÁPIDOS — arraste um item para cá  ·  toque: equipar/usar (arma equipada: devolve ao inventário)  ·  fora da faixa: limpar  ·  máx. 3 armas";
-		r->drawText(ImVec2(hotX, hotY - 13.0f * k), cMute, ttl, false, 9.0f * k);
+		r->drawText(ImVec2(hotX, hotY0 - 16.0f * u), cMute, "Slots rápidos", false, 9.5f * u);
 		const int over = g_t.dragging ? hotAt(g_t.cx, g_t.cy) : -1;
 		for (int i = 0; i < 5; i++)
 		{
-			const ImVec2 a(hotX + i * pitch, hotY), b(a.x + slot, a.y + slot);
+			const ImVec2 a(hotX, hotY0 + i * hotP), b(a.x + slot, a.y + slot);
 			const HotSlot& h = hot[i];
 			const bool eq = (h.flags & 1) != 0, miss = h.id && h.qty <= 0 && !eq;
 			const bool tgt = over == i;
-			r->drawRect(a, b, tgt ? cPurpleF : cPanelBg, true);
-			r->drawRect(a, b, tgt ? cPurple : ((h.flags & 4) ? ImColor(255, 210, 70, 255) : (eq ? cGreen : cSlotLn)), false, (tgt || eq) ? 2.0f : 1.0f);   // amarelo = na mao, verde = no corpo
+			r->drawRect(a, b, tgt ? cPinkF : cCellBg, true);
+			r->drawRect(a, b, tgt ? cPink : ((h.flags & 4) ? ImColor(255, 210, 70, 255) : (eq ? cGreen : cCellLn)), false, (tgt || eq) ? 2.0f : 1.0f);   // amarelo = na mao, verde = no corpo
 			if (h.id)
 			{
-				const float m = 6.0f * k;
+				const float m = 8.0f * u;
 				const bool ghost = g_t.dragging && g_t.panel == P_HOT && g_t.src == i;
 				DrawIcon(r, h.icon, ImVec2(a.x + m, a.y + m), ImVec2(b.x - m, b.y - m), ghost ? 70 : (miss ? 90 : 255));
-				if (h.qty > 1 || (eq && h.qty <= 0))   // equipada sem municao mostra x0
+				if (h.qty > 1 || (eq && h.qty <= 0))   // equipada sem municao mostra 0x
 				{
-					char q[12]; snprintf(q, sizeof(q), "x%d", h.qty);
-					const ImVec2 ts = r->calculateTextSize(q, 10.0f * k);
-					r->drawText(ImVec2(b.x - ts.x - 4.0f * k, b.y - ts.y - 3.0f * k), eq ? cGreen : cText, q, true, 10.0f * k);
+					char q[12]; snprintf(q, sizeof(q), "%dx", h.qty);
+					const ImVec2 ts = r->calculateTextSize(q, fq);
+					r->drawText(ImVec2(b.x - ts.x - 4.0f * u, b.y - ts.y - 3.0f * u), eq ? cGreen : cText, q, true, fq);
 				}
 			}
+			// selo numerado rosa na borda direita do slot
+			const float bs = 18.0f * u, by = a.y + (slot - bs) * 0.5f;
+			r->drawRect(ImVec2(b.x - bs * 0.5f, by), ImVec2(b.x + bs * 0.5f, by + bs), cPink, true);
 			char nb[4]; snprintf(nb, sizeof(nb), "%d", i + 1);
-			r->drawText(ImVec2(a.x + 4.0f * k, a.y + 2.0f * k), cMute, nb, false, 10.0f * k);
+			const ImVec2 ns = r->calculateTextSize(nb, 11.0f * u);
+			r->drawText(ImVec2(b.x - ns.x * 0.5f, by + (bs - ns.y) * 0.5f), ImColor(255, 255, 255, 255), nb, false, 11.0f * u);
 		}
 	}
 
@@ -884,10 +959,31 @@ void InventoryUI::draw(ImGuiRenderer* r)
 	for (const Btn& b : btns)
 	{
 		const bool pressed = g_t.finger >= 0 && g_t.kind == 3 && g_t.btn == b.id;
+		if (b.id == B_CLOSE)
+		{
+			const char* lab = "Para fechar";
+			const ImVec2 ts = r->calculateTextSize(lab, 11.0f * u);
+			const ImVec2 ea(PX(1176.0f), PY(32.0f)), eb(PX(1216.0f), PY(54.0f));
+			r->drawText(ImVec2(ea.x - 6.0f * u - ts.x, PY(43.0f) - ts.y * 0.5f), cText, lab, false, 11.0f * u);
+			r->drawRect(ea, eb, pressed ? cPinkF : cCellBg, true);
+			r->drawRect(ea, eb, cCellLn, false, 1.0f);
+			const ImVec2 es = r->calculateTextSize("ESC", 10.0f * u);
+			r->drawText(ImVec2((ea.x + eb.x - es.x) * 0.5f, (ea.y + eb.y - es.y) * 0.5f), cText, "ESC", false, 10.0f * u);
+			continue;
+		}
+		if (b.id == B_QTY)
+		{
+			r->drawRect(b.a, b.b, pressed ? cPinkF : cCellBg, true);
+			r->drawRect(b.a, b.b, cCellLn, false, 1.0f);
+			const char* lab = g_allQty ? "Quantidade: Tudo" : "Quantidade: 1";
+			const ImVec2 ts = r->calculateTextSize(lab, 11.0f * u);
+			r->drawText(ImVec2((b.a.x + b.b.x - ts.x) * 0.5f, (b.a.y + b.b.y - ts.y) * 0.5f), cMute, lab, false, 11.0f * u);
+			continue;
+		}
 		const bool hot = g_t.dragging && b.enabled && (b.id == B_USE || b.id == B_DROP || b.id == B_OFFER) && In(g_t.cx, g_t.cy, b.a, b.b);
-		r->drawRect(b.a, b.b, hot || pressed ? cPurpleF : (b.enabled ? cBtn : cBtnOff), true);
-		r->drawRect(b.a, b.b, hot ? cPurple : cSlotLn, false, 1.0f);
-		const float bfs = 10.5f * k;
+		r->drawRect(b.a, b.b, hot || pressed ? cPinkF : (b.enabled ? cCellBg : ImColor(255, 255, 255, 8)), true);
+		r->drawRect(b.a, b.b, hot ? cPink : cCellLn, false, 1.0f);
+		const float bfs = 11.5f * u;
 		const ImVec2 ts = r->calculateTextSize(b.label, bfs);
 		r->drawText(ImVec2((b.a.x + b.b.x - ts.x) * 0.5f, (b.a.y + b.b.y - ts.y) * 0.5f), b.enabled ? cText : cMute, b.label, false, bfs);
 	}
