@@ -651,7 +651,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 	{
 		if (g_t.kind == 5)
 		{
-			if (g_t.src >= 0 && g_t.src < 5 && hot[g_t.src].id) g_t.dragging = true;
+			if (g_t.src >= 0 && g_t.src < 5 && hot[g_t.src].id && !(hot[g_t.src].flags & 4)) g_t.dragging = true;   // arma NA MAO: travada, nao arrasta
 		}
 		else
 		{
@@ -728,6 +728,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 					else { const int sl = [&]{ for (const Item& it : S.items) if (it.id == hot[t.src].id) return it.slot; return -1; }();
 					       if (sl >= 0) { Send("/invx bar %d %d", dh, sl); } else Send("/invx barclear %d", t.src); }
 				}
+				else if (hot[t.src].flags & 4) Send("/invx hot %d", t.src);        // arma na mao: so guarda no corpo (nao mexe no slot)
 				else if (hot[t.src].flags & 1) Send("/invx hotstow %d", t.src);   // inventario aberto: toque numa arma equipada = devolve ao inventario
 				else Send("/invx hot %d", t.src);                              // toque = equipar/usar
 			}
@@ -939,6 +940,8 @@ void InventoryUI::draw(ImGuiRenderer* r)
 				const float m = 8.0f * u;
 				const bool ghost = g_t.dragging && g_t.panel == P_HOT && g_t.src == i;
 				DrawIcon(r, h.icon, ImVec2(a.x + m, a.y + m), ImVec2(b.x - m, b.y - m), ghost ? 70 : (miss ? 90 : 255));
+				if (h.flags & 4)   // arma na mao: travada
+					r->drawText(ImVec2(a.x + 4.0f * u, a.y + 3.0f * u), ImColor(255, 210, 70, 255), "NA MÃO", true, 8.5f * u);
 				if (h.qty > 1 || (eq && h.qty <= 0))   // equipada sem municao mostra 0x
 				{
 					char q[12]; snprintf(q, sizeof(q), "%dx", h.qty);
