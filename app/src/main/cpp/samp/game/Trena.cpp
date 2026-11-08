@@ -12,6 +12,8 @@
 #include <deque>
 #include <vector>
 
+extern CNetGame* pNetGame;
+
 namespace
 {
 	bool  g_has = false;
