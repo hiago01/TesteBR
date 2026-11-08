@@ -114,7 +114,6 @@ namespace
         if ((int)n == lastN && nulls == lastNulls) return;
         lastN = (int)n; lastNulls = nulls; ++lines;
         FLog("[SKIN7S] registered(%s,modelo=%d): n=%u nulos=%d%s", tag, model, n, nulls, nulls ? "   <== BANCO NULO NA LISTA" : "");
-        if (nulls) DumpBadTxdSlots(tag);
         for (uint32_t i = 0; i < n && i < 6; ++i) FLog("[SKIN7S]    registered[%u]=%p", i, (void*)d[i]);
     }
 
@@ -268,8 +267,31 @@ namespace
         return true;
     }
 
+    int   s_curModel = -1;                                   // ultimo modelo que o jogo converteu (diagnostico do Register nulo)
+    void (*s_registerOrig)(void*) = nullptr;
+
+    // TextureDatabaseRuntime::Register(db): com db nulo o jogo poe um banco NULO na lista de registrados e o proximo GetTexture
+    // (+0x110 de um ponteiro nulo) derruba o jogo / as texturas de corona e sombra falham (quadrados brancos). Ignora o nulo e loga quem chamou.
+    void Register_hook(void* db)
+    {
+        if (!db)
+        {
+            static int n = 0;
+            if (n++ < 20)
+            {
+                const uintptr_t lr = reinterpret_cast<uintptr_t>(__builtin_return_address(0));
+                CBaseModelInfo* mi = (s_curModel >= 0 && s_curModel < (int)TOTAL_DFF_MODEL_IDS) ? CModelInfo::GetModelInfo(s_curModel) : nullptr;
+                FLog("[TXDDIAG] Register(NULL) BLOQUEADO: chamador=libGTASA+0x%lx ultimo modelo convertido=%d '%s' txd=%d",
+                     (unsigned long)(lr - g_libGTASA), s_curModel, mi ? mi->m_modelName : "?", mi ? (int)mi->m_nTxdIndex : -1);
+            }
+            return;
+        }
+        s_registerOrig(db);
+    }
+
     bool Convert_hook(char* buf, int model, int a3)
     {
+        s_curModel = model;
         Skin* sk = FindSkin(model);
         if (!sk || !EnsureFile(*sk))
         {
@@ -353,6 +375,7 @@ namespace CustomSkinStream
 
         void* s1 = shadowhook_hook_func_addr((void*)(g_libGTASA + OFF_CONVERT_BUFFER), (void*)&Convert_hook, (void**)&s_convertOrig);
         void* s2 = shadowhook_hook_func_addr((void*)(g_libGTASA + OFF_GET_TEXTURE),    (void*)&GetTexture_hook, (void**)&s_getTexOrig);
-        FLog("[SKIN7S] hooks: ConvertBufferToObject=%s GetTexture=%s", s1 ? "OK" : "ERRO", s2 ? "OK" : "ERRO");
+        void* s3 = shadowhook_hook_func_addr((void*)(g_libGTASA + 0x2865D8), (void*)&Register_hook, (void**)&s_registerOrig);
+        FLog("[SKIN7S] hooks: ConvertBufferToObject=%s GetTexture=%s Register=%s", s1 ? "OK" : "ERRO", s2 ? "OK" : "ERRO", s3 ? "OK" : "ERRO");
     }
 }
