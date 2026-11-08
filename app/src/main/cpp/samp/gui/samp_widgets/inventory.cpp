@@ -467,7 +467,10 @@ void InventoryUI::draw(ImGuiRenderer* r)
 
 	// mapa slot -> item
 	std::vector<const Item*> bySlot(S.slots, nullptr);
-	for (const Item& it : S.items) if (it.slot >= 0 && it.slot < S.slots) bySlot[it.slot] = &it;
+	// item atribuido a um SLOT RAPIDO fica SO no slot rapido (sai da grade do inventario enquanto estiver la; limpar o slot devolve);
+	// o servidor continua guardando o item no inventario (peso/salvamento), so a exibicao muda.
+	auto inHot = [&](int id) { for (int h = 0; h < 5; h++) if (hot[h].id == id) return true; return false; };
+	for (const Item& it : S.items) if (it.slot >= 0 && it.slot < S.slots && !inHot(it.id)) bySlot[it.slot] = &it;
 
 	// selecao invalida (item sumiu apos sync do servidor) -> limpa
 	if (g_sel.panel == P_INV && (g_sel.idx < 0 || g_sel.idx >= S.slots || !bySlot[g_sel.idx])) g_sel = Sel();
@@ -703,8 +706,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		const ImVec2 b(a.x + slot, a.y + slot);
 		if (b.y < vpLA.y || a.y > vpLB.y) continue;
 		const bool sel = g_sel.panel == P_INV && g_sel.idx == i;
-		// arrastando para um SLOT RAPIDO o item continua no inventario (so e atribuido): nao apaga o icone de origem
-		const bool ghost = g_t.dragging && g_t.panel == P_INV && g_t.src == i && hotAt(g_t.cx, g_t.cy) < 0;
+		const bool ghost = g_t.dragging && g_t.panel == P_INV && g_t.src == i;
 		r->drawRect(a, b, sel ? cPurpleF : cSlotBg, true);
 		r->drawRect(a, b, sel ? cPurple : cSlotLn, false, sel ? 2.0f : 1.0f);
 		if (const Item* it = bySlot[i])
