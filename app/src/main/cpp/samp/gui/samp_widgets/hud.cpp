@@ -595,7 +595,7 @@ namespace
 	void DrawLocationTag(ImGuiRenderer* r, const ImVec2& screen, float S)
 	{
 		if (!Hud::MapAllowed()) return;
-		if (WorldMapWidget::IsOpen()) return;                                         // mapa aberto: as etiquetas se fecham
+		const bool mapOpen = WorldMapWidget::IsOpen();                                // mapa aberto: so o local; fechado: local + bussola
 		using namespace std::chrono;
 		const int64_t now = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
 		if (now - MiniMapTap::gStamp.load() > MiniMapTap::kFreshMs) return;           // radar nao foi desenhado agora
@@ -649,6 +649,7 @@ namespace
 		r->drawText(ImVec2(x0 + padL + pinW + gapPin, y0 + (h - ts.y) * 0.5f), kWhite, std::string(s_txt), false, fsz);
 
 		// ---- orientacao (bussola): mesma etiqueta, logo ao lado: "NE 045" + agulha que aponta para onde o carro vai ----
+		if (!mapOpen)
 		{
 			static const char* const kDir[8] = { "N", "NE", "L", "SE", "S", "SO", "O", "NO" };
 			const int di = ((int)std::lround(s_bearing / 45.0f)) & 7;

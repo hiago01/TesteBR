@@ -939,7 +939,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 			const bool eq = (h.flags & 1) != 0, miss = h.id && h.qty <= 0 && !eq;
 			const bool tgt = over == i;
 			r->drawRect(a, b, tgt ? cPinkF : cCellBg, true);
-			r->drawRect(a, b, tgt ? cPink : ((h.flags & 4) ? ImColor(255, 210, 70, 255) : (eq ? cGreen : cCellLn)), false, (tgt || eq) ? 2.0f : 1.0f);   // amarelo = na mao, verde = no corpo
+			r->drawRect(a, b, tgt ? cPink : ((h.flags & 4) ? ImColor(255, 210, 70, 255) : cCellLn), false, (tgt || (h.flags & 4)) ? 2.0f : 1.0f);   // so amarelo, e apenas na mao
 			if (h.id)
 			{
 				const float m = 8.0f * u;
@@ -951,7 +951,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 				{
 					char q[12]; snprintf(q, sizeof(q), "%dx", h.qty);
 					const ImVec2 ts = r->calculateTextSize(q, fq);
-					r->drawText(ImVec2(b.x - ts.x - 4.0f * u, b.y - ts.y - 3.0f * u), eq ? cGreen : cText, q, true, fq);
+					r->drawText(ImVec2(b.x - ts.x - 4.0f * u, b.y - ts.y - 3.0f * u), cText, q, true, fq);
 				}
 			}
 			// selo numerado rosa na borda direita do slot
