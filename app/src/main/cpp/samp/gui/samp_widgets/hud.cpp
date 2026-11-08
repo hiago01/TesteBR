@@ -8,6 +8,7 @@
 #include "hudatlas.h"
 #include "ZoneNames.h"
 #include "minimaptap_logic.h"
+#include "worldmap.h"
 #include "../../game/stamina.h"
 
 #include <chrono>
@@ -594,6 +595,7 @@ namespace
 	void DrawLocationTag(ImGuiRenderer* r, const ImVec2& screen, float S)
 	{
 		if (!Hud::MapAllowed()) return;
+		if (WorldMapWidget::IsOpen()) return;                                         // mapa aberto: as etiquetas se fecham
 		using namespace std::chrono;
 		const int64_t now = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
 		if (now - MiniMapTap::gStamp.load() > MiniMapTap::kFreshMs) return;           // radar nao foi desenhado agora
@@ -606,6 +608,7 @@ namespace
 
 		// posicao do jogador -> texto (recalcula a cada 250 ms)
 		static char s_txt[64] = "San Andreas";
+		static float s_bearing = 0.0f;       // graus, sentido horario a partir do norte (0 = N, 90 = L)
 		static int64_t s_last = 0;
 		if (now - s_last >= 250)
 		{
@@ -618,6 +621,9 @@ namespace
 				{
 					const CVector p = pp->m_pPed->GetPosition();
 					ZoneNames::Describe(p.x, p.y, p.z, s_txt, sizeof(s_txt));
+					// direcao do VEICULO (motorista): GetHeading = atan2(-frente.x, frente.y), anti-horario como no jogo -> rumo horario
+					const float hd = (pp->m_pPed->pVehicle ? pp->m_pPed->pVehicle->GetHeading() : pp->m_pPed->m_fCurrentRotation) * 57.2957795f;
+					s_bearing = std::fmod(std::fmod(-hd, 360.0f) + 360.0f, 360.0f);
 				}
 			}
 		}
@@ -641,6 +647,40 @@ namespace
 		FillCircle(r, ImVec2(pcx, pcy), pr * 0.42f, ImColor(20, 20, 20, 255));
 
 		r->drawText(ImVec2(x0 + padL + pinW + gapPin, y0 + (h - ts.y) * 0.5f), kWhite, std::string(s_txt), false, fsz);
+
+		// ---- orientacao (bussola): mesma etiqueta, logo ao lado: "NE 045" + agulha que aponta para onde o carro vai ----
+		{
+			static const char* const kDir[8] = { "N", "NE", "L", "SE", "S", "SO", "O", "NO" };
+			const int di = ((int)std::lround(s_bearing / 45.0f)) & 7;
+			char dt[24];
+			snprintf(dt, sizeof(dt), "%s %03d", kDir[di], ((int)std::lround(s_bearing)) % 360);
+			const float cpad = 8.0f * S, cicon = 14.0f * S, cgap = 6.0f * S;
+			const ImVec2 tsw = r->calculateTextSize(std::string("NO 000"), fsz);          // largura fixa (nao pula quando muda)
+			const float cw = cpad + cicon + cgap + tsw.x + padR;
+			const float cx0 = x0 + w + 4.0f * S;
+			r->drawRoundedRect(ImVec2(cx0, y0), ImVec2(cx0 + cw, y1), ImColor(20, 20, 20, 215), 5.0f * S, true);
+			r->drawRoundedRect(ImVec2(cx0, y0), ImVec2(cx0 + cw, y1), ImColor(255, 255, 255, 40), 5.0f * S, false, 1.0f);
+			// icone: aro + agulha (ponta clara = rumo atual, relativo ao norte da tela = sobe; "N" fixo no topo do aro)
+			const ImVec2 cc(cx0 + cpad + cicon * 0.5f, y0 + h * 0.5f);
+			const float cr = cicon * 0.5f;
+			{
+				constexpr int N = 24;
+				ImVec2 ring[N];
+				for (int i = 0; i < N; i++) { const float a = 2.0f * kPi * (float)i / (float)N; ring[i] = ImVec2(cc.x + std::cos(a) * cr, cc.y + std::sin(a) * cr); }
+				r->drawPolyline(ring, N, ImColor(225, 225, 225, 255), true, std::max(1.2f, 1.3f * S));
+			}
+			{
+				const float a = -s_bearing * kPi / 180.0f;          // agulha gira ao contrario do rumo: o norte do mundo fica fixo em cima
+				const float fx = std::sin(a), fy = -std::cos(a);    // ponta que aponta para o NORTE do mundo
+				ImVec2 n1[3] = { ImVec2(cc.x + fx * cr * 0.85f, cc.y + fy * cr * 0.85f),
+								 ImVec2(cc.x - fy * cr * 0.28f, cc.y + fx * cr * 0.28f),
+								 ImVec2(cc.x + fy * cr * 0.28f, cc.y - fx * cr * 0.28f) };
+				ImVec2 n2[3] = { ImVec2(cc.x - fx * cr * 0.85f, cc.y - fy * cr * 0.85f), n1[1], n1[2] };
+				r->drawConvexPolyFilled(n1, 3, ImColor(235, 70, 70, 255));      // ponta norte (vermelha)
+				r->drawConvexPolyFilled(n2, 3, ImColor(225, 225, 225, 255));
+			}
+			r->drawText(ImVec2(cx0 + cpad + cicon + cgap, y0 + (h - tsw.y) * 0.5f), kWhite, std::string(dt), false, fsz);
+		}
 	}
 
 	// CGame::DisplayHUD(): o proprio jogo/servidor liga e desliga (selecao de classe, textdraw de tela cheia...)

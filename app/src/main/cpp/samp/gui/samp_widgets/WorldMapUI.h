@@ -13,6 +13,7 @@
 #include "RoadGraph.h"
 #include "MiniRoute.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <cstring>
@@ -140,6 +141,9 @@ namespace WorldMap
 		enum { BTN_NONE = 0, BTN_CLOSE, BTN_CLEAR, BTN_ZIN, BTN_ZOUT, BTN_CENTER };
 
 		IPlatform* P;
+		float   m_vis = 0.0f;         // animacao "TV": 0 = desligada, 1 = ligada (sobe ao abrir, desce ao fechar)
+		int64_t m_visT = 0;           // instante do ultimo quadro (para o dt)
+		static constexpr float kTvOnSec = 0.42f, kTvOffSec = 0.30f;
 		std::atomic<bool> m_open{ false }, m_flush{ false }, m_sendOpen{ false }, m_sendClose{ false }, m_needInit{ false }, m_resetReq{ false };
 		std::atomic<bool> m_claimed[4] = { { false }, { false }, { false }, { false } };
 		std::mutex m_mx;
@@ -758,14 +762,22 @@ namespace WorldMap
 		DrainPending();
 		TickGps();
 
-		if (!m_open.load())
+		// animacao de TV: liga (sobe) quando abre, desliga (desce) quando fecha; o mapa segue desenhado ate apagar
+		const int64_t nowA = P->nowMs();
+		const float dtA = m_visT ? std::min(0.1f, std::max(0.0f, (float)(nowA - m_visT) / 1000.0f)) : 0.0f;
+		m_visT = nowA;
+		if (m_open.load()) m_vis = std::min(1.0f, m_vis + dtA / kTvOnSec);
+		else               m_vis = std::max(0.0f, m_vis - dtA / kTvOffSec);
+		bool closing = !m_open.load();
+
+		if (closing && m_vis <= 0.0f)
 		{
 			PublishMiniRoute();     // mapa fechado: a rota aparece no minimapa (radar nativo)
 			DrawMiniRoute(r);
 			ResetDrawState();
 			return;
 		}
-		MiniRoute::ClearWorld();    // mapa aberto: sem linha no minimapa
+		MiniRoute::ClearWorld();    // mapa aberto (ou apagando): sem linha no minimapa
 
 		m_L = MakeLayout();
 		const Layout& L = m_L;
@@ -784,13 +796,45 @@ namespace WorldMap
 		}
 		if (m_sendOpen.exchange(false)) P->sendCommand("/mapax open");
 
-		ProcessEvents();
-		if (!m_open.load()) { ResetDrawState(); if (m_sendClose.exchange(false)) P->sendCommand("/mapax close"); return; }
+		if (!closing)
+		{
+			ProcessEvents();
+			if (!m_open.load())   // fechou agora (FECHAR / voltar): termina este quadro e apaga em animacao
+			{
+				closing = true;
+				if (m_sendClose.exchange(false)) P->sendCommand("/mapax close");
+			}
+		}
 		Clamp(m_view);
 		m_listScroll = ClampScroll(m_listScroll, (float)m_locs.size() * L.rowH, L.listB.y - L.listA.y);
 
 		float plx = 0, ply = 0, plh = 0;
 		const bool havePlayer = P->player(plx, ply, plh);
+
+		// ---- efeito de TV: tudo abaixo e recortado na area "acesa" (linha que abre/fecha) ----
+		const bool tv = m_vis < 0.999f;
+		constexpr float kTvLine = 0.40f;                    // fatia da animacao em que so a linha horizontal cresce
+		ImVec2 tvA(0, 0), tvB = L.scr;
+		float tvFlash = 0.0f;                               // 0..1: brilho branco que some ao ligar
+		if (tv)
+		{
+			const float pp = m_vis;
+			float cw, ch;
+			const float lineH = std::max(2.0f, 3.0f * k);
+			if (pp < kTvLine)
+			{
+				const float u = pp / kTvLine, e = 1.0f - (1.0f - u) * (1.0f - u);
+				cw = std::max(6.0f * k, L.scr.x * e); ch = lineH; tvFlash = 1.0f;
+			}
+			else
+			{
+				const float v = (pp - kTvLine) / (1.0f - kTvLine), e = 1.0f - (1.0f - v) * (1.0f - v) * (1.0f - v);
+				cw = L.scr.x; ch = lineH + (L.scr.y - lineH) * e; tvFlash = (1.0f - v) * (1.0f - v);
+			}
+			const float cx = L.scr.x * 0.5f, cy = L.scr.y * 0.5f;
+			tvA = ImVec2(cx - cw * 0.5f, cy - ch * 0.5f); tvB = ImVec2(cx + cw * 0.5f, cy + ch * 0.5f);
+			r->pushClipRect(tvA, tvB, true);
+		}
 
 		// ---- fundo e painel ----
 		r->drawRect(ImVec2(0, 0), L.scr, dim, true);
@@ -978,6 +1022,24 @@ namespace WorldMap
 			const char* hint = "Arraste para mover | pinca para zoom | toque para marcar o GPS";
 			const ImVec2 ts = r->calculateTextSize(hint, 11.0f * k);
 			r->drawText(ImVec2(L.panB.x - L.pad - ts.x, L.barY + (L.barH - ts.y) * 0.5f), mute, hint, false, 11.0f * k);
+		}
+
+		// ---- TV: brilho + linhas de varredura sobre a area acesa, depois solta o recorte ----
+		if (tv)
+		{
+			const int fa = (int)std::lround(235.0f * std::clamp(tvFlash, 0.0f, 1.0f));
+			if (fa > 0) r->drawRect(tvA, tvB, ImColor(255, 255, 255, fa), true);
+			const int sa = (int)std::lround(80.0f * std::clamp(tvFlash, 0.0f, 1.0f));
+			if (sa > 2)
+				for (float y = std::floor(tvA.y / (4.0f * k)) * 4.0f * k; y < tvB.y; y += 4.0f * k)
+					r->drawRect(ImVec2(tvA.x, y), ImVec2(tvB.x, y + 1.6f * k), ImColor(0, 0, 0, sa), true);
+			const int ea = (int)std::lround(200.0f * std::clamp(tvFlash * 1.2f, 0.0f, 1.0f));
+			if (ea > 0)    // borda quente nas bordas horizontais da tela ligando
+			{
+				r->drawRect(ImVec2(tvA.x, tvA.y), ImVec2(tvB.x, tvA.y + 2.0f * k), ImColor(255, 255, 255, ea), true);
+				r->drawRect(ImVec2(tvA.x, tvB.y - 2.0f * k), ImVec2(tvB.x, tvB.y), ImColor(255, 255, 255, ea), true);
+			}
+			r->popClipRect();
 		}
 	}
 }
