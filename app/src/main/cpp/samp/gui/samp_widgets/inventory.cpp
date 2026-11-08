@@ -452,11 +452,11 @@ namespace
 
 	bool In(float x, float y, const ImVec2& a, const ImVec2& b) { return x >= a.x && x <= b.x && y >= a.y && y <= b.y; }
 
-	void Send(const char* fmt, int a = 0, int b = 0)
+	void Send(const char* fmt, int a = 0, int b = 0, int c = 0)
 	{
 		if (!pNetGame) return;
 		char buf[64];
-		snprintf(buf, sizeof(buf), fmt, a, b);
+		snprintf(buf, sizeof(buf), fmt, a, b, c);
 		pNetGame->SendChatCommand(buf);
 		g_busyUntil = NowMs() + 180;
 	}
@@ -651,7 +651,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 	{
 		if (g_t.kind == 5)
 		{
-			if (g_t.src >= 0 && g_t.src < 5 && hot[g_t.src].id && !(hot[g_t.src].flags & 4)) g_t.dragging = true;   // arma NA MAO: travada, nao arrasta
+			if (g_t.src >= 0 && g_t.src < 5 && hot[g_t.src].id && !(hot[g_t.src].flags & 5)) g_t.dragging = true;   // arma equipada (na mao ou no corpo): travada, nao arrasta
 		}
 		else
 		{
@@ -706,7 +706,11 @@ void InventoryUI::draw(ImGuiRenderer* r)
 				const int dstHot = hotAt(e.x, e.y);
 				if (fromInv && t.src >= 0 && t.src < S.slots && bySlot[t.src])
 				{
-					if (dstHot >= 0)                              Send("/invx bar %d %d", dstHot, t.src);   // atribui ao slot rapido
+					const int srcId = bySlot[t.src]->id;
+						const bool isAmmo = srcId >= 1100 && srcId <= 1107;                                  // municoes (INV_ID_AMMO_BASE..+7)
+						if (dstHot >= 0 && isAmmo && hot[dstHot].id && (hot[dstHot].flags & 8))
+							Send("/invx load %d %d %d", t.src, dstHot, g_allQty ? 999 : 1);                  // municao em cima da arma = carrega nela
+						else if (dstHot >= 0)                         Send("/invx bar %d %d", dstHot, t.src);   // atribui ao slot rapido
 					else if (b && b->enabled && b->id == B_USE)        doUse(t.src);          // arrastar ate "Usar"
 					else if (b && b->enabled && (b->id == B_DROP || b->id == B_OFFER)) { if (b->id == B_DROP) doDrop(t.src); else doOffer(t.src); }
 					else if (dstInv >= 0 && dstInv != t.src && !tradeActive) Send("/invx move %d %d", t.src, dstInv);
@@ -724,7 +728,8 @@ void InventoryUI::draw(ImGuiRenderer* r)
 				else if (t.dragging)
 				{
 					const int dh = hotAt(e.x, e.y);
-					if (dh < 0 || dh == t.src) { if (dh < 0) Send("/invx barclear %d", t.src); }   // soltou fora = limpa o slot
+					if (dh < 0 && (hot[t.src].flags & 8) && In(e.x, e.y, vpLA, vpLB)) Send("/invx unload %d %d", t.src, g_allQty ? 9999 : 1);   // arma de fogo solta na mochila = retira a municao
+						else if (dh < 0 || dh == t.src) { if (dh < 0) Send("/invx barclear %d", t.src); }   // soltou fora = limpa o slot
 					else { const int sl = [&]{ for (const Item& it : S.items) if (it.id == hot[t.src].id) return it.slot; return -1; }();
 					       if (sl >= 0) { Send("/invx bar %d %d", dh, sl); } else Send("/invx barclear %d", t.src); }
 				}
@@ -817,7 +822,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 
 	// ---- info do item selecionado ----
 	{
-		std::string info = "Toque para selecionar. Segure e arraste para usar, dropar ou mover.";
+		std::string info = "Arraste a munição sobre a arma no slot para carregar. Arraste a arma (guardada) para a mochila para retirar.";
 		if (g_sel.panel == P_INV && g_sel.idx >= 0 && g_sel.idx < S.slots && bySlot[g_sel.idx])
 		{
 			const Item* it = bySlot[g_sel.idx];
@@ -942,7 +947,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 				DrawIcon(r, h.icon, ImVec2(a.x + m, a.y + m), ImVec2(b.x - m, b.y - m), ghost ? 70 : (miss ? 90 : 255));
 				if (h.flags & 4)   // arma na mao: travada
 					r->drawText(ImVec2(a.x + 4.0f * u, a.y + 3.0f * u), ImColor(255, 210, 70, 255), "NA MÃO", true, 8.5f * u);
-				if (h.qty > 1 || (eq && h.qty <= 0))   // equipada sem municao mostra 0x
+				if (h.qty > 1 || (h.flags & 8) || (eq && h.qty <= 0))   // arma de fogo sempre mostra a municao carregada
 				{
 					char q[12]; snprintf(q, sizeof(q), "%dx", h.qty);
 					const ImVec2 ts = r->calculateTextSize(q, fq);
