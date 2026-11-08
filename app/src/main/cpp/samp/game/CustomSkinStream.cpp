@@ -61,6 +61,43 @@ namespace
 
     bool s_inSkinLoad = false;        // true enquanto o jogo converte um modelo com a nossa skin
 
+    // DIAGNOSTICO: slots de TXD cujo banco (nome em slot+0x24) nao existe. SetCurrentTxd faz Register(GetDatabase(banco do slot)): banco inexistente = nulo na lista.
+    // Layout (libGTASA arm64, CTxdStore::AddTxdSlot): pool em *(*(GOT+0x4e8)); objetos +0, flags +8 (byte<0 = livre), tamanho +0x10; slot de 64 bytes: nome +0x10, banco +0x24.
+    void DumpBadTxdSlots(const char* why)
+    {
+        static int runs = 0;
+        if (runs++ >= 3) return;
+        uintptr_t* gotPtr = *reinterpret_cast<uintptr_t**>(g_libGTASA + 0x8514e8);
+        if (!gotPtr) { FLog("[TXDDIAG] pool de TXD indisponivel"); return; }
+        uintptr_t pool = *gotPtr;
+        if (!pool) { FLog("[TXDDIAG] pool de TXD nulo"); return; }
+        uint8_t* objs = *reinterpret_cast<uint8_t**>(pool);
+        int8_t*  flags = *reinterpret_cast<int8_t**>(pool + 8);
+        const int size = *reinterpret_cast<int*>(pool + 0x10);
+        if (!objs || !flags || size <= 0 || size > 20000) { FLog("[TXDDIAG] pool incoerente (size=%d)", size); return; }
+        FLog("[TXDDIAG] (%s) varrendo %d slots de TXD", why, size);
+        int bad = 0, used = 0;
+        for (int i = 0; i < size; ++i)
+        {
+            if (flags[i] < 0) continue;
+            ++used;
+            const char* nm = reinterpret_cast<const char*>(objs + (size_t)i * 64 + 0x10);
+            char db[24]; std::memcpy(db, objs + (size_t)i * 64 + 0x24, 20); db[20] = 0;
+            void* d = CHook::CallFunction<void*>(g_libGTASA + 0x287AF4, (const char*)db);
+            if (!d && bad++ < 40) FLog("[TXDDIAG] slot %d nome='%.19s' banco='%s' -> NAO EXISTE", i, nm, db);
+        }
+        FLog("[TXDDIAG] slots usados=%d, com banco inexistente=%d", used, bad);
+        for (int id = 12320; id <= 12370; ++id)
+        {
+            CBaseModelInfo* mi = CModelInfo::GetModelInfo(id);
+            if (!mi) continue;
+            const int t = (int)mi->m_nTxdIndex;
+            if (t < 0 || t >= size || flags[t] < 0) { FLog("[TXDDIAG] modelo %d '%s': txd=%d INVALIDO", id, mi->m_modelName, t); continue; }
+            char db[24]; std::memcpy(db, objs + (size_t)t * 64 + 0x24, 20); db[20] = 0;
+            FLog("[TXDDIAG] modelo %d '%s': txd=%d '%.19s' banco='%s'", id, mi->m_modelName, t, objs + (size_t)t * 64 + 0x10, db);
+        }
+    }
+
     // Lista de bancos de textura registrados (suposicao: GOT 0x851CF8 -> TDBArray {numAlloced, numEntries, dataPtr}).
     // Loga so quando MUDA (n ou nulos) para achar QUANDO um banco nulo entra na lista.
     void CheckRegistered(const char* tag, int model)
@@ -77,6 +114,7 @@ namespace
         if ((int)n == lastN && nulls == lastNulls) return;
         lastN = (int)n; lastNulls = nulls; ++lines;
         FLog("[SKIN7S] registered(%s,modelo=%d): n=%u nulos=%d%s", tag, model, n, nulls, nulls ? "   <== BANCO NULO NA LISTA" : "");
+        if (nulls) DumpBadTxdSlots(tag);
         for (uint32_t i = 0; i < n && i < 6; ++i) FLog("[SKIN7S]    registered[%u]=%p", i, (void*)d[i]);
     }
 
