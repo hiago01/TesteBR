@@ -2068,7 +2068,8 @@ void ScrMap(RPCParameters* rpcParams)
 {
 	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
-	WorldMapWidget::OnServerPacket(Data, (iBitLength / 8) + 1);
+	if (!Data || iBitLength <= 0) return;
+	WorldMapWidget::OnServerPacket(Data, (iBitLength + 7) / 8);   // bytes exatos (o +1 lia 1 byte alem do pacote)
 }
 
 void RegisterScriptRPCs(RakClientInterface *pRakClient)
