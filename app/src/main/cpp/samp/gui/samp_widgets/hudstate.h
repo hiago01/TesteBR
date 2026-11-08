@@ -41,9 +41,13 @@ namespace Hud
 		std::atomic<int>   extra{0};               // pilula "estrela"
 		std::atomic<float> scale{1.0f};            // multiplicador de tamanho (/hud escala)
 		std::atomic<bool>  lights{true};           // luzes de natal sobre o logo (/hud luzes on|off)
+		std::atomic<bool>  mapOnlyDriving{true};   // true = minimapa + nome do local SO aparecem para o MOTORISTA dentro de um veiculo (/hud mapa carro|sempre)
 	};
 
 	extern Data g;
+
+	// minimapa (e o nome do local) liberado agora? = regra "so o motorista dentro do veiculo" (desligavel em g.mapOnlyDriving)
+	bool MapAllowed();
 
 	// RPCs padrao do SA-MP (chamados de net/scriptrpc.cpp)
 	void OnMoneyGiven(int amount);

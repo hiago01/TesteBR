@@ -6,6 +6,8 @@
 #include "../../net/localplayer.h"
 #include "../../vendor/stb/stb_image.h"   // implementacao (STB_IMAGE_IMPLEMENTATION) esta em game/sprite2d.cpp
 #include "hudatlas.h"
+#include "ZoneNames.h"
+#include "minimaptap_logic.h"
 #include "../../game/stamina.h"
 
 #include <chrono>
@@ -55,6 +57,18 @@ namespace Hud
 	{
 		std::lock_guard<std::mutex> lk(g_stMutex);
 		return g_st.CanSprint();
+	}
+
+	// minimapa + nome do local: so o MOTORISTA dentro de um veiculo (desligavel: /hud mapa sempre)
+	bool MapAllowed()
+	{
+		if (!g.mapOnlyDriving.load()) return true;
+		if (!pNetGame || !pNetGame->GetPlayerPool()) return false;
+		CLocalPlayer* lp = pNetGame->GetPlayerPool()->GetLocalPlayer();
+		if (!lp) return false;
+		CPlayerPed* pp = lp->GetPlayerPed();
+		if (!pp || !pp->m_pPed) return false;
+		return pp->IsInVehicle() && !pp->IsAPassenger();
 	}
 
 	void OnMoneyGiven(int amount)
@@ -160,6 +174,13 @@ namespace Hud
 
 		if (a[0] == "reset") { Reset(); return "[HUD] resetada"; }
 
+		if (a[0] == "mapa")
+		{
+			if (a.size() >= 2 && a[1] == "sempre") { g.mapOnlyDriving.store(false); return "[HUD] minimapa e nome do local: SEMPRE visiveis"; }
+			if (a.size() >= 2 && a[1] == "carro")  { g.mapOnlyDriving.store(true);  return "[HUD] minimapa e nome do local: so o MOTORISTA no veiculo"; }
+			return g.mapOnlyDriving.load() ? "[HUD] mapa: so motorista (use /hud mapa sempre)" : "[HUD] mapa: sempre (use /hud mapa carro)";
+		}
+
 		if (a[0] == "luzes")
 		{
 			if (a.size() >= 2 && a[1] == "off") { g.lights.store(false); return "[HUD] luzes de natal desligadas"; }
@@ -193,7 +214,7 @@ namespace Hud
 			}
 		}
 
-		return "[HUD] uso: /hud | on | off | teste | reset | escala <0.5-2.5> | luzes on|off | "
+		return "[HUD] uso: /hud | on | off | teste | reset | escala <0.5-2.5> | luzes on|off | mapa carro|sempre | "
 			   "set fome|sede|energia <0-100> | set dinheiro|extra <n> | set pessoa <a> [max]";
 	}
 }
@@ -568,6 +589,60 @@ namespace
 		return true;
 	}
 
+	// Nome do local (cidade | zona) numa etiqueta escura com icone de pino, logo ACIMA do minimapa e alinhada a esquerda dele.
+	// So aparece enquanto o minimapa esta sendo desenhado (retangulo publicado por game/sprite2d.cpp) e a regra do motorista permite.
+	void DrawLocationTag(ImGuiRenderer* r, const ImVec2& screen, float S)
+	{
+		if (!Hud::MapAllowed()) return;
+		using namespace std::chrono;
+		const int64_t now = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+		if (now - MiniMapTap::gStamp.load() > MiniMapTap::kFreshMs) return;           // radar nao foi desenhado agora
+		const float gw = RsGlobal ? (float)RsGlobal->maximumWidth : 0.0f, gh = RsGlobal ? (float)RsGlobal->maximumHeight : 0.0f;
+		if (gw < 1.0f || gh < 1.0f) return;
+		const MiniMapTap::Rect ru{ MiniMapTap::gL.load(), MiniMapTap::gT.load(), MiniMapTap::gR.load(), MiniMapTap::gB.load() };
+		if (!MiniMapTap::RectOk(ru, gw, gh)) return;
+		const float sx = screen.x / gw, sy = screen.y / gh;
+		const float mapL = ru.l * sx, mapT = ru.t * sy;
+
+		// posicao do jogador -> texto (recalcula a cada 250 ms)
+		static char s_txt[64] = "San Andreas";
+		static int64_t s_last = 0;
+		if (now - s_last >= 250)
+		{
+			s_last = now;
+			if (pNetGame && pNetGame->GetPlayerPool())
+			{
+				CLocalPlayer* lp = pNetGame->GetPlayerPool()->GetLocalPlayer();
+				CPlayerPed* pp = lp ? lp->GetPlayerPed() : nullptr;
+				if (pp && pp->m_pPed)
+				{
+					const CVector p = pp->m_pPed->GetPosition();
+					ZoneNames::Describe(p.x, p.y, p.z, s_txt, sizeof(s_txt));
+				}
+			}
+		}
+
+		const float fsz = 12.5f * S, h = 23.0f * S, padL = 8.0f * S, padR = 10.0f * S, pinW = 12.0f * S, gapPin = 6.0f * S;
+		const ImVec2 ts = r->calculateTextSize(std::string(s_txt), fsz);
+		const float w = padL + pinW + gapPin + ts.x + padR;
+		const float x0 = std::max(2.0f * S, mapL), y1 = mapT - 4.0f * S, y0 = y1 - h;
+		if (y0 < 0.0f) return;                                                        // sem espaco acima do minimapa
+		r->drawRoundedRect(ImVec2(x0, y0), ImVec2(x0 + w, y1), ImColor(20, 20, 20, 215), 5.0f * S, true);
+		r->drawRoundedRect(ImVec2(x0, y0), ImVec2(x0 + w, y1), ImColor(255, 255, 255, 40), 5.0f * S, false, 1.0f);
+
+		// icone de pino (primitivas): cabeca redonda + ponta + furo
+		const float pr = 4.6f * S, pcx = x0 + padL + pinW * 0.5f, pcy = y0 + h * 0.5f - 1.6f * S;
+		const ImColor pc(225, 225, 225, 255);
+		FillCircle(r, ImVec2(pcx, pcy), pr, pc);
+		{
+			ImVec2 t[3] = { ImVec2(pcx - pr * 0.86f, pcy + pr * 0.5f), ImVec2(pcx + pr * 0.86f, pcy + pr * 0.5f), ImVec2(pcx, pcy + pr * 2.15f) };
+			r->drawConvexPolyFilled(t, 3, pc);
+		}
+		FillCircle(r, ImVec2(pcx, pcy), pr * 0.42f, ImColor(20, 20, 20, 255));
+
+		r->drawText(ImVec2(x0 + padL + pinW + gapPin, y0 + (h - ts.y) * 0.5f), kWhite, std::string(s_txt), false, fsz);
+	}
+
 	// CGame::DisplayHUD(): o proprio jogo/servidor liga e desliga (selecao de classe, textdraw de tela cheia...)
 	bool NativeHudEnabled()
 	{
@@ -611,6 +686,8 @@ void HudInfo::draw(ImGuiRenderer* r)
 
 	const float right = screen.x - kMargin * S;
 	const float fs = kFont * S;
+
+	DrawLocationTag(r, screen, S);   // nome do local acima do minimapa (so motorista no veiculo)
 
 	// ------------------------------------------------------------------ logo
 	{
