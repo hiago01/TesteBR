@@ -20,6 +20,7 @@
 extern CNetGame* pNetGame;
 extern CPlayerTags* pPlayerTags;
 extern UI* pUI;
+bool InventoryIsOpenNow();   // gui/samp_widgets/inventory.cpp
 
 UI::UI(const ImVec2& display_size, const std::string& font_path)
 	: Widget(), ImGuiWrapper(display_size, font_path)
@@ -222,6 +223,15 @@ void UI::drawList()
 	if (Hud::g.hideAll.load())
 	{
 		// jogador congelado (cutscene): nenhuma HUD; so dialogos/teclado continuam (senao o jogador ficaria preso)
+		if (m_dialog && m_dialog->visible()) m_dialog->draw(renderer());
+		if (m_keyboard && m_keyboard->visible()) m_keyboard->draw(renderer());
+		return;
+	}
+
+	if (InventoryIsOpenNow() && m_inventory)
+	{
+		// inventario aberto: esconde TODO o HUD (radar/icones/slots do HUD/chat/etiquetas); so o inventario + dialogo/teclado
+		m_inventory->draw(renderer());
 		if (m_dialog && m_dialog->visible()) m_dialog->draw(renderer());
 		if (m_keyboard && m_keyboard->visible()) m_keyboard->draw(renderer());
 		return;

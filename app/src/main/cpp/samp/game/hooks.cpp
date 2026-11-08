@@ -60,6 +60,7 @@
 extern UI* pUI;
 extern CGame* pGame;
 extern CNetGame *pNetGame;
+bool InventoryIsOpenNow();   // gui/samp_widgets/inventory.cpp
 extern MaterialTextGenerator* pMaterialTextGenerator;
 
 // Clothing changes are queued by /testeclothes and applied only after the
@@ -674,7 +675,7 @@ void Render2dStuff()
 
     //((void (*)()) (g_libGTASA + 0x51CFF0))(); // CHud::DrawRadar
     //CHook::CallFunction<void>("_ZN4CHud14DrawScriptTextEh", true);
-    const bool hideHud = Hud::g.hideAll.load();   // jogador congelado (cutscene): nenhuma HUD
+    const bool hideHud = Hud::g.hideAll.load() || InventoryIsOpenNow();   // jogador congelado (cutscene): nenhuma HUD
     if (!hideHud)
     {
         CHook::CallFunction<void>("_ZN4CHud4DrawEv");   // radar, moldura do mapa, icones nativos

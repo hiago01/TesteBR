@@ -703,7 +703,8 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		const ImVec2 b(a.x + slot, a.y + slot);
 		if (b.y < vpLA.y || a.y > vpLB.y) continue;
 		const bool sel = g_sel.panel == P_INV && g_sel.idx == i;
-		const bool ghost = g_t.dragging && g_t.panel == P_INV && g_t.src == i;
+		// arrastando para um SLOT RAPIDO o item continua no inventario (so e atribuido): nao apaga o icone de origem
+		const bool ghost = g_t.dragging && g_t.panel == P_INV && g_t.src == i && hotAt(g_t.cx, g_t.cy) < 0;
 		r->drawRect(a, b, sel ? cPurpleF : cSlotBg, true);
 		r->drawRect(a, b, sel ? cPurple : cSlotLn, false, sel ? 2.0f : 1.0f);
 		if (const Item* it = bySlot[i])
@@ -935,6 +936,7 @@ void InventoryUI::HotbarUse(int slot)
 	if (pNetGame) { char b[32]; snprintf(b, sizeof b, "/invx hot %d", slot); pNetGame->SendChatCommand(b); }
 }
 
+bool InventoryIsOpenNow() { return g_open.load(); }   // usado por gui.cpp / game/hooks.cpp / voice (esconde o HUD com o inventario aberto)
 bool InventoryFireLocked() { return g_fireLock.load(); }   // usado por game/pad.cpp (CPad::GetWeapon)
 
 void InventoryUI::RequestOpen()

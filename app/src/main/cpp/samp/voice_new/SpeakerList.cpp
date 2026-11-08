@@ -69,11 +69,13 @@ void SpeakerList::Hide() noexcept
     SpeakerList::showStatus = false;
 }
 
+bool InventoryIsOpenNow();   // gui/samp_widgets/inventory.cpp
+
 void SpeakerList::Render()
 {
     if(!SpeakerList::initStatus || !SpeakerList::IsShowed())
         return;
-    if(Hud::g.hideAll.load()) return;   // jogador congelado (cutscene): sem icones de voz
+    if(Hud::g.hideAll.load() || InventoryIsOpenNow()) return;   // jogador congelado (cutscene): sem icones de voz
 
     if(!pNetGame) return;
 
