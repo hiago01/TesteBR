@@ -554,8 +554,8 @@ void ModernControls::draw(ImGuiRenderer* r)
 			{
 				const ImVec2 a0(left + (float)k * pitch, top), a1(a0.x + side, a0.y + side);
 				const bool dn = snap.BtnDown(B_SLOTS) && snap.slotPressed == k;
-				r->drawRoundedRect(a0, a1, dn ? Cb(40, 110, 230, std::min(255, A + 40)) : Cb(10, 16, 30, A), rnd, true);
-				r->drawRoundedRect(a0, a1, Cb(30, 144, 255, std::min(255, A + 90)), rnd, false, lw);
+				r->drawRoundedRect(a0, a1, dn ? Cb(255, 255, 255, std::min(255, A + 60)) : Cb(20, 20, 20, A), rnd, true);          // mesmo cinza dos botoes
+				r->drawRoundedRect(a0, a1, Cb(255, 255, 255, std::min(255, A + 50)), rnd, false, lw);
 				int icon = 8, qty = 0, hfl = 0;
 				if (InventoryUI::HotbarGet(k, icon, qty, &hfl))
 				{
@@ -580,15 +580,15 @@ void ModernControls::draw(ImGuiRenderer* r)
 		circle(b, down ? Cb(255, 255, 255, std::min(255, A + 60)) : Cb(20, 20, 20, A), Cb(255, 255, 255, std::min(255, A + 50)), std::max(2.0f, b.r * 0.06f));
 		if (i == B_INV)         // mochila (desenhada por primitivas) + etiqueta "INVENTARIO"
 		{
-			const float h = b.r * 0.62f; const ImColor wh = Cb(255, 255, 255, std::min(255, A + 150)), dk = Cb(20, 24, 40, std::min(255, A + 120));
+			const float h = b.r * 0.62f; const ImColor wh = Cb(255, 255, 255, std::min(255, A + 150)), dk = Cb(20, 20, 20, std::min(255, A + 120));
 			r->drawRoundedRect(ImVec2(b.cx - h * 0.18f - h * 0.30f, b.cy - h * 1.02f), ImVec2(b.cx + h * 0.48f, b.cy - h * 0.40f), wh, h * 0.25f, false, std::max(2.0f, h * 0.14f));   // alca
 			r->drawRoundedRect(ImVec2(b.cx - h * 0.70f, b.cy - h * 0.58f), ImVec2(b.cx + h * 0.70f, b.cy + h * 0.98f), wh, h * 0.34f, true);                                             // corpo
 			r->drawRoundedRect(ImVec2(b.cx - h * 0.46f, b.cy + h * 0.10f), ImVec2(b.cx + h * 0.46f, b.cy + h * 0.66f), dk, h * 0.16f, false, std::max(2.0f, h * 0.12f));              // bolso
 			r->drawLine(ImVec2(b.cx - h * 0.70f, b.cy - h * 0.10f), ImVec2(b.cx + h * 0.70f, b.cy - h * 0.10f), dk, std::max(2.0f, h * 0.10f));                                           // aba
 			const char* lb = "INVENTÁRIO"; const float fl = b.r * 0.30f; const ImVec2 ts = r->calculateTextSize(lb, fl);
 			const ImVec2 p0(b.cx - ts.x * 0.5f - fl * 0.55f, b.cy + b.r * 1.05f), p1(b.cx + ts.x * 0.5f + fl * 0.55f, b.cy + b.r * 1.05f + ts.y + fl * 0.45f);
-			r->drawRoundedRect(p0, p1, Cb(10, 16, 30, std::min(255, A + 60)), (p1.y - p0.y) * 0.5f, true);
-			r->drawRoundedRect(p0, p1, Cb(30, 144, 255, std::min(255, A + 90)), (p1.y - p0.y) * 0.5f, false, std::max(1.5f, fl * 0.12f));
+			r->drawRoundedRect(p0, p1, Cb(20, 20, 20, std::min(255, A + 60)), (p1.y - p0.y) * 0.5f, true);
+			r->drawRoundedRect(p0, p1, Cb(255, 255, 255, std::min(255, A + 50)), (p1.y - p0.y) * 0.5f, false, std::max(1.5f, fl * 0.12f));
 			r->drawText(ImVec2(p0.x + fl * 0.55f, p0.y + fl * 0.22f), Cb(255, 255, 255, std::min(255, A + 150)), lb, false, fl);
 			if (editing && snap.sel == i) ring(b, 1.18f, std::max(3.0f, b.r * 0.08f));
 			continue;
