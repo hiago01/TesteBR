@@ -20,6 +20,7 @@
 #include "CustomCol.h"
 #include "FreeModelIds.h"
 #include "CustomColNew.h"
+#include "CustomDiag.h"
 #include "LedScreen.h"
 #include "CustomSkinStream.h"
 #include "SkinTexDb.h"
@@ -920,6 +921,7 @@ void CGame::Process() {
     ProcessMainThreadTasks();
     ClothesFrameTick();   // CJ real + skin DFF (thread do jogo, 1x por frame)
     LedScreen::Process();    // telas de LED do posto (quadros PNG em loop)
+    DpDiag::Tick();          // /dp on: rastro + queda automatica (CustomDiag.h)
     CustomColNew::Probe();   // log [LOJA]: estado do modelo novo (a cada ~300 frames)
 
     uint32_t CurrentTimeInCycles;

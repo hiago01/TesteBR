@@ -1,0 +1,8 @@
+DPDIAG cliente (C++) - comando local /dp
+Arquivos (raiz do projeto): app/src/main/cpp/samp/game/CustomDiag.h (novo), game/game.cpp e gui/samp_widgets/chat.cpp (so +3 linhas cada: include, /dp, DpDiag::Tick()).
+Se seus game.cpp/chat.cpp diferem, aplique so as linhas:
+ chat.cpp: #include "../../game/CustomDiag.h"  e o bloco  if (input == "/dp" ...) { ... DpDiag::Command(args) ... }
+ game.cpp: #include "CustomDiag.h" e  DpDiag::Tick();  antes de CustomColNew::Probe();
+Uso no jogo: /dp on  -> ande ate o problema -> /dp marca texto (ex: /dp marca saida 2 preso)  ;  /dp quem  ;  /dp off
+Resultado: linhas [DPDIAG] no log do cliente (o mesmo onde sai [LOJA]). Me envie o log.
+Somente leitura (nao altera pools/colisao). Checado so por sintaxe no PC (clang com stubs); NAO compilado com o NDK nem testado no jogo.

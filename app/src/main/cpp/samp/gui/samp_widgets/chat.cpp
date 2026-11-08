@@ -20,6 +20,7 @@
 #include <string>
 #include "../../game/camerazoom.h"
 #include "../../game/CustomAnimTest.h"
+#include "../../game/CustomDiag.h"
 #include "../../game/movemode.h"
 #include "controlmode.h"
 #include "controlsselector.h"
@@ -360,6 +361,15 @@ if (input == "/hiago22")
             addDebugMessage(
                 "[CLOTHES TEST] Verifique o samp.log"
             );
+
+            return;
+        }
+if (input == "/dp" || input.rfind("/dp ", 0) == 0)
+        {
+            // diagnostico local de colisao/objeto (CustomDiag.h): /dp ajuda | on | off | marca [texto] | quem
+            std::string args = input.size() > 3 ? input.substr(4) : std::string();
+            std::string reply = DpDiag::Command(args);
+            addDebugMessage("%s", reply.c_str());
 
             return;
         }
