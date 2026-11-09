@@ -65,7 +65,7 @@ struct Rig
 	{
 		InstallDefaultApps(pm); setup(pm); net.attach(&pm.context());
 		net.send = [this](const Net::Request& r) { if (sendOk) sent.push_back(r); return sendOk; };
-		net.notify = [this](const std::string& t, const std::string& x, const std::string& app, int) { notes.push_back(t + "|" + x + "|" + app); };
+		net.notify = [this](const std::string& t, const std::string& x, const std::string& app, int lv) { notes.push_back(t + "|" + x + "|" + app); pm.notifications().post(t, x, app, T, lv ? Notification::Warn : Notification::Info); };
 		net.incomingCall = [this](const std::string& n) { incoming.push_back(n); };
 		pm.open(); frames(pm, cv, 30);
 	}
@@ -164,6 +164,9 @@ int main()
 		// texto longo recebido (ate 960 bytes) fica inteiro
 		const std::string big(900, 'z'); r.ev(msgEv("7654321", big));
 		CHECK(Data::LoadMsgs(r.c()).back().text == big);
+		// selo do app: some ao abrir Mensagens
+		CHECK(r.pm.notifications().unreadFor("mensagens") >= 3);
+		r.pm.openApp("mensagens"); frames(r.pm, r.cv, 3); CHECK(r.pm.notifications().unreadFor("mensagens") == 0);
 		// "enviando" que sobrou de outra sessao vira "nao enviada"
 		Data::AddMessage(r.c(), "7654321", "preso", true, 1); Data::FailStalePending(r.c()); CHECK(Data::LoadMsgs(r.c()).back().state == 2);
 		// compatibilidade: formato antigo (5 campos) ainda carrega

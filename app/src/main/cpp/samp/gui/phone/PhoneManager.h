@@ -90,6 +90,7 @@ namespace Phone
 		void frame(Canvas& cv, int64_t nowMs, float dtMs)
 		{
 			if (!m_open) return;
+			{ const std::string& fgId = m_apps.foregroundId(); if (fgId == "mensagens" || fgId == "telefone") m_notifs.markAppRead(fgId); }   // abriu o app: o selo (bolinha) some
 			m_now = nowMs; m_ctx.nowMs = nowMs;
 			// animacao de entrada/saida do aparelho
 			const float step = dtMs / 240.0f;

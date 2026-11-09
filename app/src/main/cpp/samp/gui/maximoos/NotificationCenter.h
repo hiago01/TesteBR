@@ -33,6 +33,7 @@ namespace MaximoOS
 		int unread() const { int c = 0; for (auto& n : m_list) if (!n.read) ++c; return c; }
 		int unreadFor(const std::string& appId) const { int c = 0; for (auto& n : m_list) if (!n.read && n.appId == appId) ++c; return c; }
 		void markAllRead() { for (auto& n : m_list) n.read = true; }
+		void markAppRead(const std::string& appId) { for (auto& n : m_list) if (n.appId == appId) n.read = true; }
 		void markRead(int id) { for (auto& n : m_list) if (n.id == id) n.read = true; }
 		void dismiss(int id) { for (size_t i = 0; i < m_list.size(); ++i) if (m_list[i].id == id) { m_list.erase(m_list.begin() + i); break; } if (m_toastId == id) m_toastId = 0; }
 		void clear() { m_list.clear(); m_toastId = 0; }
