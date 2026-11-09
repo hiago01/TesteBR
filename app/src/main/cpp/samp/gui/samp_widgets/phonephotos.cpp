@@ -14,6 +14,7 @@
 #include "../phone/Jpeg.h"
 #include "../phone/PhoneGram.h"
 #include "../../vendor/imgui/imgui.h"
+#include "../../vendor/armhook/patch.h"
 #include <GLES3/gl3.h>
 #include <algorithm>
 #include <atomic>
@@ -249,36 +250,25 @@ namespace
 			for (size_t i = 0; i < px.size(); i += 4 * 211) if (px[i] || px[i + 1] || px[i + 2]) return false;
 			return true;
 		}
+		// O GTA SA Android 2.10 desenha numa thread propria (fila de render, RQ): a thread do jogo NAO tem contexto GL, entao
+		// glReadPixels direto aqui nao le nada (vinha tudo preto). emu_glReadPixels e a funcao do proprio motor: descarrega o
+		// alvo alternativo, espera a fila de render esvaziar e le o framebuffer NA thread de render.
+		typedef void (*EmuReadPixelsFn)(int, int, int, int, unsigned, unsigned, void*);
+		static EmuReadPixelsFn EmuReadPixels()
+		{
+			static EmuReadPixelsFn fn = (EmuReadPixelsFn)CHook::getSym("_Z16emu_glReadPixelsiiiijjPv");
+			return fn;
+		}
 		void capture()
 		{
-			GLint vp[4] = { 0, 0, 0, 0 }; glGetIntegerv(GL_VIEWPORT, vp);
-			GLint readFbo = 0, packAlign = 4; glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFbo); glGetIntegerv(GL_PACK_ALIGNMENT, &packAlign);
-			int w = vp[2], h = vp[3];
-			const int vw = w, vh = h;
-			if (w < 64 || h < 64 || w > 8192 || h > 8192)
-			{
-				// viewport do GL nao confiavel neste ponto do quadro: usa o tamanho da tela do ImGui, a partir da origem
-				w = (int)ImGui::GetIO().DisplaySize.x; h = (int)ImGui::GetIO().DisplaySize.y; vp[0] = 0; vp[1] = 0;
-			}
-			if (w < 64 || h < 64 || w > 8192 || h > 8192) { fail("Captura: tela " + std::to_string(vw) + "x" + std::to_string(vh) + "/" + std::to_string(w) + "x" + std::to_string(h)); return; }
+			const int w = (int)ImGui::GetIO().DisplaySize.x, h = (int)ImGui::GetIO().DisplaySize.y;
+			if (w < 64 || h < 64 || w > 8192 || h > 8192) { fail("Captura: tela " + std::to_string(w) + "x" + std::to_string(h)); return; }
+			EmuReadPixelsFn rd = EmuReadPixels();
+			if (!rd) { fail("Captura indisponível (emu_glReadPixels não achada)"); return; }
 			std::vector<uint8_t> px((size_t)w * h * 4);
-			bool okRead = false, black = true; GLint usedFbo = readFbo;
-			// tentativa 1: o framebuffer de leitura atual; tentativa 2: o framebuffer padrao (tela)
-			for (int attempt = 0; attempt < 2 && !(okRead && !black); ++attempt)
-			{
-				if (attempt == 1) { if (readFbo == 0) break; glBindFramebuffer(GL_READ_FRAMEBUFFER, 0); usedFbo = 0; }
-				while (glGetError() != GL_NO_ERROR) {}
-				glPixelStorei(GL_PACK_ALIGNMENT, 1);
-				glReadPixels(vp[0], vp[1], w, h, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
-				okRead = glGetError() == GL_NO_ERROR;
-				black = okRead ? AllBlack(px) : true;
-			}
-			glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)readFbo);
-			glPixelStorei(GL_PACK_ALIGNMENT, packAlign);
-			char dbg[96]; std::snprintf(dbg, sizeof(dbg), " (fbo %d, %dx%d)", (int)usedFbo, w, h);
-			if (!okRead) { fail(std::string("Falha ao ler a tela") + dbg); return; }
+			rd(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
 			// tela toda preta = captura nao funcionou (nao grava foto preta fingindo que deu certo)
-			if (black) { fail(std::string("Captura preta") + dbg); return; }
+			if (AllBlack(px)) { fail("Captura preta (" + std::to_string(w) + "x" + std::to_string(h) + ")"); return; }
 			std::shared_ptr<Shared> sh = m_sh;
 			std::thread([sh, w, h, p = std::move(px)]() mutable
 			{
