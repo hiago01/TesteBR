@@ -254,7 +254,13 @@ namespace
 			GLint vp[4] = { 0, 0, 0, 0 }; glGetIntegerv(GL_VIEWPORT, vp);
 			GLint readFbo = 0, packAlign = 4; glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFbo); glGetIntegerv(GL_PACK_ALIGNMENT, &packAlign);
 			int w = vp[2], h = vp[3];
-			if (w < 64 || h < 64 || w > 8192 || h > 8192) { fail("Não foi possível capturar a tela (viewport " + std::to_string(w) + "x" + std::to_string(h) + ")."); return; }
+			const int vw = w, vh = h;
+			if (w < 64 || h < 64 || w > 8192 || h > 8192)
+			{
+				// viewport do GL nao confiavel neste ponto do quadro: usa o tamanho da tela do ImGui, a partir da origem
+				w = (int)ImGui::GetIO().DisplaySize.x; h = (int)ImGui::GetIO().DisplaySize.y; vp[0] = 0; vp[1] = 0;
+			}
+			if (w < 64 || h < 64 || w > 8192 || h > 8192) { fail("Captura: tela " + std::to_string(vw) + "x" + std::to_string(vh) + "/" + std::to_string(w) + "x" + std::to_string(h)); return; }
 			std::vector<uint8_t> px((size_t)w * h * 4);
 			bool okRead = false, black = true; GLint usedFbo = readFbo;
 			// tentativa 1: o framebuffer de leitura atual; tentativa 2: o framebuffer padrao (tela)
@@ -270,9 +276,9 @@ namespace
 			glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)readFbo);
 			glPixelStorei(GL_PACK_ALIGNMENT, packAlign);
 			char dbg[96]; std::snprintf(dbg, sizeof(dbg), " (fbo %d, %dx%d)", (int)usedFbo, w, h);
-			if (!okRead) { fail(std::string("Não foi possível capturar a tela.") + dbg); return; }
+			if (!okRead) { fail(std::string("Falha ao ler a tela") + dbg); return; }
 			// tela toda preta = captura nao funcionou (nao grava foto preta fingindo que deu certo)
-			if (black) { fail(std::string("A captura veio preta.") + dbg); return; }
+			if (black) { fail(std::string("Captura preta") + dbg); return; }
 			std::shared_ptr<Shared> sh = m_sh;
 			std::thread([sh, w, h, p = std::move(px)]() mutable
 			{
