@@ -41,9 +41,9 @@ namespace Phone
 	class CameraApp : public App
 	{
 	public:
-		enum { ID_SHUTTER = 1, ID_THUMB };
+		enum { ID_SHUTTER = 1, ID_THUMB, ID_FLIP };
 		explicit CameraApp(PhoneContext* c) : m_c(c) {}
-		void onResume() override { m_press = 0; m_serial = m_c->photos ? m_c->photos->shotSerial() : 0; refreshThumb(); }
+		void onResume() override { m_press = 0; m_c->cameraSelfie = false; m_serial = m_c->photos ? m_c->photos->shotSerial() : 0; refreshThumb(); }
 		void update(float) override
 		{
 			if (!m_c->photos) return;
@@ -66,7 +66,14 @@ namespace Phone
 			const Rect top{ content.x, content.y, content.w, topH }, bot{ content.x, content.bottom() - botH, content.w, botH };
 			cv.fillRect(top, Color(0, 0, 0, 170), 0);
 			cv.fillRect(bot, Color(0, 0, 0, 190), 0);
-			DrawTextIn(cv, top, "Foto", Color(255, 255, 255), m.font(16), Align::Center);
+			DrawTextIn(cv, top, m_c->cameraSelfie ? "Selfie" : "Foto", Color(255, 255, 255), m.font(16), Align::Center);
+			m_hit.clear();
+			{   // virar a camera: traseira (foto) <-> frontal (selfie: a camera passa para a frente do personagem)
+				const Rect fb{ top.right() - m.px(92), top.y + m.px(9), m.px(80), m.px(28) };
+				cv.fillRect(fb, m_press == ID_FLIP ? Color(255, 255, 255, 90) : Color(255, 255, 255, 50), m.px(14));
+				DrawTextIn(cv, fb, m_c->cameraSelfie ? "Traseira" : "Selfie", Color(255, 255, 255), m.font(12), Align::Center);
+				m_hit.add(ID_FLIP, fb);
+			}
 			// cantos do enquadramento
 			const Rect f{ content.x + m.px(14), top.bottom() + m.px(12), content.w - m.px(28), content.h - topH - botH - m.px(24) };
 			const float L = m.px(22), th = std::max(1.5f, m.px(2));
@@ -77,7 +84,6 @@ namespace Phone
 			cv.line({ f.right(), f.bottom() }, { f.right() - L, f.bottom() }, wc, th); cv.line({ f.right(), f.bottom() }, { f.right(), f.bottom() - L }, wc, th);
 			DrawTextIn(cv, { f.x, f.y + m.px(6), f.w, m.px(20) }, "A foto captura a tela do jogo (sem o celular)", Color(255, 255, 255, 190), m.font(11.5f), Align::Center);
 			// obturador + miniatura
-			m_hit.clear();
 			const Vec2 sc{ bot.center().x, bot.center().y };
 			const float R = m.px(32);
 			const bool busy = m_c->photos && m_c->photos->shooting();
@@ -100,7 +106,8 @@ namespace Phone
 			else if (t.kind == Touch::Up || t.kind == Touch::Cancel || t.kind == Touch::DragBegin) m_press = 0;
 			if (t.kind != Touch::Tap) return true;
 			const int id = m_hit.at(t.pos);
-			if (id == ID_SHUTTER) shoot();
+			if (id == ID_FLIP) m_c->cameraSelfie = !m_c->cameraSelfie;
+			else if (id == ID_SHUTTER) shoot();
 			else if (id == ID_THUMB && m_c->openApp) m_c->openApp("galeria");
 			return true;
 		}

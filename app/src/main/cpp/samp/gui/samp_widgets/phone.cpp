@@ -7,6 +7,7 @@
 #include "../phone/PhoneGram.h"
 #include "../../voice_new/Plugin.h"
 #include "../../net/netgame.h"
+#include "../../net/playerpool.h"
 #include "../../vendor/raknet/SAMP/SAMPRPC.h"
 #include "../../vendor/raknet/BitStream.h"
 #include "phone.h"
@@ -35,6 +36,9 @@ namespace
 	std::atomic<int>  g_backReq{ 0 };
 
 	PhoneNet g_net;
+	int g_poseSent = 0;                  // ultima pose pedida ao servidor (0 = nenhuma)
+	int64_t g_poseAt = 0;
+	bool g_selfieCam = false;            // a camera do jogo esta presa na frente do personagem (modo selfie)
 	Gram::Service* g_gram = nullptr;              // rede social (criado junto com o celular; fala direto com o servico de fotos do servidor)
 	std::atomic<bool> g_gramReset{ false };
 	bool g_callPending = false;                  // so a thread de desenho toca nisto
@@ -134,6 +138,7 @@ namespace
 					bs.Write((uint8_t)7);
 					bs.Write(r.number.data(), 7);
 				}
+				if (r.op == Net::OpPose) bs.Write((uint8_t)r.arg);
 				if (r.op == Net::OpSend)
 				{
 					bs.Write((uint16_t)r.text.size());
@@ -251,12 +256,48 @@ void PhoneWidget::OnServerPacket(const unsigned char* data, int bytes)
 	PM();                                                  // garante que g_net esta ligado
 	g_net.onServerPacketBS(bs);
 }
-void PhoneWidget::Reset() { g_net.connectionReset(); g_gramReset.store(true); }
+void PhoneWidget::Reset() { g_net.connectionReset(); g_gramReset.store(true); g_poseSent = 0; if (g_selfieCam) { g_selfieCam = false; CCamera::SetBehindPlayer(); } }
 
 void PhoneWidget::PostNotification(const std::string& title, const std::string& text, const std::string& appId, int level)
 {
 	std::lock_guard<std::mutex> l(g_nmx);
 	if (g_pending.size() < 32) g_pending.push_back({ title, text, appId, level });
+}
+
+namespace
+{
+
+	// Camera frontal (selfie): posiciona a camera do jogo na frente do personagem, olhando para o rosto. Reaplicada a cada quadro.
+	void SelfieCamera(bool on)
+	{
+		if (on)
+		{
+			if (!pNetGame || !pNetGame->GetPlayerPool()) return;
+			CLocalPlayer* lp = pNetGame->GetPlayerPool()->GetLocalPlayer();
+			CPlayerPed* pp = lp ? lp->GetPlayerPed() : nullptr;
+			if (!pp || !pp->m_pPed || pp->IsInVehicle()) return;
+			const CVector p = pp->m_pPed->GetPosition();
+			const float h = pp->m_pPed->m_fCurrentRotation;
+			const float fx = -std::sin(h), fy = std::cos(h);                        // frente do personagem
+			CCamera::SetPosition(p.x + fx * 1.25f, p.y + fy * 1.25f, p.z + 0.62f, 0.0f, 0.0f, 0.0f);
+			CCamera::LookAtPoint(p.x, p.y, p.z + 0.58f, 2);
+			g_selfieCam = true;
+		}
+		else if (g_selfieCam)
+		{
+			g_selfieCam = false;
+			CCamera::SetBehindPlayer();                                             // devolve a camera normal
+		}
+	}
+
+	// Pose do corpo conforme o celular: aberto = na mao; Camera = foto (traseira) ou selfie. O servidor sincroniza (RPC 230).
+	void PosePump(PhoneManager& pm, int64_t now)
+	{
+		int want = 0;
+		if (pm.isOpen()) want = (pm.foregroundId() == "camera") ? (pm.context().cameraSelfie ? 3 : 2) : 1;
+		SelfieCamera(want == 3);
+		if (want != g_poseSent && now - g_poseAt > 350 && g_net.sendPose(want)) { g_poseSent = want; g_poseAt = now; }
+	}
 }
 
 void PhoneWidget::draw(ImGuiRenderer* r)
@@ -283,6 +324,7 @@ void PhoneWidget::draw(ImGuiRenderer* r)
 	if (g_wantOpen.load() && !pm.isOpen()) { const ImVec2 sc = pUI ? pUI->displaySize() : ImVec2(1920, 1080); pm.setScreenSize(sc.x, sc.y); pm.open(); g_net.requestNumber(now); }
 	if (g_callPending && pm.isOpen()) { g_callPending = false; if (pm.context().call.state == 2) pm.openApp("ligacao"); }
 	if (!g_wantOpen.load() && pm.isOpen()) pm.close();
+	PosePump(pm, now);
 	if (!pm.isOpen()) { g_backReq.store(0); return; }
 	if (pUI) { const ImVec2 sc = pUI->displaySize(); pm.setScreenSize(sc.x, sc.y); }
 

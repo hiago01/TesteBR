@@ -15,7 +15,7 @@ namespace Phone
 {
 	namespace Net
 	{
-		enum Op { OpNumber = 1, OpSend = 2, OpDial = 3, OpAnswer = 4, OpHangup = 5, OpGram = 6, OpMessage = 20, OpCall = 21, OpGramToken = 30 };
+		enum Op { OpNumber = 1, OpSend = 2, OpDial = 3, OpAnswer = 4, OpHangup = 5, OpGram = 6, OpPose = 7, OpMessage = 20, OpCall = 21, OpGramToken = 30 };
 		enum Status
 		{
 			S_Ok = 0, S_NotLogged, S_Busy, S_NoLine, S_NoTarget, S_Empty, S_Long, S_Self, S_Rate, S_Full, S_BadArg, S_BadText,
@@ -50,7 +50,7 @@ namespace Phone
 		}
 
 		// Pedido (cliente -> servidor). O adaptador transforma em RPC 240.
-		struct Request { int op = 0; uint16_t req = 0; std::string number, text; };
+		struct Request { int op = 0; uint16_t req = 0; std::string number, text; int arg = 0; };
 
 		// Evento (servidor -> cliente), ja interpretado.
 		struct Event
@@ -175,6 +175,14 @@ namespace Phone
 			if (m_lastGram && now - m_lastGram < 6000) return false;
 			m_lastGram = now;
 			Net::Request r; r.op = Net::OpGram; r.req = nextReq();
+			return send(r);
+		}
+
+		// pose do corpo (0 = nenhuma, 1 = celular na mao, 2 = foto (camera traseira), 3 = selfie). O servidor sincroniza com quem esta perto.
+		bool sendPose(int mode)
+		{
+			if (!send) return false;
+			Net::Request r; r.op = Net::OpPose; r.req = nextReq(); r.arg = mode;
 			return send(r);
 		}
 

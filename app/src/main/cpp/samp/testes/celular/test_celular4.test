@@ -112,6 +112,13 @@ int main()
 		const Metrics& m = pm.metrics();
 		const Vec2 shutter{ m.content.center().x, m.content.bottom() - m.px(59) };
 		tapAt(pm, cv, shutter); CHECK(cv.has("não disponíveis"));                       // sem suporte: aviso honesto
+		// virar a camera (selfie): botao no topo; o titulo muda e o contexto avisa o adaptador (pose + camera frontal)
+		{ const Vec2 flip{ m.content.right() - m.px(92) + m.px(40), m.content.y + m.px(9 + 14) };
+		  CHECK(!pm.context().cameraSelfie && cv.has("Selfie"));
+		  tapAt(pm, cv, flip); CHECK(pm.context().cameraSelfie && cv.has("Traseira") && cv.has("Selfie"));
+		  tapAt(pm, cv, flip); CHECK(!pm.context().cameraSelfie);
+		  tapAt(pm, cv, flip); CHECK(pm.context().cameraSelfie);
+		  pm.goHome(); frames(pm, cv, 20); pm.openApp("camera"); frames(pm, cv, 30); CHECK(!pm.context().cameraSelfie); }   // reabrir: volta para a traseira
 		pm.goHome(); frames(pm, cv, 20); cv.grads = 0; frames(pm, cv, 2); CHECK(cv.grads > 0);   // inicio: papel de parede volta
 		pm.context().photos = &ph; pm.goHome(); frames(pm, cv, 20); pm.openApp("camera"); frames(pm, cv, 30);
 		tapAt(pm, cv, shutter); CHECK(ph.shots == 1);

@@ -13,7 +13,7 @@
 //     anim=1         ; animacoes customizadas (RPC 230 + poses.ifp)
 //     corptex=1      ; textura por corporacao (RPC 231)
 //     radarskin=1    ; radar/minimapa Google (banco mapa / PNG)
-// skin, corptex, clothes e dff sao SEMPRE ligados (ignoram o arquivo).
+// skin, corptex, clothes, dff e anim sao SEMPRE ligados (ignoram o arquivo; anim = poses do celular/foto/selfie e /cruzar /apontar).
 // SEM arquivo = tudo ligado (comportamento de sempre). Mudancas valem ao REINICIAR o jogo (os ganchos sao instalados na abertura).
 // ---------------------------------------------------------------------------
 #include <string>
@@ -72,7 +72,7 @@ namespace Diag
         for (size_t i = 0; i < 8; i++) { auto it = v.find(kKeys[i]); if (it != v.end()) s.on[i] = it->second != 0; }
         // Sistema de skins/roupas SEMPRE ligado (jogadores nunca ficam sem ele por causa de um diag.ini antigo)
         for (size_t i = 0; i < 8; i++)
-            if (!std::strcmp(kKeys[i], "skin") || !std::strcmp(kKeys[i], "corptex") || !std::strcmp(kKeys[i], "clothes") || !std::strcmp(kKeys[i], "dff")) s.on[i] = true;
+            if (!std::strcmp(kKeys[i], "skin") || !std::strcmp(kKeys[i], "corptex") || !std::strcmp(kKeys[i], "clothes") || !std::strcmp(kKeys[i], "dff") || !std::strcmp(kKeys[i], "anim")) s.on[i] = true;
         std::string off, on;
         for (size_t i = 0; i < 8; i++) (s.on[i] ? on : off) += std::string(kKeys[i]) + " ";
         s.pending = "[DIAG] " + s.path + " | LIGADOS: " + on + "| DESLIGADOS: " + off;
