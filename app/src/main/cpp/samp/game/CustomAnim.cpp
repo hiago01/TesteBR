@@ -14,6 +14,7 @@
 #include <dlfcn.h>
 #include <strings.h>
 #include <vector>
+#include <string>
 #include <algorithm>
 #include <cmath>
 
@@ -104,24 +105,37 @@ CAnimBlendAssociation* Play(CPedGTA* ped, const char* block, const char* anim, u
     return a;
 }
 
-bool Stop(CPedGTA* ped, const char* block, const char* anim, float blendOut) {
-    if (!ped || !ped->m_pRwClump) return false;
-    CAnimBlendHierarchy* h = FindHier(block, anim);
-    if (!h) return false;
-    CAnimBlendAssociation* a = RpAnimBlendClumpGetAssociation(ped->m_pRwClump, true, h);   // (clump, bool, hierarchy)
-    if (!a) return false;
+// ATENCAO (crash 'Fault address 0x2' ao soltar a pose / fechar o celular): RpAnimBlendClumpGetFirstAssociation(clump) e
+// RpAnimBlendGetNextAssociation sao portes de 32 bits (usam ClumpOffset, que nunca e inicializado) e derrubam o jogo em arm64.
+// Aqui so se usam as funcoes NATIVAS do libGTASA que o projeto ja usa em outros pontos (busca da association pelo NOME).
+static CAnimBlendAssociation* FindAssoc(CPedGTA* ped, const char* anim) {
+    CAnimBlendAssociation* a = RpAnimBlendClumpGetAssociation(ped->m_pRwClump, anim);    // (clump, const char* name): 0x46AAF4
+    if (!a || !a->m_pHierarchy) return nullptr;
+    if (!IsCustomBlockIndex(a->m_pHierarchy->m_nAnimBlockId)) return nullptr;            // nome igual de uma anim do jogo: nao mexer
+    return a;
+}
+
+static void FadeOut(CAnimBlendAssociation* a, float blendOut) {
     a->m_fBlendDelta = -std::fabs(blendOut);
     a->SetFlag(ANIMATION_FREEZE_LAST_FRAME, true);   // 0x4 (nome do plugin-sdk): remove a association quando o blend chega a 0
+}
+
+bool Stop(CPedGTA* ped, const char* block, const char* anim, float blendOut) {
+    if (!ped || !ped->m_pRwClump || !anim || !FindHier(block, anim)) return false;
+    CAnimBlendAssociation* a = FindAssoc(ped, anim);
+    if (!a) return false;
+    FadeOut(a, blendOut);
     return true;
 }
 
 void StopAll(CPedGTA* ped, float blendOut) {
     if (!ped || !ped->m_pRwClump) return;
-    for (CAnimBlendAssociation* a = RpAnimBlendClumpGetFirstAssociation(ped->m_pRwClump); a; a = RpAnimBlendGetNextAssociation(a)) {
-        if (a->m_pHierarchy && IsCustomBlockIndex(a->m_pHierarchy->m_nAnimBlockId)) {
-            a->m_fBlendDelta = -std::fabs(blendOut);
-            a->SetFlag(ANIMATION_FREEZE_LAST_FRAME, true);
-        }
+    for (int bi : s_customBlocks) {
+        if (bi < 0 || bi >= (int)CAnimManager::ms_aAnimBlocks.size()) continue;
+        const std::vector<std::string>* names = CustomIfp::GetAnimNames(CAnimManager::ms_aAnimBlocks[bi].szName);
+        if (!names) continue;
+        for (const std::string& n : *names)
+            if (CAnimBlendAssociation* a = FindAssoc(ped, n.c_str())) FadeOut(a, blendOut);
     }
 }
 
