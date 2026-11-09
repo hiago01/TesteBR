@@ -264,6 +264,13 @@ if (input == "/tablet" || input == "/maximoos")
         return;
 }
 
+// /celular (ou /phone): abre/fecha o celular (iPhone vertical).
+if (input == "/celular" || input == "/phone")
+{
+        PhoneWidget::Toggle();
+        return;
+}
+
 // /menu: abre/fecha o menu "Maximo RP" (sobreposicao; nao usa o Pause nativo, nao desconecta).
 if (input == "/menu")
 {

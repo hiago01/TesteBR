@@ -35,6 +35,7 @@
 #include "samp_widgets/provador.h"
 #include "samp_widgets/maximomenu.h"
 #include "samp_widgets/maximoos.h"
+#include "samp_widgets/phone.h"
 
 #include "samp_widgets/dialogs/dialog.h"
 
@@ -121,6 +122,7 @@ private:
 	HudInfo* m_hud = nullptr;
 	MaximoMenu* m_maximoMenu = nullptr;
 	MaximoOSWidget* m_maximoOS = nullptr;
+	PhoneWidget* m_phone = nullptr;
 	InventoryUI* m_inventory = nullptr;
 	WorldMapWidget* m_worldmap = nullptr;
 	Provador* m_provador = nullptr;

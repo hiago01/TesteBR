@@ -164,6 +164,13 @@ bool UI::initialize()
 	m_maximoOS->setPosition(ImVec2(0.0f, 0.0f));
 	m_maximoOS->setVisible(true);
 
+	// Celular do Maximo RP (iPhone vertical, /celular). Desenha so quando aberto; captura de toque por regiao em AND_TouchEvent_hook.
+	m_phone = new PhoneWidget();
+	this->addChild(m_phone);
+	m_phone->setFixedSize(size());
+	m_phone->setPosition(ImVec2(0.0f, 0.0f));
+	m_phone->setVisible(true);
+
 	// Tela de escolha de controles (CLASSICO x MODERNO): so aparece na 1a vez ou pelo menu CONTROLES; captura de toque em AND_TouchEvent_hook.
 	m_controlsSelector = new ControlsSelector();
 	this->addChild(m_controlsSelector);

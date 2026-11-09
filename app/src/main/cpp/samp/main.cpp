@@ -369,6 +369,7 @@ extern "C" {
 		if (WorldMapWidget::OnBackPressed()) return JNI_TRUE;   // mapa aberto: Voltar fecha so ele
 		if (InventoryUI::OnBackPressed()) return JNI_TRUE;   // inventário aberto: Voltar fecha só ele
 		if (Provador::OnBackPressed()) return JNI_TRUE;      // /provador aberto: Voltar cancela a prévia e fecha só ele
+		if (PhoneWidget::OnBackPressed()) return JNI_TRUE;      // celular aberto: Voltar navega/fecha so ele
 		if (MaximoOSWidget::OnBackPressed()) return JNI_TRUE;   // tablet (Maximo OS) aberto: Voltar navega/fecha so ele
 		if (pUI && pUI->maximomenu())
 			return MaximoMenu::OnBackPressed() ? JNI_TRUE : JNI_FALSE;

@@ -1,0 +1,198 @@
+// Testes de PC do celular (logica pura em gui/phone/). NAO testa NDK/Android/aparelho. Opcional: gera um quadro JSON para o renderizador de pre-visualizacao.
+#include "../../gui/phone/PhoneApps.h"
+#include <cstdio>
+#include <cstring>
+#include <fstream>
+using namespace Phone;
+static int fails = 0, total = 0;
+#define CHECK(c) do { total++; if (!(c)) { fails++; printf("FALHOU L%d: %s\n", __LINE__, #c); } } while (0)
+
+// Canvas gravador: guarda comandos (para pre-visualizacao em PNG) e mede texto de forma aproximada
+struct RecCanvas : Canvas
+{
+	std::string out; int n = 0; float alpha = 1;
+	std::vector<Rect> clips;
+	void rec(const char* f, ...) {}
+	void fillRect(const Rect& r, Color c, float rad) override { char b[200]; snprintf(b, 200, "R %g %g %g %g %d %d %d %d %g 1\n", r.x, r.y, r.w, r.h, c.r, c.g, c.b, c.a, rad); out += b; ++n; }
+	void strokeRect(const Rect& r, Color c, float rad, float th) override { char b[200]; snprintf(b, 200, "R %g %g %g %g %d %d %d %d %g %g\n", r.x, r.y, r.w, r.h, c.r, c.g, c.b, c.a, rad, -th); out += b; ++n; }
+	void fillGradientV(const Rect& r, Color t, Color bt) override { char b[220]; snprintf(b, 220, "G %g %g %g %g %d %d %d %d %d %d\n", r.x, r.y, r.w, r.h, t.r, t.g, t.b, bt.r, bt.g, bt.b); out += b; ++n; }
+	void fillCircle(Vec2 c, float r, Color col) override { char b[200]; snprintf(b, 200, "C %g %g %g %d %d %d %d 0\n", c.x, c.y, r, col.r, col.g, col.b, col.a); out += b; ++n; }
+	void strokeCircle(Vec2 c, float r, Color col, float th) override { char b[200]; snprintf(b, 200, "C %g %g %g %d %d %d %d %g\n", c.x, c.y, r, col.r, col.g, col.b, col.a, th); out += b; ++n; }
+	void line(Vec2 a, Vec2 b2, Color c, float th) override { char b[220]; snprintf(b, 220, "L %g %g %g %g %d %d %d %d %g\n", a.x, a.y, b2.x, b2.y, c.r, c.g, c.b, c.a, th); out += b; ++n; }
+	void fillTriangle(Vec2 a, Vec2 b2, Vec2 c2, Color c) override { char b[240]; snprintf(b, 240, "T %g %g %g %g %g %g %d %d %d %d\n", a.x, a.y, b2.x, b2.y, c2.x, c2.y, c.r, c.g, c.b, c.a); out += b; ++n; }
+	void text(Vec2 p, Color c, const std::string& s, float size) override { char b[400]; snprintf(b, 400, "X %g %g %d %d %d %d %g %s\n", p.x, p.y, c.r, c.g, c.b, c.a, size, s.c_str()); out += b; ++n; }
+	Vec2 measure(const std::string& s, float size) override { return { (float)s.size() * size * 0.52f, size * 1.2f }; }
+	void pushClip(const Rect& r) override { char b[120]; snprintf(b, 120, "P %g %g %g %g\n", r.x, r.y, r.w, r.h); out += b; clips.push_back(r); }
+	void popClip() override { out += "Q\n"; if (!clips.empty()) clips.pop_back(); }
+	void setAlpha(float a) override { alpha = a; }
+};
+
+static int64_t T = 1000;
+static void tap(PhoneManager& pm, RecCanvas& cv, float x, float y)
+{
+	pm.input().handleRaw(2, 0, (int)x, (int)y, false); pm.input().handleRaw(1, 0, (int)x, (int)y, false);
+	cv.out.clear(); pm.frame(cv, T += 16, 16);
+}
+static void frames(PhoneManager& pm, RecCanvas& cv, int n) { for (int i = 0; i < n; ++i) { cv.out.clear(); pm.frame(cv, T += 16, 16); } }
+static void swipe(PhoneManager& pm, RecCanvas& cv, float x0, float y0, float x1, float y1, int steps = 8)
+{
+	pm.input().handleRaw(2, 0, (int)x0, (int)y0, false);
+	frames(pm, cv, 1);
+	for (int i = 1; i <= steps; ++i) { pm.input().handleRaw(3, 0, (int)(x0 + (x1 - x0) * i / steps), (int)(y0 + (y1 - y0) * i / steps), false); frames(pm, cv, 1); }
+	pm.input().handleRaw(1, 0, (int)x1, (int)y1, false);
+	frames(pm, cv, 2);
+}
+static void dump(const RecCanvas& cv, const char* path) { std::ofstream f(path); f << cv.out; }
+static Vec2 center(const Rect& r) { return r.center(); }
+
+int main(int argc, char** argv)
+{
+	const char* dumpDir = argc > 1 ? argv[1] : nullptr;
+	const float SW = 2400, SH = 1080;
+
+	// ---- geometria em varias telas ----
+	{
+		const float sizes[][2] = { { 1280, 720 }, { 1920, 1080 }, { 2400, 1080 }, { 2640, 1200 }, { 1600, 720 }, { 800, 480 } };
+		for (auto& s : sizes)
+		{
+			Metrics m = ComputePhoneMetrics(s[0], s[1], 1.0f, 1.0f);
+			CHECK(m.valid);
+			CHECK(m.frame.x >= 0 && m.frame.y >= 0 && m.frame.right() <= s[0] + 0.5f && m.frame.bottom() <= s[1] + 0.5f);
+			CHECK(m.screen.inside(m.frame));
+			CHECK(std::fabs(m.screen.w / m.screen.h - 390.0f / 844.0f) < 0.002f);          // sem distorcao
+			CHECK(m.content.inside(m.screen) && m.statusBar.bottom() <= m.content.y + 0.01f);
+			CHECK(m.frame.x > s[0] * 0.5f - 1);                                             // aparelho na metade direita
+		}
+		// Safe Zone afasta o aparelho das bordas
+		GfxSettings::g_safeIdx.store(4);
+		Metrics z = ComputePhoneMetrics(2400, 1080), z0;
+		GfxSettings::g_safeIdx.store(0);
+		z0 = ComputePhoneMetrics(2400, 1080);
+		CHECK(z.frame.right() < z0.frame.right() - 50 && z.frame.h < z0.frame.h);
+		// tamanho 75/125 muda a escala
+		CHECK(ComputePhoneMetrics(2400, 1080, 0.75f).frame.h < ComputePhoneMetrics(2400, 1080, 1.0f).frame.h);
+		CHECK(ComputePhoneMetrics(2400, 1080, 1.25f).frame.h >= ComputePhoneMetrics(2400, 1080, 1.0f).frame.h);
+		CHECK(!ComputePhoneMetrics(0, 0).valid && !ComputePhoneMetrics(NAN, 100).valid);
+	}
+
+	// ---- captura de toque por regiao ----
+	{
+		PhoneManager pm; InstallDefaultApps(pm); CHECK(pm.appCount() == 25);
+		pm.setScreenSize(SW, SH);
+		RecCanvas cv;
+		CHECK(!pm.input().handleRaw(2, 0, 100, 100, false));          // fechado: nada capturado
+		pm.open(); frames(pm, cv, 30);
+		CHECK(pm.isOpen());
+		const Rect f = pm.metrics().frame;
+		CHECK(!pm.input().handleRaw(2, 1, 50, 500, false));            // push fora: joystick/camera seguem para o jogo
+		CHECK(!pm.input().handleRaw(3, 1, f.x + 10, f.y + 10, false)); // e esse dedo continua do jogo, mesmo entrando no celular
+		CHECK(!pm.input().handleRaw(1, 1, 50, 500, false));
+		CHECK(pm.input().handleRaw(2, 0, (int)center(f).x, (int)center(f).y, false));   // push dentro: capturado
+		CHECK(pm.input().handleRaw(3, 0, 0, 0, false));                // move do dedo capturado, mesmo fora do aparelho
+		CHECK(pm.input().handleRaw(1, 0, 0, 0, false));
+		CHECK(!pm.input().anyClaimed());
+		CHECK(!pm.input().handleRaw(3, 0, 10, 10, false));             // depois do pop volta ao jogo
+		// fecha no meio de um gesto: dedo continua engolido ate o UP
+		pm.input().handleRaw(2, 2, (int)center(f).x, (int)center(f).y, false);
+		pm.close(); frames(pm, cv, 40);
+		CHECK(!pm.isOpen());
+		CHECK(pm.input().handleRaw(3, 2, 5, 5, false));
+		CHECK(pm.input().handleRaw(1, 2, 5, 5, false));
+		CHECK(!pm.input().handleRaw(2, 0, (int)center(f).x, (int)center(f).y, false));   // fechado: push passa ao jogo
+	}
+
+	// ---- navegacao: abrir app, voltar, paginas, dock ----
+	{
+		PhoneManager pm; InstallDefaultApps(pm); pm.setScreenSize(SW, SH); RecCanvas cv;
+		pm.open(); frames(pm, cv, 30);
+		CHECK(pm.foregroundId().empty() && pm.page() == 0 && pm.pageCount() == 2);
+		// toque no icone de Ajustes (3o da pagina)
+		auto ap = pm.pageApps(0); int idx = -1; for (size_t i = 0; i < ap.size(); ++i) if (ap[i]->id == "ajustes") idx = (int)i;
+		CHECK(idx >= 0);
+		Rect cell = pm.gridCellRect(idx); Vec2 c = AppIconSquare(pm.metrics(), cell, true).center();
+		tap(pm, cv, c.x, c.y); frames(pm, cv, 30);
+		CHECK(pm.foregroundId() == "ajustes");
+		if (dumpDir) { frames(pm, cv, 2); dump(cv, (std::string(dumpDir) + "/ajustes.txt").c_str()); }
+		// alternar Modo aviao no app (1a linha)
+		const Metrics& m = pm.metrics();
+		bool air0 = pm.context().settings.airplane;
+		tap(pm, cv, m.content.center().x, m.content.y + m.px(44 + 8 + 23)); frames(pm, cv, 2);
+		CHECK(pm.context().settings.airplane != air0);
+		// tamanho do celular: abre submenu, escolhe 75%
+		tap(pm, cv, m.content.center().x, m.content.y + m.px(44 + 8 + 46 * 4 + 22 + 23)); frames(pm, cv, 2);
+		CHECK(pm.back());                                    // voltar do submenu volta para Ajustes (app trata)
+		CHECK(pm.foregroundId() == "ajustes");
+		CHECK(pm.back()); frames(pm, cv, 30);                // 2o voltar: tela inicial
+		CHECK(pm.foregroundId().empty());
+		// dock: Telefone
+		Vec2 d0 = center(pm.dockSlotRect(0));
+		tap(pm, cv, d0.x, d0.y); frames(pm, cv, 30);
+		CHECK(pm.foregroundId() == "telefone");
+		// swipe do indicador de inicio para cima, rapido: volta para a tela inicial
+		swipe(pm, cv, m.screen.center().x, m.navBar.y + m.px(12), m.screen.center().x, m.navBar.y - m.px(300), 4);
+		CHECK(pm.foregroundId().empty());
+		// pagina: arrastar para a esquerda
+		swipe(pm, cv, m.screen.x + m.screen.w * 0.8f, m.screen.y + m.px(300), m.screen.x + m.screen.w * 0.1f, m.screen.y + m.px(300), 6);
+		CHECK(pm.page() == 1);
+		swipe(pm, cv, m.screen.x + m.screen.w * 0.1f, m.screen.y + m.px(300), m.screen.x + m.screen.w * 0.9f, m.screen.y + m.px(300), 6);
+		CHECK(pm.page() == 0);
+		if (dumpDir) { frames(pm, cv, 3); dump(cv, (std::string(dumpDir) + "/home.txt").c_str()); }
+		// recentes: abre 2 apps, swipe lento para cima = recentes
+		pm.openApp("calculadora"); frames(pm, cv, 30); pm.goHome(); frames(pm, cv, 30);
+		pm.openApp("relogio"); frames(pm, cv, 30);
+		swipe(pm, cv, m.screen.center().x, m.navBar.y + m.px(12), m.screen.center().x, m.navBar.y - m.px(90), 10);
+		CHECK(pm.recentsOpen());
+		if (dumpDir) { frames(pm, cv, 2); dump(cv, (std::string(dumpDir) + "/recentes.txt").c_str()); }
+		CHECK(pm.apps().recents().size() >= 2);
+		// "Fechar todos"
+		tap(pm, cv, m.screen.center().x, m.navBar.y - m.px(38));
+		CHECK(!pm.recentsOpen() && pm.apps().recents().empty());
+		// celular nao deixa varios apps vivos alem do limite
+		const char* ids[] = { "relogio", "calculadora", "ajustes", "telefone", "mapas", "notas", "gram", "pede" };
+		for (auto id : ids) { pm.openApp(id); frames(pm, cv, 5); pm.goHome(); frames(pm, cv, 5); }
+		CHECK(pm.apps().instanceCount() <= (size_t)AppManager::kMaxRecents);
+		// abrir/fechar 200x sem acumular instancias
+		for (int i = 0; i < 200; ++i) { pm.openApp("relogio"); frames(pm, cv, 2); pm.goHome(); frames(pm, cv, 2); }
+		CHECK(pm.apps().instanceCount() <= (size_t)AppManager::kMaxRecents);
+		// voltar na tela inicial fecha o celular
+		CHECK(pm.back()); frames(pm, cv, 40); CHECK(!pm.isOpen());
+		CHECK(!pm.back());
+	}
+
+	// ---- notificacao: banner e toque abre o app ----
+	{
+		PhoneManager pm; InstallDefaultApps(pm); pm.setScreenSize(SW, SH); RecCanvas cv;
+		pm.open(); frames(pm, cv, 30);
+		pm.notifications().post("Mensagens", "Joao: oi", "mensagens", T, Notification::Info);
+		frames(pm, cv, 20);
+		if (dumpDir) dump(cv, (std::string(dumpDir) + "/banner.txt").c_str());
+		const Metrics& m = pm.metrics();
+		tap(pm, cv, m.screen.center().x, m.screen.y + m.px(46 + 30)); frames(pm, cv, 30);
+		CHECK(pm.foregroundId() == "mensagens");
+		CHECK(pm.notifications().unreadFor("mensagens") == 0);
+	}
+
+	// ---- calculadora ----
+	{
+		CalculatorApp c;
+		for (auto k : { "1", "2", "+", "3", "=" }) c.press(k);
+		CHECK(c.display() == "15");
+		for (auto k : { "AC", "9", "/", "0", "=" }) c.press(k);
+		CHECK(c.display() == "Erro");
+		for (auto k : { "AC", "1", ",", "5", "x", "2", "=" }) c.press(k);
+		CHECK(c.display() == "3");
+		for (auto k : { "AC", "5", "+/-", "-", "2", "=" }) c.press(k);
+		CHECK(c.display() == "-7");
+	}
+
+	// ---- desenho nao passa do aparelho ----
+	{
+		PhoneManager pm; InstallDefaultApps(pm); pm.setScreenSize(SW, SH); RecCanvas cv;
+		pm.open(); frames(pm, cv, 30); cv.n = 0; frames(pm, cv, 1);
+		printf("chamadas de desenho (tela inicial): %d\n", cv.n); CHECK(cv.n > 50 && cv.n < 900);                      // poucas chamadas de desenho (mobile)
+		CHECK(cv.clips.empty());                             // push/pop de clip balanceados
+	}
+
+	printf("%d/%d verificacoes OK\n", total - fails, total);
+	return fails ? 1 : 0;
+}

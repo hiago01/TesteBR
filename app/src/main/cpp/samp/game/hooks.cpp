@@ -1095,6 +1095,9 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 	}
 	if (MaximoOSWidget::HandleRawTouch(type, num, posX, posY))
 		return;
+	// Celular: so captura o dedo que COMECA dentro do aparelho; o resto (joystick/camera) segue para o jogo.
+	if (PhoneWidget::HandleRawTouch(type, num, posX, posY))
+		return;
 	if (MaximoMenu::ConsumeFlushRequest())
 	{
 		for (int i = 0; i < 3; i++)
