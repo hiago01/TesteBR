@@ -37,16 +37,16 @@ namespace CelOfs
 
 	struct R { float x = 0, y = 0, w = 0, h = 0; bool has(float px, float py) const { return px >= x && px <= x + w && py >= y && py <= y + h; } };
 
-	struct Layout
+	struct PanelLayout
 	{
 		float s = 1.0f;                                         // escala (altura da tela / 720)
 		R panel, title, tab[kModes], row[kAxes], dec[kAxes], inc[kAxes], posStep, rotStep, model[2], save, close;
 		float rowPad = 0;
 	};
 
-	inline Layout Compute(float sw, float sh)
+	inline PanelLayout Compute(float sw, float sh)
 	{
-		Layout L;
+		PanelLayout L;
 		if (!(sw > 50.0f) || !(sh > 50.0f)) return L;
 		const float s = std::clamp(sh / 720.0f, 0.5f, 2.0f); L.s = s;
 		const float pad = 10 * s, w = 326 * s, x0 = 12 * s, y0 = 22 * s;
@@ -72,7 +72,7 @@ namespace CelOfs
 		return L;
 	}
 
-	inline Hit HitTest(const Layout& L, float x, float y)
+	inline Hit HitTest(const PanelLayout& L, float x, float y)
 	{
 		if (!(L.panel.w > 0) || !L.panel.has(x, y)) return {};
 		for (int i = 0; i < kModes; ++i) if (L.tab[i].has(x, y)) return { Act::Tab, i };

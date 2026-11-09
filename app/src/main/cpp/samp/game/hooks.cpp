@@ -1736,8 +1736,7 @@ uintptr_t CTxdStore__TxdStoreFindCB_hook(const char* name)
     static const char* const databases[] = {
         "samp",
         "gta_int",
-        "gta3",
-        "celular"   // texdb/celular (iph17pro, iph16aqua): texturas dos DFFs cellphone/camera; se o banco nao existe, GetDatabase devolve 0 e e' ignorado
+        "gta3"
     };
 
     // Estrutura nativa: numAlloced (4), numEntries (4), dataPtr.

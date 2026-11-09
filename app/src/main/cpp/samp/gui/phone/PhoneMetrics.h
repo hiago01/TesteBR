@@ -11,7 +11,8 @@ namespace Phone
 
 	// "unidades logicas" (lu) da TELA do aparelho: 390 x 844 (proporcao 19,5:9 de um iPhone moderno)
 	constexpr float kScreenW = 390.0f, kScreenH = 844.0f;
-	constexpr float kBezelLu = 11.0f;                  // moldura (lu)
+	constexpr float kBezelLu = 13.0f;                  // moldura (lu). Com frameRadius <= 3,41 x moldura o canto QUADRADO da tela fica dentro do arco da moldura (sem 'cantinhos' pretos fora do aparelho)
+	constexpr float kFrameRadiusLu = 44.0f, kScreenRadiusLu = kFrameRadiusLu - kBezelLu;   // concentricos
 	constexpr float kStatusLu = 50.0f;                 // barra de status + ilha dinamica
 	constexpr float kHomeBarLu = 26.0f;                // area do indicador de inicio
 
@@ -36,8 +37,8 @@ namespace Phone
 		m.frame = { sw - marginX - fw, (sh - fh) * 0.5f + (1.0f - slideK) * (fh * 0.55f), fw, fh };
 		m.s = s;
 		m.bezel = kBezelLu * s;
-		m.frameRadius = 56.0f * s;
-		m.screenRadius = 46.0f * s;
+		m.frameRadius = kFrameRadiusLu * s;
+		m.screenRadius = kScreenRadiusLu * s;
 		m.screen = { m.frame.x + m.bezel, m.frame.y + m.bezel, kScreenW * s, kScreenH * s };
 		m.statusBar = { m.screen.x, m.screen.y, m.screen.w, kStatusLu * s };
 		m.navBar = { m.screen.x, m.screen.bottom() - kHomeBarLu * s, m.screen.w, kHomeBarLu * s };

@@ -21,6 +21,8 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <set>
+#include <mutex>
 #include <unistd.h>
 
 #include "../main.h"
@@ -39,6 +41,8 @@ namespace
     constexpr uintptr_t OFF_GET_TEXTURE    = 0x286718;   // TextureDatabaseRuntime::GetTexture(const char*)
 
     bool  (*s_convertOrig)(char*, int, int) = nullptr;
+    std::mutex    s_looseMx;
+    std::set<int> s_looseOk;            // modelos cujo DFF externo (texdb/DFF) foi convertido com sucesso (so thread do jogo/streaming)
     void* (*s_getTexOrig)(const char*)      = nullptr;
 
     // Um DFF por modelo substituido. O primeiro nome que existir em SAMP/skins/ e usado.
@@ -227,6 +231,7 @@ namespace
         info.m_nCdSize = oldSectors;       // mantem a contabilidade original do streaming
         std::free(mem);
         FLog("[DFF] modelo %d convertido: ok=%d", model, (int)ok);
+        if (ok) { std::lock_guard<std::mutex> lk(s_looseMx); s_looseOk.insert(model); }
         return true;
     }
 
@@ -274,7 +279,8 @@ namespace
 
 namespace CustomSkinStream
 {
-    const DffPreflight::Info* GetInfo(int model) { const Skin* k = FindSkin(model); return (k && k->infoOk) ? &k->info : nullptr; }
+    bool LooseApplied(int model) { std::lock_guard<std::mutex> lk(s_looseMx); return s_looseOk.count(model) != 0; }
+        const DffPreflight::Info* GetInfo(int model) { const Skin* k = FindSkin(model); return (k && k->infoOk) ? &k->info : nullptr; }
 
     // AUDITORIA dos DFFs externos (texdb/DFF): para cada arquivo diz se o IDE declara o nome, quanto o modelo ocupa
     // no IMG e se o seu arquivo cabe/e' aceito. Chamar depois dos IDEs e dos diretorios dos IMGs (CGame::Initialize).

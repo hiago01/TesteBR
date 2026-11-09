@@ -12,4 +12,6 @@ namespace CustomSkinStream
     // Inventario do DFF do modelo (materiais na ordem do motor). nullptr ate o modelo ser convertido 1x, se nao e um modelo
     // substituido, ou se o preflight reprovou.
     const DffPreflight::Info* GetInfo(int model);
+    // true se o DFF externo (texdb/DFF/<nome>.dff) deste modelo ja foi convertido pelo jogo (o modelo em memoria e' o seu, nao o do IMG).
+    bool LooseApplied(int model);
 }

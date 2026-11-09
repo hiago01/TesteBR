@@ -9,7 +9,7 @@ int main()
 	for (int k = 0; k < 4; ++k)
 	{
 		const float sh = k == 0 ? 720.f : k == 1 ? 1080.f : k == 2 ? 540.f : 1440.f, sw = sh * 2.222f;
-		const Layout L = Compute(sw, sh);
+		const PanelLayout L = Compute(sw, sh);
 		CHECK(L.panel.w > 0 && L.panel.x >= 0 && L.panel.y >= 0 && L.panel.x + L.panel.w < sw * 0.30f);      // lateral esquerda
 		CHECK(L.panel.y + L.panel.h < sh * 0.60f);                                                           // acima do joystick (parte baixa)
 		// nenhum botao se sobrepoe nem sai do painel

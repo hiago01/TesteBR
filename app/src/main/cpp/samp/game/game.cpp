@@ -23,6 +23,7 @@
 #include "CustomDiag.h"
 #include "CustomDist.h"
 #include "LedScreen.h"
+#include "PhoneModelTex.h"
 #include "CustomSkinStream.h"
 #include "SkinTexDb.h"
 #include "SafeTexDb.h"
@@ -753,14 +754,6 @@ bool CGame::InitialiseRenderWare() {
     // (banco de texturas "touch" removido: o jogo nao le mais texdb/touch)
 
     // banco de texturas das roupas/skins (texdb/skins/). So personagens; independe de CustomImg::kCustomContent.
-    // texturas dos celulares da mao (texdb/celular/: iph17pro, iph16aqua), usadas pelos DFFs texdb/DFF/cellphone.dff e camera.dff.
-    // So carrega se a pasta existir; o motor acha a textura pelo nome nos bancos carregados.
-    if (g_pszStorage && g_pszStorage[0])
-    {
-        std::string cel(g_pszStorage); if (cel.back() != '/') cel.push_back('/');
-        cel += "texdb/celular/celular.txt";
-        if (::access(cel.c_str(), R_OK) == 0) SafeTexDb::Load("celular", false, TextureDatabaseFormat::DF_Default);
-    }
     SkinTexDb::Load();
     FLog("[SKINTEXDB] %s", SkinTexDb::Status().c_str());
     FLog("[SKINTEXDB] %s", SkinTexDb::Files().c_str());
@@ -930,6 +923,7 @@ void CGame::Process() {
     ProcessMainThreadTasks();
     ClothesFrameTick();   // CJ real + skin DFF (thread do jogo, 1x por frame)
     LedScreen::Process();    // telas de LED do posto (quadros PNG em loop)
+    PhoneModelTex::Process();   // texturas PNG dos iPhones da mao (modelos 330 e 367)
     CustomDist::Tick();      // distancia de desenho extra p/ modelos (CustomDist.h)
     DpDiag::Tick();          // /dp on: rastro + queda automatica (CustomDiag.h)
     CustomColNew::Probe();   // log [LOJA]: estado do modelo novo (a cada ~300 frames)

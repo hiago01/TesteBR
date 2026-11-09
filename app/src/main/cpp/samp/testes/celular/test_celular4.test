@@ -221,6 +221,17 @@ int main()
 		// voltar da composicao
 		pm.back(); frames(pm, cv, 5); CHECK(fg<GramApp>(pm)->screen() == GramApp::Feed);
 	}
+	{   // cantos: o canto QUADRADO da tela (de onde parte a mascara dos cantos) tem de ficar DENTRO do arco da moldura em qualquer tamanho/tela
+		const float sizes[] = { 0.75f, 1.0f, 1.25f }; const float scr[][2] = { { 1600, 720 }, { 2400, 1080 }, { 1280, 600 } };
+		for (float k : sizes) for (auto& sc : scr)
+		{
+			const Metrics mm = Phone::ComputePhoneMetrics(sc[0], sc[1], k, 1.0f);
+			const float R = mm.frameRadius, cx = mm.frame.x + R, cy = mm.frame.y + R;                    // centro do arco superior esquerdo
+			const float d = std::sqrt((mm.screen.x - cx) * (mm.screen.x - cx) + (mm.screen.y - cy) * (mm.screen.y - cy));
+			CHECK(d <= R + 0.01f);
+			CHECK(std::fabs(mm.screenRadius - (R - mm.bezel)) < 0.01f);                                    // arcos concentricos
+		}
+	}
 	printf("%d/%d verificacoes OK\n", total - fails, total);
 	return fails ? 1 : 0;
 }
