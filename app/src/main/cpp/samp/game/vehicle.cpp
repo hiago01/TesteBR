@@ -549,7 +549,9 @@ void CVehicle::ApplyLightState(int iState)
 	//	return;
 
 	m_iLightState = iState;
-    m_pVehicle->m_nVehicleFlags.bLightsOn = iState;
+	// bLightsOn e um bit: o estado "nao definido" (-1, valor inicial) virava 1 e deixava os farois LIGADOS ao nascer.
+	// Agora so o valor 1 (VEHICLE_PARAMS_ON) liga; 0, -1 e qualquer outro = desligado.
+    m_pVehicle->m_nVehicleFlags.bLightsOn = (iState == 1) ? 1 : 0;
 }
 // 0.3.7
 void CVehicle::ProcessMarkers()
