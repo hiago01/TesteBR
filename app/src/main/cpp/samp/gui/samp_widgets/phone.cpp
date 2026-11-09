@@ -16,6 +16,7 @@
 #include "phonephotos.h"
 #include "maximomenu.h"
 #include "maximoos.h"
+#include "inventory.h"
 
 #include <atomic>
 #include <chrono>
@@ -45,6 +46,7 @@ namespace
 	Gram::Service* g_gram = nullptr;              // rede social (criado junto com o celular; fala direto com o servico de fotos do servidor)
 	std::atomic<bool> g_gramReset{ false };
 	bool g_callPending = false;                  // so a thread de desenho toca nisto
+	std::atomic<bool> g_openToggle{ false };     // item celular usado no inventario / slot rapido
 	std::atomic<bool> g_openCall{ false };       // ligacao recebida: abrir o celular na tela de ligacao
 
 	struct PendingNotif { std::string title, text, app; int level; };
@@ -153,6 +155,7 @@ namespace
 			p->context().talk = [](bool on) { Plugin::SetExternalTalk(on); };      // "Segure para falar" da ligacao -> mesmo caminho do botao de microfone do SampVoice
 			g_net.notify = [](const std::string& t, const std::string& x, const std::string& app, int level) { PhoneWidget::PostNotification(t, x, app, level); };
 			g_net.incomingCall = [](const std::string&) { g_openCall.store(true); };
+			g_net.openRequest = []() { g_openToggle.store(true); };
 			// Gram (rede social) + fotos: o gamemode so entrega o token (RPC op 6/30); fotos/feed vao direto por HTTP para o servico do servidor
 			g_gram = new Gram::Service(new HttpClient(2));
 			g_gram->requestToken = [](int64_t now) { return g_net.requestGramToken(now); };
@@ -339,6 +342,11 @@ void PhoneWidget::draw(ImGuiRenderer* r)
 	pm.context().nowMs = now;
 	if (g_gramReset.exchange(false) && g_gram) { g_gram->reset(); if (g_storeSvc) g_storeSvc->reset(); }
 	if (g_store.loaded) { g_net.pump(now); if (g_gram) g_gram->pump(now); }
+	if (g_openToggle.exchange(false))
+	{
+		if (g_wantOpen.load()) PhoneWidget::Close();
+		else { if (InventoryUI::IsOpen()) InventoryUI::Close(false); PhoneWidget::Open(); }
+	}
 	if (g_openCall.exchange(false)) { PhoneWidget::Open(); if (g_wantOpen.load()) g_callPending = true; }
 
 	if (g_wantOpen.load() && !pm.isOpen()) { const ImVec2 sc = pUI ? pUI->displaySize() : ImVec2(1920, 1080); pm.setScreenSize(sc.x, sc.y); pm.open(); g_net.requestNumber(now); if (g_storeSvc) g_storeSvc->refresh(now); }

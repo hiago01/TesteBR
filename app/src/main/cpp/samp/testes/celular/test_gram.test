@@ -66,14 +66,19 @@ int main()
 	A.svc.loadMe(g_now);
 	CHECK(A.until([&] { return A.svc.accountState == 2; }));                                  // aparelho sem conta conectada
 	A.svc.post("x", "x", g_now);
-	CHECK(A.svc.login("ab", "senha123", true, g_now) == Gram::ErrText("badname"));
-	CHECK(A.svc.login("joao.silva", "123", true, g_now) == Gram::ErrText("badpass"));
-	CHECK(A.svc.login("@Joao.Silva", "senha123", true, g_now).empty() && A.svc.authBusy);
+	CHECK(A.svc.login("ab", "senha123", true, g_now, "a@x.com", "1234567") == Gram::ErrText("badname"));
+	CHECK(A.svc.login("joao.silva", "123", true, g_now, "a@x.com", "1234567") == Gram::ErrText("badpass"));
+	CHECK(A.svc.login("joao.silva", "senha123", true, g_now, "sem-arroba", "1234567") == Gram::ErrText("bademail"));
+	CHECK(A.svc.login("joao.silva", "senha123", true, g_now, "a@x.com", "12345") == Gram::ErrText("badphone"));
+	CHECK(A.svc.login("joao.silva", "senha123", true, g_now, "a@x.com", "12345ab") == Gram::ErrText("badphone"));
+	CHECK(A.svc.login("@Joao.Silva", "senha123", true, g_now, "Joao@X.com", "1234567").empty() && A.svc.authBusy);
 	CHECK(A.until([&] { return A.svc.accountState == 3; }));
 	CHECK(A.svc.username == "joao.silva" && A.svc.gid > 0 && A.svc.ownAuthor() == "g" + std::to_string(A.svc.gid) && !A.svc.authBusy);
-	CHECK(B.svc.login("joao.silva", "outrasenha", true, g_now).empty());
+	CHECK(B.svc.login("joao.silva", "outrasenha", true, g_now, "outro@x.com", "1234567").empty());
 	CHECK(B.until([&] { return !B.svc.authBusy; }) && B.svc.accountState != 3 && B.svc.authError == Gram::ErrText("taken"));
-	CHECK(B.svc.login("maria.souza", "senha456", true, g_now).empty());
+	CHECK(B.svc.login("maria.souza", "senha456", true, g_now, "joao@x.com", "7654321").empty());
+	CHECK(B.until([&] { return !B.svc.authBusy; }) && B.svc.accountState != 3 && B.svc.authError == Gram::ErrText("emailtaken"));
+	CHECK(B.svc.login("maria.souza", "senha456", true, g_now, "maria@x.com", "7654321").empty());
 	CHECK(B.until([&] { return B.svc.accountState == 3; }));
 	// sair e voltar a entrar (senha errada primeiro)
 	B.svc.logout(g_now); CHECK(B.svc.accountState == 2 && B.svc.ownAuthor().empty());
@@ -82,6 +87,10 @@ int main()
 	CHECK(B.until([&] { return !B.svc.authBusy; }) && B.svc.accountState == 2 && B.svc.authError == Gram::ErrText("badlogin"));
 	CHECK(B.svc.login("maria.souza", "senha456", false, g_now).empty());
 	CHECK(B.until([&] { return B.svc.accountState == 3; }));
+	// entrar pelo e-mail
+	B.svc.logout(g_now); B.until([&] { return false; }, 300);
+	CHECK(B.svc.login("Maria@x.com", "senha456", false, g_now).empty());
+	CHECK(B.until([&] { return B.svc.accountState == 3; }) && B.svc.username == "maria.souza");
 	// sessao persiste NO APARELHO: um cliente novo com o mesmo token ja encontra a conta conectada
 	{
 		Rig R(ta, port); R.svc.loadMe(g_now);

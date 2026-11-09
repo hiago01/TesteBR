@@ -49,8 +49,20 @@ namespace Phone
 			if (c == "badname") return "Usuário: 3 a 20 letras minúsculas, números, _ ou .";
 			if (c == "badpass") return "Senha: de 6 a 48 caracteres.";
 			if (c == "taken") return "Esse usuário já existe.";
+			if (c == "bademail") return "E-mail inválido.";
+			if (c == "emailtaken") return "Esse e-mail já tem conta.";
+			if (c == "badphone") return "Telefone: 7 dígitos (o número do seu chip).";
 			if (c == "nodevice") return "Celular não reconhecido pelo servidor.";
 			return "Erro do Gram.";
+		}
+		// formato simples: algo@dominio.tld (o servidor confere de novo)
+		inline bool ValidEmail(const std::string& e)
+		{
+			if (e.size() < 6 || e.size() > 81) return false;
+			const size_t at = e.find('@'); if (at == std::string::npos || at == 0 || at != e.rfind('@')) return false;
+			const size_t dot = e.rfind('.'); if (dot == std::string::npos || dot < at + 2 || e.size() - dot < 3) return false;
+			for (char c : e) if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-' || c == '+' || c == '%' || c == '@')) return false;
+			return true;
 		}
 		inline std::vector<std::string> Split(const std::string& s, char sep)
 		{
@@ -154,17 +166,25 @@ namespace Phone
 				submit(std::move(j), now);
 			}
 			// "" = enviado; senao o erro (validacao local). reg = criar conta nova.
-			std::string login(std::string user, const std::string& pass, bool reg, int64_t now)
+			// reg: cria conta (precisa de e-mail e telefone do jogo; so contato, NAO prende ao chip). Entrar: @usuario OU e-mail.
+			std::string login(std::string user, const std::string& pass, bool reg, int64_t now, std::string email = std::string(), const std::string& phone = std::string())
 			{
 				if (authBusy) return "Aguarde...";
 				while (!user.empty() && user[0] == '@') user.erase(0, 1);
 				for (auto& c : user) if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
 				bool okName = user.size() >= 3 && user.size() <= 20;
 				for (char c : user) if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.')) okName = false;
-				if (!okName) return ErrText("badname");
+				if (!okName && (reg || !ValidEmail(user))) return ErrText("badname");
+				if (reg)
+				{
+					for (auto& c : email) if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+					if (!ValidEmail(email)) return ErrText("bademail");
+					bool okPh = phone.size() == 7; for (char c : phone) if (c < '0' || c > '9') okPh = false;
+					if (!okPh) return ErrText("badphone");
+				}
 				if (pass.size() < 6 || pass.size() > 48) return ErrText("badpass");
 				authBusy = true; authError.clear();
-				Job j; j.method = "POST"; j.path = std::string(reg ? "/g/register" : "/g/login") + "?t={T}"; j.body = user + "\n" + pass; j.contentType = "text/plain; charset=utf-8";
+				Job j; j.method = "POST"; j.path = std::string(reg ? "/g/register" : "/g/login") + "?t={T}"; j.body = user + "\n" + pass + (reg ? "\n" + email + "\n" + phone : std::string()); j.contentType = "text/plain; charset=utf-8";
 				j.done = [this](bool ok, const std::string& code, const std::vector<std::string>& L)
 				{
 					authBusy = false;

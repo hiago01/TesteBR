@@ -15,7 +15,7 @@ namespace Phone
 {
 	namespace Net
 	{
-		enum Op { OpNumber = 1, OpSend = 2, OpDial = 3, OpAnswer = 4, OpHangup = 5, OpGram = 6, OpPose = 7, OpChipOff = 8, OpDevice = 9, OpMessage = 20, OpCall = 21, OpGramToken = 30 };
+		enum Op { OpNumber = 1, OpSend = 2, OpDial = 3, OpAnswer = 4, OpHangup = 5, OpGram = 6, OpPose = 7, OpChipOff = 8, OpDevice = 9, OpOpen = 10, OpMessage = 20, OpCall = 21, OpGramToken = 30 };
 		enum Status
 		{
 			S_Ok = 0, S_NotLogged, S_Busy, S_NoLine, S_NoTarget, S_Empty, S_Long, S_Self, S_Rate, S_Full, S_BadArg, S_BadText,
@@ -84,6 +84,7 @@ namespace Phone
 				for (char c : e.text) if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || c == '.')) return false;
 				e.secs = port; out = e; return true;
 			}
+			if (op == OpOpen) { out = e; return true; }                          // servidor pede para abrir/fechar o celular (usou o item)
 			if (op == OpDevice)
 			{
 				uint8_t hp = 0;
@@ -124,6 +125,7 @@ namespace Phone
 		std::function<bool(const Net::Request&)> send;                                            // envia o pedido (thread de desenho)
 		std::function<void(const std::string& title, const std::string& text, const std::string& appId, int level)> notify;
 		std::function<void(const std::string& number)> incomingCall;                             // abre o celular na tela de ligacao
+		std::function<void()> openRequest;                                                        // o item celular foi usado (inventario/slot rapido): alternar a tela
 		std::function<void(bool hasPhone)> deviceChanged;                                         // o aparelho em uso mudou / trocou de chip (resetar Gram e Loja)
 		std::function<void(int status, const std::string& token, int port)> gramToken;          // resposta do pedido de token do Gram (thread de desenho)
 
@@ -314,6 +316,7 @@ namespace Phone
 			switch (e.op)
 			{
 			case OpNumber: m_c->networked = true; if (e.status == S_Ok) m_c->myNumber = e.number; break;
+			case OpOpen: m_c->networked = true; if (openRequest) openRequest(); break;
 			case OpDevice:
 				m_c->networked = true;
 				if (e.status == S_Ok) { m_c->myNumber = e.number; if (deviceChanged) deviceChanged(e.hasPhone); }

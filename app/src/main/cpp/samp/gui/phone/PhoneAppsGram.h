@@ -220,7 +220,7 @@ namespace Phone
 	class GramApp : public KeyboardApp
 	{
 	public:
-		enum { ID_BACK = 1, ID_ACTION, ID_SEND, ID_COMPOSER, ID_REFRESH, ID_MORE, ID_FUSER, ID_FPASS, ID_LOGIN, ID_TOGGLE, ID_LOGOUT, ID_LIKE = 1000, ID_COMMENT = 2000, ID_DEL = 3000, ID_PICK = 4000 };
+		enum { ID_BACK = 1, ID_ACTION, ID_SEND, ID_COMPOSER, ID_REFRESH, ID_MORE, ID_FUSER, ID_FPASS, ID_FMAIL, ID_FPHONE, ID_LOGIN, ID_TOGGLE, ID_LOGOUT, ID_LIKE = 1000, ID_COMMENT = 2000, ID_DEL = 3000, ID_PICK = 4000 };
 		enum Screen { Feed = 0, Comments, Pick, Compose };
 		explicit GramApp(PhoneContext* c) : KeyboardApp(c) {}
 		void onResume() override
@@ -242,7 +242,7 @@ namespace Phone
 			m_scroll.update(dt);
 			Gram::Service* g = m_c->gram; if (!g) return;
 			if (g->accountState == 0 && m_c->networked) g->loadMe(m_c->nowMs);
-			if (g->accountState == 3 && m_loginKb) { m_loginKb = false; hideKeyboard(); m_pass.clear(); }
+			if (g->accountState == 3 && m_loginKb) { m_loginKb = false; hideKeyboard(); m_pass.clear(); m_mail.clear(); m_phone.clear(); }
 			const std::string t = g->takeToast(); if (!t.empty()) m_msg.set(t, m_c->nowMs);
 			if (m_screen == Compose && g->postState == 2) { g->postState = 0; m_screen = Feed; m_scroll = ScrollView(); m_caption.clear(); hideKeyboard(); m_msg.set("Foto publicada!", m_c->nowMs, false); }
 			else if (g->postState == 3) { g->postState = 0; m_msg.set(g->postError, m_c->nowMs); }
@@ -267,7 +267,7 @@ namespace Phone
 			Gram::Service* g = m_c->gram; const int id = hitAt(t.pos);
 			if (g->accountState != 3) { loginTap(id); return true; }
 			if (id == ID_BACK) { if (m_kbOn) hideKeyboard(); onBackApp(); return true; }
-			if (id == ID_LOGOUT) { g->logout(m_c->nowMs); m_screen = Feed; m_scroll = ScrollView(); m_user.clear(); m_pass.clear(); m_regMode = false; return true; }
+			if (id == ID_LOGOUT) { g->logout(m_c->nowMs); m_screen = Feed; m_scroll = ScrollView(); m_user.clear(); m_pass.clear(); m_mail.clear(); m_phone.clear(); m_regMode = false; return true; }
 			if (m_screen == Feed)
 			{
 				if (id == ID_ACTION) { m_screen = Pick; m_scroll = ScrollView(); }
@@ -324,9 +324,14 @@ namespace Phone
 		{
 			if (m_c->gram && m_c->gram->accountState != 3)
 			{
-				std::string& f = (m_field == 0) ? m_user : m_pass;
-				if (Keyboard::Apply(f, e, m_field == 0 ? 20 : 48, false, Keyboard::Mode::Text)) { if (m_field == 0) { m_field = 1; showKeyboard(Keyboard::Mode::Text, "Entrar", m_pass); } else submitLogin(); }
-				else m_kb.autoShift(f);
+				std::string& f = fieldRef(m_field);
+				const int maxLen = (m_field == F_PASS) ? 48 : (m_field == F_PHONE ? 7 : (m_field == F_MAIL || !m_regMode) ? 60 : 20);
+				if (Keyboard::Apply(f, e, maxLen, false, m_field == F_PHONE ? Keyboard::Mode::Phone : Keyboard::Mode::Text))
+				{
+					const int nx = nextField(m_field);
+					if (nx >= 0) focusField(nx); else submitLogin();
+				}
+				else if (m_field != F_PHONE) m_kb.autoShift(f);
 				return;
 			}
 			if (m_screen == Comments) { if (Keyboard::Apply(m_text, e, 140, false, Keyboard::Mode::Text)) sendComment(); else m_kb.autoShift(m_text); }
@@ -339,20 +344,35 @@ namespace Phone
 			m_post = id; m_screen = Comments; m_text.clear(); hideKeyboard(); m_scroll = ScrollView(); m_scroll.jumpToEnd();
 			m_c->gram->loadComments(id, m_c->nowMs);
 		}
+		// campos da tela de conta. Entrar: usuario(ou e-mail), senha. Criar conta: usuario, e-mail, telefone do jogo, senha.
+		enum { F_USER = 0, F_PASS = 1, F_MAIL = 2, F_PHONE = 3 };
+		std::string& fieldRef(int f) { return f == F_PASS ? m_pass : f == F_MAIL ? m_mail : f == F_PHONE ? m_phone : m_user; }
+		int nextField(int f) const
+		{
+			if (!m_regMode) return f == F_USER ? F_PASS : -1;
+			return f == F_USER ? F_MAIL : f == F_MAIL ? F_PHONE : f == F_PHONE ? F_PASS : -1;
+		}
+		void focusField(int f)
+		{
+			m_field = f; m_loginKb = true;
+			showKeyboard(f == F_PHONE ? Keyboard::Mode::Phone : Keyboard::Mode::Text, nextField(f) >= 0 ? "Próximo" : (m_regMode ? "Criar" : "Entrar"), fieldRef(f));
+		}
 		void submitLogin()
 		{
 			Gram::Service* g = m_c->gram; if (!g) return;
-			const std::string err = g->login(m_user, m_pass, m_regMode, m_c->nowMs);
+			const std::string err = g->login(m_user, m_pass, m_regMode, m_c->nowMs, m_mail, m_phone);
 			if (!err.empty()) { g->authError = err; return; }
 			hideKeyboard();
 		}
 		void loginTap(int id)
 		{
 			Gram::Service* g = m_c->gram;
-			if (id == ID_FUSER) { m_field = 0; m_loginKb = true; showKeyboard(Keyboard::Mode::Text, "Próximo", m_user); }
-			else if (id == ID_FPASS) { m_field = 1; m_loginKb = true; showKeyboard(Keyboard::Mode::Text, "Entrar", m_pass); }
+			if (id == ID_FUSER) focusField(F_USER);
+			else if (id == ID_FMAIL) focusField(F_MAIL);
+			else if (id == ID_FPHONE) focusField(F_PHONE);
+			else if (id == ID_FPASS) focusField(F_PASS);
 			else if (id == ID_LOGIN) submitLogin();
-			else if (id == ID_TOGGLE) { m_regMode = !m_regMode; g->authError.clear(); }
+			else if (id == ID_TOGGLE) { m_regMode = !m_regMode; g->authError.clear(); m_field = 0; if (m_kbOn) hideKeyboard(); }
 			else if (id == ID_BACK) { if (m_kbOn) hideKeyboard(); }
 		}
 		void drawLogin(Canvas& cv, const Metrics& m, const Rect& content)
@@ -364,11 +384,11 @@ namespace Phone
 			if (!m_c->networked) { DrawTextIn(cv, { body.x + m.px(20), body.center().y - m.px(14), body.w - m.px(40), m.px(28) }, "Sem conexão com o servidor.", PC::Gray, m.font(16), Align::Center); return; }
 			if (g->accountState != 2) { DrawTextIn(cv, { body.x + m.px(20), body.center().y - m.px(14), body.w - m.px(40), m.px(28) }, "Conectando...", PC::Gray, m.font(16), Align::Center); return; }
 			const float mx = m.px(24), w = body.w - 2 * mx; float y = body.y + m.px(14);
-			DrawTextIn(cv, { body.x, y, body.w, m.px(30) }, m_regMode ? "Criar conta" : "Entrar", PC::LabelL, m.font(22), Align::Center); y += m.px(32);
-			DrawTextIn(cv, { body.x + mx, y, w, m.px(32) }, "Sua conta do Gram é só sua: vale em qualquer celular, sem depender do chip.", PC::Gray, m.font(11.5f), Align::Center); y += m.px(38);
+			DrawTextIn(cv, { body.x, y, body.w, m.px(30) }, m_regMode ? "Criar conta" : "Entrar", PC::LabelL, m.font(m_kbOn ? 18 : 22), Align::Center); y += m.px(m_kbOn ? 26 : 32);
+			if (!m_kbOn) { DrawTextIn(cv, { body.x + mx, y, w, m.px(32) }, m_regMode ? "A conta fica salva neste celular (IMEI), não no chip." : "Sua conta do Gram é só sua: vale em qualquer celular, sem depender do chip.", PC::Gray, m.font(11.5f), Align::Center); y += m.px(38); }
 			auto field = [&](int idf, int which, const std::string& txt, const char* hint, bool mask)
 			{
-				const Rect f{ body.x + mx, y, w, m.px(42) };
+				const Rect f{ body.x + mx, y, w, m.px(m_regMode ? 38 : 42) };
 				cv.fillRect(f, Color(255, 255, 255), m.px(10));
 				const bool act = m_kbOn && m_field == which;
 				cv.strokeRect(f, act ? PC::Blue : Color(60, 60, 67, 60), m.px(10), std::max(1.0f, m.px(act ? 1.8f : 1.0f)));
@@ -381,10 +401,15 @@ namespace Phone
 					DrawTextIn(cv, f.inset(m.px(12), 0), shown, PC::LabelL, tfs);
 					if (act && ((m_c->nowMs / 500) % 2 == 0)) cv.fillRect({ f.x + m.px(12) + cv.measure(shown, tfs).x + m.px(1), f.center().y - tfs * 0.6f, std::max(1.5f, m.px(1.5f)), tfs * 1.2f }, PC::Blue, 0);
 				}
-				m_hits.add(idf, f); y += m.px(52);
+				m_hits.add(idf, f); y += m.px(m_regMode ? 45 : 52);
 			};
-			field(ID_FUSER, 0, m_user, "@usuario", false);
-			field(ID_FPASS, 1, m_pass, "Senha", true);
+			field(ID_FUSER, F_USER, m_user, m_regMode ? "@usuario" : "@usuario ou e-mail", false);
+			if (m_regMode)
+			{
+				field(ID_FMAIL, F_MAIL, m_mail, "E-mail", false);
+				field(ID_FPHONE, F_PHONE, m_phone, "Telefone do jogo (7 dígitos)", false);
+			}
+			field(ID_FPASS, F_PASS, m_pass, "Senha", true);
 			if (!g->authError.empty()) { DrawTextIn(cv, { body.x + mx, y - m.px(6), w, m.px(32) }, g->authError, PC::Red, m.font(12.5f), Align::Center); }
 			y += m.px(34);
 			const Rect b{ body.x + mx, y, w, m.px(44) };
@@ -584,7 +609,7 @@ namespace Phone
 			drawKeyboard(cv, m);
 		}
 
-		std::vector<std::string> m_names; std::string m_text, m_caption, m_photo, m_user, m_pass; long long m_post = 0, m_confirmDel = 0; int m_screen = Feed; int m_field = 0; bool m_regMode = false, m_loginKb = false;
+		std::vector<std::string> m_names; std::string m_text, m_caption, m_photo, m_user, m_pass, m_mail, m_phone; long long m_post = 0, m_confirmDel = 0; int m_screen = Feed; int m_field = 0; bool m_regMode = false, m_loginKb = false;
 		int64_t m_lastRefresh = 0, m_lastMore = 0; ScrollView m_scroll; InlineMsg m_msg;
 	};
 }

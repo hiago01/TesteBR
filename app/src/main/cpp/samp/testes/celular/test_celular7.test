@@ -91,6 +91,7 @@ int main()
 		CHECK(Net::ParsePacket(c, e) && !e.hasPhone && e.number.empty());
 		FakeBS er; er.u8(Net::OpDevice).u16(3).u8(Net::S_NotLogged);                          // erro: so o status
 		CHECK(Net::ParsePacket(er, e) && e.status == Net::S_NotLogged);
+		FakeBS op; op.u8(Net::OpOpen).u16(0).u8(0);                                          CHECK(Net::ParsePacket(op, e) && e.op == Net::OpOpen);       // usar o item celular: abrir/fechar a tela
 		FakeBS t1; t1.u8(Net::OpDevice).u16(0).u8(0).u8(1).u8(5).str("12345");               CHECK(!Net::ParsePacket(t1, e));   // numero de 5 digitos
 		FakeBS t2; t2.u8(Net::OpDevice).u16(0).u8(0).u8(1).u8(7).str("12a4567");             CHECK(!Net::ParsePacket(t2, e));   // nao numerico
 		FakeBS t3; t3.u8(Net::OpDevice).u16(0).u8(0).u8(1).u8(7).str("123");                 CHECK(!Net::ParsePacket(t3, e));   // truncado
