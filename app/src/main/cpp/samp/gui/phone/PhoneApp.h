@@ -77,6 +77,7 @@ namespace Phone
 		std::function<void(bool)> talk;                                                           // ligacao com voz: true = comecou a falar (segurando), false = parou                                                     // ligacao: atender / desligar (recusar / cancelar)
 		// ---- navegacao entre apps ----
 		bool cameraSelfie = false;                                                                // Camera: modo selfie (camera na frente do personagem)
+		float camVfX = 0, camVfY = 0, camVfW = 0, camVfH = 0;                                    // Camera: visor em pixels da tela (0 = sem visor); a camera do jogo e' apontada para ele
 		PhotoApi* photos = nullptr;                                                               // Camera/Galeria (nullptr = sem suporte; o app avisa)
 		Gram::Service* gram = nullptr;                                                            // rede social (nullptr = sem servico)
 		std::function<bool(const std::string& appId)> openApp;                                    // preenchido pelo PhoneManager

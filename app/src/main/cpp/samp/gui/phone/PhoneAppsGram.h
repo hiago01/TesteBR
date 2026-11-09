@@ -75,6 +75,7 @@ namespace Phone
 				m_hit.add(ID_FLIP, fb);
 			}
 			m_vf = Rect{ content.x, top.bottom(), content.w, bot.y - top.bottom() };   // o que se ve pelo visor = o que vira a foto
+			m_c->camVfX = m_vf.x; m_c->camVfY = m_vf.y; m_c->camVfW = m_vf.w; m_c->camVfH = m_vf.h;
 			// cantos do enquadramento
 			const Rect f{ content.x + m.px(14), top.bottom() + m.px(12), content.w - m.px(28), content.h - topH - botH - m.px(24) };
 			const float L = m.px(22), th = std::max(1.5f, m.px(2));

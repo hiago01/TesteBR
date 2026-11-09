@@ -5,6 +5,7 @@
 #include "../phone/PhoneApps.h"
 #include "../phone/PhoneNet.h"
 #include "../phone/PhoneGram.h"
+#include "../phone/PhoneCamMath.h"
 #include "../../voice_new/Plugin.h"
 #include "../../net/netgame.h"
 #include "../../net/playerpool.h"
@@ -38,7 +39,7 @@ namespace
 	PhoneNet g_net;
 	int g_poseSent = 0;                  // ultima pose pedida ao servidor (0 = nenhuma)
 	int64_t g_poseAt = 0;
-	bool g_selfieCam = false;            // a camera do jogo esta presa na frente do personagem (modo selfie)
+	bool g_selfieCam = false;            // a camera do jogo esta sob controle da foto (traseira ou selfie)
 	Gram::Service* g_gram = nullptr;              // rede social (criado junto com o celular; fala direto com o servico de fotos do servidor)
 	std::atomic<bool> g_gramReset{ false };
 	bool g_callPending = false;                  // so a thread de desenho toca nisto
@@ -267,20 +268,28 @@ void PhoneWidget::PostNotification(const std::string& title, const std::string& 
 namespace
 {
 
-	// Camera frontal (selfie): posiciona a camera do jogo na frente do personagem, olhando para o rosto. Reaplicada a cada quadro.
-	void SelfieCamera(bool on)
+	// Camera da FOTO (traseira = modo 2, selfie = modo 3): recria a camera do jogo para que o enquadramento caia no VISOR do celular,
+	// sem mover o aparelho (projecao fora de eixo, ver PhoneCamMath.h). Reaplicada a cada quadro; fora da foto devolve a camera normal.
+	void PhotoCamera(int mode, PhoneManager& pm)
 	{
-		if (on)
+		if (mode == 2 || mode == 3)
 		{
 			if (!pNetGame || !pNetGame->GetPlayerPool()) return;
 			CLocalPlayer* lp = pNetGame->GetPlayerPool()->GetLocalPlayer();
 			CPlayerPed* pp = lp ? lp->GetPlayerPed() : nullptr;
 			if (!pp || !pp->m_pPed || pp->IsInVehicle()) return;
+			const PhoneContext& c = pm.context();
+			Phone::CamIn in;
+			in.mode = mode;
 			const CVector p = pp->m_pPed->GetPosition();
-			const float h = pp->m_pPed->m_fCurrentRotation;
-			const float fx = -std::sin(h), fy = std::cos(h);                        // frente do personagem
-			CCamera::SetPosition(p.x + fx * 1.25f, p.y + fy * 1.25f, p.z + 0.62f, 0.0f, 0.0f, 0.0f);
-			CCamera::LookAtPoint(p.x, p.y, p.z + 0.58f, 2);
+			in.px = p.x; in.py = p.y; in.pz = p.z; in.heading = pp->m_pPed->m_fCurrentRotation;
+			in.screenW = pm.metrics().screenW; in.screenH = pm.metrics().screenH;
+			in.vfX = c.camVfX; in.vfY = c.camVfY; in.vfW = c.camVfW; in.vfH = c.camVfH;
+			in.fovDeg = *reinterpret_cast<const float*>(g_libGTASA + 0x88E6BC);      // FOV horizontal atual (CDraw::SetFOV hook)
+			const Phone::CamOut o = Phone::ComputePhotoCamera(in);
+			if (!o.ok) return;
+			CCamera::SetPosition(o.cx, o.cy, o.cz, 0.0f, 0.0f, 0.0f);
+			CCamera::LookAtPoint(o.lx, o.ly, o.lz, 2);
 			g_selfieCam = true;
 		}
 		else if (g_selfieCam)
@@ -295,7 +304,7 @@ namespace
 	{
 		int want = 0;
 		if (pm.isOpen()) want = (pm.foregroundId() == "camera") ? (pm.context().cameraSelfie ? 3 : 2) : 1;
-		SelfieCamera(want == 3);
+		PhotoCamera(want, pm);
 		if (want != g_poseSent && now - g_poseAt > 350 && g_net.sendPose(want)) { g_poseSent = want; g_poseAt = now; }
 	}
 }

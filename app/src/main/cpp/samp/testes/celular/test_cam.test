@@ -1,0 +1,49 @@
+// Teste de PC da camera da foto (PhoneCamMath.h): o assunto tem de cair no CENTRO DO VISOR, em qualquer posicao do aparelho.
+#include <cstdio>
+#include <cmath>
+#include "../../gui/phone/PhoneCamMath.h"
+using namespace Phone;
+static int total = 0, fails = 0;
+#define CHECK(c) do { total++; if (!(c)) { fails++; printf("FALHOU L%d: %s\n", __LINE__, #c); } } while (0)
+// projeta o ponto T na tela (px) para a camera em C olhando para L (mesmo modelo de camera do jogo: tanH = tan(fov/2), tanV = tanH*H/W)
+static bool Project(const CamOut& o, float fovDeg, float W, float H, float& sx, float& sy)
+{
+	const float tanH = std::tan(fovDeg * 0.5f * 3.14159265f / 180.0f), tanV = tanH * H / W;
+	float fx = o.lx - o.cx, fy = o.ly - o.cy, fz = o.lz - o.cz; const float n = std::sqrt(fx*fx+fy*fy+fz*fz); fx/=n; fy/=n; fz/=n;
+	float rx = fy, ry = -fx, rz = 0; const float rn = std::sqrt(rx*rx+ry*ry); rx/=rn; ry/=rn;                 // direita
+	const float ux = ry*fz - rz*fy, uy = rz*fx - rx*fz, uz = rx*fy - ry*fx;                                      // cima = right x forward
+	const float vx = o.tx - o.cx, vy = o.ty - o.cy, vz = o.tz - o.cz;
+	const float depth = vx*fx + vy*fy + vz*fz; if (depth <= 0.01f) return false;
+	const float xr = (vx*rx + vy*ry + vz*rz) / depth, yu = (vx*ux + vy*uy + vz*uz) / depth;
+	sx = W * 0.5f + (xr / tanH) * W * 0.5f; sy = H * 0.5f - (yu / tanV) * H * 0.5f; return true;
+}
+int main()
+{
+	const float W = 1600, H = 720;
+	const float fovs[] = { 70.0f, 92.0f, 100.0f };
+	const float heads[] = { 0.0f, 1.0f, 2.5f, -3.0f };
+	for (int mode = 2; mode <= 3; ++mode)
+		for (float fov : fovs)
+			for (float h : heads)
+			{
+				CamIn in; in.mode = mode; in.px = 100; in.py = -50; in.pz = 20; in.heading = h; in.screenW = W; in.screenH = H;
+				in.vfX = 1190; in.vfY = 140; in.vfW = 235; in.vfH = 400; in.fovDeg = fov;       // visor no canto direito
+				const CamOut o = ComputePhotoCamera(in); CHECK(o.ok);
+				float sx = 0, sy = 0; CHECK(Project(o, fov, W, H, sx, sy));
+				CHECK(std::fabs(sx - (in.vfX + in.vfW * 0.5f)) < 1.5f);
+				CHECK(std::fabs(sy - (in.vfY + in.vfH * 0.5f)) < 1.5f);
+				if (mode == 3) { CHECK(o.dist >= 1.15f && o.dist <= 4.5f); const float fx = -std::sin(h), fy = std::cos(h); CHECK(((o.cx - in.px) * fx + (o.cy - in.py) * fy) > 1.0f); }   // camera na frente
+			}
+	{   // sem visor: camera fica no eixo (assunto no centro da tela)
+		CamIn in; in.mode = 3; in.px = 0; in.py = 0; in.pz = 0; in.screenW = W; in.screenH = H;
+		const CamOut o = ComputePhotoCamera(in); float sx, sy; CHECK(o.ok && Project(o, 70, W, H, sx, sy) && std::fabs(sx - W/2) < 1 && std::fabs(sy - H/2) < 1);
+	}
+	{   // visor no centro da tela: igual ao enquadramento original
+		CamIn in; in.mode = 2; in.screenW = W; in.screenH = H; in.vfX = W/2 - 100; in.vfY = H/2 - 150; in.vfW = 200; in.vfH = 300;
+		const CamOut o = ComputePhotoCamera(in); CHECK(o.ok && std::fabs(o.lz - o.cz) < 1e-3f);
+	}
+	{   // entradas invalidas
+		CamIn in; CHECK(!ComputePhotoCamera(in).ok); in.screenW = W; in.screenH = H; in.px = NAN; CHECK(!ComputePhotoCamera(in).ok);
+	}
+	printf("%d/%d verificacoes OK\n", total - fails, total); return fails ? 1 : 0;
+}

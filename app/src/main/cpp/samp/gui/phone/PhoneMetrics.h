@@ -15,16 +15,14 @@ namespace Phone
 	constexpr float kStatusLu = 50.0f;                 // barra de status + ilha dinamica
 	constexpr float kHomeBarLu = 26.0f;                // area do indicador de inicio
 
-	// centerK: 0 = encostado a direita (padrao) .. 1 = centralizado na tela (app Camera: o visor fica sobre o que a camera do jogo enquadra).
 	// scaleK: tamanho do aparelho (Ajustes > Tamanho do celular: 0.75 .. 1.25). slideK: 0 = fora da tela (embaixo) .. 1 = no lugar.
-	inline Metrics ComputePhoneMetrics(float sw, float sh, float scaleK = 1.0f, float slideK = 1.0f, float centerK = 0.0f)
+	inline Metrics ComputePhoneMetrics(float sw, float sh, float scaleK = 1.0f, float slideK = 1.0f)
 	{
 		Metrics m;
 		m.screenW = sw; m.screenH = sh;
 		if (!(sw > 50.0f) || !(sh > 50.0f) || !std::isfinite(sw) || !std::isfinite(sh)) return m;
 		scaleK = std::clamp(scaleK, 0.5f, 1.4f);
 		slideK = std::clamp(slideK, 0.0f, 1.0f);
-		centerK = std::clamp(centerK, 0.0f, 1.0f);
 
 		const GfxSettings::Insets zi = GfxSettings::SafeInsets(sw, sh);                 // Safe Zone do menu Graficos
 		const float totalLu = kScreenH + 2.0f * kBezelLu;
@@ -35,8 +33,7 @@ namespace Phone
 		if (fw > (sw - 2.0f * zi.x) * 0.5f) { fw = (sw - 2.0f * zi.x) * 0.5f; fh = fw * totalLu / totalWLu; }   // no maximo metade da largura
 		const float s = fh / totalLu;
 		const float marginX = std::max(sw * 0.03f, zi.x);
-		const float rightX = sw - marginX - fw, midX = (sw - fw) * 0.5f;
-		m.frame = { rightX + (midX - rightX) * centerK, (sh - fh) * 0.5f + (1.0f - slideK) * (fh * 0.55f), fw, fh };
+		m.frame = { sw - marginX - fw, (sh - fh) * 0.5f + (1.0f - slideK) * (fh * 0.55f), fw, fh };
 		m.s = s;
 		m.bezel = kBezelLu * s;
 		m.frameRadius = 56.0f * s;

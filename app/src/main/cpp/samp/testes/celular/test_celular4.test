@@ -119,10 +119,7 @@ int main()
 		  tapAt(pm, cv, flip); CHECK(!pm.context().cameraSelfie);
 		  tapAt(pm, cv, flip); CHECK(pm.context().cameraSelfie);
 		  pm.goHome(); frames(pm, cv, 20); pm.openApp("camera"); frames(pm, cv, 30); CHECK(!pm.context().cameraSelfie); }   // reabrir: volta para a traseira
-		// camera aberta: o aparelho fica CENTRALIZADO (o visor cobre o que a camera do jogo enquadra); no inicio volta para a direita
-		{ const Rect f = pm.metrics().frame; CHECK(std::fabs(f.x + f.w * 0.5f - pm.metrics().screenW * 0.5f) < 2.0f); }
 		pm.goHome(); frames(pm, cv, 20); cv.grads = 0; frames(pm, cv, 2); CHECK(cv.grads > 0);   // inicio: papel de parede volta
-		{ const Rect f = pm.metrics().frame; CHECK(f.x + f.w * 0.5f > pm.metrics().screenW * 0.6f); }   // fora da camera: encostado a direita
 		pm.context().photos = &ph; pm.goHome(); frames(pm, cv, 20); pm.openApp("camera"); frames(pm, cv, 30);
 		tapAt(pm, cv, shutter); CHECK(ph.shots == 1);
 		ph.add("foto_1.jpg"); T += 16; pm.context().nowMs = T; frames(pm, cv, 1); CHECK(cv.has("Foto salva")); frames(pm, cv, 2);
