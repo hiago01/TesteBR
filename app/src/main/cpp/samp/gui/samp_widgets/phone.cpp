@@ -3,6 +3,10 @@
 #include "../../game/game.h"
 #include "../../vendor/SimpleIni/SimpleIni.h"
 #include "../phone/PhoneApps.h"
+#include "../phone/PhoneNet.h"
+#include "../../net/netgame.h"
+#include "../../vendor/raknet/SAMP/SAMPRPC.h"
+#include "../../vendor/raknet/BitStream.h"
 #include "phone.h"
 #include "maximomenu.h"
 #include "maximoos.h"
@@ -16,6 +20,7 @@
 #include <vector>
 
 extern UI* pUI;
+extern CNetGame* pNetGame;
 // definido em game/multitouch.cpp: true enquanto o evento em despacho veio de ACTION_CANCEL
 extern volatile bool g_bTouchCancel;
 
@@ -25,6 +30,10 @@ namespace
 {
 	std::atomic<bool> g_wantOpen{ false };
 	std::atomic<int>  g_backReq{ 0 };
+
+	PhoneNet g_net;
+	bool g_callPending = false;                  // so a thread de desenho toca nisto
+	std::atomic<bool> g_openCall{ false };       // ligacao recebida: abrir o celular na tela de ligacao
 
 	struct PendingNotif { std::string title, text, app; int level; };
 	std::mutex g_nmx;
@@ -105,6 +114,29 @@ namespace
 				return st;
 			};
 			p->setStatusProvider(p->context().status);
+			g_net.attach(&p->context());
+			// RPC 240 (cliente -> servidor). Mesmo caminho de SendChatCommand (thread de desenho). O numero do remetente NAO vai: o servidor usa o da conta.
+			g_net.send = [](const Net::Request& r) -> bool
+			{
+				if (!pNetGame || pNetGame->GetGameState() != GAMESTATE_CONNECTED || !pNetGame->GetRakClient()) return false;
+				RakNet::BitStream bs;
+				bs.Write((uint8_t)r.op);
+				bs.Write((uint16_t)r.req);
+				if (r.op == Net::OpSend || r.op == Net::OpDial)
+				{
+					bs.Write((uint8_t)7);
+					bs.Write(r.number.data(), 7);
+				}
+				if (r.op == Net::OpSend)
+				{
+					bs.Write((uint16_t)r.text.size());
+					bs.Write(r.text.data(), (unsigned)r.text.size());
+				}
+				pNetGame->GetRakClient()->RPC(&RPC_PhoneRequest, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
+				return true;
+			};
+			g_net.notify = [](const std::string& t, const std::string& x, const std::string& app, int level) { PhoneWidget::PostNotification(t, x, app, level); };
+			g_net.incomingCall = [](const std::string&) { g_openCall.store(true); };
 			return p;
 		}();
 		return *pm;
@@ -191,6 +223,15 @@ bool PhoneWidget::OnBackPressed()
 	return true;
 }
 
+void PhoneWidget::OnServerPacket(const unsigned char* data, int bytes)
+{
+	if (!data || bytes <= 0 || bytes > 2048) return;
+	RakNet::BitStream bs(const_cast<unsigned char*>(data), bytes, false);
+	PM();                                                  // garante que g_net esta ligado
+	g_net.onServerPacketBS(bs);
+}
+void PhoneWidget::Reset() { g_net.connectionReset(); }
+
 void PhoneWidget::PostNotification(const std::string& title, const std::string& text, const std::string& appId, int level)
 {
 	std::lock_guard<std::mutex> l(g_nmx);
@@ -205,10 +246,20 @@ void PhoneWidget::draw(ImGuiRenderer* r)
 	const float dt = s_prev ? (float)std::min<int64_t>(now - s_prev, 100) : 16.0f;
 	s_prev = now;
 
-	if (!g_store.loaded) LoadPrefs(pm.context());
+	if (!g_store.loaded)
+	{
+		LoadPrefs(pm.context());
+		if (g_store.loaded) Data::FailStalePending(pm.context());       // "enviando" de uma sessao anterior nao pode ser confirmado
+	}
 	if (g_store.dirty && now - g_store.lastSave > 3000) SavePrefs(pm.context());      // no maximo 1 gravacao a cada 3 s
 
-	if (g_wantOpen.load() && !pm.isOpen()) { const ImVec2 sc = pUI ? pUI->displaySize() : ImVec2(1920, 1080); pm.setScreenSize(sc.x, sc.y); pm.open(); }
+	// rede: roda mesmo com o celular fechado (mensagens recebidas precisam ser guardadas e avisadas)
+	pm.context().nowMs = now;
+	if (g_store.loaded) g_net.pump(now);
+	if (g_openCall.exchange(false)) { PhoneWidget::Open(); if (g_wantOpen.load()) g_callPending = true; }
+
+	if (g_wantOpen.load() && !pm.isOpen()) { const ImVec2 sc = pUI ? pUI->displaySize() : ImVec2(1920, 1080); pm.setScreenSize(sc.x, sc.y); pm.open(); g_net.requestNumber(now); }
+	if (g_callPending && pm.isOpen()) { g_callPending = false; if (pm.context().call.state == 2) pm.openApp("ligacao"); }
 	if (!g_wantOpen.load() && pm.isOpen()) pm.close();
 	if (!pm.isOpen()) { g_backReq.store(0); return; }
 	if (pUI) { const ImVec2 sc = pUI->displaySize(); pm.setScreenSize(sc.x, sc.y); }

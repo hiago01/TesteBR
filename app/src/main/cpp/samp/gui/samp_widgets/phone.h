@@ -28,6 +28,10 @@ public:
 	// Notificacao no celular (usada pelo servidor/apps). appId: app aberto ao tocar (vazio = so fecha).
 	static void PostNotification(const std::string& title, const std::string& text, const std::string& appId = std::string(), int level = 0);
 
+	// Rede do celular. OnServerPacket: thread do jogo, RPC 241 (servidor -> cliente), bytes exatos do pacote. Reset: nova conexao / desconexao.
+	static void OnServerPacket(const unsigned char* data, int bytes);
+	static void Reset();
+
 	virtual void draw(ImGuiRenderer* renderer) override;
 	virtual void touchEvent(const ImVec2& pos, TouchType type) override { (void)pos; (void)type; }
 };

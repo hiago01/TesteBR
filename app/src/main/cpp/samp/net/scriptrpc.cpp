@@ -14,6 +14,7 @@
 #include "../game/Weapskin.h"
 #include "../gui/samp_widgets/inventory.h"
 #include "../gui/samp_widgets/worldmap.h"
+#include "../gui/samp_widgets/phone.h"
 #include "../game/CustomAnimSync.h"
 #include "../game/CorpTex.h"
 #include "../game/CustomAnimTest.h"
@@ -2096,6 +2097,15 @@ void ScrMap(RPCParameters* rpcParams)
 	WorldMapWidget::OnServerPacket(Data, (iBitLength + 7) / 8);   // bytes exatos (o +1 lia 1 byte alem do pacote)
 }
 
+// Celular Maximo RP: servidor -> client (RPC_PhoneEvent = 241). Formato em gui/phone/PhoneNet.h / maximo_celular.inc.
+void ScrPhone(RPCParameters* rpcParams)
+{
+	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
+	int iBitLength = rpcParams->numberOfBitsOfData;
+	if (!Data || iBitLength <= 0) return;
+	PhoneWidget::OnServerPacket(Data, (iBitLength + 7) / 8);
+}
+
 void RegisterScriptRPCs(RakClientInterface *pRakClient)
 {
 	FLog("Registering script RPC's..");
@@ -2158,6 +2168,8 @@ void RegisterScriptRPCs(RakClientInterface *pRakClient)
 	IdCard3D_Reset();      // nova conexão: descarta cartões da sessão anterior
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrInventory, ScrInventory);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrMap, ScrMap);
+	pRakClient->RegisterAsRemoteProcedureCall(&RPC_PhoneEvent, ScrPhone);
+	PhoneWidget::Reset();    // nova conexao: celular sem numero/ligacao
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrGiroflex, ScrGiroflex);
 	Giroflex_Reset();      // nova conexao: giroflex desligado
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrWeapSkin, ScrWeapSkin);
@@ -2226,6 +2238,8 @@ void UnregisterScriptRPCs(RakClientInterface *pRakClient)
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetIdCard);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrInventory);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrMap);
+	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_PhoneEvent);
+	PhoneWidget::Reset();
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrGiroflex);
 	Giroflex_Reset();
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrWeapSkin);

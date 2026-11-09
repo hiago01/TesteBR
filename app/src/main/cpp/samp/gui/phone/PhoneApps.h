@@ -5,6 +5,7 @@
 #include "PhoneManager.h"
 #include "PhoneAppsLocal.h"
 #include "PhoneAppsComms.h"
+#include "PhoneAppCall.h"
 #include <cstdio>
 
 namespace Phone
@@ -55,6 +56,7 @@ namespace Phone
 				y += m.px(22);
 				const StatusInfo st = m_c->status ? m_c->status() : StatusInfo();
 				row(20, "Sobre", "Maximo RP", true, false, false, false, PC::Gray);
+				row(22, "Meu número", m_c->myNumber.empty() ? std::string("—") : Data::FormatNumber(m_c->myNumber), false, false, false, false, PC::Gray);
 				row(21, "Hora", st.clock, false, true, false, false, PC::Gray);
 			}
 			else
@@ -244,6 +246,8 @@ namespace Phone
 		add("loja",      "Loja",      PC::Blue,   -1, 1, false, pend("loja", "Loja", "Requer servidor: catálogo e instalação de apps.", false));
 		add("camera",    "Câmera",    Color(90, 90, 96), -1, 2, false, pend("camera", "Câmera", "Requer captura de tela do jogo (ainda não implementada).", false));
 		add("mensagens", "Mensagens", PC::Green,  -1, 3, true,  [c]() { return std::unique_ptr<App>(new MessagesApp(c)); });
+		// tela de ligacao (nao aparece na grade nem no dock; aberta pelo Telefone ou por uma ligacao recebida)
+		add("ligacao",   "Ligação",   PC::Green,  -1, -1, false, [c]() { return std::unique_ptr<App>(new CallApp(c)); });
 		// pagina 1
 		add("contatos",  "Contatos",  Color(120, 124, 132), 0, -1, true, [c]() { return std::unique_ptr<App>(new ContactsApp(c)); });
 		add("galeria",   "Galeria",   Color(255, 90, 100),  0, -1, false, pend("galeria", "Galeria", "Depende da Câmera.", false));

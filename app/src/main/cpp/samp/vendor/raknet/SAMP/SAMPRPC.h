@@ -161,4 +161,6 @@ extern int RPC_ScrSetIdCard;
 extern int RPC_ScrInventory;
 extern int RPC_ScrMap;
 extern int RPC_ScrGiroflex;
+extern int RPC_PhoneRequest;
+extern int RPC_PhoneEvent;
 extern int RPC_ScrWeapSkin;

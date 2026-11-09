@@ -14,12 +14,14 @@ namespace Phone
 		using Text::Esc; using Text::Unesc; using Text::Split; using Text::Join;
 
 		constexpr size_t kMaxContacts = 150, kMaxNotes = 50, kMaxEvents = 200, kMaxMsgs = 300, kMaxCalls = 60;
-		constexpr size_t kNameMax = 32, kNumberMax = 16, kNoteMax = 2000, kEventTitleMax = 60, kMsgMax = 400;
+		constexpr size_t kNameMax = 32, kNumberMax = 16, kNoteMax = 2000, kEventTitleMax = 60;
+		// kMsgMax = limite do que o jogador digita (bytes; o servidor aceita 240 caracteres). kMsgStore = limite do que se guarda (mensagem recebida: 240 caracteres x 4 bytes).
+		constexpr size_t kMsgMax = 240, kMsgStore = 960;
 
 		struct Contact { std::string name, number; bool emergency = false; };
 		struct Note    { int id = 0; std::string text; };
 		struct Event   { int date = 0; std::string time, title; };            // date = AAAAMMDD; time = "HH:MM" ou ""
-		struct Msg     { int seq = 0; std::string number, text; bool out = true, read = true; };
+		struct Msg     { int seq = 0; std::string number, text; bool out = true, read = true; int state = 0; };   // state (so enviadas): 0 enviada, 1 enviando, 2 nao enviada
 		struct Call    { int seq = 0; std::string number; int dir = 0; };       // dir: 0 = feita, 1 = recebida, 2 = perdida
 
 		// ---- numero: so digitos e + * # (no maximo kNumberMax) ----
@@ -28,6 +30,13 @@ namespace Phone
 			std::string o;
 			for (char c : s) if ((c >= '0' && c <= '9') || c == '+' || c == '*' || c == '#') { if (o.size() < kNumberMax) o += c; }
 			return o;
+		}
+		// 7 digitos -> "123-4567" (outros formatos ficam como estao)
+		inline std::string FormatNumber(const std::string& n)
+		{
+			if (n.size() != 7) return n;
+			for (char c : n) if (c < '0' || c > '9') return n;
+			return n.substr(0, 3) + "-" + n.substr(3);
 		}
 		inline bool HasDigit(const std::string& s) { for (char c : s) if (c >= '0' && c <= '9') return true; return false; }
 		inline std::string Clip(const std::string& s, size_t max)
@@ -162,8 +171,9 @@ namespace Phone
 			std::vector<Msg> v;
 			for (auto& r : Records(c, kMsgs()))
 			{
-				auto f = Split(r, '|'); if (f.size() != 5) continue;
+				auto f = Split(r, '|'); if (f.size() != 5 && f.size() != 6) continue;
 				Msg m; m.seq = Text::ToInt(f[0], -1); m.number = CleanNumber(Unesc(f[1])); m.text = Unesc(f[2]); m.out = f[3] == "1"; m.read = f[4] == "1";
+				if (f.size() == 6) m.state = std::min(2, std::max(0, Text::ToInt(f[5], 0)));
 				if (m.seq < 0 || m.number.empty() || m.text.empty() || !Text::ValidUtf8(m.text)) continue;
 				v.push_back(m);
 			}
@@ -173,19 +183,34 @@ namespace Phone
 		{
 			if (v.size() > kMaxMsgs) v.erase(v.begin(), v.begin() + (v.size() - kMaxMsgs));
 			std::vector<std::string> r;
-			for (auto& m : v) r.push_back(std::to_string(m.seq) + "|" + Esc(m.number) + "|" + Esc(Clip(m.text, kMsgMax)) + "|" + (m.out ? "1" : "0") + "|" + (m.read ? "1" : "0"));
+			for (auto& m : v) r.push_back(std::to_string(m.seq) + "|" + Esc(m.number) + "|" + Esc(Clip(m.text, kMsgStore)) + "|" + (m.out ? "1" : "0") + "|" + (m.read ? "1" : "0") + "|" + std::to_string(m.state));
 			Put(c, kMsgs(), r);
 		}
 		inline int NextSeq(const std::vector<Msg>& v) { int m = 0; for (auto& x : v) m = std::max(m, x.seq); return m + 1; }
-		inline void AddMessage(PhoneContext& c, const std::string& number, const std::string& text, bool outgoing)
+		inline void AddMessage(PhoneContext& c, const std::string& number, const std::string& text, bool outgoing, int state = 0)
 		{
 			std::vector<Msg> v = LoadMsgs(c);
-			Msg m; m.seq = NextSeq(v); m.number = CleanNumber(number); m.text = Clip(text, kMsgMax); m.out = outgoing; m.read = outgoing;
+			Msg m; m.seq = NextSeq(v); m.number = CleanNumber(number); m.text = Clip(text, kMsgStore); m.out = outgoing; m.read = outgoing; m.state = outgoing ? state : 0;
 			if (m.number.empty() || m.text.empty()) return;
 			v.push_back(m); SaveMsgs(c, v);
 		}
 		// mensagem RECEBIDA (usada pela integracao com o servidor na Fase 3)
 		inline void ReceiveMessage(PhoneContext& c, const std::string& from, const std::string& text) { AddMessage(c, from, text, false); }
+		// resposta do servidor: acha a ULTIMA mensagem enviada "enviando" desse numero/texto e define o estado (0 enviada, 2 nao enviada)
+		inline bool MarkOutgoing(PhoneContext& c, const std::string& number, const std::string& text, int newState)
+		{
+			std::vector<Msg> v = LoadMsgs(c);
+			for (size_t i = v.size(); i-- > 0;)
+				if (v[i].out && v[i].state == 1 && v[i].number == CleanNumber(number) && v[i].text == Clip(text, kMsgStore)) { v[i].state = newState; SaveMsgs(c, v); return true; }
+			return false;
+		}
+		// ao iniciar: "enviando" que sobrou de uma sessao anterior nao tem como ser confirmado -> nao enviada
+		inline void FailStalePending(PhoneContext& c)
+		{
+			std::vector<Msg> v = LoadMsgs(c); bool ch = false;
+			for (auto& m : v) if (m.out && m.state == 1) { m.state = 2; ch = true; }
+			if (ch) SaveMsgs(c, v);
+		}
 		inline int UnreadMessages(const PhoneContext& c) { int n = 0; for (auto& m : LoadMsgs(c)) if (!m.out && !m.read) ++n; return n; }
 		inline void MarkThreadRead(PhoneContext& c, const std::string& number)
 		{

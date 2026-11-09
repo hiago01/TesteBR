@@ -77,7 +77,7 @@ int main(int argc, char** argv)
 
 	// ---- captura de toque por regiao ----
 	{
-		PhoneManager pm; InstallDefaultApps(pm); CHECK(pm.appCount() == 25);
+		PhoneManager pm; InstallDefaultApps(pm); CHECK(pm.appCount() == 26);
 		pm.setScreenSize(SW, SH);
 		RecCanvas cv;
 		CHECK(!pm.input().handleRaw(2, 0, 100, 100, false));          // fechado: nada capturado

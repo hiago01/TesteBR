@@ -203,7 +203,7 @@ int main()
 			CHECK(pm.openApp(a.id)); frames(pm, cv, 20); cv.n = 0; frames(pm, cv, 2); CHECK(cv.n > 5); ++drawn;
 			pm.goHome(); frames(pm, cv, 20);
 		}
-		CHECK(drawn == 25);
+		CHECK(drawn == 26);
 
 		// ---- Notas: nova nota -> digitar -> voltar -> persiste ----
 		pm.openApp("notas"); frames(pm, cv, 20);
@@ -248,9 +248,10 @@ int main()
 		fg<DialerApp>(pm)->place(); frames(pm, cv, 2);
 		CHECK(Data::LoadCalls(pm.context()).empty());                                   // sem gancho: nada registrado
 		std::string dialed; pm.context().dial = [&](const std::string& n) { dialed = n; return std::string(); };
-		fg<DialerApp>(pm)->place(); CHECK(dialed == "2199" && Data::LoadCalls(pm.context()).size() == 1);
+		fg<DialerApp>(pm)->place(); CHECK(dialed == "2199" && pm.apps().foregroundId() == "ligacao" && Data::LoadCalls(pm.context()).empty());   // o registro em Recentes vem do PhoneNet
+		frames(pm, cv, 3); pm.openApp("telefone"); frames(pm, cv, 20);
 		pm.context().dial = [](const std::string&) { return std::string("Sem sinal."); };
-		fg<DialerApp>(pm)->place(); CHECK(Data::LoadCalls(pm.context()).size() == 1);   // erro do servidor: nao registra
+		fg<DialerApp>(pm)->place(); CHECK(Data::LoadCalls(pm.context()).empty() && pm.apps().foregroundId() == "telefone");   // erro do servidor: continua no teclado
 		pm.goHome(); frames(pm, cv, 20);
 
 		// ---- Mensagens ----

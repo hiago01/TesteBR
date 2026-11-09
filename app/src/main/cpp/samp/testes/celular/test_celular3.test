@@ -1,0 +1,265 @@
+// Testes de PC da FASE 3 do celular: protocolo (RPC 241), PhoneNet (mensagens, ligacoes, tempo esgotado, modo aviao), tela de ligacao.
+// NAO testa NDK/Android/aparelho nem o servidor real (isso e coberto em celular-service/test e na compilacao do Pawn).
+#include "../../gui/phone/PhoneApps.h"
+#include "../../gui/phone/PhoneNet.h"
+#include <cstdio>
+#include <cstdlib>
+#include <map>
+using namespace Phone;
+static int fails = 0, total = 0;
+#define CHECK(c) do { total++; if (!(c)) { fails++; printf("FALHOU L%d: %s\n", __LINE__, #c); } } while (0)
+
+struct NullCanvas : Canvas
+{
+	int n = 0; std::string last;
+	void fillRect(const Rect&, Color, float) override { ++n; }
+	void strokeRect(const Rect&, Color, float, float) override { ++n; }
+	void fillGradientV(const Rect&, Color, Color) override { ++n; }
+	void fillCircle(Vec2, float, Color) override { ++n; }
+	void strokeCircle(Vec2, float, Color, float) override { ++n; }
+	void line(Vec2, Vec2, Color, float) override { ++n; }
+	void fillTriangle(Vec2, Vec2, Vec2, Color) override { ++n; }
+	void text(Vec2, Color, const std::string& s, float) override { ++n; texts.push_back(s); }
+	Vec2 measure(const std::string& s, float size) override { return { (float)Text::CpCount(s) * size * 0.52f, size * 1.2f }; }
+	void pushClip(const Rect&) override {} void popClip() override {} void setAlpha(float) override {}
+	std::vector<std::string> texts;
+	bool has(const std::string& s) const { for (auto& t : texts) if (t.find(s) != std::string::npos) return true; return false; }
+};
+
+// leitor falso com a mesma interface do RakNet::BitStream usada por Net::ParsePacket (little-endian)
+struct FakeBS
+{
+	std::vector<uint8_t> b; size_t i = 0;
+	bool Read(uint8_t& v) { if (i + 1 > b.size()) return false; v = b[i++]; return true; }
+	bool Read(uint16_t& v) { if (i + 2 > b.size()) return false; v = (uint16_t)(b[i] | (b[i + 1] << 8)); i += 2; return true; }
+	bool Read(char* p, unsigned n) { if (i + n > b.size()) return false; for (unsigned k = 0; k < n; ++k) p[k] = (char)b[i++]; return true; }
+	FakeBS& u8(int v) { b.push_back((uint8_t)v); return *this; }
+	FakeBS& u16(int v) { b.push_back((uint8_t)(v & 255)); b.push_back((uint8_t)(v >> 8)); return *this; }
+	FakeBS& str(const std::string& s) { for (char c : s) b.push_back((uint8_t)c); return *this; }
+};
+
+static std::map<std::string, std::string> g_store;
+static int64_t T = 5000;
+static void setup(PhoneManager& pm)
+{
+	g_store.clear();
+	pm.context().getString = [](const std::string& k, const std::string& d) { auto it = g_store.find(k); return it == g_store.end() ? d : it->second; };
+	pm.context().setString = [](const std::string& k, const std::string& v) { g_store[k] = v; };
+	StatusInfo st; st.clock = "12:00"; st.weekday = 1; st.day = 15; st.month = 1; st.year = 2024;
+	pm.context().status = [st]() { return st; };
+	pm.setStatusProvider(pm.context().status);
+	pm.setScreenSize(2400, 1080);
+}
+static void frames(PhoneManager& pm, NullCanvas& cv, int n) { for (int i = 0; i < n; ++i) { T += 16; pm.context().nowMs = T; pm.frame(cv, T, 16); } }
+
+static Net::Event numberEv(const std::string& n) { Net::Event e; e.op = Net::OpNumber; e.number = n; return e; }
+static Net::Event msgEv(const std::string& from, const std::string& t) { Net::Event e; e.op = Net::OpMessage; e.number = from; e.text = t; return e; }
+static Net::Event replyEv(int op, int req, int st) { Net::Event e; e.op = op; e.req = req; e.status = st; return e; }
+static Net::Event callEv(int state, int reason, const std::string& n) { Net::Event e; e.op = Net::OpCall; e.callState = state; e.reason = reason; e.number = n; return e; }
+
+struct Rig
+{
+	PhoneManager pm; PhoneNet net; NullCanvas cv;
+	std::vector<Net::Request> sent; std::vector<std::string> notes; std::vector<std::string> incoming; bool sendOk = true;
+	Rig()
+	{
+		InstallDefaultApps(pm); setup(pm); net.attach(&pm.context());
+		net.send = [this](const Net::Request& r) { if (sendOk) sent.push_back(r); return sendOk; };
+		net.notify = [this](const std::string& t, const std::string& x, const std::string& app, int) { notes.push_back(t + "|" + x + "|" + app); };
+		net.incomingCall = [this](const std::string& n) { incoming.push_back(n); };
+		pm.open(); frames(pm, cv, 30);
+	}
+	void pump() { T += 16; pm.context().nowMs = T; net.pump(T); }
+	void ev(const Net::Event& e) { net.onServerPacket(e); pump(); }
+	PhoneContext& c() { return pm.context(); }
+};
+
+int main()
+{
+	// ================= protocolo =================
+	{
+		Net::Event e;
+		FakeBS a; a.u8(Net::OpNumber).u16(0).u8(0).u8(7).str("1234567");
+		CHECK(Net::ParsePacket(a, e) && e.op == Net::OpNumber && e.number == "1234567");
+		FakeBS er; er.u8(Net::OpNumber).u16(9).u8(Net::S_Busy);                          // erro: so o status
+		CHECK(Net::ParsePacket(er, e) && e.status == Net::S_Busy && e.req == 9 && e.number.empty());
+		FakeBS m; m.u8(Net::OpMessage).u16(0).u8(0).u8(7).str("7654321").u16(5).str("ol\xC3\xA1!");
+		CHECK(Net::ParsePacket(m, e) && e.text == "ol\xC3\xA1!" && e.number == "7654321");
+		FakeBS c1; c1.u8(Net::OpCall).u16(0).u8(0).u8(2).u8(0).u8(7).str("1112223").u16(0);
+		CHECK(Net::ParsePacket(c1, e) && e.callState == 2 && e.number == "1112223");
+		FakeBS c2; c2.u8(Net::OpCall).u16(0).u8(0).u8(0).u8(3).u8(7).str("1112223").u16(75);
+		CHECK(Net::ParsePacket(c2, e) && e.callState == 0 && e.reason == 3 && e.secs == 75);
+		FakeBS rp; rp.u8(Net::OpSend).u16(42).u8(Net::S_NoTarget);
+		CHECK(Net::ParsePacket(rp, e) && e.op == Net::OpSend && e.req == 42 && e.status == Net::S_NoTarget);
+		// invalidos
+		FakeBS t1; t1.u8(Net::OpMessage).u16(0).u8(0).u8(7).str("7654321").u16(10).str("curto");        CHECK(!Net::ParsePacket(t1, e));   // texto truncado
+		FakeBS t2; t2.u8(Net::OpMessage).u16(0).u8(0).u8(7).str("76543x1").u16(1).str("a");             CHECK(!Net::ParsePacket(t2, e));   // numero nao numerico
+		FakeBS t3; t3.u8(Net::OpMessage).u16(0).u8(0).u8(7).str("7654321").u16(2).str("\xC3\x28");      CHECK(!Net::ParsePacket(t3, e));   // UTF-8 invalido
+		FakeBS t4; t4.u8(Net::OpMessage).u16(0).u8(0).u8(7).str("7654321").u16(0);                      CHECK(!Net::ParsePacket(t4, e));   // vazio
+		FakeBS t5; t5.u8(99).u16(0).u8(0);                                                              CHECK(!Net::ParsePacket(t5, e));   // op desconhecido
+		FakeBS t6; t6.u8(Net::OpCall).u16(0).u8(0).u8(9).u8(0).u8(0).u16(0);                            CHECK(!Net::ParsePacket(t6, e));   // estado fora da faixa
+		FakeBS t7; t7.u8(Net::OpNumber).u16(0).u8(0).u8(200);                                           CHECK(!Net::ParsePacket(t7, e));   // tamanho absurdo
+		FakeBS t8; CHECK(!Net::ParsePacket(t8, e));                                                                                           // vazio
+		// lixo aleatorio nunca derruba
+		srand(7); int ok = 0;
+		for (int k = 0; k < 20000; ++k) { FakeBS g; int n = rand() % 40; for (int j = 0; j < n; ++j) g.u8(rand() & 255); if (Net::ParsePacket(g, e)) ++ok; }
+		CHECK(ok >= 0);
+		CHECK(Net::StatusText(Net::S_Timeout) == "Sem resposta do servidor." && !Net::StatusText(Net::S_NoTarget).empty() && !Net::StatusText(77).empty());
+	}
+
+	// ================= sem servico =================
+	{
+		Rig r;
+		CHECK(r.c().dial("1234567").find("indispon") != std::string::npos);
+		CHECK(r.c().sendMessage("1234567", "oi").find("indispon") != std::string::npos);
+		CHECK(r.sent.empty());
+		r.net.requestNumber(T); CHECK(r.sent.size() == 1 && r.sent[0].op == Net::OpNumber);        // HELLO e permitido sem servico (e como se descobre)
+		r.net.requestNumber(T + 100); CHECK(r.sent.size() == 1);                                    // nao repete antes de 8 s
+		r.net.requestNumber(T + 9000); CHECK(r.sent.size() == 2);
+		r.ev(replyEv(Net::OpNumber, 1, Net::S_Busy)); CHECK(r.c().networked && r.c().myNumber.empty());
+		r.ev(numberEv("1234567")); CHECK(r.c().myNumber == "1234567");
+		r.net.requestNumber(T + 20000); CHECK(r.sent.size() == 2);                                   // ja tem numero
+	}
+
+	// ================= mensagens =================
+	{
+		Rig r; r.ev(numberEv("1234567"));
+		CHECK(r.c().sendMessage("12", "oi").find("inv") != std::string::npos);
+		CHECK(r.c().sendMessage("1234567", "oi").find("pr\xC3\xB3prio") != std::string::npos);
+		CHECK(r.c().sendMessage("7654321", std::string(241, 'a')).find("longa") != std::string::npos);
+		CHECK(r.c().sendMessage("7654321", "").size() > 0);
+		r.c().settings.airplane = true; CHECK(r.c().sendMessage("7654321", "oi").find("avi") != std::string::npos); r.c().settings.airplane = false;
+		CHECK(r.sent.empty());
+		r.c().nowMs = T;
+		CHECK(r.c().sendMessage("7654321", "ola amigo").empty());
+		CHECK(r.sent.size() == 1 && r.sent[0].op == Net::OpSend && r.sent[0].number == "7654321" && r.sent[0].text == "ola amigo" && r.sent[0].req != 0);
+		CHECK(r.c().sendMessage("7654321", "outra").find("instante") != std::string::npos);        // limite de velocidade do cliente
+		// o app registra a mensagem como "enviando"
+		Data::AddMessage(r.c(), "7654321", "ola amigo", true, 1);
+		CHECK(Data::LoadMsgs(r.c()).back().state == 1);
+		r.ev(replyEv(Net::OpSend, r.sent[0].req, Net::S_Ok));
+		CHECK(Data::LoadMsgs(r.c()).back().state == 0 && r.net.pendingCount() == 0 && r.notes.empty());
+		// resposta com erro: marca "nao enviada" e avisa
+		T += 600; r.c().nowMs = T;
+		CHECK(r.c().sendMessage("7654321", "para ninguem").empty());
+		Data::AddMessage(r.c(), "7654321", "para ninguem", true, 1);
+		r.ev(replyEv(Net::OpSend, r.sent.back().req, Net::S_NoTarget));
+		CHECK(Data::LoadMsgs(r.c()).back().state == 2 && r.notes.size() == 1 && r.notes[0].find("N\xC3\xA3o enviada") == std::string::npos && r.notes[0].find("Esse n\xC3\xBAmero n\xC3\xA3o existe") != std::string::npos);
+		// resposta com req/op trocados e duplicada: ignorada
+		r.ev(replyEv(Net::OpSend, 999, Net::S_Ok)); r.ev(replyEv(Net::OpSend, r.sent.back().req, Net::S_Ok));
+		CHECK(Data::LoadMsgs(r.c()).back().state == 2);
+		// sem resposta em 6 s
+		T += 600; r.c().nowMs = T;
+		CHECK(r.c().sendMessage("7654321", "sem eco").empty()); Data::AddMessage(r.c(), "7654321", "sem eco", true, 1);
+		const int64_t t0 = T;
+		T = t0 + 5900; r.pump(); CHECK(Data::LoadMsgs(r.c()).back().state == 1 && r.net.pendingCount() == 1);
+		T = t0 + 6100; r.pump(); CHECK(Data::LoadMsgs(r.c()).back().state == 2 && r.net.pendingCount() == 0 && r.notes.back().find("Sem resposta") != std::string::npos);
+		// envio falha no transporte
+		T += 600; r.c().nowMs = T; r.sendOk = false; CHECK(r.c().sendMessage("7654321", "x").find("conex") != std::string::npos); r.sendOk = true;
+		// recebida
+		r.ev(msgEv("7654321", "oi de volta"));
+		CHECK(Data::UnreadMessages(r.c()) == 1 && r.notes.back() == "7654321|oi de volta|mensagens");
+		Data::SaveContacts(r.c(), { { "Bia", "7654321", false } });
+		r.ev(msgEv("7654321", "e a\xC3\xAD?")); CHECK(r.notes.back().rfind("Bia|", 0) == 0);          // usa o nome do contato
+		// texto longo recebido (ate 960 bytes) fica inteiro
+		const std::string big(900, 'z'); r.ev(msgEv("7654321", big));
+		CHECK(Data::LoadMsgs(r.c()).back().text == big);
+		// "enviando" que sobrou de outra sessao vira "nao enviada"
+		Data::AddMessage(r.c(), "7654321", "preso", true, 1); Data::FailStalePending(r.c()); CHECK(Data::LoadMsgs(r.c()).back().state == 2);
+		// compatibilidade: formato antigo (5 campos) ainda carrega
+		g_store["mensagens"] = "1|7654321|oi|1|1,2|7654321|ola|0|0"; auto old = Data::LoadMsgs(r.c()); CHECK(old.size() == 2 && old[0].state == 0 && !old[1].out);
+	}
+
+	// ================= ligacao: fazer =================
+	{
+		Rig r; r.ev(numberEv("1234567"));
+		CHECK(r.c().dial("12").find("inv") != std::string::npos);
+		CHECK(r.c().dial("1234567").find("pr\xC3\xB3prio") != std::string::npos);
+		r.c().settings.airplane = true; CHECK(r.c().dial("7654321").find("avi") != std::string::npos); r.c().settings.airplane = false;
+		CHECK(r.c().dial("7654321").empty() && r.c().call.state == 1 && !r.c().call.confirmed);
+		CHECK(r.sent.size() == 1 && r.sent[0].op == Net::OpDial && r.sent[0].number == "7654321");
+		CHECK(r.c().dial("7654321").find("ligação") != std::string::npos);                          // ja em ligacao
+		r.ev(replyEv(Net::OpDial, r.sent[0].req, Net::S_Ok)); CHECK(r.c().call.confirmed && Data::LoadCalls(r.c()).size() == 1 && Data::LoadCalls(r.c())[0].dir == 0);
+		r.ev(callEv(1, 0, "7654321")); CHECK(r.c().call.state == 1);
+		r.ev(callEv(3, 0, "7654321")); CHECK(r.c().call.state == 3 && r.c().call.startMs > 0);
+		// tela de ligacao com tempo
+		r.pm.openApp("ligacao"); frames(r.pm, r.cv, 20); r.cv.texts.clear(); frames(r.pm, r.cv, 2);
+		CHECK(r.pm.apps().foregroundId() == "ligacao" && r.cv.has("Desligar") && r.cv.has("00:0"));
+		r.c().hangup(); CHECK(r.sent.back().op == Net::OpHangup);
+		r.ev(callEv(0, 4, "7654321")); CHECK(r.c().call.state == 0 && r.c().call.endText == "Chamada encerrada");
+		r.cv.texts.clear(); frames(r.pm, r.cv, 2); CHECK(r.cv.has("Chamada encerrada"));
+		T += 2000; r.pump(); frames(r.pm, r.cv, 3); CHECK(r.c().call.endText.empty() && r.pm.apps().foregroundId() != "ligacao");   // a tela fecha sozinha
+		CHECK(Data::LoadCalls(r.c()).size() == 1);                                                    // fez a ligacao: nao duplica
+	}
+	{   // destino fora de area
+		Rig r; r.ev(numberEv("1234567"));
+		CHECK(r.c().dial("7654321").empty());
+		r.ev(replyEv(Net::OpDial, r.sent[0].req, Net::S_OutOfArea));
+		CHECK(r.c().call.state == 0 && r.c().call.endText.find("Fora de") != std::string::npos && Data::LoadCalls(r.c()).size() == 1);
+		T += 2000; r.pump(); CHECK(r.c().call.endText.empty());
+		// cancelar antes do servidor responder
+		CHECK(r.c().dial("7654321").empty()); r.c().hangup(); CHECK(r.c().call.state == 0 && r.c().call.endText == "Chamada cancelada" && r.sent.back().op == Net::OpHangup);
+		r.ev(replyEv(Net::OpDial, r.sent[r.sent.size() - 2].req, Net::S_Ok)); CHECK(r.c().call.state == 0);       // resposta tardia nao reanima
+		r.ev(callEv(1, 0, "7654321")); CHECK(r.c().call.state == 0);
+		// sem resposta do servidor ao ligar
+		T += 3000; r.pump(); CHECK(r.c().call.endText.empty());
+		r.c().nowMs = T; CHECK(r.c().dial("7654321").empty()); T += 6100; r.pump();
+		CHECK(r.c().call.state == 0 && r.c().call.endText.find("Sem resposta") != std::string::npos);
+	}
+
+	// ================= ligacao: receber =================
+	{
+		Rig r; r.ev(numberEv("1234567"));
+		r.ev(callEv(2, 0, "7654321"));
+		CHECK(r.c().call.state == 2 && r.c().call.incoming && r.incoming.size() == 1 && r.incoming[0] == "7654321");
+		r.pm.openApp("ligacao"); frames(r.pm, r.cv, 20); r.cv.texts.clear(); frames(r.pm, r.cv, 2);
+		CHECK(r.cv.has("Atender") && r.cv.has("Recusar") && r.cv.has("Chamada recebida") && r.cv.has("765-4321"));
+		Data::SaveContacts(r.c(), { { "Bia", "7654321", false } }); r.cv.texts.clear(); frames(r.pm, r.cv, 2); CHECK(r.cv.has("Bia") && r.cv.has("B"));
+		r.c().answer(); CHECK(r.sent.back().op == Net::OpAnswer);
+		r.ev(callEv(3, 0, "7654321")); CHECK(r.c().call.state == 3);
+		r.ev(callEv(0, 1, "7654321")); CHECK(r.c().call.state == 0 && Data::LoadCalls(r.c())[0].dir == 1 && r.c().call.endText == "Chamada encerrada");
+	}
+	{   // perdida (sem resposta) gera aviso e registro
+		Rig r; r.ev(numberEv("1234567")); r.ev(callEv(2, 0, "7654321")); r.notes.clear();
+		r.ev(callEv(0, 3, "7654321"));
+		CHECK(r.c().call.state == 0 && Data::LoadCalls(r.c())[0].dir == 2 && r.notes.size() == 1 && r.notes[0].find("Chamada perdida") == 0);
+	}
+	{   // recusada por mim: registra como perdida, sem aviso
+		Rig r; r.ev(numberEv("1234567")); r.ev(callEv(2, 0, "7654321")); r.notes.clear();
+		r.c().hangup(); CHECK(r.sent.back().op == Net::OpHangup);
+		r.ev(callEv(0, 4, "7654321")); CHECK(r.notes.empty() && Data::LoadCalls(r.c())[0].dir == 2);
+	}
+	{   // modo aviao: recusa sozinho, sem abrir tela
+		Rig r; r.ev(numberEv("1234567")); r.c().settings.airplane = true;
+		r.ev(callEv(2, 0, "7654321"));
+		CHECK(r.c().call.state == 0 && r.incoming.empty() && r.sent.back().op == Net::OpHangup);
+	}
+	{   // atender sem ligacao tocando nao faz nada; resposta de erro ao atender encerra
+		Rig r; r.ev(numberEv("1234567")); r.c().answer(); CHECK(r.sent.empty());
+		r.ev(callEv(2, 0, "7654321")); r.c().answer(); const auto rq = r.sent.back();
+		r.ev(replyEv(Net::OpAnswer, rq.req, Net::S_NoCall)); CHECK(r.c().call.state == 0 && r.c().call.endText.find("Nenhuma") != std::string::npos);
+	}
+	{   // reconexao limpa tudo
+		Rig r; r.ev(numberEv("1234567")); r.ev(callEv(2, 0, "7654321"));
+		r.net.connectionReset(); r.pump();
+		CHECK(!r.c().networked && r.c().myNumber.empty() && r.c().call.state == 0 && r.net.pendingCount() == 0);
+	}
+	{   // fila limitada: rajada enorme nao cresce sem limite
+		Rig r; r.ev(numberEv("1234567"));
+		for (int i = 0; i < 1000; ++i) r.net.onServerPacket(msgEv("7654321", "m"));
+		r.pump(); CHECK(Data::LoadMsgs(r.c()).size() <= Data::kMaxMsgs && Data::LoadMsgs(r.c()).size() >= 100);
+	}
+
+	// ================= Ajustes mostra o numero; bolha de mensagem nao enviada desenha =================
+	{
+		Rig r; r.ev(numberEv("1234567"));
+		r.pm.openApp("ajustes"); frames(r.pm, r.cv, 20); r.cv.texts.clear(); frames(r.pm, r.cv, 2);
+		CHECK(r.cv.has("Meu n\xC3\xBAmero") && r.cv.has("123-4567"));
+		r.pm.goHome(); frames(r.pm, r.cv, 20);
+		Data::AddMessage(r.c(), "7654321", "falhou", true, 2); Data::AddMessage(r.c(), "7654321", "indo", true, 1);
+		r.c().launchArg = "to:7654321"; r.pm.openApp("mensagens"); frames(r.pm, r.cv, 20); r.cv.texts.clear(); frames(r.pm, r.cv, 2);
+		CHECK(r.cv.has("N\xC3\xA3o enviada") && r.cv.has("falhou") && r.cv.has("indo"));
+	}
+	printf("%d/%d verificacoes OK\n", total - fails, total);
+	return fails ? 1 : 0;
+}

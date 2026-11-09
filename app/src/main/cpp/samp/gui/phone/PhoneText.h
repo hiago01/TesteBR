@@ -65,6 +65,12 @@ namespace Phone
 		}
 
 		// ---- escape para armazenamento: tudo que nao for [A-Za-z0-9_.-] vira %XX (separadores ficam livres; ';' '#' e espaco nunca aparecem crus no .ini) ----
+		// primeira letra (maiuscula) para o avatar
+		inline std::string FirstChar(const std::string& s)
+		{
+			if (s.empty()) return std::string();
+			return Upper(s.substr(0, CpLen(s, 0)));
+		}
 		inline std::string Esc(const std::string& s)
 		{
 			static const char* hx = "0123456789ABCDEF";

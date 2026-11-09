@@ -164,3 +164,6 @@ int RPC_ScrMap = 204;
 int RPC_ScrGiroflex = 205;
 // Skin de arma Maximo RP (servidor -> cliente: uint16 jogador | uint8 arma | uint16 modelo; ver game/Weapskin.h)
 int RPC_ScrWeapSkin = 206;
+// Celular Maximo RP: cliente -> servidor (240, pedidos: numero/mensagem/ligar/atender/desligar) e servidor -> cliente (241, respostas e eventos). Ver gui/phone/PhoneNet.h e maximo_celular.inc
+int RPC_PhoneRequest = 240;
+int RPC_PhoneEvent = 241;

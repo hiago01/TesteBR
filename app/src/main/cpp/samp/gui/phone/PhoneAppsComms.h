@@ -68,8 +68,9 @@ namespace Phone
 			if (!Data::HasDigit(n)) { m_msg.set("Digite um número.", m_c->nowMs); return; }
 			const std::string err = m_c->dial ? m_c->dial(n) : std::string(kNoCallService());
 			if (!err.empty()) { m_msg.set(err, m_c->nowMs); return; }
-			Data::AddCall(*m_c, n, 0); m_c->changed(); reload();
-			m_msg.set("Chamando " + n + "...", m_c->nowMs, false);
+			// o registro em "Recentes" e feito pelo PhoneNet quando o servidor responde; aqui so abre a tela de ligacao
+			if (m_c->openApp) m_c->openApp("ligacao");
+			reload();
 		}
 
 	private:
@@ -212,7 +213,8 @@ namespace Phone
 			if (txt.empty()) return;
 			const std::string err = m_c->sendMessage ? m_c->sendMessage(m_num, txt) : std::string(kNoMsgService());
 			if (!err.empty()) { m_msg.set(err, m_c->nowMs); return; }
-			Data::AddMessage(*m_c, m_num, txt, true); m_c->changed(); m_text.clear(); reload(); m_scroll.jumpToEnd(); m_kb.autoShift(m_text);
+			// 1 = enviando; o PhoneNet confirma (0) ou marca como nao enviada (2)
+			Data::AddMessage(*m_c, m_num, txt, true, 1); m_c->changed(); m_text.clear(); reload(); m_scroll.jumpToEnd(); m_kb.autoShift(m_text);
 		}
 
 	protected:
@@ -288,7 +290,7 @@ namespace Phone
 				if (mg.number != m_num) continue;
 				auto it = m_wrap.find(mg.seq);
 				if (it == m_wrap.end()) it = m_wrap.emplace(mg.seq, Text::Wrap(cv, mg.text, fs, maxBw - 2 * padX)).first;
-				const float h = it->second.size() * lineH + 2 * padY;
+				const float h = it->second.size() * lineH + 2 * padY + ((mg.out && mg.state == 2) ? m.px(14) : 0.0f);
 				items.push_back({ &mg, &it->second, h }); total += h + gap;
 			}
 			m_scroll.setLayout(view, total + m.px(10));
@@ -302,10 +304,13 @@ namespace Phone
 				if (!m_scroll.visible(r)) continue;
 				float tw = 0; for (auto& l : *it.ln) tw = std::max(tw, cv.measure(l, fs).x);
 				const float bw = std::min(maxBw, tw + 2 * padX);
-				const Rect b{ it.msg->out ? view.right() - edge - bw : view.x + edge, r.y, bw, it.h };
-				cv.fillRect(b, it.msg->out ? PC::Blue : Color(229, 229, 234), m.px(16));
+				const float lab = (it.msg->out && it.msg->state == 2) ? m.px(14) : 0.0f;
+				const Rect b{ it.msg->out ? view.right() - edge - bw : view.x + edge, r.y, bw, it.h - lab };
+				const Color outCol = it.msg->state == 2 ? PC::Red : (it.msg->state == 1 ? PC::Blue.alpha(0.55f) : PC::Blue);
+				cv.fillRect(b, it.msg->out ? outCol : Color(229, 229, 234), m.px(16));
 				for (size_t k = 0; k < it.ln->size(); ++k)
 					DrawTextIn(cv, { b.x + padX, b.y + padY + k * lineH, bw - 2 * padX, lineH }, (*it.ln)[k], it.msg->out ? Color(255, 255, 255) : PC::LabelL, fs);
+				if (it.msg->out && it.msg->state == 2) DrawTextIn(cv, { b.x, b.bottom() + m.px(1), bw, m.px(13) }, "Não enviada", PC::Red, m.font(11), Align::Right);
 			}
 			cv.popClip();
 			// barra de composicao

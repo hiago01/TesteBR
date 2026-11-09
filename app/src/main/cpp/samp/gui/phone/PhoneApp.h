@@ -19,6 +19,18 @@ namespace Phone
 		int  sizePct = 100;               // tamanho do aparelho: 75 / 100 / 125
 	};
 
+	// Estado da ligacao (escrito pelo PhoneNet; os apps so leem). state: 0 livre, 1 chamando, 2 tocando (recebida), 3 em ligacao.
+	struct PhoneCall
+	{
+		int state = 0;
+		std::string number;
+		bool incoming = false;          // a ligacao atual foi recebida
+		bool confirmed = false;         // o servidor ja respondeu ao pedido de ligar
+		int64_t startMs = 0;            // inicio da ligacao ativa
+		int64_t endAtMs = 0;            // tela "encerrada" visivel ate este instante (state 0)
+		std::string endText;            // texto da tela "encerrada" (vazio = sem tela)
+	};
+
 	// Servicos compartilhados. Os ponteiros/funcoes sao preenchidos pela integracao com o jogo (phone.cpp); nos testes de PC sao stubs.
 	struct PhoneContext
 	{
@@ -32,6 +44,11 @@ namespace Phone
 		// Sem gancho = servico indisponivel: o app avisa de forma honesta e NAO simula sucesso.
 		std::function<std::string(const std::string& number)> dial;
 		std::function<std::string(const std::string& number, const std::string& text)> sendMessage;
+		// ---- rede do celular (preenchido pelo PhoneNet) ----
+		std::string myNumber;                                                                     // numero do jogador ("" = ainda desconhecido)
+		bool networked = false;                                                                   // o servidor respondeu ao celular (servico existe)
+		PhoneCall call;
+		std::function<void()> answer, hangup;                                                     // ligacao: atender / desligar (recusar / cancelar)
 		// ---- navegacao entre apps ----
 		std::function<bool(const std::string& appId)> openApp;                                    // preenchido pelo PhoneManager
 		std::string launchArg;                                                                    // argumento para o app aberto (ex.: numero); o destino consome em onResume
