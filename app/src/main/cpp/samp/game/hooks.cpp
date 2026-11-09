@@ -42,6 +42,7 @@
 #include "Hose.h"
 #include "IdCard3D.h"
 #include "Giroflex.h"
+#include "Weapskin.h"
 #include "game/Animation/AnimManager.h"
 #include "FileLoader.h"
 #include "Renderer.h"
@@ -622,6 +623,7 @@ void RenderEffects() {
 //    CGlass::Render();
     CHook::CallFunction<void>(g_libGTASA + 0x6CA5D0);
     CVisibilityPlugins::RenderReallyDrawLastObjects();
+    Weapskin_Process();   // skin de arma: reaplica o modelo na mao quando o servidor muda
     Giroflex_Render();    // giroflex: registra as coronas animadas dos veiculos com sirene ligada (antes do desenho)
     CCoronas::Render();
 
@@ -3971,6 +3973,8 @@ CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
     CHook::InlineHook("_ZN14MainMenuScreen6OnExitEv", &MainMenuScreen__OnExit_hook, &MainMenuScreen__OnExit);
 
     CHook::InlineHook("_ZN17CTaskSimpleUseGun17RemoveStanceAnimsEP4CPedf", &CTaskSimpleUseGun__RemoveStanceAnims_hook, &CTaskSimpleUseGun__RemoveStanceAnims);
+
+    Weapskin_InstallHooks();   // skin de arma: troca do modelo da mao + som proprio do tiro
 
     // Bullet sync
     CHook::InlineHook("_ZN7CWeapon14FireInstantHitEP7CEntityP7CVectorS3_S1_S3_S3_bb", &CWeapon__FireInstantHit_hook, &CWeapon__FireInstantHit);

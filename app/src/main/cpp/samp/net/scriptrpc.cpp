@@ -11,6 +11,7 @@
 #include "../game/Hose.h"
 #include "../game/IdCard3D.h"
 #include "../game/Giroflex.h"
+#include "../game/Weapskin.h"
 #include "../gui/samp_widgets/inventory.h"
 #include "../gui/samp_widgets/worldmap.h"
 #include "../game/CustomAnimSync.h"
@@ -2067,6 +2068,17 @@ void ScrGiroflex(RPCParameters* rpcParams)
 	Giroflex_OnServerPacket(vehId, state != 0);
 }
 
+// Skin de arma Maximo RP: servidor -> client (RPC_ScrWeapSkin = 206): uint16 jogador | uint8 arma | uint16 modelo (0 = original)
+void ScrWeapSkin(RPCParameters* rpcParams)
+{
+	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
+	int iBitLength = rpcParams->numberOfBitsOfData;
+	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	uint16_t pid = 0, model = 0; uint8_t weapon = 0;
+	if (!bsData.Read(pid) || !bsData.Read(weapon) || !bsData.Read(model)) return;
+	Weapskin_OnServerPacket(pid, weapon, model);
+}
+
 // Inventario Maximo RP: servidor -> client (RPC_ScrInventory = 203). Formato em maximo_inv.inc / inventory.h.
 void ScrInventory(RPCParameters* rpcParams)
 {
@@ -2148,6 +2160,8 @@ void RegisterScriptRPCs(RakClientInterface *pRakClient)
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrMap, ScrMap);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrGiroflex, ScrGiroflex);
 	Giroflex_Reset();      // nova conexao: giroflex desligado
+	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrWeapSkin, ScrWeapSkin);
+	Weapskin_Reset();      // nova conexao: sem skins de arma
 	WorldMapWidget::Reset();
 	InventoryUI::Reset();  // nova conexão: inventário fechado e vazio
 	if (Diag::On("anim")) CustomAnimSync::Register(pRakClient);   // RPC 230: anim customizada (servidor -> cliente)
@@ -2214,6 +2228,8 @@ void UnregisterScriptRPCs(RakClientInterface *pRakClient)
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrMap);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrGiroflex);
 	Giroflex_Reset();
+	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrWeapSkin);
+	Weapskin_Reset();
 	WorldMapWidget::Reset();
 	InventoryUI::Reset();
 	IdCard3D_Reset();      // saiu do servidor: limpa cartões

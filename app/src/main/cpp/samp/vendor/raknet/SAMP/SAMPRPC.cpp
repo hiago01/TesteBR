@@ -162,3 +162,5 @@ int RPC_ScrInventory = 203;
 int RPC_ScrMap = 204;
 // Giroflex Maximo RP (servidor -> cliente: uint16 veiculo | uint8 estado; ver game/Giroflex.h) - ID customizado
 int RPC_ScrGiroflex = 205;
+// Skin de arma Maximo RP (servidor -> cliente: uint16 jogador | uint8 arma | uint16 modelo; ver game/Weapskin.h)
+int RPC_ScrWeapSkin = 206;
