@@ -330,6 +330,7 @@ void ClientMessage(RPCParameters *rpcParams)
 		bsData.Read(szMsg, dwStrLen);
 		szMsg[dwStrLen] = '\0';
 		Log::addParameter("szMsg", szMsg);
+		if (CelOfsPanel::OnServerLine(szMsg)) return;      // linha do painel /celofs: nao vai ao chat
 		if (pUI) pUI->chat()->addClientMessage(Encoding::cp2utf(szMsg), UI::fixcolor(dwColor));
 	}
 }

@@ -143,6 +143,13 @@ if (input.length() > 0 && pNetGame)
 
                 return;
         }
+if (input == "/celofs")
+        {
+            // painel de ajuste do celular na mao (esquerda, acima do joystick). Com parametros o comando segue para o servidor.
+            CelOfsPanel::Toggle();
+            addDebugMessage(CelOfsPanel::IsOpen() ? "[painel] /celofs aberto (precisa ser admin RCON; /celofs de novo fecha)" : "[painel] /celofs fechado");
+            return;
+        }
 if (input == "/testeclothes")
         {
             TestPlayerClothesDesc();

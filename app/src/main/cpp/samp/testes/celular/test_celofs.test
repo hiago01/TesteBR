@@ -1,0 +1,56 @@
+// Teste de PC do painel /celofs (celofs_logic.h)
+#include <cstdio>
+#include "../../gui/samp_widgets/celofs_logic.h"
+using namespace CelOfs;
+static int total = 0, fails = 0;
+#define CHECK(c) do { total++; if (!(c)) { fails++; printf("FALHOU L%d: %s\n", __LINE__, #c); } } while (0)
+int main()
+{
+	for (int k = 0; k < 4; ++k)
+	{
+		const float sh = k == 0 ? 720.f : k == 1 ? 1080.f : k == 2 ? 540.f : 1440.f, sw = sh * 2.222f;
+		const Layout L = Compute(sw, sh);
+		CHECK(L.panel.w > 0 && L.panel.x >= 0 && L.panel.y >= 0 && L.panel.x + L.panel.w < sw * 0.30f);      // lateral esquerda
+		CHECK(L.panel.y + L.panel.h < sh * 0.60f);                                                           // acima do joystick (parte baixa)
+		// nenhum botao se sobrepoe nem sai do painel
+		std::vector<R> bs; for (int i = 0; i < kModes; ++i) bs.push_back(L.tab[i]); for (int a = 0; a < kAxes; ++a) { bs.push_back(L.dec[a]); bs.push_back(L.inc[a]); }
+		bs.push_back(L.posStep); bs.push_back(L.rotStep); bs.push_back(L.model[0]); bs.push_back(L.model[1]); bs.push_back(L.save); bs.push_back(L.close);
+		bool inside = true, overlap = false;
+		for (size_t i = 0; i < bs.size(); ++i)
+		{
+			const R& r = bs[i];
+			if (r.x < L.panel.x || r.y < L.panel.y || r.x + r.w > L.panel.x + L.panel.w || r.y + r.h > L.panel.y + L.panel.h) inside = false;
+			for (size_t j = i + 1; j < bs.size(); ++j) { const R& q = bs[j]; if (r.x < q.x + q.w && q.x < r.x + r.w && r.y < q.y + q.h && q.y < r.y + r.h) overlap = true; }
+		}
+		CHECK(inside); CHECK(!overlap);
+		// toques
+		CHECK(HitTest(L, L.inc[2].x + 2, L.inc[2].y + 2).act == Act::Inc && HitTest(L, L.inc[2].x + 2, L.inc[2].y + 2).arg == 2);
+		CHECK(HitTest(L, L.dec[5].x + 2, L.dec[5].y + 2).act == Act::Dec && HitTest(L, L.dec[5].x + 2, L.dec[5].y + 2).arg == 5);
+		CHECK(HitTest(L, L.tab[1].x + 2, L.tab[1].y + 2).act == Act::Tab && HitTest(L, L.close.x + 2, L.close.y + 2).act == Act::Close);
+		CHECK(HitTest(L, L.panel.x + 1, L.panel.y + 1).act == Act::Panel);                                  // dentro, sem botao: engole
+		CHECK(HitTest(L, sw * 0.5f, sh * 0.5f).act == Act::None && HitTest(L, L.panel.x - 3, L.panel.y + 40).act == Act::None);   // fora: segue para o jogo
+	}
+	{   State st;
+		CHECK(Nudge(st, 0, +1) == "/celofs 1 0 0.0850");                                                    // 0.075 + 0.01
+		CHECK(Nudge(st, 4, -1) == "/celofs 1 4 85.0000");                                                   // 90 - 5
+		st.posStep = 0; CHECK(Nudge(st, 2, +1) == "/celofs 1 2 0.0300");
+		st.rotStep = 2; CHECK(Nudge(st, 3, +1) == "/celofs 1 3 15.0000");
+		CHECK(SelectTab(st, 2) == "/celofs 3 -1 0" && st.sel == 2);
+		CHECK(Nudge(st, 1, +1) == "/celofs 3 1 0.0400" && st.m[2].v[1] > 0.039f && st.m[0].v[1] < 0.036f);   // so o modo da aba
+		CHECK(SetModel(st, 0) == "/celmodelo 3 330" && st.m[2].model == 330);
+		for (int i = 0; i < 400; ++i) Nudge(st, 0, +1); CHECK(st.m[2].v[0] <= 1.5f);                         // limite
+		CHECK(Nudge(st, 9, 1).empty() && Nudge(st, -1, 1).empty());
+	}
+	{   State st;
+		CHECK(IsLine("[CELOFS] 2 0.1 0.2 0.3 10 20 30 330") && !IsLine("Ola [CELOFS]") && !IsLine(""));
+		CHECK(ParseLine("[CELOFS] 2 0.1000 0.2000 0.3000 10.000 20.000 30.000 330", st) && st.m[1].known && st.m[1].model == 330 && std::fabs(st.m[1].v[4] - 20.0f) < 1e-4f);
+		CHECK(ParseLine("[CELOFS] 9 1 2 3 4 5 6 7", st) && !st.m[0].known);                                  // modo invalido: engolida mas ignorada
+		CHECK(ParseLine("[CELOFS] lixo", st)); CHECK(!ParseLine("oi", st));
+		CHECK(Fmt(0, 0.0755f) == "0.076" || Fmt(0, 0.0755f) == "0.075"); CHECK(Fmt(4, 90.0f) == "90.0");
+	}
+	{   Hold h; h.begin(Act::Inc, 1, 1000);
+		CHECK(!h.due(1100) && !h.due(1370) && h.due(1390) && !h.due(1400) && h.due(1490)); h.end(); CHECK(!h.due(3000));
+		Hold t; t.begin(Act::Tab, 0, 0); CHECK(!t.on);                                                      // so +/- repetem
+	}
+	printf("%d/%d verificacoes OK\n", total - fails, total); return fails ? 1 : 0;
+}

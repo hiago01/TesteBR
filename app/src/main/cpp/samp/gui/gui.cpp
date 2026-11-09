@@ -3,6 +3,7 @@
 #include "../net/netgame.h"
 #include "gui.h"
 #include "samp_widgets/phonephotos.h"
+#include "samp_widgets/celofs.h"
 #include "../gui/samp_widgets/hudstate.h"
 #include "../playertags.h"
 #include "../net/playerbubblepool.h"
@@ -164,6 +165,13 @@ bool UI::initialize()
 	m_maximoOS->setFixedSize(size());
 	m_maximoOS->setPosition(ImVec2(0.0f, 0.0f));
 	m_maximoOS->setVisible(true);
+
+	// Painel de ajuste do celular na mao (/celofs sem parametros). So desenha quando aberto; toque capturado em AND_TouchEvent_hook.
+	m_celofs = new CelOfsPanel();
+	this->addChild(m_celofs);
+	m_celofs->setFixedSize(size());
+	m_celofs->setPosition(ImVec2(0.0f, 0.0f));
+	m_celofs->setVisible(true);
 
 	// Celular do Maximo RP (iPhone vertical, /celular). Desenha so quando aberto; captura de toque por regiao em AND_TouchEvent_hook.
 	m_phone = new PhoneWidget();

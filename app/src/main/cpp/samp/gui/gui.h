@@ -36,6 +36,7 @@
 #include "samp_widgets/maximomenu.h"
 #include "samp_widgets/maximoos.h"
 #include "samp_widgets/phone.h"
+#include "samp_widgets/celofs.h"
 
 #include "samp_widgets/dialogs/dialog.h"
 
@@ -126,6 +127,7 @@ private:
 	InventoryUI* m_inventory = nullptr;
 	WorldMapWidget* m_worldmap = nullptr;
 	Provador* m_provador = nullptr;
+	CelOfsPanel* m_celofs = nullptr;
 	Label* label;
     Label* label2;
     Label* label3;
