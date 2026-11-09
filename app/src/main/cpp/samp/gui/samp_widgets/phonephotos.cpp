@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <dirent.h>
@@ -122,6 +123,7 @@ namespace
 			if (m_sh->busy.load() || m_req.load()) { setErr("Aguarde a foto anterior."); return false; }
 			m_req.store(true); m_sh->busy.store(true); return true;
 		}
+		void setShotRect(float x, float y, float w, float h) override { m_rx = x; m_ry = y; m_rw = w; m_rh = h; }
 		bool shooting() override { return m_sh->busy.load(); }
 		int shotSerial() override { std::lock_guard<std::mutex> l(m_sh->mx); return m_sh->serial; }
 		std::string lastError() override { std::lock_guard<std::mutex> l(m_sh->mx); return m_sh->err; }
@@ -203,6 +205,7 @@ namespace
 		std::shared_ptr<Shared> m_sh; std::atomic<bool> m_req{ false };
 		std::map<std::string, Tex> m_tex; std::map<std::string, int64_t> m_failed; std::vector<Dead> m_grave; std::set<std::string> m_dl;
 		int m_buildFrame = -1; bool m_pruned = false;
+		float m_rx = 0, m_ry = 0, m_rw = 0, m_rh = 0;       // area do visor (so a thread de desenho le/escreve)
 
 		void setErr(const std::string& e) { std::lock_guard<std::mutex> l(m_sh->mx); m_sh->err = e; }
 		void dropTex(const std::string& key)
@@ -269,11 +272,27 @@ namespace
 			rd(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
 			// tela toda preta = captura nao funcionou (nao grava foto preta fingindo que deu certo)
 			if (AllBlack(px)) { fail("Captura preta (" + std::to_string(w) + "x" + std::to_string(h) + ")"); return; }
+			// recorte: so a area do visor do app Camera (a tela inteira se nao houver visor). px[] vem de baixo para cima (GL).
+			int cw = w, ch = h;
+			if (m_rw >= 16 && m_rh >= 16)
+			{
+				int x0 = (int)std::lround(m_rx), y0 = (int)std::lround(m_ry), x1 = (int)std::lround(m_rx + m_rw), y1 = (int)std::lround(m_ry + m_rh);
+				x0 = std::max(0, std::min(w, x0)); x1 = std::max(0, std::min(w, x1)); y0 = std::max(0, std::min(h, y0)); y1 = std::max(0, std::min(h, y1));
+				if (x1 - x0 >= 16 && y1 - y0 >= 16)
+				{
+					cw = x1 - x0; ch = y1 - y0;
+					std::vector<uint8_t> sub((size_t)cw * ch * 4);
+					const int gl0 = h - y1;                                   // primeira linha GL (de baixo) da area
+					for (int r = 0; r < ch; ++r) std::memcpy(&sub[(size_t)r * cw * 4], &px[((size_t)(gl0 + r) * w + x0) * 4], (size_t)cw * 4);
+					px.swap(sub);
+				}
+			}
 			std::shared_ptr<Shared> sh = m_sh;
-			std::thread([sh, w, h, p = std::move(px)]() mutable
+			const int w2 = cw, h2 = ch;
+			std::thread([sh, w2, h2, p = std::move(px)]() mutable
 			{
 				int ow = 0, oh = 0;
-				std::vector<uint8_t> small = Image::Fit(p.data(), w, h, kShotW, kShotH, true, ow, oh);
+				std::vector<uint8_t> small = Image::Fit(p.data(), w2, h2, kShotW, kShotH, true, ow, oh);
 				std::vector<uint8_t>().swap(p);
 				std::string jpg;
 				for (int q : { 72, 55, 40 }) { jpg = Jpeg::Encode(small.data(), ow, oh, q); if (!jpg.empty() && (int)jpg.size() <= kMaxJpeg) break; }

@@ -13,6 +13,7 @@
 #include "../../vendor/stb/stb_image.h"   // implementacao (STB_IMAGE_IMPLEMENTATION) esta em game/sprite2d.cpp
 #include "ctlicons.h"
 #include "passengerbutton_logic.h"
+#include "phone.h"
 
 #include <atomic>
 #include <chrono>
@@ -71,6 +72,7 @@ namespace
 		g_aimFinger = -1;
 	}
 
+	constexpr bool kJoystickOnlyWithPhone = true;   // true = com o celular aberto a HUD moderna mostra so o joystick (false = botoes sempre)
 	constexpr int kJumpHoldMs = 120;
 	constexpr int kJumpCooldownMs = 900;   // toques repetidos dentro deste tempo NAO geram novo pulo (evita o pulo duplo/rolamento)
 
@@ -463,6 +465,13 @@ void ModernControls::draw(ImGuiRenderer* r)
 		{
 			g_ctl.disabledMask = ((1u << B_COUNT) - 1u) & ~(1u << B_MIC);
 			g_ctl.blockedMask = 0u;
+		}
+		// Celular aberto: HUD so com o joystick (nenhum botao). Fechou o celular: os botoes voltam ao normal.
+		{
+			static bool s_phoneWas = false;
+			const bool phoneNow = kJoystickOnlyWithPhone && !editing && PhoneWidget::IsOpen();
+			if (phoneNow != s_phoneWas) { s_phoneWas = phoneNow; ReleaseAllLocked(); }      // solta botoes presos na troca
+			if (phoneNow) { g_ctl.disabledMask = (1u << B_COUNT) - 1u; g_ctl.blockedMask = 0u; }
 		}
 		wasActive = g_active.load();
 		const bool wasMic = g_micVeh.load();

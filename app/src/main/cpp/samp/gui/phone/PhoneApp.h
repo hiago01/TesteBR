@@ -23,6 +23,7 @@ namespace Phone
 		virtual ~PhotoApi() {}
 		virtual bool canShoot() = 0;                                   // a captura de tela existe neste jogo
 		virtual bool shoot() = 0;                                      // pede uma foto (assincrona); false = ocupado/indisponivel
+		virtual void setShotRect(float x, float y, float w, float h) {}   // area da tela (px do ImGui) que vira a foto: o que se ve pelo visor. w/h <= 0 = tela toda
 		virtual bool shooting() = 0;
 		virtual int  shotSerial() = 0;                                 // sobe a cada foto concluida
 		virtual std::string lastError() = 0;

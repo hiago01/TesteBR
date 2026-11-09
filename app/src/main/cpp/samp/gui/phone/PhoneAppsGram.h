@@ -74,6 +74,7 @@ namespace Phone
 				DrawTextIn(cv, fb, m_c->cameraSelfie ? "Traseira" : "Selfie", Color(255, 255, 255), m.font(12), Align::Center);
 				m_hit.add(ID_FLIP, fb);
 			}
+			m_vf = Rect{ content.x, top.bottom(), content.w, bot.y - top.bottom() };   // o que se ve pelo visor = o que vira a foto
 			// cantos do enquadramento
 			const Rect f{ content.x + m.px(14), top.bottom() + m.px(12), content.w - m.px(28), content.h - topH - botH - m.px(24) };
 			const float L = m.px(22), th = std::max(1.5f, m.px(2));
@@ -82,7 +83,7 @@ namespace Phone
 			cv.line({ f.right(), f.y }, { f.right() - L, f.y }, wc, th); cv.line({ f.right(), f.y }, { f.right(), f.y + L }, wc, th);
 			cv.line({ f.x, f.bottom() }, { f.x + L, f.bottom() }, wc, th); cv.line({ f.x, f.bottom() }, { f.x, f.bottom() - L }, wc, th);
 			cv.line({ f.right(), f.bottom() }, { f.right() - L, f.bottom() }, wc, th); cv.line({ f.right(), f.bottom() }, { f.right(), f.bottom() - L }, wc, th);
-			DrawTextIn(cv, { f.x, f.y + m.px(6), f.w, m.px(20) }, "A foto captura a tela do jogo (sem o celular)", Color(255, 255, 255, 190), m.font(11.5f), Align::Center);
+			DrawTextIn(cv, { f.x, f.y + m.px(6), f.w, m.px(20) }, "A foto sai exatamente do que você vê aqui", Color(255, 255, 255, 190), m.font(11.5f), Align::Center);
 			// obturador + miniatura
 			const Vec2 sc{ bot.center().x, bot.center().y };
 			const float R = m.px(32);
@@ -114,12 +115,14 @@ namespace Phone
 		void shoot()
 		{
 			if (!m_c->photos || !m_c->photos->canShoot()) { m_msg.set(NoPhotoText(), m_c->nowMs); return; }
+			m_c->photos->setShotRect(m_vf.x, m_vf.y, m_vf.w, m_vf.h);
 			if (m_c->photos->shoot()) m_shot = true;
 			else { const std::string e = m_c->photos->lastError(); m_msg.set(e.empty() ? "Aguarde a foto anterior." : e, m_c->nowMs); }
 		}
 		const std::string& thumb() const { return m_thumb; }
 	private:
 		bool m_wasBusy = false, m_shot = false;
+		Rect m_vf{ 0, 0, 0, 0 };
 		void refreshThumb() { m_thumb.clear(); if (m_c->photos) { auto l = m_c->photos->list(); if (!l.empty()) m_thumb = l[0]; } }
 		PhoneContext* m_c; HitList m_hit; int m_press = 0, m_serial = 0; int64_t m_flashMs = 0; std::string m_thumb; InlineMsg m_msg;
 	};
