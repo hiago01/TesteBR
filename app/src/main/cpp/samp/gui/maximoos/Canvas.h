@@ -3,6 +3,7 @@
 // No jogo e um adaptador fino sobre o ImGuiRenderer ja existente (gui/samp_widgets/maximoos.cpp); nos testes de PC e
 // um gravador (testes/maximoos/MockCanvas.h). Nao e uma segunda engine grafica.
 #include "Types.h"
+#include <cstdint>
 #include <string>
 
 namespace MaximoOS
@@ -23,6 +24,8 @@ namespace MaximoOS
 		virtual void pushClip(const Rect& r) = 0;                                    // intersecta com o clip atual
 		virtual void popClip() = 0;
 		virtual void setAlpha(float a) = 0;                                          // multiplicador global (transicoes)
+		// imagem (textura do jogo): nao e obrigatoria; sem suporte nao desenha nada. uv0/uv1 recortam a textura (0..1).
+		virtual void image(const Rect& /*dst*/, uint64_t /*texture*/, Vec2 /*uv0*/ = Vec2{ 0, 0 }, Vec2 /*uv1*/ = Vec2{ 1, 1 }) {}
 	};
 
 	enum class Align { Left, Center, Right };

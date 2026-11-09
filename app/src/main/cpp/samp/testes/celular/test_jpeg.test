@@ -1,0 +1,66 @@
+// Teste de PC do codificador JPEG do celular. Gera arquivos em /tmp/jpegtest/ que o script run_jpeg.sh decodifica com Pillow e compara.
+#include "../../gui/phone/Jpeg.h"
+#include <cstdio>
+#include <cstdlib>
+using namespace Phone;
+static int fails = 0, total = 0;
+#define CHECK(c) do { total++; if (!(c)) { fails++; printf("FALHOU L%d: %s\n", __LINE__, #c); } } while (0)
+
+static std::vector<uint8_t> Pattern(int w, int h)
+{
+	std::vector<uint8_t> p((size_t)w * h * 4);
+	for (int y = 0; y < h; ++y) for (int x = 0; x < w; ++x)
+	{
+		uint8_t* d = &p[((size_t)y * w + x) * 4];
+		d[0] = (uint8_t)(x * 255 / std::max(1, w - 1)); d[1] = (uint8_t)(y * 255 / std::max(1, h - 1)); d[2] = (uint8_t)(((x / 16 + y / 16) & 1) ? 220 : 30); d[3] = 255;
+		if (x > w / 3 && x < w / 2 && y > h / 3 && y < h / 2) { d[0] = 255; d[1] = d[2] = 0; }   // quadrado vermelho
+	}
+	return p;
+}
+static void Save(const std::string& path, const std::string& data) { FILE* f = fopen(path.c_str(), "wb"); if (f) { fwrite(data.data(), 1, data.size(), f); fclose(f); } }
+
+int main()
+{
+	system("mkdir -p /tmp/jpegtest");
+	const int dims[][2] = { { 480, 270 }, { 16, 16 }, { 1, 1 }, { 17, 9 }, { 333, 77 }, { 640, 480 } };
+	for (auto& d : dims)
+	{
+		auto px = Pattern(d[0], d[1]);
+		const std::string j = Jpeg::Encode(px.data(), d[0], d[1], 70);
+		CHECK(j.size() > 100 && (uint8_t)j[0] == 0xFF && (uint8_t)j[1] == 0xD8 && (uint8_t)j[j.size() - 2] == 0xFF && (uint8_t)j[j.size() - 1] == 0xD9);
+		char nm[96]; snprintf(nm, sizeof(nm), "/tmp/jpegtest/p_%dx%d.jpg", d[0], d[1]); Save(nm, j);
+		char rw[96]; snprintf(rw, sizeof(rw), "/tmp/jpegtest/p_%dx%d.rgba", d[0], d[1]); Save(rw, std::string((const char*)px.data(), px.size()));
+		printf("%dx%d -> %zu bytes\n", d[0], d[1], j.size());
+	}
+	// ruido forte em qualidade alta: exercita todas as categorias de coeficientes e codigos ZRL/EOB
+	{
+		const int w = 160, h = 96; std::vector<uint8_t> n((size_t)w * h * 4); uint32_t sd = 12345;
+		for (size_t i = 0; i < n.size(); ++i) { sd ^= sd << 13; sd ^= sd >> 17; sd ^= sd << 5; n[i] = (i % 4 == 3) ? 255 : (uint8_t)(sd >> 7); }
+		const std::string j = Jpeg::Encode(n.data(), w, h, 98); CHECK(j.size() > 1000);
+		Save("/tmp/jpegtest/p_160x96.jpg", j); Save("/tmp/jpegtest/p_160x96.rgba", std::string((const char*)n.data(), n.size()));
+	}
+	// qualidade muda o tamanho
+	auto big = Pattern(480, 270);
+	const size_t s30 = Jpeg::Encode(big.data(), 480, 270, 30).size(), s90 = Jpeg::Encode(big.data(), 480, 270, 90).size();
+	CHECK(s30 < s90);
+	Save("/tmp/jpegtest/q90_480x270.jpg", Jpeg::Encode(big.data(), 480, 270, 90));
+	// parametros invalidos
+	CHECK(Jpeg::Encode(nullptr, 10, 10, 70).empty() && Jpeg::Encode(big.data(), 0, 10, 70).empty() && Jpeg::Encode(big.data(), 10, 5000, 70).empty());
+	// Fit: reduz mantendo proporcao; nunca amplia; flipY
+	int ow, oh;
+	auto src = Pattern(1920, 1080);
+	auto f = Image::Fit(src.data(), 1920, 1080, 480, 480, false, ow, oh);
+	CHECK(ow == 480 && oh == 270 && f.size() == (size_t)480 * 270 * 4 && f[3] == 255);
+	auto small = Pattern(100, 50);
+	f = Image::Fit(small.data(), 100, 50, 480, 480, false, ow, oh); CHECK(ow == 100 && oh == 50);
+	// flip: a primeira linha do resultado vira a ultima da origem
+	std::vector<uint8_t> two = { 10, 20, 30, 255, 1, 2, 3, 255 };           // 1x2: linha0 = (10,20,30), linha1 = (1,2,3)
+	f = Image::Fit(two.data(), 1, 2, 10, 10, true, ow, oh); CHECK(ow == 1 && oh == 2 && f[0] == 1 && f[4] == 10);
+	f = Image::Fit(two.data(), 1, 2, 10, 10, false, ow, oh); CHECK(f[0] == 10 && f[4] == 1);
+	CHECK(Image::Fit(nullptr, 1, 1, 1, 1, false, ow, oh).empty());
+	// o resultado reduzido codifica e tem tamanho razoavel para postar
+	auto fit = Image::Fit(src.data(), 1920, 1080, 480, 480, true, ow, oh);
+	const std::string jj = Jpeg::Encode(fit.data(), ow, oh, 70); CHECK(jj.size() < 90 * 1024); Save("/tmp/jpegtest/fit.jpg", jj);
+	printf("%d/%d verificacoes OK\n", total - fails, total);
+	return fails ? 1 : 0;
+}

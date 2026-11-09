@@ -2,6 +2,7 @@
 #include "../game/game.h"
 #include "../net/netgame.h"
 #include "gui.h"
+#include "samp_widgets/phonephotos.h"
 #include "../gui/samp_widgets/hudstate.h"
 #include "../playertags.h"
 #include "../net/playerbubblepool.h"
@@ -200,6 +201,7 @@ bool UI::initialize()
 
 void UI::render()
 {
+	PhonePhotos::FrameHook();      // foto do celular: le a tela do jogo ANTES de qualquer widget (celular/HUD) ser desenhado
 	ImGuiWrapper::render();
 
     renderDebug();

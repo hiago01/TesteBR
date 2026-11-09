@@ -8,10 +8,30 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace Phone
 {
 	using namespace MaximoOS;
+	namespace Gram { class Service; }
+
+	// Fotos do aparelho (Camera / Galeria / Gram). Implementado pelo jogo (captura de tela, arquivos, texturas); nos testes de PC e um stub.
+	// Chaves de textura: "L:<arquivo>" (foto local) e "R:<id da midia>" (foto do Gram, baixada do servidor).
+	struct PhotoTex { uint64_t id = 0; int w = 0, h = 0; };
+	struct PhotoApi
+	{
+		virtual ~PhotoApi() {}
+		virtual bool canShoot() = 0;                                   // a captura de tela existe neste jogo
+		virtual bool shoot() = 0;                                      // pede uma foto (assincrona); false = ocupado/indisponivel
+		virtual bool shooting() = 0;
+		virtual int  shotSerial() = 0;                                 // sobe a cada foto concluida
+		virtual std::string lastError() = 0;
+		virtual std::vector<std::string> list() = 0;                   // fotos locais, mais nova primeiro
+		virtual bool read(const std::string& name, std::string& jpeg) = 0;
+		virtual bool remove(const std::string& name) = 0;
+		virtual bool texture(const std::string& key, PhotoTex& out) = 0;   // false = ainda nao pronta (carregando) ou falhou
+		virtual bool failed(const std::string& key) = 0;               // a textura desta chave nao vai ficar pronta
+	};
 
 	struct PhoneSettings
 	{
@@ -55,6 +75,8 @@ namespace Phone
 		std::function<void()> answer, hangup;
 		std::function<void(bool)> talk;                                                           // ligacao com voz: true = comecou a falar (segurando), false = parou                                                     // ligacao: atender / desligar (recusar / cancelar)
 		// ---- navegacao entre apps ----
+		PhotoApi* photos = nullptr;                                                               // Camera/Galeria (nullptr = sem suporte; o app avisa)
+		Gram::Service* gram = nullptr;                                                            // rede social (nullptr = sem servico)
 		std::function<bool(const std::string& appId)> openApp;                                    // preenchido pelo PhoneManager
 		std::string launchArg;                                                                    // argumento para o app aberto (ex.: numero); o destino consome em onResume
 		void changed() { if (settingsChanged) settingsChanged(); }
@@ -69,6 +91,7 @@ namespace Phone
 		int   page = 0;                  // pagina da grade (-1 = so no dock)
 		int   dock = -1;                 // 0..3
 		bool  light = true;              // app com fundo claro (barra de status escura)
+		bool  seeThrough = false;        // a tela do app NAO e pintada pelo sistema (a Camera mostra o jogo por tras do aparelho)
 		std::function<std::unique_ptr<App>()> factory;
 	};
 }

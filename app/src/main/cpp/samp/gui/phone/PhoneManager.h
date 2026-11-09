@@ -71,7 +71,13 @@ namespace Phone
 		{
 			if (!m_open) return false;
 			if (m_recents) { m_recents = false; return true; }
-			if (m_apps.back()) { startAppAnim(-1, Rect()); return true; }
+			const std::string before = m_apps.foregroundId();
+			if (m_apps.back())
+			{
+				// so anima o fechamento se o app realmente fechou; Voltar tratado DENTRO do app (editor, conversa, foto) nao pode encolher o app ate o icone
+				if (m_apps.foregroundId() != before) { m_animId = before; startAppAnim(-1, iconRectOf(before)); }
+				return true;
+			}
 			close();
 			return true;
 		}
@@ -470,7 +476,7 @@ namespace Phone
 				DrawGlyph(cv, d.id, Rect{ r.center().x - m.px(24), r.center().y - m.px(24), m.px(48), m.px(48) }, d.light ? d.color : Color(255, 255, 255, 230));
 				return;
 			}
-			cv.fillRect(m.screen, d.light ? PC::Light : PC::Dark, 0);
+			if (!d.seeThrough) cv.fillRect(m.screen, d.light ? PC::Light : PC::Dark, 0);
 			cv.pushClip(m.content);
 			a->draw(cv, m, m.content);
 			cv.popClip();

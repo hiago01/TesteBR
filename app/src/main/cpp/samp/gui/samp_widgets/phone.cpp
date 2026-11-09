@@ -4,11 +4,13 @@
 #include "../../vendor/SimpleIni/SimpleIni.h"
 #include "../phone/PhoneApps.h"
 #include "../phone/PhoneNet.h"
+#include "../phone/PhoneGram.h"
 #include "../../voice_new/Plugin.h"
 #include "../../net/netgame.h"
 #include "../../vendor/raknet/SAMP/SAMPRPC.h"
 #include "../../vendor/raknet/BitStream.h"
 #include "phone.h"
+#include "phonephotos.h"
 #include "maximomenu.h"
 #include "maximoos.h"
 
@@ -33,6 +35,8 @@ namespace
 	std::atomic<int>  g_backReq{ 0 };
 
 	PhoneNet g_net;
+	Gram::Service* g_gram = nullptr;              // rede social (criado junto com o celular; fala direto com o servico de fotos do servidor)
+	std::atomic<bool> g_gramReset{ false };
 	bool g_callPending = false;                  // so a thread de desenho toca nisto
 	std::atomic<bool> g_openCall{ false };       // ligacao recebida: abrir o celular na tela de ligacao
 
@@ -141,6 +145,14 @@ namespace
 			p->context().talk = [](bool on) { Plugin::SetExternalTalk(on); };      // "Segure para falar" da ligacao -> mesmo caminho do botao de microfone do SampVoice
 			g_net.notify = [](const std::string& t, const std::string& x, const std::string& app, int level) { PhoneWidget::PostNotification(t, x, app, level); };
 			g_net.incomingCall = [](const std::string&) { g_openCall.store(true); };
+			// Gram (rede social) + fotos: o gamemode so entrega o token (RPC op 6/30); fotos/feed vao direto por HTTP para o servico do servidor
+			g_gram = new Gram::Service(new HttpClient(2));
+			g_gram->requestToken = [](int64_t now) { return g_net.requestGramToken(now); };
+			g_gram->host = []() { return pNetGame ? std::string(pNetGame->m_szHostOrIp) : std::string(); };
+			g_net.gramToken = [](int status, const std::string& token, int port) { if (g_gram) g_gram->onToken(status, token, port, NowMs()); };
+			PhonePhotos::SetFetcher([](const std::string& media, std::function<void(bool, const std::string&)> cb) { return g_gram && g_gram->fetchImage(media, std::move(cb)); });
+			p->context().gram = g_gram;
+			p->context().photos = PhonePhotos::Api();
 			return p;
 		}();
 		return *pm;
@@ -189,6 +201,11 @@ namespace
 		void pushClip(const Rect& r) override { m_r->pushClipRect(V(r.x, r.y), V(r.right(), r.bottom()), true); ++m_clips; }
 		void popClip() override { if (m_clips > 0) { m_r->popClipRect(); --m_clips; } }
 		void setAlpha(float a) override { m_alpha = std::clamp(a, 0.0f, 1.0f); }
+		void image(const Rect& r, uint64_t tex, Vec2 uv0, Vec2 uv1) override
+		{
+			if (!tex || r.empty()) return;
+			m_r->drawImage(V(r.x, r.y), V(r.right(), r.bottom()), (ImTextureID)(uintptr_t)tex, ImColor(255, 255, 255, (int)std::lround(255.0f * m_alpha)), ImVec2(uv0.x, uv0.y), ImVec2(uv1.x, uv1.y));
+		}
 	private:
 		static ImVec2 V(float x, float y) { return ImVec2(x, y); }
 		ImColor C(Color c) const { return ImColor(c.r, c.g, c.b, (int)std::lround(c.a * m_alpha)); }
@@ -234,7 +251,7 @@ void PhoneWidget::OnServerPacket(const unsigned char* data, int bytes)
 	PM();                                                  // garante que g_net esta ligado
 	g_net.onServerPacketBS(bs);
 }
-void PhoneWidget::Reset() { g_net.connectionReset(); }
+void PhoneWidget::Reset() { g_net.connectionReset(); g_gramReset.store(true); }
 
 void PhoneWidget::PostNotification(const std::string& title, const std::string& text, const std::string& appId, int level)
 {
@@ -259,7 +276,8 @@ void PhoneWidget::draw(ImGuiRenderer* r)
 
 	// rede: roda mesmo com o celular fechado (mensagens recebidas precisam ser guardadas e avisadas)
 	pm.context().nowMs = now;
-	if (g_store.loaded) g_net.pump(now);
+	if (g_gramReset.exchange(false) && g_gram) g_gram->reset();
+	if (g_store.loaded) { g_net.pump(now); if (g_gram) g_gram->pump(now); }
 	if (g_openCall.exchange(false)) { PhoneWidget::Open(); if (g_wantOpen.load()) g_callPending = true; }
 
 	if (g_wantOpen.load() && !pm.isOpen()) { const ImVec2 sc = pUI ? pUI->displaySize() : ImVec2(1920, 1080); pm.setScreenSize(sc.x, sc.y); pm.open(); g_net.requestNumber(now); }

@@ -1,0 +1,214 @@
+// Testes de PC da FASE 5 do celular: Camera, Galeria e Gram (interface), PhoneNet (token do Gram, op 6/30). Sem rede real (veja test_gram.test).
+#include "../../gui/phone/PhoneApps.h"
+#include "../../gui/phone/PhoneNet.h"
+#include <cstdio>
+#include <cstdlib>
+#include <map>
+using namespace Phone;
+static int fails = 0, total = 0;
+#define CHECK(c) do { total++; if (!(c)) { fails++; printf("FALHOU L%d: %s\n", __LINE__, #c); } } while (0)
+
+struct RecCanvas : Canvas
+{
+	int n = 0, images = 0; std::vector<std::pair<std::string, Vec2>> texts; std::vector<uint64_t> imgIds; std::vector<Rect> imgRects;
+	void fillRect(const Rect&, Color, float) override { ++n; }
+	void strokeRect(const Rect&, Color, float, float) override { ++n; }
+	void fillGradientV(const Rect&, Color, Color) override { ++n; }
+	void fillCircle(Vec2, float, Color) override { ++n; }
+	void strokeCircle(Vec2, float, Color, float) override { ++n; }
+	void line(Vec2, Vec2, Color, float) override { ++n; }
+	void fillTriangle(Vec2, Vec2, Vec2, Color) override { ++n; }
+	void text(Vec2 p, Color, const std::string& s, float) override { ++n; texts.push_back({ s, p }); }
+	Vec2 measure(const std::string& s, float size) override { return { (float)Text::CpCount(s) * size * 0.52f, size * 1.2f }; }
+	void pushClip(const Rect&) override {} void popClip() override {} void setAlpha(float) override {}
+	void image(const Rect& r, uint64_t t, Vec2, Vec2) override { ++images; imgIds.push_back(t); imgRects.push_back(r); }
+	void reset() { texts.clear(); imgIds.clear(); imgRects.clear(); images = 0; }
+	bool has(const std::string& s) const { for (auto& t : texts) if (t.first.find(s) != std::string::npos) return true; return false; }
+	bool find(const std::string& s, Vec2& p) const { for (auto& t : texts) if (t.first == s) { p = t.second; return true; } return false; }
+};
+
+struct FakePhotos : PhotoApi
+{
+	bool can = true, busy = false; int serial = 0, shots = 0; std::string err;
+	std::vector<std::string> files; std::map<std::string, std::string> data; std::vector<std::string> asked; std::vector<std::string> removed;
+	bool canShoot() override { return can; }
+	bool shoot() override { if (busy) { err = "Aguarde a foto anterior."; return false; } ++shots; return true; }
+	bool shooting() override { return busy; }
+	int shotSerial() override { return serial; }
+	std::string lastError() override { return err; }
+	std::vector<std::string> list() override { return files; }
+	bool read(const std::string& n, std::string& j) override { auto it = data.find(n); if (it == data.end()) return false; j = it->second; return true; }
+	bool remove(const std::string& n) override { removed.push_back(n); for (size_t i = 0; i < files.size(); ++i) if (files[i] == n) { files.erase(files.begin() + i); break; } return true; }
+	bool texture(const std::string& k, PhotoTex& o) override { asked.push_back(k); if (k.find("pendente") != std::string::npos) return false; o.id = 1000 + k.size(); o.w = 480; o.h = 270; return true; }
+	bool failed(const std::string& k) override { return k.find("quebrada") != std::string::npos; }
+	void add(const std::string& n) { files.insert(files.begin(), n); data[n] = std::string(300, 'x'); ++serial; }
+};
+
+template <class T2> static T2* fg(PhoneManager& pm) { return dynamic_cast<T2*>(pm.apps().foreground()); }
+static std::map<std::string, std::string> g_store;
+static int64_t T = 5000;
+static void setup(PhoneManager& pm)
+{
+	g_store.clear();
+	pm.context().getString = [](const std::string& k, const std::string& d) { auto it = g_store.find(k); return it == g_store.end() ? d : it->second; };
+	pm.context().setString = [](const std::string& k, const std::string& v) { g_store[k] = v; };
+	StatusInfo st; st.clock = "12:00"; st.weekday = 1; st.day = 15; st.month = 1; st.year = 2024;
+	pm.context().status = [st]() { return st; };
+	pm.setStatusProvider(pm.context().status);
+	pm.setScreenSize(2400, 1080);
+}
+static void frames(PhoneManager& pm, RecCanvas& cv, int n) { for (int i = 0; i < n; ++i) { T += 16; pm.context().nowMs = T; cv.reset(); pm.frame(cv, T, 16); } }
+static void tapAt(PhoneManager& pm, RecCanvas& cv, Vec2 p) { pm.input().handleRaw(2, 0, (int)p.x, (int)p.y, false); pm.input().handleRaw(1, 0, (int)p.x, (int)p.y, false); frames(pm, cv, 3); }
+static bool tapText(PhoneManager& pm, RecCanvas& cv, const std::string& s, float dx = 6, float dy = 6) { Vec2 p; if (!cv.find(s, p)) return false; tapAt(pm, cv, { p.x + dx, p.y + dy }); return true; }
+static std::string Token(int n) { std::string t = "1234567.1999999999."; for (int i = 0; i < 32; ++i) t += (char)('a' + (i + n) % 6); return t; }
+struct FakeBS
+{
+	std::vector<uint8_t> b; size_t i = 0;
+	bool Read(uint8_t& v) { if (i + 1 > b.size()) return false; v = b[i++]; return true; }
+	bool Read(uint16_t& v) { if (i + 2 > b.size()) return false; v = (uint16_t)(b[i] | (b[i + 1] << 8)); i += 2; return true; }
+	bool Read(char* p, unsigned n) { if (i + n > b.size()) return false; for (unsigned k = 0; k < n; ++k) p[k] = (char)b[i++]; return true; }
+	FakeBS& u8(int v) { b.push_back((uint8_t)v); return *this; }
+	FakeBS& u16(int v) { b.push_back((uint8_t)(v & 255)); b.push_back((uint8_t)(v >> 8)); return *this; }
+	FakeBS& str(const std::string& s) { for (char c : s) b.push_back((uint8_t)c); return *this; }
+};
+
+int main()
+{
+	// ================= protocolo: token do Gram =================
+	{
+		Net::Event e; const std::string tk = Token(0);
+		FakeBS a; a.u8(Net::OpGramToken).u16(5).u8(0).u8((int)tk.size()).str(tk).u16(8788);
+		CHECK(Net::ParsePacket(a, e) && e.op == Net::OpGramToken && e.req == 5 && e.status == 0 && e.text == tk && e.secs == 8788);
+		FakeBS er; er.u8(Net::OpGramToken).u16(5).u8(Net::S_NoLine); CHECK(Net::ParsePacket(er, e) && e.status == Net::S_NoLine && e.text.empty());
+		FakeBS b1; b1.u8(Net::OpGramToken).u16(1).u8(0).u8(3).str("abc").u16(8788); CHECK(!Net::ParsePacket(b1, e));          // token curto
+		FakeBS b2; b2.u8(Net::OpGramToken).u16(1).u8(0).u8((int)tk.size()).str(tk).u16(80); CHECK(!Net::ParsePacket(b2, e));  // porta baixa
+		std::string bad = tk; bad[3] = '/'; FakeBS b3; b3.u8(Net::OpGramToken).u16(1).u8(0).u8((int)bad.size()).str(bad).u16(8788); CHECK(!Net::ParsePacket(b3, e));   // caractere proibido
+		FakeBS b4; b4.u8(Net::OpGramToken).u16(1).u8(0).u8((int)tk.size()).str(tk.substr(0, 30)); CHECK(!Net::ParsePacket(b4, e));  // truncado
+	}
+	// ================= PhoneNet: pedido e resposta do token =================
+	{
+		PhoneManager pm; PhoneNet net; RecCanvas cv; InstallDefaultApps(pm); setup(pm); net.attach(&pm.context());
+		std::vector<Net::Request> sent; net.send = [&](const Net::Request& r) { sent.push_back(r); return true; };
+		int gotStatus = -1; std::string gotTok; int gotPort = 0; net.gramToken = [&](int s, const std::string& t, int p) { gotStatus = s; gotTok = t; gotPort = p; };
+		CHECK(!net.requestGramToken(1000) && sent.empty());                         // sem rede/numero: nao envia
+		Net::Event n1; n1.op = Net::OpNumber; n1.number = "1234567"; net.onServerPacket(n1); T += 16; net.pump(T);
+		CHECK(net.requestGramToken(2000) && sent.size() == 1 && sent[0].op == Net::OpGram);
+		CHECK(!net.requestGramToken(3000) && sent.size() == 1);                     // no maximo 1 a cada 6 s
+		CHECK(net.requestGramToken(9000) && sent.size() == 2);
+		Net::Event t1; t1.op = Net::OpGramToken; t1.status = 0; t1.text = Token(1); t1.secs = 8788; net.onServerPacket(t1); net.pump(T += 16);
+		CHECK(gotStatus == 0 && gotTok == Token(1) && gotPort == 8788);
+		Net::Event t2; t2.op = Net::OpGramToken; t2.status = Net::S_Down; net.onServerPacket(t2); net.pump(T += 16); CHECK(gotStatus == Net::S_Down);
+		net.connectionReset(); net.pump(T += 16); CHECK(!net.requestGramToken(9500));                  // reiniciou a conexao: sem rede/numero de novo
+	}
+
+	// ================= Camera =================
+	{
+		PhoneManager pm; RecCanvas cv; InstallDefaultApps(pm); setup(pm); FakePhotos ph; pm.open(); frames(pm, cv, 30);
+		CHECK(pm.openApp("camera")); frames(pm, cv, 30);
+		CameraApp* ca = fg<CameraApp>(pm); CHECK(ca != nullptr);
+		const Metrics& m = pm.metrics();
+		const Vec2 shutter{ m.content.center().x, m.content.bottom() - m.px(59) };
+		tapAt(pm, cv, shutter); CHECK(cv.has("não disponíveis"));                       // sem suporte: aviso honesto
+		pm.context().photos = &ph; pm.goHome(); frames(pm, cv, 20); pm.openApp("camera"); frames(pm, cv, 30);
+		tapAt(pm, cv, shutter); CHECK(ph.shots == 1);
+		ph.add("foto_1.jpg"); T += 16; pm.context().nowMs = T; frames(pm, cv, 1); CHECK(cv.has("Foto salva")); frames(pm, cv, 2);
+		CHECK(fg<CameraApp>(pm)->thumb() == "foto_1.jpg");
+		bool asked = false; for (auto& k : ph.asked) if (k == "L:foto_1.jpg") asked = true; CHECK(asked);        // miniatura pede a textura
+		ph.busy = true; tapAt(pm, cv, shutter); CHECK(ph.shots == 1 && cv.has("Aguarde"));                       // ocupado: nao dispara, avisa
+		ph.busy = false; ph.can = false; tapAt(pm, cv, shutter); CHECK(ph.shots == 1 && cv.has("não disponíveis"));
+		ph.can = true;
+		// miniatura abre a galeria
+		tapAt(pm, cv, { m.content.x + m.px(26 + 25), m.content.bottom() - m.px(59) }); CHECK(pm.apps().foreground() && fg<GalleryApp>(pm) != nullptr);
+	}
+	// A tela do aparelho NAO e pintada pelo sistema na Camera (seeThrough) e e na Galeria
+	{
+		PhoneManager pm; InstallDefaultApps(pm); CHECK(pm.def("camera") && pm.def("camera")->seeThrough && pm.def("galeria") && !pm.def("galeria")->seeThrough && pm.def("gram") && !pm.def("gram")->seeThrough);
+	}
+
+	// ================= Galeria =================
+	{
+		PhoneManager pm; RecCanvas cv; InstallDefaultApps(pm); setup(pm); FakePhotos ph; pm.open(); frames(pm, cv, 30);
+		pm.openApp("galeria"); frames(pm, cv, 30); CHECK(cv.has("não disponíveis"));
+		pm.context().photos = &ph; pm.goHome(); frames(pm, cv, 20);
+		pm.openApp("galeria"); frames(pm, cv, 30); CHECK(cv.has("Nenhuma foto"));
+		for (int i = 1; i <= 7; ++i) ph.add("foto_" + std::to_string(i) + ".jpg");
+		pm.goHome(); frames(pm, cv, 20); pm.openApp("galeria"); frames(pm, cv, 30);
+		GalleryApp* ga = fg<GalleryApp>(pm); CHECK(ga && ga->count() == 7 && cv.images == 7);                       // grade 3 colunas: todas visiveis
+		const Metrics& m = pm.metrics();
+		// toca na primeira miniatura (canto superior esquerdo da area do corpo)
+		const Rect first = cv.imgRects[0];
+		tapAt(pm, cv, first.center()); CHECK(fg<GalleryApp>(pm)->viewing() == 0);
+		CHECK(cv.images == 1 && cv.has("Postar no Gram") && cv.has("Apagar"));
+		// apagar: duas etapas
+		const float by = m.content.bottom() - m.px(32);
+		tapAt(pm, cv, { m.content.x + m.px(60), by }); CHECK(ph.removed.empty() && cv.has("Confirmar"));
+		tapAt(pm, cv, { m.content.x + m.px(60), by }); CHECK(ph.removed.size() == 1 && ph.removed[0] == "foto_7.jpg" && fg<GalleryApp>(pm)->count() == 6 && fg<GalleryApp>(pm)->viewing() == -1);
+		// voltar de dentro da foto fecha a foto, nao o app
+		tapAt(pm, cv, cv.imgRects[0].center()); CHECK(fg<GalleryApp>(pm)->viewing() == 0);
+		pm.back(); frames(pm, cv, 3); CHECK(fg<GalleryApp>(pm) && fg<GalleryApp>(pm)->viewing() == -1);
+		// postar: abre o Gram ja na tela de composicao com a foto escolhida
+		tapAt(pm, cv, cv.imgRects[1].center()); CHECK(fg<GalleryApp>(pm)->viewing() == 1);
+		tapAt(pm, cv, { m.content.right() - m.px(60), by }); frames(pm, cv, 5);
+		CHECK(fg<GramApp>(pm) != nullptr);
+	}
+
+	// ================= Gram =================
+	{
+		PhoneManager pm; PhoneNet net; RecCanvas cv; InstallDefaultApps(pm); setup(pm); net.attach(&pm.context()); FakePhotos ph;
+		HttpClient http(1); Gram::Service svc(&http);
+		int tokenAsks = 0; svc.requestToken = [&](int64_t) { ++tokenAsks; return true; }; svc.host = []() { return std::string("127.0.0.1"); };
+		pm.open(); frames(pm, cv, 30);
+		pm.openApp("gram"); frames(pm, cv, 30); CHECK(cv.has("indisponível"));                                          // sem servico
+		pm.context().gram = &svc; pm.context().photos = &ph; pm.goHome(); frames(pm, cv, 20);
+		pm.openApp("gram"); frames(pm, cv, 30); CHECK(cv.has("Sem conexão"));                                          // celular ainda sem rede
+		pm.context().networked = true; pm.context().myNumber = "1111111";
+		frames(pm, cv, 5); CHECK(tokenAsks >= 1);                                                                       // abriu: pediu o token
+		svc.feedLoaded = true; svc.loadingFeed = false;
+		auto mk = [](long long id, const char* num, const char* name, int likes, int com, bool liked, const char* cap) { Gram::Post p; p.id = id; p.number = num; p.name = name; p.media = std::string(32, (char)('a' + id % 6)); p.likes = likes; p.comments = com; p.liked = liked; p.caption = cap; p.ageS = 300; return p; };
+		svc.posts = { mk(30, "2222222", "Maria Souza", 11, 22, false, "Dia lindo no centro da cidade"), mk(20, "1111111", "Joao Silva", 33, 44, true, ""), mk(10, "3333333", "Pedro", 5, 6, false, "") };
+		frames(pm, cv, 5);
+		CHECK(cv.has("Maria Souza") && cv.has("Joao Silva") && cv.has("Dia lindo") && cv.has("5 min") && cv.has("Atualizar"));
+		CHECK(cv.images >= 2);
+		bool askedR = false; for (auto& k : ph.asked) if (k == "R:" + svc.posts[0].media) askedR = true; CHECK(askedR);
+		CHECK(cv.has("Apagar"));                                                                                        // so no post proprio (1111111)
+		// curtir o primeiro post: otimista (o servidor confirma depois)
+		Vec2 p;
+		CHECK(cv.find("11", p)); tapAt(pm, cv, { p.x - 20, p.y + 8 });
+		CHECK(svc.posts[0].liked && svc.posts[0].likes == 12);
+		const int asksAfterLike = tokenAsks; CHECK(asksAfterLike >= 1);
+		CHECK(cv.find("12", p)); tapAt(pm, cv, { p.x - 20, p.y + 8 }); CHECK(!svc.posts[0].liked && svc.posts[0].likes == 11);     // descurtir
+		// comentarios do primeiro post
+		CHECK(cv.find("22", p)); tapAt(pm, cv, { p.x - 15, p.y + 8 });
+		GramApp* ga = fg<GramApp>(pm); CHECK(ga && ga->screen() == GramApp::Comments && svc.commentsPost == 30);
+		svc.comments.clear(); svc.loadingComments = false; Gram::Comment k1; k1.id = 1; k1.number = "3333333"; k1.name = "Pedro"; k1.body = "Muito bom esse lugar"; k1.ageS = 4000; svc.comments.push_back(k1);
+		frames(pm, cv, 5); CHECK(cv.has("Comentários") && cv.has("Muito bom") && cv.has("1 h") && cv.has("Adicionar comentário"));
+		ga->setComment("   "); ga->sendComment(); CHECK(ga->screen() == GramApp::Comments);
+		ga->setComment("Concordo!"); ga->sendComment(); frames(pm, cv, 3);                       // entra na fila (sem token ainda); o texto limpa
+		pm.back(); frames(pm, cv, 5); CHECK(fg<GramApp>(pm) && fg<GramApp>(pm)->screen() == GramApp::Feed);
+		// apagar o proprio post: duas etapas (so o dono ve o botao)
+		CHECK(cv.find("Apagar", p)); tapAt(pm, cv, { p.x + 10, p.y + 6 }); CHECK(cv.has("Confirmar") && svc.posts.size() == 3);
+		// nova foto: escolher -> legenda -> publicar
+		ph.add("foto_a.jpg"); ph.add("foto_b.jpg");
+		CHECK(tapText(pm, cv, "Nova")); CHECK(fg<GramApp>(pm)->screen() == GramApp::Pick); frames(pm, cv, 3); CHECK(cv.images >= 2);
+		tapAt(pm, cv, cv.imgRects[0].center()); CHECK(fg<GramApp>(pm)->screen() == GramApp::Compose && fg<GramApp>(pm)->photo() == "foto_b.jpg");
+		frames(pm, cv, 3); CHECK(cv.has("Nova foto") && cv.has("Publicar") && cv.has("Escreva uma legenda"));
+		fg<GramApp>(pm)->setCaption("minha legenda");
+		CHECK(tapText(pm, cv, "Publicar")); frames(pm, cv, 3);
+		CHECK(svc.postState == 1);                                                                 // enviando: fila esperando o token
+		CHECK(cv.has("Enviando"));
+		svc.onToken(0, Token(2), 1, T);                                                          // porta 1: nada escuta -> falha de rede, mostrada ao usuario
+		for (int i = 0; i < 400 && svc.postState == 1; ++i) { T += 16; pm.context().nowMs = T; svc.pump(T); frames(pm, cv, 1); }
+		frames(pm, cv, 3); CHECK(svc.postState == 0 && cv.has("Sem conexão com o servidor de fotos") );
+		// publicacao concluida: volta ao feed com aviso
+		svc.postState = 2; frames(pm, cv, 3); CHECK(fg<GramApp>(pm)->screen() == GramApp::Feed && cv.has("Foto publicada") && svc.postState == 0);
+		// vindo da Galeria: abre direto na composicao com a foto
+		pm.goHome(); frames(pm, cv, 20); pm.context().launchArg = "post:foto_a.jpg"; pm.openApp("gram"); frames(pm, cv, 30);
+		CHECK(fg<GramApp>(pm)->screen() == GramApp::Compose && fg<GramApp>(pm)->photo() == "foto_a.jpg" && pm.context().launchArg.empty());
+		// foto que nao abre: avisa e nao envia
+		ph.data.erase("foto_a.jpg"); fg<GramApp>(pm)->publish(); frames(pm, cv, 3); CHECK(svc.postState != 1 && cv.has("Não consegui abrir"));
+		// voltar da composicao
+		pm.back(); frames(pm, cv, 5); CHECK(fg<GramApp>(pm)->screen() == GramApp::Feed);
+	}
+	printf("%d/%d verificacoes OK\n", total - fails, total);
+	return fails ? 1 : 0;
+}

@@ -15,7 +15,7 @@ namespace Phone
 {
 	namespace Net
 	{
-		enum Op { OpNumber = 1, OpSend = 2, OpDial = 3, OpAnswer = 4, OpHangup = 5, OpMessage = 20, OpCall = 21 };
+		enum Op { OpNumber = 1, OpSend = 2, OpDial = 3, OpAnswer = 4, OpHangup = 5, OpGram = 6, OpMessage = 20, OpCall = 21, OpGramToken = 30 };
 		enum Status
 		{
 			S_Ok = 0, S_NotLogged, S_Busy, S_NoLine, S_NoTarget, S_Empty, S_Long, S_Self, S_Rate, S_Full, S_BadArg, S_BadText,
@@ -73,7 +73,15 @@ namespace Phone
 			if (!bs.Read(op) || !bs.Read(req) || !bs.Read(st)) return false;
 			e.op = op; e.req = req; e.status = st;
 			uint8_t nl = 0;
-			if (op == OpNumber && st != S_Ok) { out = e; return true; }          // resposta de erro: so o status
+			if ((op == OpNumber || op == OpGramToken) && st != S_Ok) { out = e; return true; }          // resposta de erro: so o status
+			if (op == OpGramToken)
+			{
+				// token do Gram: [len u8][token][porta u16]. Token = so letras/numeros/ponto (vai na URL)
+				uint8_t tl = 0; uint16_t port = 0;
+				if (!bs.Read(tl) || tl < 20 || tl > 64 || !ReadBytes(bs, tl, e.text) || !bs.Read(port) || port < 1024) return false;
+				for (char c : e.text) if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || c == '.')) return false;
+				e.secs = port; out = e; return true;
+			}
 			if (op == OpNumber || op == OpMessage || op == OpCall)
 			{
 				if (op == OpCall)
@@ -106,6 +114,7 @@ namespace Phone
 		std::function<bool(const Net::Request&)> send;                                            // envia o pedido (thread de desenho)
 		std::function<void(const std::string& title, const std::string& text, const std::string& appId, int level)> notify;
 		std::function<void(const std::string& number)> incomingCall;                             // abre o celular na tela de ligacao
+		std::function<void(int status, const std::string& token, int port)> gramToken;          // resposta do pedido de token do Gram (thread de desenho)
 
 		void attach(PhoneContext* c)
 		{
@@ -157,6 +166,16 @@ namespace Phone
 			m_lastHello = now;
 			Net::Request r; r.op = Net::OpNumber; r.req = nextReq();
 			send(r);
+		}
+
+		// pede o token do Gram (rede social); no maximo 1 a cada 6 s. false = nao enviou (sem rede / muito cedo)
+		bool requestGramToken(int64_t now)
+		{
+			if (!m_c || !send || !m_c->networked || m_c->myNumber.empty()) return false;
+			if (m_lastGram && now - m_lastGram < 6000) return false;
+			m_lastGram = now;
+			Net::Request r; r.op = Net::OpGram; r.req = nextReq();
+			return send(r);
 		}
 
 		// ---------------- acoes dos apps ----------------
@@ -212,7 +231,7 @@ namespace Phone
 		PhoneContext* m_c = nullptr;
 		std::mutex m_mx; std::deque<Net::Event> m_q; std::atomic<bool> m_reset{ false };
 		std::vector<Pending> m_pend;
-		uint16_t m_req = 0; int64_t m_lastHello = 0, m_lastSend = 0; bool m_talkSent = false;
+		uint16_t m_req = 0; int64_t m_lastHello = 0, m_lastSend = 0, m_lastGram = 0; bool m_talkSent = false;
 
 		static bool validNumber(const std::string& n)
 		{
@@ -228,7 +247,7 @@ namespace Phone
 		}
 		void doReset()
 		{
-			m_pend.clear(); m_c->networked = false; m_c->myNumber.clear(); m_c->call = PhoneCall(); m_lastHello = 0;
+			m_pend.clear(); m_c->networked = false; m_c->myNumber.clear(); m_c->call = PhoneCall(); m_lastHello = 0; m_lastGram = 0;
 			{ std::lock_guard<std::mutex> l(m_mx); m_q.clear(); }
 		}
 		std::string label(const std::string& number) const
@@ -269,6 +288,7 @@ namespace Phone
 				break;
 			}
 			case OpCall: m_c->networked = true; applyCall(e, now); break;
+			case OpGramToken: m_c->networked = true; if (gramToken) gramToken(e.status, e.text, e.secs); break;
 			default: applyReply(e, now); break;
 			}
 		}

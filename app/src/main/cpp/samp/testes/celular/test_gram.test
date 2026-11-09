@@ -1,0 +1,163 @@
+// Teste de PC do Gram: PhoneGram.h + PhoneHttp.h + Jpeg.h contra o SERVICO NODE REAL (test/gram_server.js, PostgreSQL de teste).
+// Variaveis: GRAM_PORT, TOK_A, TOK_B (impressas pelo gram_server.js). Veja run_gram.sh.
+#include "../../gui/phone/Jpeg.h"
+#include "../../gui/phone/PhoneGram.h"
+#include <cstdio>
+#include <cstdlib>
+#include <thread>
+using namespace Phone;
+static int fails = 0, total = 0;
+#define CHECK(c) do { total++; if (!(c)) { fails++; printf("FALHOU L%d: %s\n", __LINE__, #c); } } while (0)
+
+static int64_t g_now = 100000;
+struct Rig
+{
+	HttpClient http; Gram::Service svc; std::string token; int port; int asks = 0; bool due = false; bool badFirst = false;
+	Rig(const std::string& tok, int p) : http(2), svc(&http), token(tok), port(p)
+	{
+		svc.host = []() { return std::string("127.0.0.1"); };
+		svc.requestToken = [this](int64_t) { ++asks; due = true; return true; };
+	}
+	// avanca ate 'cond' ou 5 s
+	template <class F> bool until(F cond, int ms = 5000)
+	{
+		for (int i = 0; i < ms / 10; ++i)
+		{
+			g_now += 10; svc.pump(g_now);
+			if (due) { due = false; if (badFirst) { badFirst = false; svc.onToken(0, "1234567.9999999999.00000000000000000000000000000000", port, g_now); } else svc.onToken(0, token, port, g_now); }
+			if (cond()) return true;
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+		}
+		return false;
+	}
+};
+
+int main()
+{
+	const char* gp = getenv("GRAM_PORT"); const char* ta = getenv("TOK_A"); const char* tb = getenv("TOK_B");
+	if (!gp || !ta || !tb) { printf("faltam variaveis (use run_gram.sh)\n"); return 2; }
+	const int port = atoi(gp);
+
+	// ---- analisadores (sem rede) ----
+	{
+		std::vector<std::string> L; std::string code;
+		CHECK(Gram::ParseReply("ok\na\tb\nc\n", L, code) && L.size() == 2 && L[1] == "c");
+		CHECK(Gram::ParseReply("ok\n", L, code) && L.empty());
+		CHECK(!Gram::ParseReply("err\nrate\n", L, code) && code == "rate");
+		CHECK(!Gram::ParseReply("lixo\n", L, code) && code == "resp");
+		CHECK(!Gram::ParseReply("", L, code));
+		Gram::Post p;
+		const std::string mid(32, 'a');
+		CHECK(Gram::ParsePost("12\t1234567\tJoao\t" + mid + "\t3\t2\t1\t90\tlegenda", p) && p.id == 12 && p.likes == 3 && p.comments == 2 && p.liked && p.ageS == 90 && p.caption == "legenda");
+		CHECK(Gram::ParsePost("12\t1234567\tJoao\t" + mid + "\t3\t2\t0\t90\t", p) && p.caption.empty() && !p.liked);
+		CHECK(!Gram::ParsePost("12\t1234567\tJoao\tcurto\t3\t2\t1\t90\tx", p));
+		CHECK(!Gram::ParsePost("x\t1234567\tJoao\t" + mid + "\t3\t2\t1\t90\tx", p));
+		CHECK(!Gram::ParsePost("12\tpoucos\tcampos", p));
+		Gram::Comment k; CHECK(Gram::ParseComment("5\t1234567\tMaria\t30\toi", k) && k.id == 5 && k.body == "oi" && !Gram::ParseComment("5\tx", k));
+		CHECK(Gram::AgeText(5) == "agora" && Gram::AgeText(120) == "2 min" && Gram::AgeText(7200) == "2 h" && Gram::AgeText(3 * 86400) == "3 d");
+		CHECK(Gram::ValidMedia(mid) && !Gram::ValidMedia("AAAA") && !Gram::ValidMedia(std::string(32, 'g')));
+		CHECK(HttpClient::UrlEncode("a b\xc3\xa7&=") == "a%20b%C3%A7%26%3D");
+		CHECK(Gram::ErrText("net").size() > 5 && Gram::ErrText("zzz") == "Erro do Gram.");
+	}
+
+	Rig A(ta, port), B(tb, port);
+
+	// ---- feed vazio: pede token sozinho ----
+	A.svc.refresh(g_now);
+	CHECK(A.until([&] { return A.svc.feedLoaded; }));
+	CHECK(A.asks == 1 && A.svc.hasToken() && A.svc.posts.empty() && !A.svc.hasMore);
+
+	// ---- foto real (codificador proprio) -> servidor valida e guarda ----
+	std::vector<uint8_t> px(320 * 200 * 4);
+	for (int y = 0; y < 200; ++y) for (int x = 0; x < 320; ++x) { uint8_t* d = &px[((size_t)y * 320 + x) * 4]; d[0] = (uint8_t)(x * 255 / 319); d[1] = (uint8_t)(y * 255 / 199); d[2] = (uint8_t)((x ^ y) & 255); d[3] = 255; }
+	const std::string jpg = Jpeg::Encode(px.data(), 320, 200, 70);
+	CHECK(!jpg.empty());
+	CHECK(A.svc.post("nao e foto", "x", g_now) != "");                       // validacao local
+	CHECK(A.svc.post(jpg, "Minha primeira foto \xc3\xa7\xc3\xa3o\ttab", g_now).empty());
+	CHECK(A.svc.postState == 1 && !A.svc.post(jpg, "x", g_now).empty());     // so uma por vez
+	CHECK(A.until([&] { return A.svc.postState == 2; }));
+	CHECK(A.until([&] { return A.svc.feedLoaded && A.svc.posts.size() == 1; }));
+	CHECK(A.svc.posts[0].number.size() == 7 && A.svc.posts[0].name == "Joao Silva" && A.svc.posts[0].caption == "Minha primeira foto \xc3\xa7\xc3\xa3o tab");
+
+	// ---- baixar a imagem publica: identica ao enviado ----
+	std::string got; bool done = false, okimg = false;
+	CHECK(A.svc.fetchImage(A.svc.posts[0].media, [&](bool ok, const std::string& b) { done = true; okimg = ok; got = b; }));
+	CHECK(A.until([&] { return done; }));
+	CHECK(okimg && got == jpg);
+	done = false; CHECK(A.svc.fetchImage(std::string(32, '0'), [&](bool ok, const std::string&) { done = true; okimg = ok; }));
+	CHECK(A.until([&] { return done; }) && !okimg);                          // inexistente: falha limpa (404)
+	CHECK(!A.svc.fetchImage("../../etc/passwd", [](bool, const std::string&) {}));
+
+	// ---- outra conta: ve o post, curte, comenta ----
+	B.svc.refresh(g_now);
+	CHECK(B.until([&] { return B.svc.feedLoaded; }) && B.svc.posts.size() == 1);
+	const long long id = B.svc.posts[0].id;
+	B.svc.like(id, g_now);
+	CHECK(B.svc.posts[0].liked && B.svc.posts[0].likes == 1);                // otimista
+	CHECK(B.until([&] { return B.http.pending() == 0 && B.svc.posts[0].likes == 1; }));
+	g_now += 50; B.until([&] { return false; }, 200);
+	CHECK(B.svc.posts[0].liked && B.svc.posts[0].likes == 1);                // confirmado pelo servidor
+	B.svc.like(id, g_now); B.until([&] { return false; }, 400);
+	CHECK(!B.svc.posts[0].liked && B.svc.posts[0].likes == 0);               // descurtir
+	B.svc.like(id, g_now); B.until([&] { return false; }, 400);
+	CHECK(B.svc.posts[0].liked && B.svc.posts[0].likes == 1);
+	CHECK(B.svc.comment(id, "", g_now) != "");
+	CHECK(B.svc.comment(id, "Que foto linda \xc3\xa7", g_now).empty());
+	CHECK(B.until([&] { return B.svc.comments.size() == 1; }));
+	CHECK(B.svc.comments[0].body == "Que foto linda \xc3\xa7" && B.svc.comments[0].name == "Maria Souza" && B.svc.posts[0].comments == 1);
+	B.svc.comment(id, std::string(141, 'a'), g_now); B.until([&] { return false; }, 400);
+	CHECK(B.svc.takeToast() == Gram::ErrText("long"));                       // o servidor recusou: aviso real
+	CHECK(B.svc.takeToast().empty());
+
+	// ---- A ve curtida e comentario ----
+	A.svc.refresh(g_now);
+	CHECK(A.until([&] { return A.svc.feedLoaded && A.svc.posts.size() == 1 && A.svc.posts[0].likes == 1; }));
+	CHECK(A.svc.posts[0].comments == 1 && !A.svc.posts[0].liked);
+
+	// ---- token invalido: o servico pede outro e repete UMA vez ----
+	{
+		Rig C(ta, port); C.badFirst = true;
+		C.svc.refresh(g_now);
+		CHECK(C.until([&] { return C.svc.feedLoaded; }));
+		CHECK(C.asks == 2 && C.svc.posts.size() == 1);
+	}
+	// ---- token que continua invalido: falha limpa, sem laco ----
+	{
+		Rig C("1234567.9999999999.00000000000000000000000000000000", port);
+		C.svc.refresh(g_now);
+		CHECK(C.until([&] { return !C.svc.loadingFeed; }));
+		CHECK(!C.svc.feedLoaded && C.svc.takeToast() == Gram::ErrText("auth"));
+		CHECK(C.asks == 2);
+	}
+	// ---- sem servidor no ar ----
+	{
+		Rig C(ta, 1); C.svc.refresh(g_now);
+		CHECK(C.until([&] { return !C.svc.loadingFeed; }, 8000));
+		CHECK(C.svc.takeToast() == Gram::ErrText("net"));
+	}
+	// ---- servidor nao responde ao pedido de token ----
+	{
+		HttpClient h(1); Gram::Service s(&h); s.host = []() { return std::string("127.0.0.1"); }; s.requestToken = [](int64_t) { return true; };
+		s.refresh(g_now); for (int i = 0; i < 1100 && s.loadingFeed; ++i) { g_now += 10; s.pump(g_now); }
+		CHECK(!s.loadingFeed && s.takeToast() == Gram::ErrText("wait"));
+	}
+	// ---- PhoneNet recusa pedir token (muito cedo / sem rede): o servico insiste e depois desiste com aviso ----
+	{
+		HttpClient h(1); Gram::Service s(&h); int tries = 0; s.host = []() { return std::string("127.0.0.1"); }; s.requestToken = [&](int64_t) { ++tries; return false; };
+		s.refresh(g_now); for (int i = 0; i < 1100 && s.loadingFeed; ++i) { g_now += 10; s.pump(g_now); }
+		CHECK(!s.loadingFeed && s.takeToast() == Gram::ErrText("wait") && tries > 5);
+		s.refresh(g_now); CHECK(s.loadingFeed);                           // pode tentar de novo depois da falha
+	}
+	// ---- reset ----
+	A.svc.reset(); CHECK(!A.svc.hasToken() && A.svc.posts.empty() && !A.svc.feedLoaded);
+
+	// ---- apagar (dono) ----
+	{
+		Rig D(ta, port); D.svc.refresh(g_now); D.until([&] { return D.svc.feedLoaded; });
+		CHECK(D.svc.posts.size() == 1); D.svc.remove(D.svc.posts[0].id, g_now);
+		CHECK(D.until([&] { return D.svc.posts.empty(); }));
+		D.svc.refresh(g_now); CHECK(D.until([&] { return D.svc.feedLoaded && D.svc.posts.empty(); }));
+	}
+	printf("%d/%d verificacoes OK\n", total - fails, total);
+	return fails ? 1 : 0;
+}
