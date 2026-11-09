@@ -113,6 +113,7 @@ namespace Phone
 		public:
 			// ---- estado lido pela interface / PhoneManager ----
 			bool meLoaded = false;           // o servidor ja respondeu sobre o aparelho
+			bool noPhone = false;            // o servidor do jogo disse: nenhum celular no inventario (nao consulta a Loja)
 			bool hasDevice = false, blocked = false;
 			std::string imei, wallpaper = "w1";
 			std::vector<AppEntry> apps; bool catalogLoaded = false;
@@ -125,8 +126,12 @@ namespace Phone
 
 			void reset()      // reconexao: esquece tudo (o servidor decide de novo)
 			{
-				meLoaded = hasDevice = blocked = catalogLoaded = wpLoaded = uploading = false;
+				meLoaded = hasDevice = blocked = catalogLoaded = wpLoaded = uploading = noPhone = false;
 				imei.clear(); wallpaper = "w1"; apps.clear(); wallpapers.clear(); m_busy.clear(); m_loading = false; m_at = 0; m_toast.clear(); ++version;
+			}
+			void markNoPhone()   // sem celular no inventario: o aparelho mostra o aviso e nada abre
+			{
+				noPhone = true; meLoaded = true; hasDevice = false; blocked = false; imei.clear(); apps.clear(); catalogLoaded = false; ++version;
 			}
 			bool busy(const std::string& id) const { return m_busy.count(id) != 0; }
 			std::set<std::string> installedIds() const { std::set<std::string> s; for (auto& a : apps) if (a.installed || a.core) s.insert(a.id); return s; }
@@ -135,7 +140,7 @@ namespace Phone
 			// consulta aparelho + catalogo + papeis. Sem force, so repete depois de 2 minutos.
 			void refresh(int64_t now, bool force = false)
 			{
-				if (!m_net || m_loading) return;
+				if (!m_net || m_loading || noPhone) return;
 				if (!force && meLoaded && now - m_at < 120000) return;
 				m_loading = true; m_at = now;
 				m_net->request("GET", "/s/me?t={T}", "", "", 8000, [this, now](bool ok, const std::string& code, const std::vector<std::string>& L)

@@ -17,7 +17,7 @@ namespace Phone
 	{
 	public:
 		explicit SettingsApp(PhoneContext* c) : m_c(c), m_wp(c) {}
-		void onPause() override { m_scroll = ScrollView(); m_press = -1; }
+		void onPause() override { m_scroll = ScrollView(); m_press = -1; m_confirmChip = false; }
 		void update(float dt) override { m_scroll.update(dt); m_wp.update(dt); }
 		bool onBack() override { if (m_screen != 0) { m_screen = 0; m_scroll = ScrollView(); return true; } return false; }
 
@@ -44,7 +44,7 @@ namespace Phone
 				}
 				y += rowH;
 			};
-			m_scroll.setLayout(body, m.px(640));
+			m_scroll.setLayout(body, m.px(700));
 			cv.pushClip(body);
 			if (m_screen == 0)
 			{
@@ -61,8 +61,14 @@ namespace Phone
 				y += m.px(22);
 				const StatusInfo st = m_c->status ? m_c->status() : StatusInfo();
 				row(20, "Sobre", "Maximo RP", true, false, false, false, PC::Gray);
-				row(22, "Meu número", m_c->myNumber.empty() ? std::string("—") : Data::FormatNumber(m_c->myNumber), false, false, false, false, PC::Gray);
+				row(22, "Meu número", m_c->myNumber.empty() ? std::string("Sem chip") : Data::FormatNumber(m_c->myNumber), false, false, false, false, PC::Gray);
 				row(23, "IMEI", m_c->imei.empty() ? std::string("—") : Store::FormatImei(m_c->imei), false, false, false, false, PC::Gray, 190);
+				if (!m_c->myNumber.empty())
+				{
+					const bool showMsg = !m_c->chipMsg.empty() && m_c->nowMs - m_c->chipMsgAt < 5000;
+					row(24, m_confirmChip ? "Toque de novo: remover chip" : "Remover chip", showMsg ? m_c->chipMsg : std::string(), false, false, false, false, m_confirmChip ? PC::Red : PC::Gray, showMsg ? 170 : 0);
+				}
+				else if (!m_c->chipMsg.empty() && m_c->nowMs - m_c->chipMsgAt < 5000) row(24, "Chip", m_c->chipMsg, false, false, false, false, PC::Gray, 190);
 				row(21, "Hora", st.clock, false, true, false, false, PC::Gray);
 			}
 			else
@@ -107,6 +113,10 @@ namespace Phone
 					case 5: s.handsFree = !s.handsFree; break;
 					case 10: m_screen = 1; m_scroll = ScrollView(); break;
 					case 12: m_screen = 2; m_wp.open(); break;
+					case 24:
+						if (!m_confirmChip) m_confirmChip = true;
+						else { m_confirmChip = false; m_c->chipMsg = m_c->removeChip ? m_c->removeChip() : std::string("Indisponível."); m_c->chipMsgAt = m_c->nowMs; if (m_c->chipMsg.empty()) m_c->chipMsg = "Removendo chip..."; }
+						break;
 					case 30: s.sizePct = 75; break;
 					case 31: s.sizePct = 100; break;
 					case 32: s.sizePct = 125; break;
@@ -125,6 +135,7 @@ namespace Phone
 			cv.fillCircle({ on ? r.right() - r.h * 0.5f : r.x + r.h * 0.5f, r.y + r.h * 0.5f }, r.h * 0.43f, Color(255, 255, 255));
 		}
 		struct RowRef { int id; Rect rect; };
+		bool m_confirmChip = false;
 		PhoneContext* m_c; WallpaperPicker m_wp; int m_screen = 0; int m_press = -1; Rect m_back; ScrollView m_scroll; std::vector<RowRef> m_rows;
 	};
 

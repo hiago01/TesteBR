@@ -30,8 +30,8 @@ extern volatile bool g_bTouchCancel;
 // =====================================================================================
 namespace
 {
-	struct Item  { int slot = 0, id = 0, qty = 0, icon = 8; uint32_t unitW = 0; std::string name; };
-	struct Drop  { int id = 0, item = 0, qty = 0, icon = 8; std::string name; };
+	struct Item  { int slot = 0, id = 0, qty = 0, icon = 8; uint32_t unitW = 0; std::string name, desc; };
+	struct Drop  { int id = 0, item = 0, qty = 0, icon = 8; std::string name, desc; };
 	struct TItem { int item = 0, qty = 0, icon = 8; std::string name; };
 	struct Trade
 	{
@@ -72,6 +72,15 @@ namespace
 	{
 		using namespace std::chrono;
 		return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+	}
+
+	// O servidor manda "Nome\nDescricao" (celular: IMEI e chip). Separa; sem '\n' a descricao fica vazia.
+	void SplitDesc(std::string& name, std::string* desc)
+	{
+		const size_t p = name.find('\n');
+		if (p == std::string::npos) return;
+		if (desc) *desc = name.substr(p + 1);
+		name.resize(p);
 	}
 
 	bool ReadStr(RakNet::BitStream& bs, std::string& out)
@@ -318,6 +327,7 @@ void InventoryUI::OnServerPacket(const unsigned char* data, int bytes)
 		{
 			Item it; uint16_t s = 0, id = 0, q = 0; uint8_t ic = 0, fl = 0; uint32_t w = 0;
 			if (!bs.Read(s) || !bs.Read(id) || !bs.Read(q) || !bs.Read(ic) || !bs.Read(w) || !bs.Read(fl) || !ReadStr(bs, it.name)) return;
+			SplitDesc(it.name, &it.desc);
 			if (s >= slots) continue;
 			it.slot = s; it.id = id; it.qty = q; it.icon = ic; it.unitW = w;
 			items.push_back(std::move(it));
@@ -341,6 +351,7 @@ void InventoryUI::OnServerPacket(const unsigned char* data, int bytes)
 		{
 			Drop d; uint16_t id = 0, it = 0, q = 0; uint8_t ic = 0;
 			if (!bs.Read(id) || !bs.Read(it) || !bs.Read(q) || !bs.Read(ic) || !ReadStr(bs, d.name)) return;
+			SplitDesc(d.name, &d.desc);
 			d.id = id; d.item = it; d.qty = q; d.icon = ic;
 			g.push_back(std::move(d));
 		}
@@ -360,6 +371,7 @@ void InventoryUI::OnServerPacket(const unsigned char* data, int bytes)
 			{
 				TItem e; uint16_t it = 0, q = 0; uint8_t ic = 0;
 				if (!bs.Read(it) || !bs.Read(q) || !bs.Read(ic) || !ReadStr(bs, e.name)) return;
+				SplitDesc(e.name, nullptr);
 				e.item = it; e.qty = q; e.icon = ic;
 				(side == 0 ? t.mine : t.theirs).push_back(std::move(e));
 			}
@@ -376,6 +388,7 @@ void InventoryUI::OnServerPacket(const unsigned char* data, int bytes)
 		{
 			uint16_t id = 0, q = 0; uint8_t ic = 0, fl = 0;
 			if (!bs.Read(id) || !bs.Read(q) || !bs.Read(ic) || !bs.Read(fl) || !ReadStr(bs, tmp[i].name)) return;
+			SplitDesc(tmp[i].name, nullptr);
 			tmp[i].id = id; tmp[i].qty = q; tmp[i].icon = ic; tmp[i].flags = fl;
 		}
 		std::lock_guard<std::mutex> l(g_dm);
@@ -826,12 +839,17 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		if (g_sel.panel == P_INV && g_sel.idx >= 0 && g_sel.idx < S.slots && bySlot[g_sel.idx])
 		{
 			const Item* it = bySlot[g_sel.idx];
-			char b[96]; snprintf(b, sizeof(b), "%s  x%d  -  %s kg cada", it->name.c_str(), it->qty, Kg(it->unitW).c_str());
+			char b[192];
+			if (!it->desc.empty()) snprintf(b, sizeof(b), "%s  -  %s kg  -  %s", it->name.c_str(), Kg(it->unitW).c_str(), it->desc.c_str());   // celular: IMEI e chip na descrição
+			else snprintf(b, sizeof(b), "%s  x%d  -  %s kg cada", it->name.c_str(), it->qty, Kg(it->unitW).c_str());
 			info = b;
 		}
 		else if (g_sel.panel == P_GROUND && g_sel.idx >= 0 && g_sel.idx < (int)S.ground.size())
 		{
-			char b[96]; snprintf(b, sizeof(b), "No chão: %s  x%d", S.ground[g_sel.idx].name.c_str(), S.ground[g_sel.idx].qty);
+			const Drop& gd = S.ground[g_sel.idx];
+			char b[192];
+			if (!gd.desc.empty()) snprintf(b, sizeof(b), "No chão: %s  -  %s", gd.name.c_str(), gd.desc.c_str());
+			else snprintf(b, sizeof(b), "No chão: %s  x%d", gd.name.c_str(), gd.qty);
 			info = b;
 		}
 		r->pushClipRect(ImVec2(xl, infoY), ImVec2(xl + gridW, infoY + infoH), true);

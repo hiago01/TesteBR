@@ -15,11 +15,11 @@ namespace Phone
 {
 	namespace Net
 	{
-		enum Op { OpNumber = 1, OpSend = 2, OpDial = 3, OpAnswer = 4, OpHangup = 5, OpGram = 6, OpPose = 7, OpMessage = 20, OpCall = 21, OpGramToken = 30 };
+		enum Op { OpNumber = 1, OpSend = 2, OpDial = 3, OpAnswer = 4, OpHangup = 5, OpGram = 6, OpPose = 7, OpChipOff = 8, OpDevice = 9, OpMessage = 20, OpCall = 21, OpGramToken = 30 };
 		enum Status
 		{
 			S_Ok = 0, S_NotLogged, S_Busy, S_NoLine, S_NoTarget, S_Empty, S_Long, S_Self, S_Rate, S_Full, S_BadArg, S_BadText,
-			S_OutOfArea, S_TargetBusy, S_InCall, S_NoCall, S_Down,
+			S_OutOfArea, S_TargetBusy, S_InCall, S_NoCall, S_Down, S_NoSpace,
 			S_Timeout = 100       // so local: o servidor nao respondeu
 		};
 		constexpr int kTimeoutMs = 6000, kMaxQueue = 128, kMaxPending = 12;
@@ -30,7 +30,8 @@ namespace Phone
 			{
 			case S_NotLogged:  return "Faça login para usar o celular.";
 			case S_Busy:       return "Servidor ocupado. Tente de novo.";
-			case S_NoLine:     return "Seu celular ainda não tem linha.";
+			case S_NoLine:     return "Sem chip: instale um chip (item do inventário) no celular.";
+			case S_NoSpace:    return "Inventário cheio: libere espaço para receber o chip.";
 			case S_NoTarget:   return "Esse número não existe.";
 			case S_Empty:      return "Mensagem vazia.";
 			case S_Long:       return "Mensagem muito longa (máx. 240 caracteres).";
@@ -58,6 +59,7 @@ namespace Phone
 			int op = 0, req = 0, status = 0;
 			std::string number, text;       // OpNumber/OpMessage: numero (de quem enviou) e texto; OpCall: numero
 			int callState = 0, reason = 0, secs = 0;
+			bool hasPhone = false;          // OpDevice: o jogador tem um celular em uso (item do inventario); number = numero do CHIP (vazio = sem chip)
 		};
 
 		template <class BS> inline bool ReadBytes(BS& bs, size_t n, std::string& out)
@@ -82,6 +84,14 @@ namespace Phone
 				for (char c : e.text) if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || c == '.')) return false;
 				e.secs = port; out = e; return true;
 			}
+			if (op == OpDevice)
+			{
+				uint8_t hp = 0;
+				if (st != S_Ok) { out = e; return true; }
+				if (!bs.Read(hp) || !bs.Read(nl) || (nl != 0 && nl != 7) || !ReadBytes(bs, nl, e.number)) return false;
+				for (char c : e.number) if (c < '0' || c > '9') return false;
+				e.hasPhone = hp != 0; out = e; return true;
+			}
 			if (op == OpNumber || op == OpMessage || op == OpCall)
 			{
 				if (op == OpCall)
@@ -101,7 +111,7 @@ namespace Phone
 				if (op == OpCall) { uint16_t secs = 0; if (!bs.Read(secs)) return false; e.secs = secs; }
 				if (op != OpCall && e.number.size() != 7) return false;
 			}
-			else if (op < OpNumber || op > OpHangup) return false;
+			else if ((op < OpNumber || op > OpHangup) && op != OpChipOff) return false;
 			out = e;
 			return true;
 		}
@@ -114,6 +124,7 @@ namespace Phone
 		std::function<bool(const Net::Request&)> send;                                            // envia o pedido (thread de desenho)
 		std::function<void(const std::string& title, const std::string& text, const std::string& appId, int level)> notify;
 		std::function<void(const std::string& number)> incomingCall;                             // abre o celular na tela de ligacao
+		std::function<void(bool hasPhone)> deviceChanged;                                         // o aparelho em uso mudou / trocou de chip (resetar Gram e Loja)
 		std::function<void(int status, const std::string& token, int port)> gramToken;          // resposta do pedido de token do Gram (thread de desenho)
 
 		void attach(PhoneContext* c)
@@ -178,6 +189,18 @@ namespace Phone
 			return send(r);
 		}
 
+		// tira o chip do celular em uso (volta ao inventario). "" = pedido enviado (a resposta aparece em ctx.chipMsg); senao o erro
+		std::string removeChip()
+		{
+			if (!m_c->networked) return "Serviço do celular indisponível.";
+			if (m_c->myNumber.empty()) return "O celular não tem chip.";
+			if (m_c->call.state != 0) return "Encerre a ligação antes.";
+			Net::Request r; r.op = Net::OpChipOff; r.req = nextReq();
+			if (!send || !send(r)) return "Sem conexão com o servidor.";
+			addPending(r, m_c->nowMs);
+			return std::string();
+		}
+
 		// pose do corpo (0 = nenhuma, 1 = celular na mao, 2 = foto (camera traseira), 3 = selfie). O servidor sincroniza com quem esta perto.
 		bool sendPose(int mode)
 		{
@@ -190,6 +213,7 @@ namespace Phone
 		std::string dial(const std::string& number)
 		{
 			if (!m_c->networked) return "Serviço de chamadas indisponível neste servidor.";
+			if (m_c->myNumber.empty()) return "Sem chip: instale um chip no celular.";
 			if (m_c->settings.airplane) return "Modo avião ativado.";
 			if (m_c->call.state != 0) return "Você já está em uma ligação.";
 			const std::string n = Data::CleanNumber(number);
@@ -205,6 +229,7 @@ namespace Phone
 		std::string sendMessage(const std::string& number, const std::string& text)
 		{
 			if (!m_c->networked) return "Serviço de mensagens indisponível neste servidor.";
+			if (m_c->myNumber.empty()) return "Sem chip: instale um chip no celular.";
 			if (m_c->settings.airplane) return "Modo avião ativado.";
 			const std::string n = Data::CleanNumber(number);
 			if (!validNumber(n)) return "Número inválido (7 dígitos).";
@@ -276,6 +301,7 @@ namespace Phone
 				endCall(now, Net::StatusText(status), 0);
 			}
 			else if (p.op == Net::OpAnswer && status != Net::S_Ok) endCall(now, Net::StatusText(status), 0);
+			else if (p.op == Net::OpChipOff) { m_c->chipMsg = Net::StatusText(status); m_c->chipMsgAt = now; }
 		}
 		void endCall(int64_t now, const std::string& text, int)
 		{
@@ -288,6 +314,10 @@ namespace Phone
 			switch (e.op)
 			{
 			case OpNumber: m_c->networked = true; if (e.status == S_Ok) m_c->myNumber = e.number; break;
+			case OpDevice:
+				m_c->networked = true;
+				if (e.status == S_Ok) { m_c->myNumber = e.number; if (deviceChanged) deviceChanged(e.hasPhone); }
+				break;
 			case OpMessage:
 			{
 				m_c->networked = true;
@@ -319,6 +349,7 @@ namespace Phone
 				else fail(p, e.status, now);
 			}
 			else if (e.op == OpAnswer && e.status != S_Ok) endCall(now, StatusText(e.status), 0);
+			else if (e.op == OpChipOff) { m_c->chipMsg = e.status == S_Ok ? "Chip removido: está no inventário." : StatusText(e.status); m_c->chipMsgAt = now; }
 			// OpHangup: o estado final vem pelo evento de ligacao
 		}
 		void applyCall(const Net::Event& e, int64_t now)

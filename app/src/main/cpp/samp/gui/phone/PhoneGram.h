@@ -11,6 +11,7 @@ namespace Phone
 {
 	namespace Gram
 	{
+		// number = AUTOR do post/comentario: "g<id>" (conta do Gram) ou "n<numero>" (post antigo, de antes das contas)
 		struct Post { long long id = 0; std::string number, name, media, caption; int likes = 0, comments = 0; bool liked = false; int ageS = 0; };
 		struct Comment { long long id = 0; std::string number, name, body; int ageS = 0; };
 
@@ -42,6 +43,13 @@ namespace Phone
 			if (c == "busy") return "Servidor ocupado. Tente de novo.";
 			if (c == "token") return "O servidor não liberou o Gram.";
 			if (c == "wait") return "Sem resposta do servidor.";
+			if (c == "nologin") return "Entre numa conta do Gram.";
+			if (c == "badlogin") return "Usuário ou senha incorretos.";
+			if (c == "locked") return "Muitas tentativas. Aguarde alguns minutos.";
+			if (c == "badname") return "Usuário: 3 a 20 letras minúsculas, números, _ ou .";
+			if (c == "badpass") return "Senha: de 6 a 48 caracteres.";
+			if (c == "taken") return "Esse usuário já existe.";
+			if (c == "nodevice") return "Celular não reconhecido pelo servidor.";
 			return "Erro do Gram.";
 		}
 		inline std::vector<std::string> Split(const std::string& s, char sep)
@@ -106,6 +114,11 @@ namespace Phone
 			std::string postError;
 			std::string takeToast() { std::string t; t.swap(m_toast); return t; }
 
+			// ---- conta do Gram (por APARELHO: o servidor lembra qual conta esta conectada neste celular) ----
+			int accountState = 0;                                    // 0 desconhecido, 1 consultando, 2 nenhuma conta conectada, 3 conectada
+			std::string username, authError; long long gid = 0; bool authBusy = false;
+			std::string ownAuthor() const { return accountState == 3 ? "g" + std::to_string(gid) : std::string(); }
+
 			explicit Service(HttpClient* http) : m_http(http) {}
 
 			bool hasToken() const { return !m_token.empty(); }
@@ -113,6 +126,7 @@ namespace Phone
 			void reset()      // conexao com o servidor reiniciada: esquece sessao e tudo que dependia dela
 			{
 				m_token.clear(); m_port = 0; m_wait.clear(); m_flight.clear(); m_asking = false;
+				accountState = 0; username.clear(); authError.clear(); gid = 0; authBusy = false; m_meRetry = 0;
 				posts.clear(); comments.clear(); loadingFeed = loadingComments = hasMore = feedLoaded = false; postState = 0; postError.clear(); m_toast.clear();
 			}
 			void onToken(int status, const std::string& token, int port, int64_t now)
@@ -122,6 +136,51 @@ namespace Phone
 				m_token = token; m_port = port; m_tokenAt = now;
 				std::vector<Job> w; w.swap(m_wait);
 				for (auto& j : w) dispatch(std::move(j), now);
+			}
+
+			// ---------------- conta ----------------
+			void loadMe(int64_t now)
+			{
+				if (accountState != 0 || now < m_meRetry) return;
+				accountState = 1;
+				Job j; j.method = "GET"; j.path = "/g/me?t={T}"; j.done = [this, now](bool ok, const std::string& code, const std::vector<std::string>& L)
+				{
+					const auto f = (ok && !L.empty()) ? Split(L[0], '\t') : std::vector<std::string>();
+					long long id = 0;
+					if (ok && f.size() == 2 && ToInt64(f[0], id) && !f[1].empty()) { gid = id; username = f[1]; accountState = 3; return; }
+					if (!ok && code == "nologin") { accountState = 2; return; }
+					accountState = 0; m_meRetry = m_lastNow + 15000; m_toast = ErrText(ok ? "resp" : code);      // tenta de novo em 15 s
+				};
+				submit(std::move(j), now);
+			}
+			// "" = enviado; senao o erro (validacao local). reg = criar conta nova.
+			std::string login(std::string user, const std::string& pass, bool reg, int64_t now)
+			{
+				if (authBusy) return "Aguarde...";
+				while (!user.empty() && user[0] == '@') user.erase(0, 1);
+				for (auto& c : user) if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+				bool okName = user.size() >= 3 && user.size() <= 20;
+				for (char c : user) if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.')) okName = false;
+				if (!okName) return ErrText("badname");
+				if (pass.size() < 6 || pass.size() > 48) return ErrText("badpass");
+				authBusy = true; authError.clear();
+				Job j; j.method = "POST"; j.path = std::string(reg ? "/g/register" : "/g/login") + "?t={T}"; j.body = user + "\n" + pass; j.contentType = "text/plain; charset=utf-8";
+				j.done = [this](bool ok, const std::string& code, const std::vector<std::string>& L)
+				{
+					authBusy = false;
+					const auto f = (ok && !L.empty()) ? Split(L[0], '\t') : std::vector<std::string>(); long long id = 0;
+					if (!(ok && f.size() == 2 && ToInt64(f[0], id))) { authError = ErrText(ok ? "resp" : code); return; }
+					gid = id; username = f[1]; accountState = 3; authError.clear();
+					posts.clear(); comments.clear(); feedLoaded = false; loadingFeed = false; refresh(m_lastNow);
+				};
+				submit(std::move(j), now);
+				return std::string();
+			}
+			void logout(int64_t now)
+			{
+				Job j; j.method = "POST"; j.path = "/g/logout?t={T}"; j.done = [](bool, const std::string&, const std::vector<std::string>&) {};
+				submit(std::move(j), now);
+				accountState = 2; username.clear(); gid = 0; posts.clear(); comments.clear(); feedLoaded = false; loadingFeed = false; hasMore = false;
 			}
 
 			// ---------------- acoes ----------------
@@ -260,7 +319,7 @@ namespace Phone
 				std::function<void(bool, const std::string&, const std::vector<std::string>&)> done;
 			};
 			struct Flight { Job job; std::function<void(bool, const std::string&)> img; };
-			HttpClient* m_http; std::string m_token, m_toast; int m_port = 0; int64_t m_tokenAt = 0, m_waitSince = 0, m_lastNow = 0;
+			HttpClient* m_http; std::string m_token, m_toast; int m_port = 0; int64_t m_tokenAt = 0, m_waitSince = 0, m_lastNow = 0, m_meRetry = 0;
 			bool m_asking = false; std::vector<Job> m_wait; std::map<uint32_t, Flight> m_flight; uint32_t m_tag = 0;
 
 			Post* find(long long id) { for (auto& p : posts) if (p.id == id) return &p; return nullptr; }

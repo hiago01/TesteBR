@@ -162,6 +162,13 @@ namespace
 			p->context().gram = g_gram;
 			g_storeSvc = new Phone::Store::Service(g_gram);
 			p->context().store = g_storeSvc;
+			p->context().removeChip = []() { return g_net.removeChip(); };
+			// o servidor do jogo avisa qual celular (item do inventario) esta em uso e qual chip tem: sessao do Gram / Loja valem POR APARELHO
+			g_net.deviceChanged = [](bool hasPhone)
+			{
+				if (g_gram) g_gram->reset();
+				if (g_storeSvc) { g_storeSvc->reset(); if (!hasPhone) g_storeSvc->markNoPhone(); else g_storeSvc->refresh(NowMs(), true); }
+			};
 			p->context().photos = PhonePhotos::Api();
 			return p;
 		}();

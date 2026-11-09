@@ -1,0 +1,173 @@
+// Testes de PC: celular como ITEM do inventario + CHIP (protocolo op 8/9, PhoneNet sem chip, remover chip, Ajustes, Loja sem celular).
+// NAO testa NDK/Android/aparelho nem o servidor real (isso e coberto em celular-service/test e na compilacao do Pawn).
+#include "../../gui/phone/PhoneApps.h"
+#include "../../gui/phone/PhoneNet.h"
+#include <cstdio>
+#include <cstdlib>
+#include <map>
+using namespace Phone;
+static int fails = 0, total = 0;
+#define CHECK(c) do { total++; if (!(c)) { fails++; printf("FALHOU L%d: %s\n", __LINE__, #c); } } while (0)
+
+struct NullCanvas : Canvas
+{
+	int n = 0; std::string last;
+	void fillRect(const Rect&, Color, float) override { ++n; }
+	void strokeRect(const Rect&, Color, float, float) override { ++n; }
+	void fillGradientV(const Rect&, Color, Color) override { ++n; }
+	void fillCircle(Vec2, float, Color) override { ++n; }
+	void strokeCircle(Vec2, float, Color, float) override { ++n; }
+	void line(Vec2, Vec2, Color, float) override { ++n; }
+	void fillTriangle(Vec2, Vec2, Vec2, Color) override { ++n; }
+	void text(Vec2 p, Color, const std::string& s, float) override { ++n; texts.push_back(s); pos.push_back(p); }
+	Vec2 measure(const std::string& s, float size) override { return { (float)Text::CpCount(s) * size * 0.52f, size * 1.2f }; }
+	void pushClip(const Rect&) override {} void popClip() override {} void setAlpha(float) override {}
+	std::vector<std::string> texts; std::vector<Vec2> pos;
+	bool find(const std::string& s, Vec2& p) const { for (size_t i = 0; i < texts.size(); ++i) if (texts[i].find(s) != std::string::npos) { p = pos[i]; return true; } return false; }
+	bool has(const std::string& s) const { for (auto& t : texts) if (t.find(s) != std::string::npos) return true; return false; }
+};
+
+// leitor falso com a mesma interface do RakNet::BitStream usada por Net::ParsePacket (little-endian)
+struct FakeBS
+{
+	std::vector<uint8_t> b; size_t i = 0;
+	bool Read(uint8_t& v) { if (i + 1 > b.size()) return false; v = b[i++]; return true; }
+	bool Read(uint16_t& v) { if (i + 2 > b.size()) return false; v = (uint16_t)(b[i] | (b[i + 1] << 8)); i += 2; return true; }
+	bool Read(char* p, unsigned n) { if (i + n > b.size()) return false; for (unsigned k = 0; k < n; ++k) p[k] = (char)b[i++]; return true; }
+	FakeBS& u8(int v) { b.push_back((uint8_t)v); return *this; }
+	FakeBS& u16(int v) { b.push_back((uint8_t)(v & 255)); b.push_back((uint8_t)(v >> 8)); return *this; }
+	FakeBS& str(const std::string& s) { for (char c : s) b.push_back((uint8_t)c); return *this; }
+};
+
+template <class T2> static T2* fg(PhoneManager& pm) { return dynamic_cast<T2*>(pm.apps().foreground()); }
+static std::map<std::string, std::string> g_store;
+static int64_t T = 5000;
+static void setup(PhoneManager& pm)
+{
+	g_store.clear();
+	pm.context().getString = [](const std::string& k, const std::string& d) { auto it = g_store.find(k); return it == g_store.end() ? d : it->second; };
+	pm.context().setString = [](const std::string& k, const std::string& v) { g_store[k] = v; };
+	StatusInfo st; st.clock = "12:00"; st.weekday = 1; st.day = 15; st.month = 1; st.year = 2024;
+	pm.context().status = [st]() { return st; };
+	pm.setStatusProvider(pm.context().status);
+	pm.setScreenSize(2400, 1080);
+}
+static void frames(PhoneManager& pm, NullCanvas& cv, int n) { for (int i = 0; i < n; ++i) { T += 16; pm.context().nowMs = T; pm.frame(cv, T, 16); } }
+
+[[maybe_unused]] static Net::Event numberEv(const std::string& n) { Net::Event e; e.op = Net::OpNumber; e.number = n; return e; }
+[[maybe_unused]] static Net::Event msgEv(const std::string& from, const std::string& t) { Net::Event e; e.op = Net::OpMessage; e.number = from; e.text = t; return e; }
+static Net::Event replyEv(int op, int req, int st) { Net::Event e; e.op = op; e.req = req; e.status = st; return e; }
+[[maybe_unused]] static Net::Event callEv(int state, int reason, const std::string& n) { Net::Event e; e.op = Net::OpCall; e.callState = state; e.reason = reason; e.number = n; return e; }
+
+struct Rig
+{
+	std::vector<int> talks;      // antes do pm: o destrutor do app ainda chama talk(false)
+	PhoneManager pm; PhoneNet net; NullCanvas cv;
+	std::vector<Net::Request> sent; std::vector<std::string> notes; std::vector<std::string> incoming; bool sendOk = true;
+	Rig()
+	{
+		InstallDefaultApps(pm); setup(pm); net.attach(&pm.context());
+		net.send = [this](const Net::Request& r) { if (sendOk) sent.push_back(r); return sendOk; };
+		net.notify = [this](const std::string& t, const std::string& x, const std::string& app, int lv) { notes.push_back(t + "|" + x + "|" + app); pm.notifications().post(t, x, app, T, lv ? Notification::Warn : Notification::Info); };
+		net.incomingCall = [this](const std::string& n) { incoming.push_back(n); };
+		pm.context().talk = [this](bool on) { talks.push_back(on ? 1 : 0); };
+		pm.open(); frames(pm, cv, 30);
+	}
+	void pump() { T += 16; pm.context().nowMs = T; net.pump(T); }
+	void ev(const Net::Event& e) { net.onServerPacket(e); pump(); }
+	PhoneContext& c() { return pm.context(); }
+};
+
+int main()
+{
+	// ================= protocolo: OpDevice / OpChipOff =================
+	{
+		Net::Event e;
+		FakeBS a; a.u8(Net::OpDevice).u16(0).u8(0).u8(1).u8(7).str("1234567");
+		CHECK(Net::ParsePacket(a, e) && e.op == Net::OpDevice && e.hasPhone && e.number == "1234567");
+		FakeBS b; b.u8(Net::OpDevice).u16(0).u8(0).u8(1).u8(0);                              // tem celular, sem chip
+		CHECK(Net::ParsePacket(b, e) && e.hasPhone && e.number.empty());
+		FakeBS c; c.u8(Net::OpDevice).u16(0).u8(0).u8(0).u8(0);                              // sem celular
+		CHECK(Net::ParsePacket(c, e) && !e.hasPhone && e.number.empty());
+		FakeBS er; er.u8(Net::OpDevice).u16(3).u8(Net::S_NotLogged);                          // erro: so o status
+		CHECK(Net::ParsePacket(er, e) && e.status == Net::S_NotLogged);
+		FakeBS t1; t1.u8(Net::OpDevice).u16(0).u8(0).u8(1).u8(5).str("12345");               CHECK(!Net::ParsePacket(t1, e));   // numero de 5 digitos
+		FakeBS t2; t2.u8(Net::OpDevice).u16(0).u8(0).u8(1).u8(7).str("12a4567");             CHECK(!Net::ParsePacket(t2, e));   // nao numerico
+		FakeBS t3; t3.u8(Net::OpDevice).u16(0).u8(0).u8(1).u8(7).str("123");                 CHECK(!Net::ParsePacket(t3, e));   // truncado
+		FakeBS t4; t4.u8(Net::OpDevice).u16(0).u8(0);                                        CHECK(!Net::ParsePacket(t4, e));   // sem payload
+		FakeBS ch; ch.u8(Net::OpChipOff).u16(5).u8(Net::S_NoSpace);
+		CHECK(Net::ParsePacket(ch, e) && e.op == Net::OpChipOff && e.status == Net::S_NoSpace && e.req == 5);
+		FakeBS ch2; ch2.u8(Net::OpChipOff).u16(6).u8(0);
+		CHECK(Net::ParsePacket(ch2, e) && e.status == 0);
+		CHECK(Net::StatusText(Net::S_NoSpace).find("cheio") != std::string::npos && Net::StatusText(Net::S_NoLine).find("chip") != std::string::npos);
+		srand(11); for (int k = 0; k < 20000; ++k) { FakeBS g; g.u8(Net::OpDevice).u16(0).u8(0); int n = rand() % 14; for (int j = 0; j < n; ++j) g.u8(rand() & 255); Net::ParsePacket(g, e); }   // lixo nao derruba
+	}
+
+	// ================= PhoneNet: aparelho, chip, "Sem chip" =================
+	{
+		Rig r; std::vector<bool> changes; r.net.deviceChanged = [&](bool hp) { changes.push_back(hp); };
+		Net::Event d; d.op = Net::OpDevice; d.hasPhone = true;                                     // tem celular, SEM chip
+		r.ev(d);
+		CHECK(changes.size() == 1 && changes[0] && r.c().networked && r.c().myNumber.empty());
+		CHECK(r.c().dial("1234567").find("chip") != std::string::npos);                             // nao liga sem chip
+		CHECK(r.c().sendMessage("1234567", "oi").find("chip") != std::string::npos);
+		CHECK(r.sent.empty());
+		CHECK(r.net.removeChip().find("n\xC3\xA3o tem chip") != std::string::npos);                 // nada para remover
+		d.number = "5551234"; r.ev(d);                                                              // instalou um chip
+		CHECK(changes.size() == 2 && r.c().myNumber == "5551234");
+		CHECK(r.c().dial("1234567").empty() && r.sent.size() == 1 && r.sent[0].op == Net::OpDial);   // agora liga
+		r.net.hangup(); r.sent.clear(); r.ev(replyEv(Net::OpHangup, 0, 0));
+		Net::Event off = replyEv(Net::OpCall, 0, 0); off.callState = 0; r.ev(off);
+		// remover o chip
+		r.c().call = PhoneCall();
+		CHECK(r.net.removeChip().empty());
+		CHECK(!r.sent.empty() && r.sent.back().op == Net::OpChipOff);
+		const int rq = r.sent.back().req;
+		r.ev(replyEv(Net::OpChipOff, rq, Net::S_NoSpace)); CHECK(r.c().chipMsg.find("cheio") != std::string::npos);
+		r.c().chipMsg.clear();
+		CHECK(r.net.removeChip().empty()); const int rq2 = r.sent.back().req;
+		r.ev(replyEv(Net::OpChipOff, rq2, 0)); CHECK(r.c().chipMsg.find("removido") != std::string::npos);
+		d.number.clear(); r.ev(d); CHECK(r.c().myNumber.empty());                                    // servidor confirma: sem chip
+		// sem celular
+		d.hasPhone = false; r.ev(d); CHECK(changes.back() == false);
+		// resposta que nunca chega: tempo esgotado mostra aviso
+		Net::Event d2; d2.op = Net::OpDevice; d2.hasPhone = true; d2.number = "5551234"; r.ev(d2);
+		r.c().chipMsg.clear(); CHECK(r.net.removeChip().empty());
+		for (int i = 0; i < 500; ++i) r.pump();
+		CHECK(!r.c().chipMsg.empty());
+		// reconexao esquece tudo
+		r.net.connectionReset(); r.pump(); CHECK(r.c().myNumber.empty() && !r.c().networked);
+	}
+
+	// ================= Ajustes: "Sem chip" e remover chip (duas etapas) =================
+	{
+		Rig r; int removed = 0;
+		r.c().networked = true;
+		r.c().removeChip = [&]() { ++removed; return std::string(); };
+		r.pm.openApp("ajustes"); frames(r.pm, r.cv, 20);
+		CHECK(r.cv.has("Sem chip") && !r.cv.has("Remover chip"));
+		r.c().myNumber = "5551234"; r.cv.texts.clear(); frames(r.pm, r.cv, 10);
+		CHECK(r.cv.has("555") && r.cv.has("Remover chip"));
+		// toca na linha: 1o toque pede confirmacao, 2o executa
+		auto tapAt = [&](Vec2 p) { r.pm.input().handleRaw(2, 0, (int)p.x, (int)p.y, false); r.pm.input().handleRaw(1, 0, (int)p.x, (int)p.y, false); frames(r.pm, r.cv, 3); };
+		Vec2 p;
+		r.cv.texts.clear(); r.cv.pos.clear(); frames(r.pm, r.cv, 3);
+		CHECK(r.cv.find("Remover chip", p)); tapAt({ p.x + 6, p.y + 6 });
+		CHECK(removed == 0 && r.cv.has("Toque de novo"));                                           // 1o toque: pede confirmacao
+		r.cv.texts.clear(); r.cv.pos.clear(); frames(r.pm, r.cv, 3);
+		CHECK(r.cv.find("Toque de novo", p)); tapAt({ p.x + 6, p.y + 6 });
+		CHECK(removed == 1);                                                                          // 2o toque: executa
+	}
+
+	// ================= Loja: sem celular no inventario =================
+	{
+		Phone::Store::Service st(nullptr);
+		st.markNoPhone();
+		CHECK(st.meLoaded && !st.hasDevice && st.noPhone);
+		st.refresh(100000, true); CHECK(st.meLoaded && !st.hasDevice);                              // refresh nao tenta falar com o servidor
+		st.reset(); CHECK(!st.meLoaded && !st.noPhone);
+	}
+
+	printf("%d/%d verificacoes OK\n", total - fails, total);
+	return fails ? 1 : 0;
+}

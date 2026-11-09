@@ -220,12 +220,13 @@ namespace Phone
 	class GramApp : public KeyboardApp
 	{
 	public:
-		enum { ID_BACK = 1, ID_ACTION, ID_SEND, ID_COMPOSER, ID_REFRESH, ID_MORE, ID_LIKE = 1000, ID_COMMENT = 2000, ID_DEL = 3000, ID_PICK = 4000 };
+		enum { ID_BACK = 1, ID_ACTION, ID_SEND, ID_COMPOSER, ID_REFRESH, ID_MORE, ID_FUSER, ID_FPASS, ID_LOGIN, ID_TOGGLE, ID_LOGOUT, ID_LIKE = 1000, ID_COMMENT = 2000, ID_DEL = 3000, ID_PICK = 4000 };
 		enum Screen { Feed = 0, Comments, Pick, Compose };
 		explicit GramApp(PhoneContext* c) : KeyboardApp(c) {}
 		void onResume() override
 		{
 			Gram::Service* g = m_c->gram;
+			if (g) g->loadMe(m_c->nowMs);
 			if (m_c->launchArg.compare(0, 5, "post:") == 0) { m_photo = m_c->launchArg.substr(5); m_c->launchArg.clear(); m_screen = Compose; m_caption.clear(); hideKeyboard(); if (g) g->postState = 0; }
 			if (g && m_screen == Feed && (!g->feedLoaded || m_c->nowMs - m_lastRefresh > 60000)) { g->refresh(m_c->nowMs); m_lastRefresh = m_c->nowMs; }
 		}
@@ -240,6 +241,8 @@ namespace Phone
 		{
 			m_scroll.update(dt);
 			Gram::Service* g = m_c->gram; if (!g) return;
+			if (g->accountState == 0 && m_c->networked) g->loadMe(m_c->nowMs);
+			if (g->accountState == 3 && m_loginKb) { m_loginKb = false; hideKeyboard(); m_pass.clear(); }
 			const std::string t = g->takeToast(); if (!t.empty()) m_msg.set(t, m_c->nowMs);
 			if (m_screen == Compose && g->postState == 2) { g->postState = 0; m_screen = Feed; m_scroll = ScrollView(); m_caption.clear(); hideKeyboard(); m_msg.set("Foto publicada!", m_c->nowMs, false); }
 			else if (g->postState == 3) { g->postState = 0; m_msg.set(g->postError, m_c->nowMs); }
@@ -248,7 +251,8 @@ namespace Phone
 		{
 			cv.fillRect(content, PC::Light, 0);
 			if (!m_c->gram) { drawNoService(cv, m, content, "Gram indisponível neste servidor."); m_msg.draw(cv, m, content, m_c->nowMs); return; }
-			if (m_screen == Feed) drawFeed(cv, m, content);
+			if (m_c->gram->accountState != 3) drawLogin(cv, m, content);
+			else if (m_screen == Feed) drawFeed(cv, m, content);
 			else if (m_screen == Comments) drawComments(cv, m, content);
 			else if (m_screen == Pick) drawPick(cv, m, content);
 			else drawCompose(cv, m, content);
@@ -261,7 +265,9 @@ namespace Phone
 			trackPress(t);
 			if (t.kind != Touch::Tap || !m_c->gram) return true;
 			Gram::Service* g = m_c->gram; const int id = hitAt(t.pos);
+			if (g->accountState != 3) { loginTap(id); return true; }
 			if (id == ID_BACK) { if (m_kbOn) hideKeyboard(); onBackApp(); return true; }
+			if (id == ID_LOGOUT) { g->logout(m_c->nowMs); m_screen = Feed; m_scroll = ScrollView(); m_user.clear(); m_pass.clear(); m_regMode = false; return true; }
 			if (m_screen == Feed)
 			{
 				if (id == ID_ACTION) { m_screen = Pick; m_scroll = ScrollView(); }
@@ -316,6 +322,13 @@ namespace Phone
 	protected:
 		void onKeyEvent(const Keyboard::Event& e) override
 		{
+			if (m_c->gram && m_c->gram->accountState != 3)
+			{
+				std::string& f = (m_field == 0) ? m_user : m_pass;
+				if (Keyboard::Apply(f, e, m_field == 0 ? 20 : 48, false, Keyboard::Mode::Text)) { if (m_field == 0) { m_field = 1; showKeyboard(Keyboard::Mode::Text, "Entrar", m_pass); } else submitLogin(); }
+				else m_kb.autoShift(f);
+				return;
+			}
 			if (m_screen == Comments) { if (Keyboard::Apply(m_text, e, 140, false, Keyboard::Mode::Text)) sendComment(); else m_kb.autoShift(m_text); }
 			else if (m_screen == Compose) { if (Keyboard::Apply(m_caption, e, 140, false, Keyboard::Mode::Text)) hideKeyboard(); else m_kb.autoShift(m_caption); }
 		}
@@ -325,6 +338,62 @@ namespace Phone
 		{
 			m_post = id; m_screen = Comments; m_text.clear(); hideKeyboard(); m_scroll = ScrollView(); m_scroll.jumpToEnd();
 			m_c->gram->loadComments(id, m_c->nowMs);
+		}
+		void submitLogin()
+		{
+			Gram::Service* g = m_c->gram; if (!g) return;
+			const std::string err = g->login(m_user, m_pass, m_regMode, m_c->nowMs);
+			if (!err.empty()) { g->authError = err; return; }
+			hideKeyboard();
+		}
+		void loginTap(int id)
+		{
+			Gram::Service* g = m_c->gram;
+			if (id == ID_FUSER) { m_field = 0; m_loginKb = true; showKeyboard(Keyboard::Mode::Text, "Próximo", m_user); }
+			else if (id == ID_FPASS) { m_field = 1; m_loginKb = true; showKeyboard(Keyboard::Mode::Text, "Entrar", m_pass); }
+			else if (id == ID_LOGIN) submitLogin();
+			else if (id == ID_TOGGLE) { m_regMode = !m_regMode; g->authError.clear(); }
+			else if (id == ID_BACK) { if (m_kbOn) hideKeyboard(); }
+		}
+		void drawLogin(Canvas& cv, const Metrics& m, const Rect& content)
+		{
+			Gram::Service* g = m_c->gram;
+			NavResult nv = DrawNavBar(cv, m, content, "Gram", "", "", true, false, false);
+			Rect body = layoutKeyboard(m, nv.body);
+			beginFrame(body);
+			if (!m_c->networked) { DrawTextIn(cv, { body.x + m.px(20), body.center().y - m.px(14), body.w - m.px(40), m.px(28) }, "Sem conexão com o servidor.", PC::Gray, m.font(16), Align::Center); return; }
+			if (g->accountState != 2) { DrawTextIn(cv, { body.x + m.px(20), body.center().y - m.px(14), body.w - m.px(40), m.px(28) }, "Conectando...", PC::Gray, m.font(16), Align::Center); return; }
+			const float mx = m.px(24), w = body.w - 2 * mx; float y = body.y + m.px(14);
+			DrawTextIn(cv, { body.x, y, body.w, m.px(30) }, m_regMode ? "Criar conta" : "Entrar", PC::LabelL, m.font(22), Align::Center); y += m.px(32);
+			DrawTextIn(cv, { body.x + mx, y, w, m.px(32) }, "Sua conta do Gram é só sua: vale em qualquer celular, sem depender do chip.", PC::Gray, m.font(11.5f), Align::Center); y += m.px(38);
+			auto field = [&](int idf, int which, const std::string& txt, const char* hint, bool mask)
+			{
+				const Rect f{ body.x + mx, y, w, m.px(42) };
+				cv.fillRect(f, Color(255, 255, 255), m.px(10));
+				const bool act = m_kbOn && m_field == which;
+				cv.strokeRect(f, act ? PC::Blue : Color(60, 60, 67, 60), m.px(10), std::max(1.0f, m.px(act ? 1.8f : 1.0f)));
+				const float tfs = m.font(15);
+				if (txt.empty() && !act) DrawTextIn(cv, f.inset(m.px(12), 0), hint, PC::Gray, tfs);
+				else
+				{
+					const std::string raw = mask ? std::string(txt.size(), '*') : txt;
+					const std::string shown = TailFit(cv, raw, tfs, f.w - m.px(26));
+					DrawTextIn(cv, f.inset(m.px(12), 0), shown, PC::LabelL, tfs);
+					if (act && ((m_c->nowMs / 500) % 2 == 0)) cv.fillRect({ f.x + m.px(12) + cv.measure(shown, tfs).x + m.px(1), f.center().y - tfs * 0.6f, std::max(1.5f, m.px(1.5f)), tfs * 1.2f }, PC::Blue, 0);
+				}
+				m_hits.add(idf, f); y += m.px(52);
+			};
+			field(ID_FUSER, 0, m_user, "@usuario", false);
+			field(ID_FPASS, 1, m_pass, "Senha", true);
+			if (!g->authError.empty()) { DrawTextIn(cv, { body.x + mx, y - m.px(6), w, m.px(32) }, g->authError, PC::Red, m.font(12.5f), Align::Center); }
+			y += m.px(34);
+			const Rect b{ body.x + mx, y, w, m.px(44) };
+			DrawFilledButton(cv, m, b, g->authBusy ? "Aguarde..." : (m_regMode ? "Criar conta" : "Entrar"), PC::Blue, Color(255, 255, 255), m_press == ID_LOGIN);
+			m_hits.add(ID_LOGIN, b); y += m.px(52);
+			const Rect t{ body.x + mx, y, w, m.px(34) };
+			DrawTextIn(cv, t, m_regMode ? "Já tenho conta" : "Criar conta", PC::Blue, m.font(15), Align::Center);
+			m_hits.add(ID_TOGGLE, t);
+			drawKeyboard(cv, m);
 		}
 		void drawNoService(Canvas& cv, const Metrics& m, const Rect& content, const std::string& why)
 		{
@@ -356,8 +425,11 @@ namespace Phone
 			float y = 0;
 			{
 				const Rect r = m_scroll.itemRect(y, m.px(44)); const Rect rr{ body.x + mx, r.y + m.px(6), cw, m.px(34) };
-				DrawTextIn(cv, rr, g->loadingFeed ? "Carregando..." : "Atualizar", PC::Blue, m.font(15), Align::Center);
-				m_hits.add(ID_REFRESH, rr); y += m.px(44);
+				const Rect ur{ rr.x, rr.y, cw * 0.34f, rr.h }, lr{ rr.right() - m.px(56), rr.y, m.px(56), rr.h }, ar{ ur.right(), rr.y, lr.x - ur.right(), rr.h };
+				DrawTextIn(cv, ur, "@" + g->username, PC::DimL, m.font(12.5f));
+				DrawTextIn(cv, ar, g->loadingFeed ? "Carregando..." : "Atualizar", PC::Blue, m.font(15), Align::Center);
+				DrawTextIn(cv, lr, "Sair", PC::Red, m.font(13.5f), Align::Right);
+				m_hits.add(ID_REFRESH, ar); m_hits.add(ID_LOGOUT, lr); y += m.px(44);
 			}
 			if (g->posts.empty() && !g->loadingFeed)
 				DrawTextIn(cv, { body.x + m.px(20), body.y + m.px(90), body.w - m.px(40), m.px(24) }, g->feedLoaded ? "Ainda não há fotos. Seja o primeiro!" : "Toque em Atualizar.", PC::Gray, m.font(15), Align::Center);
@@ -374,7 +446,7 @@ namespace Phone
 				DrawTextIn(cv, { ac.x - av * 0.5f, ac.y - av * 0.5f, av, av }, Initial(p.name), Color(255, 255, 255), m.font(15), Align::Center);
 				DrawTextIn(cv, { card.x + m.px(54), card.y + m.px(7), card.w - m.px(130), m.px(22) }, p.name, PC::LabelL, m.font(15));
 				DrawTextIn(cv, { card.x + m.px(54), card.y + m.px(27), card.w - m.px(130), m.px(18) }, Gram::AgeText(p.ageS), PC::Gray, m.font(12));
-				if (p.number == m_c->myNumber)
+				if (!g->ownAuthor().empty() && p.number == g->ownAuthor())
 				{
 					const Rect d{ card.right() - m.px(74), card.y + m.px(8), m.px(66), m.px(34) };
 					DrawTextIn(cv, d, m_confirmDel == p.id ? "Confirmar" : "Apagar", PC::Red, m.font(13), Align::Right); m_hits.add(ID_DEL + (int)i, d);
@@ -512,7 +584,7 @@ namespace Phone
 			drawKeyboard(cv, m);
 		}
 
-		std::vector<std::string> m_names; std::string m_text, m_caption, m_photo; long long m_post = 0, m_confirmDel = 0; int m_screen = Feed;
+		std::vector<std::string> m_names; std::string m_text, m_caption, m_photo, m_user, m_pass; long long m_post = 0, m_confirmDel = 0; int m_screen = Feed; int m_field = 0; bool m_regMode = false, m_loginKb = false;
 		int64_t m_lastRefresh = 0, m_lastMore = 0; ScrollView m_scroll; InlineMsg m_msg;
 	};
 }

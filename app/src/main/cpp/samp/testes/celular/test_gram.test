@@ -62,6 +62,32 @@ int main()
 
 	Rig A(ta, port), B(tb, port);
 
+	// ---- conta do Gram: sem login nada e permitido; cadastro, login errado, login certo, sair, outra conta no mesmo aparelho ----
+	A.svc.loadMe(g_now);
+	CHECK(A.until([&] { return A.svc.accountState == 2; }));                                  // aparelho sem conta conectada
+	A.svc.post("x", "x", g_now);
+	CHECK(A.svc.login("ab", "senha123", true, g_now) == Gram::ErrText("badname"));
+	CHECK(A.svc.login("joao.silva", "123", true, g_now) == Gram::ErrText("badpass"));
+	CHECK(A.svc.login("@Joao.Silva", "senha123", true, g_now).empty() && A.svc.authBusy);
+	CHECK(A.until([&] { return A.svc.accountState == 3; }));
+	CHECK(A.svc.username == "joao.silva" && A.svc.gid > 0 && A.svc.ownAuthor() == "g" + std::to_string(A.svc.gid) && !A.svc.authBusy);
+	CHECK(B.svc.login("joao.silva", "outrasenha", true, g_now).empty());
+	CHECK(B.until([&] { return !B.svc.authBusy; }) && B.svc.accountState != 3 && B.svc.authError == Gram::ErrText("taken"));
+	CHECK(B.svc.login("maria.souza", "senha456", true, g_now).empty());
+	CHECK(B.until([&] { return B.svc.accountState == 3; }));
+	// sair e voltar a entrar (senha errada primeiro)
+	B.svc.logout(g_now); CHECK(B.svc.accountState == 2 && B.svc.ownAuthor().empty());
+	B.until([&] { return false; }, 300);
+	CHECK(B.svc.login("maria.souza", "errada", false, g_now).empty());
+	CHECK(B.until([&] { return !B.svc.authBusy; }) && B.svc.accountState == 2 && B.svc.authError == Gram::ErrText("badlogin"));
+	CHECK(B.svc.login("maria.souza", "senha456", false, g_now).empty());
+	CHECK(B.until([&] { return B.svc.accountState == 3; }));
+	// sessao persiste NO APARELHO: um cliente novo com o mesmo token ja encontra a conta conectada
+	{
+		Rig R(ta, port); R.svc.loadMe(g_now);
+		CHECK(R.until([&] { return R.svc.accountState == 3; }) && R.svc.username == "joao.silva");
+	}
+
 	// ---- feed vazio: pede token sozinho ----
 	A.svc.refresh(g_now);
 	CHECK(A.until([&] { return A.svc.feedLoaded; }));
@@ -77,7 +103,7 @@ int main()
 	CHECK(A.svc.postState == 1 && !A.svc.post(jpg, "x", g_now).empty());     // so uma por vez
 	CHECK(A.until([&] { return A.svc.postState == 2; }));
 	CHECK(A.until([&] { return A.svc.feedLoaded && A.svc.posts.size() == 1; }));
-	CHECK(A.svc.posts[0].number.size() == 7 && A.svc.posts[0].name == "Joao Silva" && A.svc.posts[0].caption == "Minha primeira foto \xc3\xa7\xc3\xa3o tab");
+	CHECK(A.svc.posts[0].number == A.svc.ownAuthor() && A.svc.posts[0].name == "joao.silva" && A.svc.posts[0].caption == "Minha primeira foto \xc3\xa7\xc3\xa3o tab");
 
 	// ---- baixar a imagem publica: identica ao enviado ----
 	std::string got; bool done = false, okimg = false;
@@ -89,8 +115,8 @@ int main()
 	CHECK(!A.svc.fetchImage("../../etc/passwd", [](bool, const std::string&) {}));
 
 	// ---- outra conta: ve o post, curte, comenta ----
-	B.svc.refresh(g_now);
-	CHECK(B.until([&] { return B.svc.feedLoaded; }) && B.svc.posts.size() == 1);
+	B.svc.feedLoaded = false; B.svc.loadingFeed = false; B.svc.refresh(g_now);
+	CHECK(B.until([&] { return B.svc.feedLoaded && B.svc.posts.size() == 1; }) && B.svc.posts.size() == 1);
 	const long long id = B.svc.posts[0].id;
 	B.svc.like(id, g_now);
 	CHECK(B.svc.posts[0].liked && B.svc.posts[0].likes == 1);                // otimista
@@ -104,7 +130,7 @@ int main()
 	CHECK(B.svc.comment(id, "", g_now) != "");
 	CHECK(B.svc.comment(id, "Que foto linda \xc3\xa7", g_now).empty());
 	CHECK(B.until([&] { return B.svc.comments.size() == 1; }));
-	CHECK(B.svc.comments[0].body == "Que foto linda \xc3\xa7" && B.svc.comments[0].name == "Maria Souza" && B.svc.posts[0].comments == 1);
+	CHECK(B.svc.comments[0].body == "Que foto linda \xc3\xa7" && B.svc.comments[0].name == "maria.souza" && B.svc.posts[0].comments == 1);
 	B.svc.comment(id, std::string(141, 'a'), g_now); B.until([&] { return false; }, 400);
 	CHECK(B.svc.takeToast() == Gram::ErrText("long"));                       // o servidor recusou: aviso real
 	CHECK(B.svc.takeToast().empty());

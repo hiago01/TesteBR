@@ -175,14 +175,25 @@ int main()
 		pm.openApp("gram"); frames(pm, cv, 30); CHECK(cv.has("Sem conexão"));                                          // celular ainda sem rede
 		pm.context().networked = true; pm.context().myNumber = "1111111";
 		frames(pm, cv, 5); CHECK(tokenAsks >= 1);                                                                       // abriu: pediu o token
+		// ---- conta do Gram: sem conta conectada o app mostra o login (nunca o feed) ----
+		svc.accountState = 2; frames(pm, cv, 5);
+		CHECK(cv.has("Entrar") && cv.has("Criar conta") && cv.has("@usuario") && cv.has("Senha") && !cv.has("Atualizar"));
+		svc.accountState = 1; frames(pm, cv, 3); CHECK(cv.has("Conectando"));
+		svc.accountState = 2; frames(pm, cv, 3);
+		CHECK(!svc.login("ab", "senha123", false, T).empty());                                                       // usuario curto
+		CHECK(!svc.login("joao silva", "senha123", false, T).empty());                                               // espaco
+		CHECK(!svc.login("joao.silva", "123", false, T).empty());                                                    // senha curta
+		CHECK(tapText(pm, cv, "Criar conta")); frames(pm, cv, 3); CHECK(cv.has("Já tenho conta"));                    // alterna para cadastro
+		CHECK(tapText(pm, cv, "Já tenho conta")); frames(pm, cv, 3); CHECK(cv.has("Entrar"));
+		svc.accountState = 3; svc.gid = 1; svc.username = "joao.silva"; svc.authBusy = false; frames(pm, cv, 5);       // conectou
 		svc.feedLoaded = true; svc.loadingFeed = false;
 		auto mk = [](long long id, const char* num, const char* name, int likes, int com, bool liked, const char* cap) { Gram::Post p; p.id = id; p.number = num; p.name = name; p.media = std::string(32, (char)('a' + id % 6)); p.likes = likes; p.comments = com; p.liked = liked; p.caption = cap; p.ageS = 300; return p; };
-		svc.posts = { mk(30, "2222222", "Maria Souza", 11, 22, false, "Dia lindo no centro da cidade"), mk(20, "1111111", "Joao Silva", 33, 44, true, ""), mk(10, "3333333", "Pedro", 5, 6, false, "") };
+		svc.posts = { mk(30, "g2", "Maria Souza", 11, 22, false, "Dia lindo no centro da cidade"), mk(20, "g1", "Joao Silva", 33, 44, true, ""), mk(10, "g3", "Pedro", 5, 6, false, "") };
 		frames(pm, cv, 5);
 		CHECK(cv.has("Maria Souza") && cv.has("Joao Silva") && cv.has("Dia lindo") && cv.has("5 min") && cv.has("Atualizar"));
 		CHECK(cv.images >= 2);
 		bool askedR = false; for (auto& k : ph.asked) if (k == "R:" + svc.posts[0].media) askedR = true; CHECK(askedR);
-		CHECK(cv.has("Apagar"));                                                                                        // so no post proprio (1111111)
+		CHECK(cv.has("Apagar") && cv.has("@joao.silva") && cv.has("Sair"));                                              // so no post proprio (g1); mostra o @ da conta
 		// curtir o primeiro post: otimista (o servidor confirma depois)
 		Vec2 p;
 		CHECK(cv.find("11", p)); tapAt(pm, cv, { p.x - 20, p.y + 8 });
@@ -192,7 +203,7 @@ int main()
 		// comentarios do primeiro post
 		CHECK(cv.find("22", p)); tapAt(pm, cv, { p.x - 15, p.y + 8 });
 		GramApp* ga = fg<GramApp>(pm); CHECK(ga && ga->screen() == GramApp::Comments && svc.commentsPost == 30);
-		svc.comments.clear(); svc.loadingComments = false; Gram::Comment k1; k1.id = 1; k1.number = "3333333"; k1.name = "Pedro"; k1.body = "Muito bom esse lugar"; k1.ageS = 4000; svc.comments.push_back(k1);
+		svc.comments.clear(); svc.loadingComments = false; Gram::Comment k1; k1.id = 1; k1.number = "g3"; k1.name = "Pedro"; k1.body = "Muito bom esse lugar"; k1.ageS = 4000; svc.comments.push_back(k1);
 		frames(pm, cv, 5); CHECK(cv.has("Comentários") && cv.has("Muito bom") && cv.has("1 h") && cv.has("Adicionar comentário"));
 		ga->setComment("   "); ga->sendComment(); CHECK(ga->screen() == GramApp::Comments);
 		ga->setComment("Concordo!"); ga->sendComment(); frames(pm, cv, 3);                       // entra na fila (sem token ainda); o texto limpa

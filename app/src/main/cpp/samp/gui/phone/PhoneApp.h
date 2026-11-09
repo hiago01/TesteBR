@@ -73,6 +73,8 @@ namespace Phone
 		// ---- rede do celular (preenchido pelo PhoneNet) ----
 		std::string myNumber;                                                                     // numero do jogador ("" = ainda desconhecido)
 		bool networked = false;                                                                   // o servidor respondeu ao celular (servico existe)
+		std::function<std::string()> removeChip;                                                  // Ajustes: tira o chip do celular ("" = pedido enviado; senao o erro)
+		std::string chipMsg; int64_t chipMsgAt = 0;                                               // resultado da remocao do chip (mostrado nos Ajustes por alguns segundos)
 		PhoneCall call;
 		std::function<void()> answer, hangup;
 		std::function<void(bool)> talk;                                                           // ligacao com voz: true = comecou a falar (segurando), false = parou                                                     // ligacao: atender / desligar (recusar / cancelar)
