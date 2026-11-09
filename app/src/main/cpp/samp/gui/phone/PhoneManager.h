@@ -323,16 +323,25 @@ namespace Phone
 		{
 			const Metrics& m = m_m;
 			if (!m.valid) return;
-			// corpo
-			cv.fillRect(m.frame.moved(0, m.px(3)), Color(0, 0, 0, 70), m.frameRadius);
-			cv.fillRect(m.frame, Colors::Bezel, m.frameRadius);
-			cv.strokeRect(m.frame, Colors::BezelEdge, m.frameRadius, std::max(1.5f, m.px(1.6f)));
-			cv.pushClip(m.screen);
 			const std::string fg = m_apps.foregroundId();
 			const PhoneAppDef* fd = fg.empty() ? nullptr : def(fg);
 			const bool animating = m_anim.t < 1.0f;
-			// app "seeThrough" (Camera) totalmente aberto: a tela mostra o jogo, sem papel de parede
+			// app "seeThrough" (Camera) totalmente aberto: a tela mostra o jogo, sem papel de parede NEM fundo da moldura sob a tela
 			const bool clearScreen = fd && fd->seeThrough && !animating && !m_recents;
+			// corpo
+			cv.fillRect(m.frame.moved(0, m.px(3)), Color(0, 0, 0, 70), m.frameRadius);
+			if (!clearScreen) cv.fillRect(m.frame, Colors::Bezel, m.frameRadius);
+			else
+			{
+				// moldura em 4 faixas ao redor da tela (o interior fica transparente)
+				const Rect& f = m.frame; const Rect& sc = m.screen;
+				cv.fillRect({ f.x, f.y, f.w, sc.y - f.y }, Colors::Bezel, m.frameRadius);
+				cv.fillRect({ f.x, sc.bottom(), f.w, f.bottom() - sc.bottom() }, Colors::Bezel, m.frameRadius);
+				cv.fillRect({ f.x, sc.y - 1, sc.x - f.x, sc.h + 2 }, Colors::Bezel, 0);
+				cv.fillRect({ sc.right(), sc.y - 1, f.right() - sc.right(), sc.h + 2 }, Colors::Bezel, 0);
+			}
+			cv.strokeRect(m.frame, Colors::BezelEdge, m.frameRadius, std::max(1.5f, m.px(1.6f)));
+			cv.pushClip(m.screen);
 			if (!clearScreen)
 			{
 				cv.fillGradientV({ m.screen.x, m.screen.y, m.screen.w, m.screen.h * 0.45f }, PC::Wall0, PC::Wall1);
