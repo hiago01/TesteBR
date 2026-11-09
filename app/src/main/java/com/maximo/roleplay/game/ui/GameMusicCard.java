@@ -31,7 +31,7 @@ public class GameMusicCard {
     private final View card;
     private final ImageView play, volume;
     private final SeekBar seek;
-    private final TextView cur, total;
+    private final TextView cur, total, titleView, subtitleView;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     private boolean dragging = false;
@@ -61,6 +61,8 @@ public class GameMusicCard {
         seek = overlay.findViewById(R.id.mx_gm_seek);
         cur = overlay.findViewById(R.id.mx_gm_time_cur);
         total = overlay.findViewById(R.id.mx_gm_time_total);
+        titleView = overlay.findViewById(R.id.mx_gm_title);
+        subtitleView = overlay.findViewById(R.id.mx_gm_subtitle);
 
         if (!music.hasGameSession()) { // nada tocando ao abrir o jogo: nao exibe o player
             dismissed = true;
@@ -74,12 +76,12 @@ public class GameMusicCard {
         play.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { music.toggle(); }
         });
-        // So existe uma faixa: anterior/proxima reiniciam a musica.
-        View.OnClickListener restart = new View.OnClickListener() {
-            @Override public void onClick(View v) { music.seekToMs(0); refresh(); }
-        };
-        overlay.findViewById(R.id.mx_gm_prev).setOnClickListener(restart);
-        overlay.findViewById(R.id.mx_gm_next).setOnClickListener(restart);
+        overlay.findViewById(R.id.mx_gm_prev).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { music.previous(); refresh(); }
+        });
+        overlay.findViewById(R.id.mx_gm_next).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { music.next(); refresh(); }
+        });
         volume.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 music.setVolumePercent(music.getVolumePercent() == 0 ? 55 : 0);
@@ -150,6 +152,8 @@ public class GameMusicCard {
             dismiss();
             return;
         }
+        titleView.setText(music.getTitle());
+        subtitleView.setText(music.getSubtitle());
         int dur = music.getDurationMs();
         int pos = Math.min(music.getPositionMs(), dur > 0 ? dur : Integer.MAX_VALUE);
         if (!dragging) {

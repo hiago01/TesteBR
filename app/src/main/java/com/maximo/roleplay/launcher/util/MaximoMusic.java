@@ -24,7 +24,10 @@ public final class MaximoMusic {
     private static final String PREFS = "mx_music";
     private static final String KEY_ENABLED = "enabled";
     private static final String KEY_VOLUME = "volume";
-    private static final int[] TRACKS = { R.raw.maximo_theme };
+    /** Ordem de reproducao: 0 = Efeito Domino (toca primeiro), 1 = Tema Oficial Maximo RP. */
+    private static final int[] TRACKS = { R.raw.efeito_domino, R.raw.maximo_theme };
+    private static final int[] TITLES = { R.string.mx_music_title_1, R.string.mx_music_title };
+    private static final int[] SUBTITLES = { R.string.mx_music_subtitle_1, R.string.mx_music_subtitle };
 
     public interface Listener {
         void onMusicStateChanged(boolean playing, int volumePercent);
@@ -85,6 +88,8 @@ public final class MaximoMusic {
     public int getVolumePercent() { return prefs.getInt(KEY_VOLUME, 55); }
     public boolean isPlaying() { return player != null && safeIsPlaying(); }
     public boolean hasFailed() { return failed; }
+    public String getTitle() { return app.getString(TITLES[track]); }
+    public String getSubtitle() { return app.getString(SUBTITLES[track]); }
 
     public void addListener(Listener l) { if (l != null && !listeners.contains(l)) listeners.add(l); }
     public void removeListener(Listener l) { listeners.remove(l); }
@@ -229,7 +234,11 @@ public final class MaximoMusic {
                         .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build();
                 player = MediaPlayer.create(app, TRACKS[track], attrs, AudioManager.AUDIO_SESSION_ID_GENERATE);
                 if (player == null) { fail("MediaPlayer.create devolveu null"); return; }
-                player.setLooping(true);
+                player.setLooping(false);
+                // launcher: ao terminar passa para a proxima faixa (e volta a primeira); no jogo toca ate o fim e fecha
+                player.setOnCompletionListener(mp -> main.post(() -> {
+                    if (gameMode) finishTrack(); else changeTrack(1);
+                }));
                 player.setOnErrorListener((mp, what, extra) -> {
                     fail("MediaPlayer erro " + what + "/" + extra);
                     return true;

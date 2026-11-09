@@ -37,7 +37,7 @@ public class LoadingVideoView extends TextureView implements TextureView.Surface
             player = MediaPlayer.create(getContext(), R.raw.loading_video);
             if (player == null) return;
             player.setSurface(surface);
-            player.setVolume(1f, 1f);
+            player.setVolume(0f, 0f); // video sem audio: a musica vem do MaximoMusic
             player.setLooping(true);
             videoW = player.getVideoWidth();
             videoH = player.getVideoHeight();

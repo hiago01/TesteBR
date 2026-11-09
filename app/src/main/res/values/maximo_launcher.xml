@@ -47,6 +47,8 @@
     <string name="mx_footer_client_unknown">Versão %1$s</string>
     <string name="mx_footer_server">SERVIDOR</string>
     <string name="mx_footer_follow">NOS SIGA</string>
+    <string name="mx_music_title_1">Efeito Dominó</string>
+    <string name="mx_music_subtitle_1">Meno V x MC Geanzinho</string>
     <string name="mx_music_title">Máximo RP - Tema Oficial</string>
     <string name="mx_music_subtitle">Roleplay é aqui!</string>
     <string name="mx_music_error">Não foi possível reproduzir a música.</string>

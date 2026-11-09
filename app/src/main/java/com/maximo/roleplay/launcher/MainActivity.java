@@ -348,6 +348,9 @@ public class MainActivity extends AppCompatActivity {
         ImageButton vol = findViewById(R.id.mx_btn_volume);
         SeekBar seek = findViewById(R.id.mx_volume_seek);
         if (play == null || vol == null || seek == null) return;
+        TextView mt = findViewById(R.id.mx_player_title), ms = findViewById(R.id.mx_player_subtitle);
+        if (mt != null) mt.setText(MaximoMusic.get(this).getTitle());
+        if (ms != null) ms.setText(MaximoMusic.get(this).getSubtitle());
         play.setImageResource(playing ? R.drawable.mx_ic_pause : R.drawable.mx_ic_play);
         vol.setImageResource(volumePercent == 0 ? R.drawable.mx_ic_volume_off : R.drawable.mx_ic_volume);
         if (seek.getProgress() != volumePercent) seek.setProgress(volumePercent);
