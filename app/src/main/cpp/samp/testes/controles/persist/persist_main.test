@@ -76,11 +76,21 @@ int main()
 		ControlMode::ResetConfig(); ControlMode::GetHuds(g, cur);
 		CHECK(cur == 0 && g[0].ctlScale[B_ATTACK] == 1.0f && g[2].btnPos[B_JUMP].x == ModernConfig().btnPos[B_JUMP].x);
 	}
+	// 8b) INI sem layout_v (jogador antigo): entra com o HUD padrao novo (posicoes + opacidade 50%)
+	{
+		using namespace CtlLogic;
+		strcpy(s.m.szNickName, "SemVersao");
+		{ FILE* f = fopen(STORAGE "SAMP/settings.ini", "a"); fputs("\n[controles_SemVersao]\nmodo = moderno\nescolhido = 1\ntransparencia = 0.3\nb_ataque_x = 0.61\njoy_x = 0.2\n", f); fclose(f); }
+		ControlMode::EnsureLoaded();
+		const ModernConfig c3 = ControlMode::GetConfig(), d;
+		CHECK(std::fabs(c3.btnPos[B_ATTACK].x - d.btnPos[B_ATTACK].x) < 1e-4 && std::fabs(c3.joyPos.x - d.joyPos.x) < 1e-4);
+		CHECK(std::fabs(c3.ctlAlpha[B_ATTACK] - 0.5f) < 1e-4 && std::fabs(c3.ctlAlpha[B_SLOTS] - 0.5f) < 1e-4 && std::fabs(c3.ctlAlpha[B_COUNT] - 0.5f) < 1e-4);
+	}
 	// 9) migracao: INI antigo (sem hud1_*) vira HUD 1 sem perder posicoes/transparencia
 	{
 		using namespace CtlLogic;
 		strcpy(s.m.szNickName, "Antigo");
-		{ FILE* f = fopen(STORAGE "SAMP/settings.ini", "a"); fputs("\n[controles_Antigo]\nmodo = moderno\nescolhido = 1\ntransparencia = 0.7\nb_ataque_x = 0.61\nb_ataque_y = 0.52\njoy_x = 0.2\njoy_y = 0.6\n", f); fclose(f); }
+		{ FILE* f = fopen(STORAGE "SAMP/settings.ini", "a"); fputs("\n[controles_Antigo]\nmodo = moderno\nescolhido = 1\nlayout_v = 2\ntransparencia = 0.7\nb_ataque_x = 0.61\nb_ataque_y = 0.52\njoy_x = 0.2\njoy_y = 0.6\n", f); fclose(f); }
 		ControlMode::EnsureLoaded();
 		ModernConfig c2 = ControlMode::GetConfig();
 		CHECK(ControlMode::ActiveHud() == 0 && ControlMode::IsModern());

@@ -41,6 +41,7 @@
 #include "VisibilityPlugins.h"
 #include "Hose.h"
 #include "IdCard3D.h"
+#include "Giroflex.h"
 #include "game/Animation/AnimManager.h"
 #include "FileLoader.h"
 #include "Renderer.h"
@@ -621,6 +622,7 @@ void RenderEffects() {
 //    CGlass::Render();
     CHook::CallFunction<void>(g_libGTASA + 0x6CA5D0);
     CVisibilityPlugins::RenderReallyDrawLastObjects();
+    Giroflex_Render();    // giroflex: registra as coronas animadas dos veiculos com sirene ligada (antes do desenho)
     CCoronas::Render();
 
     // FIXME

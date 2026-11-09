@@ -10,6 +10,7 @@
 #include "../gui/samp_widgets/hudstate.h"
 #include "../game/Hose.h"
 #include "../game/IdCard3D.h"
+#include "../game/Giroflex.h"
 #include "../gui/samp_widgets/inventory.h"
 #include "../gui/samp_widgets/worldmap.h"
 #include "../game/CustomAnimSync.h"
@@ -2055,6 +2056,17 @@ void ScrSetIdCard(RPCParameters* rpcParams)
 	IdCard3D_OnServerPacket(playerId, (flags & 1) != 0, category, cargo, func);
 }
 
+// Giroflex Maximo RP: servidor -> client (RPC_ScrGiroflex = 205): uint16 vehicleId | uint8 estado (0/1)
+void ScrGiroflex(RPCParameters* rpcParams)
+{
+	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
+	int iBitLength = rpcParams->numberOfBitsOfData;
+	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	uint16_t vehId = 0; uint8_t state = 0;
+	if (!bsData.Read(vehId) || !bsData.Read(state)) return;
+	Giroflex_OnServerPacket(vehId, state != 0);
+}
+
 // Inventario Maximo RP: servidor -> client (RPC_ScrInventory = 203). Formato em maximo_inv.inc / inventory.h.
 void ScrInventory(RPCParameters* rpcParams)
 {
@@ -2134,6 +2146,8 @@ void RegisterScriptRPCs(RakClientInterface *pRakClient)
 	IdCard3D_Reset();      // nova conexão: descarta cartões da sessão anterior
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrInventory, ScrInventory);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrMap, ScrMap);
+	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrGiroflex, ScrGiroflex);
+	Giroflex_Reset();      // nova conexao: giroflex desligado
 	WorldMapWidget::Reset();
 	InventoryUI::Reset();  // nova conexão: inventário fechado e vazio
 	if (Diag::On("anim")) CustomAnimSync::Register(pRakClient);   // RPC 230: anim customizada (servidor -> cliente)
@@ -2198,6 +2212,8 @@ void UnregisterScriptRPCs(RakClientInterface *pRakClient)
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetIdCard);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrInventory);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrMap);
+	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrGiroflex);
+	Giroflex_Reset();
 	WorldMapWidget::Reset();
 	InventoryUI::Reset();
 	IdCard3D_Reset();      // saiu do servidor: limpa cartões

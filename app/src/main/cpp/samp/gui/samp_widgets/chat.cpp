@@ -12,6 +12,7 @@
 #include "../../game/Hose.h"
 #include "../../game/Trena.h"
 #include "../../game/IdCard3D.h"
+#include "../../game/Giroflex.h"
 #include "../../game/CustomSkin.h"
 #include "../../game/CorpTex.h"
 #include "../../game/RadarSkin.h"
@@ -276,6 +277,14 @@ if (input == "/cartao" || input.rfind("/cartao ", 0) == 0)
             std::string args = input.size() > 7 ? input.substr(8) : std::string();
             std::string reply = IdCard3D_Command(args);
 //            addDebugMessage("(Cliente): %s", reply.c_str());
+        }
+if (input == "/giroc" || input.rfind("/giroc ", 0) == 0)
+        {
+            // giroflex (cliente): /giroc | teste | teste off | recarregar
+            std::string args = input.size() > 6 ? input.substr(7) : std::string();
+            std::string reply = Giroflex_Command(args);
+            addDebugMessage("%s", reply.c_str());
+            return;
         }
 if (input == "/hud" || input.rfind("/hud ", 0) == 0)
         {

@@ -32,6 +32,8 @@ namespace
 		return CtlLogic::SectionFor(pSettings ? pSettings->Get().szNickName : nullptr);
 	}
 
+	constexpr long kLayoutVersion = 2;       // 2 = HUD padrao de 8/nov (posicoes do print final + todas as opacidades em 50%)
+
 	void LoadLocked(const std::string& sec)
 	{
 		using namespace CtlLogic;
@@ -70,7 +72,7 @@ namespace
 				g_cfg.btnPos[i].y = (float)ini.GetDoubleValue(s, (k + "_y").c_str(), g_cfg.btnPos[i].y);
 			}
 			for (int i = 0; i <= B_COUNT; i++) g_cfg.ctlAlpha[i] = g_cfg.alpha;      // opacidade antiga (global) como padrao
-			g_cfg.ctlAlpha[B_INV] = g_cfg.ctlAlpha[B_SLOTS] = 0.70f;                    // controles novos (inventario/slots): visiveis por padrao
+			// (inventario/slots seguem a mesma opacidade padrao dos demais: 50%)
 			g_cfg.Clamp();
 			const HudLayout legacy = ExtractLayout(g_cfg);
 			for (int n = 0; n < kHudCount; n++)
@@ -93,6 +95,14 @@ namespace
 				g_huds[n] = ExtractLayout(tmp);
 			}
 			g_hud = ClampHud((int)ini.GetLongValue(s, "hud_ativo", 1) - 1);
+			// Versao do layout: abaixo da atual, todo mundo entra com o HUD padrao novo (posicoes + opacidade 50%). Migracao unica:
+			// gravada em layout_v ao salvar; depois disso os ajustes do jogador voltam a valer.
+			if (ini.GetLongValue(s, "layout_v", 0) < kLayoutVersion)
+			{
+				g_cfg.alpha = ModernConfig().alpha;
+				for (auto& h : g_huds) h = HudLayout();
+				g_hud = 0;
+			}
 		}
 		ApplyLayout(g_cfg, g_huds[g_hud]);
 		g_loadedSection = sec;
@@ -126,6 +136,7 @@ namespace
 		// o HUD ativo sempre reflete g_cfg
 		g_huds[g_hud] = ExtractLayout(g_cfg);
 		ini.SetLongValue(s, "hud_ativo", g_hud + 1);
+		ini.SetLongValue(s, "layout_v", kLayoutVersion);
 		for (int n = 0; n < kHudCount; n++)
 		{
 			const HudLayout& h = g_huds[n];

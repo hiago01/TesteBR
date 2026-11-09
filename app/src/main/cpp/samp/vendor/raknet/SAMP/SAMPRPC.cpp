@@ -160,3 +160,5 @@ int RPC_ScrSetIdCard = 202;
 int RPC_ScrInventory = 203;
 // Mapa aberto Maximo RP (servidor -> cliente; ver gui/samp_widgets/WorldMapCore.h) - ID customizado
 int RPC_ScrMap = 204;
+// Giroflex Maximo RP (servidor -> cliente: uint16 veiculo | uint8 estado; ver game/Giroflex.h) - ID customizado
+int RPC_ScrGiroflex = 205;

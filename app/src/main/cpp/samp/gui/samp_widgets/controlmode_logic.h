@@ -65,10 +65,10 @@ namespace CtlLogic
 	// ---------------------------------------------------------------- config ---------
 	struct ModernConfig
 	{
-		CtlVec   joyPos   { 0.13f, 0.72f };   // centro da base do joystick (fracao da tela)
+		CtlVec   joyPos   { 0.134f, 0.768f };   // centro da base do joystick (fracao da tela)
 		float joyScale = 1.0f;             // 0.5 .. 1.6
 		float btnScale = 1.0f;             // 0.5 .. 1.6
-		float alpha    = 0.15f;            // 0.15 .. 1.0 (transparencia; padrao 15%)
+		float alpha    = 0.50f;            // 0.15 .. 1.0 (transparencia; padrao 50%)
 		float sens     = 1.0f;             // 0.5 .. 2.0 (sensibilidade da intensidade)
 		float deadzone = 0.12f;            // 0 .. 0.45
 		float maxDist  = 1.0f;             // 0.6 .. 1.6 (distancia analogica maxima, x raio da base)
@@ -77,24 +77,24 @@ namespace CtlLogic
 		bool  aimDrag  = true;             // Ataque tambem arrasta a mira (estilo Free Fire); desligado = Ataque so atira
 		float aimSens  = 1.0f;             // 0.3 .. 3.0 (sensibilidade do arrasto da mira)
 		float aimSmooth = 0.0f;            // 0 .. 0.85 (suavizacao; 0 = desligada)
-		CtlVec   btnPos[B_COUNT] = {     // padrao = HUD 1 do print do editor (posicoes estimadas a partir da imagem 1600x720)
-			{ 0.769f, 0.819f }, // corrida
+		CtlVec   btnPos[B_COUNT] = {     // padrao = HUD atual do jogo (medido no print 1600x720 do HUD final, 8/nov)
+			{ 0.7875f, 0.824f }, // corrida
 			{ 0.792f, 0.635f }, // pulo
-			{ 0.899f, 0.879f }, // agachar
-			{ 0.902f, 0.658f }, // ataque
-			{ 0.929f, 0.418f }, // microfone
-			{ 0.122f, 0.436f }, // corrida lock (liga/desliga: corre reto sozinho)
+			{ 0.898f, 0.879f }, // agachar
+			{ 0.901f, 0.656f }, // ataque
+			{ 0.929f, 0.417f }, // microfone
+			{ 0.1375f, 0.458f }, // corrida lock (liga/desliga: corre reto sozinho)
 			{ 0.719f, 0.563f }, // mirar (toque: trava a mira; atirar desativa)
-			{ 0.677f, 0.731f }, // P1: entrar como motorista
-			{ 0.611f, 0.728f }, // P2: entrar como passageiro
-			{ 0.078f, 0.322f }, // inventario (abaixo do minimapa)
-			{ 0.500f, 0.915f }, // slots rapidos (embaixo, centro)
+			{ 0.652f, 0.711f }, // P1: entrar como motorista
+			{ 0.5875f, 0.714f }, // P2: entrar como passageiro
+			{ 0.050f, 0.333f }, // inventario (abaixo do minimapa)
+			{ 0.500f, 0.914f }, // slots rapidos (embaixo, centro)
 		};
 
 		// Por controle (0..B_COUNT-1 = botoes, B_COUNT = joystick): multiplicador de tamanho e opacidade propria.
 		float ctlScale[B_COUNT + 1];       // 0.5 .. 2.0 (x joy_escala / botoes_escala)
 		float ctlAlpha[B_COUNT + 1];       // 0.15 .. 1.0 (opacidade absoluta do controle)
-		ModernConfig() { for (int i = 0; i <= B_COUNT; i++) { ctlScale[i] = 1.0f; ctlAlpha[i] = 0.15f; } ctlScale[B_RUNLOCK] = 1.32f; ctlAlpha[B_INV] = ctlAlpha[B_SLOTS] = 0.70f; ctlScale[B_SLOTS] = 1.15f; }
+		ModernConfig() { for (int i = 0; i <= B_COUNT; i++) { ctlScale[i] = 1.0f; ctlAlpha[i] = 0.50f; } ctlScale[B_RUNLOCK] = 1.32f; ctlScale[B_SLOTS] = 1.22f; }      // todas as opacidades em 50%
 
 		void Clamp()
 		{
