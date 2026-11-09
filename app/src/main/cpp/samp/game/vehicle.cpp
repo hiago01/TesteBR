@@ -3,6 +3,7 @@
 #include "../net/netgame.h"
 #include "vehicle.h"
 #include "Streaming.h"
+#include "Models/ModelInfo.h"
 
 extern CGame* pGame;
 extern CNetGame* pNetGame;
@@ -23,6 +24,17 @@ CVehicle::CVehicle(int iType, float fX, float fY, float fZ, float fRotation, boo
 		(iType != TRAIN_PASSENGER) &&
 		(iType != TRAIN_FREIGHT) &&
 		(iType != TRAIN_TRAM)) {
+
+        // Protecao: so cria veiculo se o modelo for mesmo de veiculo. Um ID de objeto/ped (ex.: o servidor mandou
+        // modelo 711) derruba o jogo em CClumpModelInfo::GetFrameFromId ao montar o carro.
+        {
+            CBaseModelInfo* mi = (iType >= 0 && iType < CModelInfo::NUM_MODEL_INFOS) ? CModelInfo::GetModelInfo(iType) : nullptr;
+            if (!mi || mi->GetModelType() != MODEL_INFO_VEHICLE)
+            {
+                FLog("[VEIC] modelo %d nao e de veiculo (tipo=%d): veiculo ignorado (evita crash)", iType, mi ? (int)mi->GetModelType() : -1);
+                throw std::runtime_error("Model is not a vehicle");
+            }
+        }
 
         if (!CStreaming::TryLoadModel(iType))
             throw std::runtime_error("Model not loaded");
