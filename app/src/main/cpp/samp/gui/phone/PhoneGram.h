@@ -216,6 +216,13 @@ namespace Phone
 				};
 				submit(std::move(j), now);
 			}
+			// pedido generico (Loja / aparelho / papel de parede: rotas /s/*). path pode ter {T} (vira o token). done roda na thread de desenho.
+			using Done = std::function<void(bool, const std::string&, const std::vector<std::string>&)>;
+			void request(const std::string& method, const std::string& path, const std::string& body, const std::string& contentType, int timeoutMs, Done done, int64_t now)
+			{
+				Job j; j.method = method; j.path = path; j.body = body; if (!contentType.empty()) j.contentType = contentType; j.timeoutMs = timeoutMs; j.done = std::move(done);
+				submit(std::move(j), now);
+			}
 			// baixa uma imagem publica. cb(ok, bytes) roda na thread de desenho (dentro de pump). false = nao deu para iniciar.
 			bool fetchImage(const std::string& media, std::function<void(bool, const std::string&)> cb)
 			{

@@ -4,12 +4,14 @@
 // gui/samp_widgets/phone.cpp. Reusa do Maximo OS: Canvas, App/AppManager/AppRegistry, GestureTracker, NotificationCenter, Components.
 #include "PhoneApp.h"
 #include "PhoneInput.h"
+#include "PhoneStore.h"
 #include "PhoneUI.h"
 #include "../maximoos/Navigation.h"
 #include "../maximoos/NotificationCenter.h"
 #include <ctime>
 #include <functional>
 #include <map>
+#include <set>
 
 namespace Phone
 {
@@ -18,7 +20,7 @@ namespace Phone
 	public:
 		static constexpr int kCols = 4, kRows = 6, kDockN = 4;
 
-		PhoneManager() : m_apps(m_reg) { m_ctx.openApp = [this](const std::string& id) { return openApp(id); }; }
+		PhoneManager() : m_apps(m_reg) { m_ctx.openApp = [this](const std::string& id) { return openApp(id); }; m_ctx.appExists = [this](const std::string& id) { const PhoneAppDef* d = def(id); return d && d->shown; }; }
 
 		PhoneContext& context() { return m_ctx; }
 		PhoneInput& input() { return m_input; }
@@ -42,6 +44,30 @@ namespace Phone
 		}
 		const PhoneAppDef* def(const std::string& id) const { auto it = m_defs.find(id); return it == m_defs.end() ? nullptr : &it->second; }
 		size_t appCount() const { return m_defs.size(); }
+		// Visivel na tela inicial? Sem aparelho: nada. Antes de a Loja responder: so os apps que ja funcionam (PhoneAppDef::shown).
+		// Depois: exatamente o que o servidor diz que esta instalado neste aparelho.
+		bool visible(const std::string& id) const
+		{
+			const PhoneAppDef* d = def(id); if (!d) return false;
+			if (m_ctx.deviceMissing) return false;
+			if (m_instKnown) return m_installed.count(id) != 0;
+			return d->shown;
+		}
+		// aplica o estado da Loja (chamado a cada quadro; so age quando o servico mudou)
+		void syncStore()
+		{
+			Store::Service* st = m_ctx.store; if (!st) return;
+			if (st->version == m_storeVer) return;
+			m_storeVer = st->version;
+			m_ctx.imei = st->imei; m_ctx.wallpaper = st->wallpaper;
+			m_ctx.deviceMissing = st->meLoaded && !st->hasDevice;
+			m_instKnown = st->meLoaded && st->hasDevice && st->catalogLoaded;
+			m_installed = m_instKnown ? st->installedIds() : std::set<std::string>();
+			// um app desinstalado nao pode ficar aberto
+			const std::string fg = m_apps.foregroundId();
+			if (!fg.empty() && !visible(fg) && fg != "ligacao") goHome();
+			const int pages = pageCount(); if (m_page >= pages) m_page = std::max(0, pages - 1);
+		}
 		const AppRegistry& registry() const { return m_reg; }
 
 		void setScreenSize(float w, float h)
@@ -84,6 +110,7 @@ namespace Phone
 		bool openApp(const std::string& id)
 		{
 			const PhoneAppDef* d = def(id); if (!d) return false;
+			if (m_ctx.deviceMissing && id != "ligacao") return false;      // sem celular comprado nada abre
 			m_recents = false;
 			Rect from = iconRectOf(id);
 			if (!m_apps.open(id, m_m)) return false;
@@ -98,6 +125,8 @@ namespace Phone
 			if (!m_open) return;
 			{ const std::string& fgId = m_apps.foregroundId(); if (fgId == "mensagens" || fgId == "telefone") m_notifs.markAppRead(fgId); }   // abriu o app: o selo (bolinha) some
 			m_now = nowMs; m_ctx.nowMs = nowMs;
+			if (m_ctx.store) m_ctx.store->refresh(nowMs);      // so consulta de verdade a cada 2 min (15 s depois de uma falha)
+			syncStore();
 			// animacao de entrada/saida do aparelho
 			const float step = dtMs / 240.0f;
 			m_slide = m_closing ? std::max(0.0f, m_slide - step) : std::min(1.0f, m_slide + step);
@@ -129,10 +158,10 @@ namespace Phone
 		std::vector<const AppInfo*> pageApps(int page) const
 		{
 			std::vector<const AppInfo*> v;
-			for (auto& a : m_reg.list()) if (a.page == page) v.push_back(&a);
+			for (auto& a : m_reg.list()) if (a.page == page && visible(a.id)) v.push_back(&a);
 			return v;
 		}
-		int pageCount() const { int mx = 0; for (auto& a : m_reg.list()) mx = std::max(mx, a.page); return mx + 1; }
+		int pageCount() const { int mx = 0; for (auto& a : m_reg.list()) if (visible(a.id)) mx = std::max(mx, a.page); return mx + 1; }
 		void dispatchForTest(const Touch& t) { dispatch(t); }
 
 	private:
@@ -172,7 +201,7 @@ namespace Phone
 			if (!ai) return Rect();
 			if (ai->dock >= 0 && ai->dock < kDockN) return m_dockSlot[ai->dock];
 			int idx = 0;
-			for (auto& a : m_reg.list()) { if (a.page != ai->page) continue; if (a.id == id) break; ++idx; }
+			for (auto& a : m_reg.list()) { if (a.page != ai->page || !visible(a.id)) continue; if (a.id == id) break; ++idx; }
 			return AppIconSquare(m_m, gridCell(idx, 0.0f), true);
 		}
 		void startAppAnim(int dir, const Rect& from) { m_anim.t = 0.0f; m_anim.dir = dir; if (!from.empty()) m_anim.from = from; }
@@ -253,11 +282,11 @@ namespace Phone
 		}
 		std::string hitKey(Vec2 p) const
 		{
-			for (int i = 0; i < kDockN; ++i) if (m_dockSlot[i].inset(-m_m.px(6)).contains(p)) { for (auto& a : m_reg.list()) if (a.dock == i) return a.id; }
+			for (int i = 0; i < kDockN; ++i) if (m_dockSlot[i].inset(-m_m.px(6)).contains(p)) { for (auto& a : m_reg.list()) if (a.dock == i && visible(a.id)) return a.id; }
 			int idx = 0;
 			for (auto& a : m_reg.list())
 			{
-				if (a.page != m_page) continue;
+				if (a.page != m_page || !visible(a.id)) continue;
 				if (AppIconSquare(m_m, gridCell(idx, m_pageDrag), true).inset(-m_m.px(6)).contains(p)) return a.id;
 				++idx;
 			}
@@ -344,8 +373,7 @@ namespace Phone
 			cv.pushClip(m.screen);
 			if (!clearScreen)
 			{
-				cv.fillGradientV({ m.screen.x, m.screen.y, m.screen.w, m.screen.h * 0.45f }, PC::Wall0, PC::Wall1);
-				cv.fillGradientV({ m.screen.x, m.screen.y + m.screen.h * 0.45f, m.screen.w, m.screen.h * 0.55f + 1 }, PC::Wall1, PC::Wall2);
+				Store::DrawWallpaper(cv, &m_ctx, m.screen);
 			}
 			const bool appVisible = fd && !(animating && m_anim.dir > 0 && m_anim.t < 0.55f);
 			const bool homeVisible = fg.empty() || animating;
@@ -422,6 +450,17 @@ namespace Phone
 		void drawHome(Canvas& cv)
 		{
 			const Metrics& m = m_m;
+			if (m_ctx.deviceMissing)
+			{
+				// sem celular comprado: aviso no lugar da grade (o servidor e quem sabe; nada e simulado)
+				const Rect box{ m.screen.x + m.px(22), m.screen.center().y - m.px(96), m.screen.w - m.px(44), m.px(192) };
+				cv.fillRect(box, Color(0, 0, 0, 120), m.px(22));
+				DrawTextIn(cv, { box.x, box.y + m.px(18), box.w, m.px(30) }, "Sem celular", Color(255, 255, 255), m.font(22), Align::Center);
+				DrawTextIn(cv, { box.x + m.px(14), box.y + m.px(58), box.w - m.px(28), m.px(24) }, "Você ainda não comprou um aparelho.", Color(235, 235, 245), m.font(13), Align::Center);
+				DrawTextIn(cv, { box.x + m.px(14), box.y + m.px(90), box.w - m.px(28), m.px(24) }, "Digite /comprarcelular no chat", Color(255, 214, 90), m.font(14), Align::Center);
+				DrawTextIn(cv, { box.x + m.px(14), box.y + m.px(122), box.w - m.px(28), m.px(24) }, "ou peça a um administrador.", Color(200, 200, 215), m.font(12), Align::Center);
+				return;
+			}
 			const int pages = pageCount();
 			const float xOffBase = -m_page * m.screen.w + m_pageDrag;
 			for (int pg = std::max(0, m_page - 1); pg <= std::min(pages - 1, m_page + 1); ++pg)
@@ -429,7 +468,7 @@ namespace Phone
 				int idx = 0;
 				for (auto& a : m_reg.list())
 				{
-					if (a.page != pg) continue;
+					if (a.page != pg || !visible(a.id)) continue;
 					const Rect cell = gridCell(idx++, xOffBase + pg * m.screen.w);
 					if (cell.right() < m.screen.x || cell.x > m.screen.right()) continue;
 					AppIconStyle st; st.badge = m_notifs.unreadFor(a.id);
@@ -444,7 +483,7 @@ namespace Phone
 			// dock
 			cv.fillRect(m_dockPanel, Color(255, 255, 255, 46), m.px(30));
 			for (int i = 0; i < kDockN; ++i)
-				for (auto& a : m_reg.list()) if (a.dock == i)
+				for (auto& a : m_reg.list()) if (a.dock == i && visible(a.id))
 				{
 					const Rect cell{ m_dockSlot[i].x - m.px(8), m_dockSlot[i].y - m.px(4), m_dockSlot[i].w + m.px(16), m_dockSlot[i].h + m.px(8) };
 					drawIcon(cv, cell, a.title, def(a.id), m_pressedKey == a.id, false, m_notifs.unreadFor(a.id));
@@ -554,6 +593,7 @@ namespace Phone
 		PhoneContext m_ctx;
 		AppRegistry m_reg;
 		AppManager m_apps;
+		bool m_instKnown = false; std::set<std::string> m_installed; int m_storeVer = -1;
 		std::map<std::string, PhoneAppDef> m_defs;
 		NotificationCenter m_notifs;
 		PhoneInput m_input;

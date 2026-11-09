@@ -14,6 +14,7 @@ namespace Phone
 {
 	using namespace MaximoOS;
 	namespace Gram { class Service; }
+	namespace Store { class Service; }
 
 	// Fotos do aparelho (Camera / Galeria / Gram). Implementado pelo jogo (captura de tela, arquivos, texturas); nos testes de PC e um stub.
 	// Chaves de textura: "L:<arquivo>" (foto local) e "R:<id da midia>" (foto do Gram, baixada do servidor).
@@ -79,7 +80,11 @@ namespace Phone
 		bool cameraSelfie = false;                                                                // Camera: modo selfie (camera na frente do personagem)
 		float camVfX = 0, camVfY = 0, camVfW = 0, camVfH = 0;                                    // Camera: visor em pixels da tela (0 = sem visor); a camera do jogo e' apontada para ele
 		PhotoApi* photos = nullptr;                                                               // Camera/Galeria (nullptr = sem suporte; o app avisa)
+		Store::Service* store = nullptr;                                                          // Loja / aparelho / papel de parede (nullptr = sem servico: tudo como antes)
+		std::string imei, wallpaper = "w1";                                                       // do aparelho (preenchido pelo PhoneManager a partir da Loja)
+		bool deviceMissing = false;                                                               // o jogador NAO tem celular comprado (o aparelho mostra o aviso)
 		Gram::Service* gram = nullptr;                                                            // rede social (nullptr = sem servico)
+		std::function<bool(const std::string& appId)> appExists;                                  // o cliente tem este app? (preenchido pelo PhoneManager)
 		std::function<bool(const std::string& appId)> openApp;                                    // preenchido pelo PhoneManager
 		std::string launchArg;                                                                    // argumento para o app aberto (ex.: numero); o destino consome em onResume
 		void changed() { if (settingsChanged) settingsChanged(); }
@@ -94,6 +99,7 @@ namespace Phone
 		int   page = 0;                  // pagina da grade (-1 = so no dock)
 		int   dock = -1;                 // 0..3
 		bool  light = true;              // app com fundo claro (barra de status escura)
+		bool  shown = true;              // aparece na tela inicial ANTES da Loja responder (apps que ja funcionam); depois vale o que o servidor disse
 		bool  seeThrough = false;        // a tela do app NAO e pintada pelo sistema (a Camera mostra o jogo por tras do aparelho)
 		std::function<std::unique_ptr<App>()> factory;
 	};

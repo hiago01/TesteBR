@@ -7,6 +7,7 @@
 #include "PhoneAppsComms.h"
 #include "PhoneAppCall.h"
 #include "PhoneAppsGram.h"
+#include "PhoneAppsStore.h"
 #include <cstdio>
 
 namespace Phone
@@ -15,13 +16,14 @@ namespace Phone
 	class SettingsApp : public App
 	{
 	public:
-		explicit SettingsApp(PhoneContext* c) : m_c(c) {}
+		explicit SettingsApp(PhoneContext* c) : m_c(c), m_wp(c) {}
 		void onPause() override { m_scroll = ScrollView(); m_press = -1; }
-		void update(float dt) override { m_scroll.update(dt); }
+		void update(float dt) override { m_scroll.update(dt); m_wp.update(dt); }
 		bool onBack() override { if (m_screen != 0) { m_screen = 0; m_scroll = ScrollView(); return true; } return false; }
 
 		void draw(Canvas& cv, const Metrics& m, const Rect& content) override
 		{
+			if (m_screen == 2) { m_wp.draw(cv, m, content); if (m_wp.takeClose()) { m_screen = 0; m_scroll = ScrollView(); } return; }
 			cv.fillRect(content, PC::Light, 0);
 			m_rows.clear();
 			NavResult nv = DrawNavBar(cv, m, content, m_screen == 0 ? "Ajustes" : "Tamanho do celular", m_screen == 0 ? "" : "Ajustes", "", true, m_press == 100, false);
@@ -29,20 +31,20 @@ namespace Phone
 			const Rect body = nv.body;
 			float y = m.px(8);
 			const float rowH = m.px(46), mx = m.px(16);
-			auto row = [&](int id, const std::string& label, const std::string& value, bool first, bool last, bool toggleOn, bool isToggle, const Color& dot)
+			auto row = [&](int id, const std::string& label, const std::string& value, bool first, bool last, bool toggleOn, bool isToggle, const Color& dot, float valueW = 0)
 			{
 				const Rect r = m_scroll.itemRect(y, rowH).inset(0, 0);
 				const Rect rr{ body.x + mx, r.y, body.w - 2 * mx, rowH };
 				m_rows.push_back({ id, rr });
 				if (m_scroll.visible(rr))
 				{
-					RowStyle st; st.first = first; st.last = last; st.chevron = !isToggle && m_screen == 0; st.pressed = (m_press == id);
+					RowStyle st; st.first = first; st.last = last; st.chevron = !isToggle && m_screen == 0; st.pressed = (m_press == id); st.valueW = valueW;
 					DrawRow(cv, m, rr, label, isToggle ? std::string() : value, st, &dot);
 					if (isToggle) DrawToggleIos(cv, m, { rr.right() - m.px(66), rr.y + (rr.h - m.px(30)) * 0.5f, m.px(50), m.px(30) }, toggleOn);
 				}
 				y += rowH;
 			};
-			m_scroll.setLayout(body, m.px(560));
+			m_scroll.setLayout(body, m.px(640));
 			cv.pushClip(body);
 			if (m_screen == 0)
 			{
@@ -54,11 +56,13 @@ namespace Phone
 				row(5, "Ligação sem apertar", "", false, true, s.handsFree, true, PC::Green);
 				y += m.px(22);
 				char buf[16]; std::snprintf(buf, sizeof(buf), "%d%%", s.sizePct);
-				row(10, "Tamanho do celular", buf, true, true, false, false, PC::Purple);
+				row(10, "Tamanho do celular", buf, true, false, false, false, PC::Purple);
+				row(12, "Papel de parede", "", false, true, false, false, PC::Blue);
 				y += m.px(22);
 				const StatusInfo st = m_c->status ? m_c->status() : StatusInfo();
 				row(20, "Sobre", "Maximo RP", true, false, false, false, PC::Gray);
 				row(22, "Meu número", m_c->myNumber.empty() ? std::string("—") : Data::FormatNumber(m_c->myNumber), false, false, false, false, PC::Gray);
+				row(23, "IMEI", m_c->imei.empty() ? std::string("—") : Store::FormatImei(m_c->imei), false, false, false, false, PC::Gray, 190);
 				row(21, "Hora", st.clock, false, true, false, false, PC::Gray);
 			}
 			else
@@ -83,6 +87,7 @@ namespace Phone
 		bool onTouch(const Touch& t, const Metrics& m, const Rect&) override
 		{
 			(void)m;
+			if (m_screen == 2) return m_wp.onTouch(t);
 			m_scroll.onTouch(t);
 			if (t.kind == Touch::Down) { m_press = -1; if (m_back.contains(t.pos)) m_press = 100; else for (auto& r : m_rows) if (r.rect.contains(t.pos) && m_scroll.viewport().contains(t.pos)) m_press = r.id; }
 			else if (t.kind == Touch::DragBegin || t.kind == Touch::Cancel || t.kind == Touch::Up) m_press = -1;
@@ -101,6 +106,7 @@ namespace Phone
 					case 4: s.notif = !s.notif; break;
 					case 5: s.handsFree = !s.handsFree; break;
 					case 10: m_screen = 1; m_scroll = ScrollView(); break;
+					case 12: m_screen = 2; m_wp.open(); break;
 					case 30: s.sizePct = 75; break;
 					case 31: s.sizePct = 100; break;
 					case 32: s.sizePct = 125; break;
@@ -119,7 +125,7 @@ namespace Phone
 			cv.fillCircle({ on ? r.right() - r.h * 0.5f : r.x + r.h * 0.5f, r.y + r.h * 0.5f }, r.h * 0.43f, Color(255, 255, 255));
 		}
 		struct RowRef { int id; Rect rect; };
-		PhoneContext* m_c; int m_screen = 0; int m_press = -1; Rect m_back; ScrollView m_scroll; std::vector<RowRef> m_rows;
+		PhoneContext* m_c; WallpaperPicker m_wp; int m_screen = 0; int m_press = -1; Rect m_back; ScrollView m_scroll; std::vector<RowRef> m_rows;
 	};
 
 	// ------------------------------------------------------------------------------------------------ Calculadora
@@ -241,12 +247,12 @@ namespace Phone
 	{
 		PhoneContext* c = &pm.context();
 		auto pend = [](const char* id, const char* title, const char* need, bool light) { std::string i = id, t = title, n = need; return [i, t, n, light]() { return std::unique_ptr<App>(new PendingServiceApp(i, t, n, light)); }; };
-		auto add = [&](const char* id, const char* title, Color col, int page, int dock, bool light, std::function<std::unique_ptr<App>()> f, bool seeThrough = false)
-		{ PhoneAppDef d; d.id = id; d.title = title; d.color = col; d.page = page; d.dock = dock; d.light = light; d.factory = std::move(f); d.seeThrough = seeThrough; pm.addApp(d); };
+		auto add = [&](const char* id, const char* title, Color col, int page, int dock, bool light, std::function<std::unique_ptr<App>()> f, bool seeThrough = false, bool shown = true)
+		{ PhoneAppDef d; d.shown = shown; d.id = id; d.title = title; d.color = col; d.page = page; d.dock = dock; d.light = light; d.factory = std::move(f); d.seeThrough = seeThrough; pm.addApp(d); };
 
 		// dock
 		add("telefone",  "Telefone",  PC::Green,  -1, 0, true,  [c]() { return std::unique_ptr<App>(new DialerApp(c)); });
-		add("loja",      "Loja",      PC::Blue,   -1, 1, false, pend("loja", "Loja", "Requer servidor: catálogo e instalação de apps.", false));
+		add("loja",      "Loja",      PC::Blue,   -1, 1, true,  [c]() { return std::unique_ptr<App>(new StoreApp(c)); });
 		add("camera",    "Câmera",    Color(90, 90, 96), -1, 2, false, [c]() { return std::unique_ptr<App>(new CameraApp(c)); }, true);
 		add("mensagens", "Mensagens", PC::Green,  -1, 3, true,  [c]() { return std::unique_ptr<App>(new MessagesApp(c)); });
 		// tela de ligacao (nao aparece na grade nem no dock; aberta pelo Telefone ou por uma ligacao recebida)
@@ -259,20 +265,20 @@ namespace Phone
 		add("calendario","Calendário",Color(255, 255, 255), 0, -1, true, [c]() { return std::unique_ptr<App>(new CalendarApp(c)); });
 		add("relogio",   "Relógio",   Color(30, 30, 34),    0, -1, false, [c]() { return std::unique_ptr<App>(new ClockApp(c)); });
 		add("calculadora","Calculadora", Color(70, 70, 76), 0, -1, false, []() { return std::unique_ptr<App>(new CalculatorApp()); });
-		add("mapas",     "Mapas",     PC::Green,   0, -1, true,  pend("mapas", "Mapas", "Requer o mapa do GTA dentro da interface.", true));
-		add("noticias",  "Notícias",  PC::Orange,  0, -1, false, pend("noticias", "Notícias", "Requer servidor: matérias dos jornalistas.", false));
-		add("qrcode",    "QR Code",   Color(60, 60, 220), 0, -1, false, pend("qrcode", "QR Code", "Requer servidor: identidade do jogador.", false));
-		add("radio",     "Rádio",     PC::Purple,  0, -1, false, pend("radio", "Rádio", "Requer servidor: canais.", false));
-		add("gravador",  "Gravador",  PC::Red,     0, -1, false, pend("gravador", "Gravador", "Requer captura de áudio e armazenamento.", false));
+		add("mapas",     "Mapas",     PC::Green,   0, -1, true,  pend("mapas", "Mapas", "Requer o mapa do GTA dentro da interface.", true), false, false);
+		add("noticias",  "Notícias",  PC::Orange,  0, -1, false, pend("noticias", "Notícias", "Requer servidor: matérias dos jornalistas.", false), false, false);
+		add("qrcode",    "QR Code",   Color(60, 60, 220), 0, -1, false, pend("qrcode", "QR Code", "Requer servidor: identidade do jogador.", false), false, false);
+		add("radio",     "Rádio",     PC::Purple,  0, -1, false, pend("radio", "Rádio", "Requer servidor: canais.", false), false, false);
+		add("gravador",  "Gravador",  PC::Red,     0, -1, false, pend("gravador", "Gravador", "Requer captura de áudio e armazenamento.", false), false, false);
 		// pagina 2
-		add("tune",      "Tune",      Color(30, 215, 96),   1, -1, false, pend("tune", "Tune", "Requer servidor: músicas.", false));
+		add("tune",      "Tune",      Color(30, 215, 96),   1, -1, false, pend("tune", "Tune", "Requer servidor: músicas.", false), false, false);
 		add("gram",      "Gram",      Color(225, 48, 108),  1, -1, true,  [c]() { return std::unique_ptr<App>(new GramApp(c)); });
-		add("clipe",     "Clipe",     Color(20, 20, 24),    1, -1, false, pend("clipe", "Clipe", "Requer servidor de vídeo.", false));
-		add("live",      "Live",      Color(255, 45, 85),   1, -1, false, pend("live", "Live", "Requer serviço de vídeo em tempo real.", false));
-		add("pede",      "Pede",      PC::Red,     1, -1, true,  pend("pede", "Pede", "Requer servidor: restaurantes e pedidos.", true));
-		add("corre",     "Corre",     Color(20, 20, 24),    1, -1, false, pend("corre", "Corre", "Requer servidor: corridas.", false));
-		add("banco",     "Banco",     Color(130, 40, 200),  1, -1, true,  pend("banco", "Banco", "Requer servidor: conta bancária.", true));
-		add("papo",      "Papo",      Color(88, 101, 242),  1, -1, false, pend("papo", "Papo", "Requer servidor: salas.", false));
-		add("sinuca",    "Sinuca",    Color(0, 140, 90),    1, -1, false, pend("sinuca", "Sinuca", "Requer servidor: partidas entre jogadores.", false));
+		add("clipe",     "Clipe",     Color(20, 20, 24),    1, -1, false, pend("clipe", "Clipe", "Requer servidor de vídeo.", false), false, false);
+		add("live",      "Live",      Color(255, 45, 85),   1, -1, false, pend("live", "Live", "Requer serviço de vídeo em tempo real.", false), false, false);
+		add("pede",      "Pede",      PC::Red,     1, -1, true,  pend("pede", "Pede", "Requer servidor: restaurantes e pedidos.", true), false, false);
+		add("corre",     "Corre",     Color(20, 20, 24),    1, -1, false, pend("corre", "Corre", "Requer servidor: corridas.", false), false, false);
+		add("banco",     "Banco",     Color(130, 40, 200),  1, -1, true,  pend("banco", "Banco", "Requer servidor: conta bancária.", true), false, false);
+		add("papo",      "Papo",      Color(88, 101, 242),  1, -1, false, pend("papo", "Papo", "Requer servidor: salas.", false), false, false);
+		add("sinuca",    "Sinuca",    Color(0, 140, 90),    1, -1, false, pend("sinuca", "Sinuca", "Requer servidor: partidas entre jogadores.", false), false, false);
 	}
 }

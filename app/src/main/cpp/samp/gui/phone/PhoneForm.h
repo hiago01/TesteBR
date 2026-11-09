@@ -12,6 +12,7 @@ namespace Phone
 		std::vector<H> v;
 		void clear() { v.clear(); }
 		void add(int id, const Rect& r) { v.push_back({ id, r }); }
+		Rect find(int id) const { for (size_t i = v.size(); i-- > 0;) if (v[i].id == id) return v[i].r; return Rect(); }   // (testes)
 		// ultimo adicionado por cima; clip = area visivel (toque fora dela nao conta)
 		int at(Vec2 p, const Rect* clip = nullptr) const
 		{

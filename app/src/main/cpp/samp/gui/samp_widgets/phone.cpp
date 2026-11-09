@@ -5,6 +5,7 @@
 #include "../phone/PhoneApps.h"
 #include "../phone/PhoneNet.h"
 #include "../phone/PhoneGram.h"
+#include "../phone/PhoneStore.h"
 #include "../phone/PhoneCamMath.h"
 #include "../../voice_new/Plugin.h"
 #include "../../net/netgame.h"
@@ -40,6 +41,7 @@ namespace
 	int g_poseSent = 0;                  // ultima pose pedida ao servidor (0 = nenhuma)
 	int64_t g_poseAt = 0;
 	bool g_selfieCam = false;            // a camera do jogo esta sob controle da foto (traseira ou selfie)
+	Phone::Store::Service* g_storeSvc = nullptr;         // Loja / IMEI / papel de parede (usa o transporte e o token do Gram)
 	Gram::Service* g_gram = nullptr;              // rede social (criado junto com o celular; fala direto com o servico de fotos do servidor)
 	std::atomic<bool> g_gramReset{ false };
 	bool g_callPending = false;                  // so a thread de desenho toca nisto
@@ -158,6 +160,8 @@ namespace
 			g_net.gramToken = [](int status, const std::string& token, int port) { if (g_gram) g_gram->onToken(status, token, port, NowMs()); };
 			PhonePhotos::SetFetcher([](const std::string& media, std::function<void(bool, const std::string&)> cb) { return g_gram && g_gram->fetchImage(media, std::move(cb)); });
 			p->context().gram = g_gram;
+			g_storeSvc = new Phone::Store::Service(g_gram);
+			p->context().store = g_storeSvc;
 			p->context().photos = PhonePhotos::Api();
 			return p;
 		}();
@@ -326,11 +330,11 @@ void PhoneWidget::draw(ImGuiRenderer* r)
 
 	// rede: roda mesmo com o celular fechado (mensagens recebidas precisam ser guardadas e avisadas)
 	pm.context().nowMs = now;
-	if (g_gramReset.exchange(false) && g_gram) g_gram->reset();
+	if (g_gramReset.exchange(false) && g_gram) { g_gram->reset(); if (g_storeSvc) g_storeSvc->reset(); }
 	if (g_store.loaded) { g_net.pump(now); if (g_gram) g_gram->pump(now); }
 	if (g_openCall.exchange(false)) { PhoneWidget::Open(); if (g_wantOpen.load()) g_callPending = true; }
 
-	if (g_wantOpen.load() && !pm.isOpen()) { const ImVec2 sc = pUI ? pUI->displaySize() : ImVec2(1920, 1080); pm.setScreenSize(sc.x, sc.y); pm.open(); g_net.requestNumber(now); }
+	if (g_wantOpen.load() && !pm.isOpen()) { const ImVec2 sc = pUI ? pUI->displaySize() : ImVec2(1920, 1080); pm.setScreenSize(sc.x, sc.y); pm.open(); g_net.requestNumber(now); if (g_storeSvc) g_storeSvc->refresh(now); }
 	if (g_callPending && pm.isOpen()) { g_callPending = false; if (pm.context().call.state == 2) pm.openApp("ligacao"); }
 	if (!g_wantOpen.load() && pm.isOpen()) pm.close();
 	PosePump(pm, now);

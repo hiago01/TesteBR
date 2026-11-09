@@ -98,7 +98,7 @@ namespace Phone
 	}
 
 	// ---- linha de lista agrupada (cartao branco/escuro com separador) ----
-	struct RowStyle { bool light = true; bool first = false, last = false; bool chevron = true; bool pressed = false; };
+	struct RowStyle { bool light = true; bool first = false, last = false; bool chevron = true; bool pressed = false; float valueW = 0; };   // valueW: largura (px do aparelho) da coluna do valor; 0 = padrao
 	inline void DrawRow(Canvas& cv, const Metrics& m, const Rect& r, const std::string& label, const std::string& value, const RowStyle& st,
 	                    const Color* dot = nullptr)
 	{
@@ -111,7 +111,7 @@ namespace Phone
 		float tx = r.x + m.px(16);
 		if (dot) { const float d = m.px(30); cv.fillRect({ r.x + m.px(12), r.y + (r.h - d) * 0.5f, d, d }, *dot, m.px(7)); tx = r.x + m.px(54); }
 		const Color fg = st.light ? PC::LabelL : Colors::Text;
-		const float vw = value.empty() ? 0 : m.px(110);
+		const float vw = value.empty() ? 0 : m.px(st.valueW > 0 ? st.valueW : 110);
 		DrawTextIn(cv, { tx, r.y, r.right() - tx - m.px(st.chevron ? 34 : 16) - vw, r.h }, label, fg, m.font(16));
 		if (!value.empty()) DrawTextIn(cv, { r.right() - m.px(st.chevron ? 34 : 16) - vw, r.y, vw, r.h }, value, PC::Gray, m.font(16), Align::Right);
 		if (st.chevron)

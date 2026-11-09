@@ -1,0 +1,291 @@
+// Teste de PC da LOJA / IMEI / PAPEL DE PAREDE: PhoneStore.h + PhoneAppsStore.h + PhoneManager (visibilidade dos apps) contra o SERVICO NODE REAL.
+// Variaveis: GRAM_PORT, TOK_A (jogador COM celular), TOK_B (SEM celular), JPG. Veja run_store.sh. Nao testa NDK/Android/aparelho.
+#include "../../gui/phone/PhoneApps.h"
+#include "../../gui/phone/PhoneStore.h"
+#include <cstdio>
+#include <cstdlib>
+#include <fstream>
+#include <sstream>
+#include <thread>
+using namespace Phone;
+static int fails = 0, total = 0;
+#define CHECK(c) do { total++; if (!(c)) { fails++; printf("FALHOU L%d: %s\n", __LINE__, #c); } } while (0)
+
+struct NullCanvas : Canvas
+{
+	int n = 0; std::vector<std::string> texts; int grads = 0;
+	void fillRect(const Rect&, Color, float) override { ++n; }
+	void strokeRect(const Rect&, Color, float, float) override { ++n; }
+	void fillGradientV(const Rect&, Color, Color) override { ++n; ++grads; }
+	void fillCircle(Vec2, float, Color) override { ++n; }
+	void strokeCircle(Vec2, float, Color, float) override { ++n; }
+	void line(Vec2, Vec2, Color, float) override { ++n; }
+	void fillTriangle(Vec2, Vec2, Vec2, Color) override { ++n; }
+	void text(Vec2, Color, const std::string& s, float) override { ++n; texts.push_back(s); }
+	Vec2 measure(const std::string& s, float size) override { return { (float)Text::CpCount(s) * size * 0.52f, size * 1.2f }; }
+	void pushClip(const Rect&) override {} void popClip() override {} void setAlpha(float) override {}
+	void reset() { texts.clear(); grads = 0; }
+	bool has(const std::string& s) const { for (auto& t : texts) if (t.find(s) != std::string::npos) return true; return false; }
+};
+
+struct FakePhotos : PhotoApi
+{
+	std::string jpeg;
+	bool canShoot() override { return false; } bool shoot() override { return false; } bool shooting() override { return false; }
+	int shotSerial() override { return 0; } std::string lastError() override { return ""; }
+	std::vector<std::string> list() override { return { "foto1.jpg" }; }
+	bool read(const std::string&, std::string& j) override { j = jpeg; return !jpeg.empty(); }
+	bool remove(const std::string&) override { return false; }
+	bool texture(const std::string&, PhotoTex&) override { return false; }
+	bool failed(const std::string&) override { return false; }
+};
+
+static int64_t g_now = 100000;
+struct Rig
+{
+	HttpClient http; Gram::Service gram; Store::Service store; std::string token; int port; int asks = 0; bool due = false;
+	Rig(const std::string& tok, int p) : http(2), gram(&http), store(&gram), token(tok), port(p)
+	{
+		gram.host = []() { return std::string("127.0.0.1"); };
+		gram.requestToken = [this](int64_t) { ++asks; due = true; return true; };
+	}
+	template <class F> bool until(F cond, int ms = 6000)
+	{
+		for (int i = 0; i < ms / 10; ++i)
+		{
+			g_now += 10; gram.pump(g_now);
+			if (due) { due = false; gram.onToken(0, token, port, g_now); }
+			if (cond()) return true;
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+		}
+		return false;
+	}
+};
+
+static std::string readFile(const char* p) { std::ifstream f(p, std::ios::binary); std::stringstream ss; ss << f.rdbuf(); return ss.str(); }
+static bool luhn(const std::string& s) { if (s.size() != 15) return false; int sum = 0; for (int i = 0; i < 15; ++i) { int d = s[14 - i] - '0'; if (i % 2 == 1) { d *= 2; if (d > 9) d -= 9; } sum += d; } return sum % 10 == 0; }
+static bool contains(const std::set<std::string>& s, const char* id) { return s.count(id) != 0; }
+
+int main()
+{
+	const char* gp = getenv("GRAM_PORT"); const char* ta = getenv("TOK_A"); const char* tb = getenv("TOK_B"); const char* jp = getenv("JPG");
+	if (!gp || !ta || !tb || !jp) { printf("faltam variaveis (use run_store.sh)\n"); return 2; }
+	const int port = atoi(gp);
+
+	// ---------------- funcoes puras ----------------
+	CHECK(Store::FormatImei("351935042598070") == "35-193504-259807-0");
+	CHECK(Store::FormatImei("123") == "123");
+	CHECK(Store::IsPreset("w1") && Store::IsPreset("w12") && Store::IsPreset("w123") && !Store::IsPreset("w") && !Store::IsPreset("x1") && !Store::IsPreset("w1234") && !Store::IsPreset("w1a"));
+	CHECK(Store::IsPhotoWp("m:0123456789abcdef0123456789abcdef") && !Store::IsPhotoWp("m:XYZ") && !Store::IsPhotoWp("m:0123456789ABCDEF0123456789ABCDEF"));
+	CHECK(Store::ValidWallpaper("w5") && Store::ValidWallpaper("m:0123456789abcdef0123456789abcdef") && !Store::ValidWallpaper("../etc"));
+	CHECK(Store::ValidAppId("gram") && Store::ValidAppId("app_2") && !Store::ValidAppId("A") && !Store::ValidAppId("a b") && !Store::ValidAppId("a;b") && !Store::ValidAppId(""));
+	{
+		Store::AppEntry a;
+		CHECK(Store::ParseApp("gram\tGram\tRede social\t14823532\t0\t1\t15", a) && a.id == "gram" && a.title == "Gram" && !a.core && a.installed && a.color == 14823532 && a.sort == 15);
+		CHECK(!Store::ParseApp("gram\tGram\tx\t99999999\t0\t1\t15", a));                  // cor fora de 0xFFFFFF
+		CHECK(!Store::ParseApp("Gram\tGram\tx\t1\t0\t1\t15", a));                         // id invalido
+		CHECK(!Store::ParseApp("gram\tGram", a));
+		CHECK(!Store::ParseApp("gram\tGram\tx\tzz\t0\t1\t15", a));
+		Color c0, c1, c2; CHECK(Store::WallpaperColors("w4", c0, c1, c2)); CHECK(!Store::WallpaperColors("w77", c0, c1, c2));
+		Color d0, d1, d2; Store::WallpaperColorsOrDerived("w77", d0, d1, d2); Color e0, e1, e2; Store::WallpaperColorsOrDerived("w77", e0, e1, e2);
+		CHECK(d0.r == e0.r && d0.g == e0.g && d0.b == e0.b);                               // derivado e deterministico
+	}
+
+	// ---------------- jogador A (COM celular) contra o servidor real ----------------
+	Rig A(ta, port);
+	CHECK(!A.store.meLoaded);
+	A.store.refresh(g_now);
+	CHECK(A.until([&] { return A.store.meLoaded && A.store.catalogLoaded && A.store.wpLoaded; }));
+	CHECK(A.store.hasDevice && !A.store.blocked && luhn(A.store.imei) && A.store.wallpaper == "w1");
+	CHECK(A.store.wallpapers.size() == 12 && A.store.wallpapers[0].id == "w1");
+	{
+		const auto in = A.store.installedIds();
+		CHECK(contains(in, "telefone") && contains(in, "loja") && contains(in, "camera") && contains(in, "gram") && contains(in, "notas"));   // sistema + os que ja funcionam
+		CHECK(!contains(in, "calculadora"));                                                       // o teste tirou
+		CHECK(!contains(in, "mapas") && !contains(in, "radio"));                                   // pendentes: nao vem no aparelho
+		const Store::AppEntry* r = A.store.find("radio"); CHECK(r && !r->installed && !r->core);   // liberado pelo admin: aparece na Loja
+		CHECK(A.store.find("mapas") == nullptr);                                                   // nao liberado: nem aparece
+		const Store::AppEntry* t = A.store.find("telefone"); CHECK(t && t->core && t->installed);
+	}
+	{ const int v = A.store.version; A.store.refresh(g_now); CHECK(A.store.version == v); }       // repetir logo em seguida nao consulta de novo
+
+	// instalar / remover
+	A.store.install("calculadora", g_now);
+	CHECK(A.store.busy("calculadora"));
+	CHECK(A.until([&] { return !A.store.busy("calculadora"); }));
+	CHECK(contains(A.store.installedIds(), "calculadora"));
+	A.store.uninstall("notas", g_now);
+	CHECK(A.until([&] { return !A.store.busy("notas"); }));
+	CHECK(!contains(A.store.installedIds(), "notas"));
+	A.store.install("notas", g_now); CHECK(A.until([&] { return !A.store.busy("notas"); })); CHECK(contains(A.store.installedIds(), "notas"));
+	A.store.uninstall("telefone", g_now);                                                          // sistema: servidor recusa
+	CHECK(A.until([&] { return !A.store.busy("telefone"); }));
+	CHECK(contains(A.store.installedIds(), "telefone"));
+	CHECK(A.store.takeToast().find("sistema") != std::string::npos);
+	A.store.install("mapas", g_now); CHECK(A.until([&] { return !A.store.busy("mapas"); }));       // nao liberado
+	CHECK(!contains(A.store.installedIds(), "mapas")); { std::string t = A.store.takeToast(); CHECK(t.find("liberado") != std::string::npos); }
+	A.store.install("../x", g_now); CHECK(!A.store.busy("../x"));                                  // id invalido nem sai do cliente
+
+	// papel de parede
+	A.store.setWallpaper("w4", g_now); CHECK(A.store.wallpaper == "w4");                          // otimista
+	CHECK(A.until([&] { return A.store.takeToast().empty(); }, 800) || true);
+	A.store.refresh(g_now + 200000, true);
+	CHECK(A.until([&] { return A.store.wallpaper == "w4" && !A.store.apps.empty(); }));          // o servidor confirmou
+	A.store.setWallpaper("w99", g_now);                                                           // nao existe: volta
+	CHECK(A.until([&] { return A.store.wallpaper == "w4" && !A.store.takeToast().empty(); }));
+	CHECK(A.store.uploadWallpaper("curto", g_now).size() > 0);                                    // local: foto pequena demais
+	const std::string jpeg = readFile(jp);
+	CHECK(jpeg.size() > 200);
+	CHECK(A.store.uploadWallpaper(jpeg, g_now).empty());
+	CHECK(A.store.uploading && !A.store.uploadWallpaper(jpeg, g_now).empty());                    // 1 por vez
+	CHECK(A.until([&] { return !A.store.uploading; }));
+	CHECK(Store::IsPhotoWp(A.store.wallpaper));
+	const std::string myPhotoWp = A.store.wallpaper;
+	{ std::string t = A.store.takeToast(); CHECK(t.find("atualizado") != std::string::npos); }
+	CHECK(A.store.uploadWallpaper(jpeg, g_now).empty());                                          // logo em seguida: o servidor limita
+	CHECK(A.until([&] { return !A.store.uploading; }));
+	CHECK(A.store.wallpaper == myPhotoWp); { std::string t = A.store.takeToast(); CHECK(t.find("Aguarde") != std::string::npos); }
+	A.store.setWallpaper("w2", g_now); CHECK(A.until([&] { return A.store.wallpaper == "w2"; })); A.until([&] { return false; }, 300);
+
+	// ---------------- jogador B (SEM celular) ----------------
+	Rig B(tb, port);
+	B.store.refresh(g_now);
+	CHECK(B.until([&] { return B.store.meLoaded; }));
+	CHECK(!B.store.hasDevice && B.store.imei.empty() && B.store.apps.empty());
+	B.store.install("gram", g_now); CHECK(!B.store.busy("gram"));                                 // sem aparelho nem tenta
+	CHECK(!B.store.uploadWallpaper(jpeg, g_now).empty());
+
+	// reset (reconexao)
+	{ Rig R(ta, port); R.store.refresh(g_now); R.until([&] { return R.store.catalogLoaded; }); R.store.reset(); CHECK(!R.store.meLoaded && !R.store.hasDevice && R.store.apps.empty() && R.store.imei.empty()); }
+
+	// ---------------- PhoneManager + apps (visibilidade, aviso sem celular, Loja, Ajustes, papel) ----------------
+	{
+		Rig P(ta, port); FakePhotos fp; fp.jpeg = jpeg;
+		PhoneManager pm; InstallDefaultApps(pm);
+		pm.context().store = &P.store; pm.context().photos = &fp; pm.context().networked = true;
+		StatusInfo st; st.clock = "12:00"; st.weekday = 1; st.day = 15; st.month = 1; st.year = 2024;
+		pm.context().status = [st]() { return st; }; pm.setStatusProvider(pm.context().status); pm.setScreenSize(2400, 1080);
+		NullCanvas cv;
+		// ANTES da Loja responder: so os que funcionam; pendentes ficam escondidos
+		CHECK(pm.visible("notas") && pm.visible("gram") && pm.visible("telefone") && pm.visible("loja"));
+		CHECK(!pm.visible("mapas") && !pm.visible("banco") && !pm.visible("sinuca"));
+		{ bool anyPending = false; for (auto* a : pm.pageApps(0)) if (a->id == "mapas" || a->id == "noticias") anyPending = true; CHECK(!anyPending); }
+		pm.open();
+		auto step = [&](int n) { for (int i = 0; i < n; ++i) { g_now += 16; pm.context().nowMs = g_now; P.gram.pump(g_now); if (P.due) { P.due = false; P.gram.onToken(0, P.token, port, g_now); } pm.frame(cv, g_now, 16); std::this_thread::sleep_for(std::chrono::milliseconds(8)); } };
+		for (int i = 0; i < 400 && !P.store.catalogLoaded; ++i) { step(1); if (!P.store.meLoaded && i == 0) P.store.refresh(g_now); }
+		step(2);
+		CHECK(P.store.catalogLoaded);
+		CHECK(pm.context().imei == P.store.imei && luhn(pm.context().imei) && pm.context().wallpaper == P.store.wallpaper && !pm.context().deviceMissing);
+		// DEPOIS: o que o servidor diz. A tem calculadora (instalou acima? nao: este Rig e novo, mas o servidor guarda), nao tem mapas
+		CHECK(pm.visible("telefone") && pm.visible("loja") && pm.visible("camera") && pm.visible("mensagens") && pm.visible("ajustes") && pm.visible("gram"));
+		CHECK(!pm.visible("mapas") && !pm.visible("radio") && !pm.visible("sinuca"));
+		CHECK(pm.visible("calculadora"));                                                           // instalada no teste acima
+		// desinstalar remove da grade
+		P.store.uninstall("calculadora", g_now); for (int i = 0; i < 300 && P.store.busy("calculadora"); ++i) step(1); step(2);
+		CHECK(!pm.visible("calculadora"));
+		{ bool inGrid = false; for (auto* a : pm.pageApps(0)) if (a->id == "calculadora") inGrid = true; CHECK(!inGrid); }
+		P.store.install("calculadora", g_now); for (int i = 0; i < 300 && P.store.busy("calculadora"); ++i) step(1); step(2);
+		CHECK(pm.visible("calculadora"));
+		// tela inicial desenha (inclui papel de parede)
+		cv.reset(); step(2); CHECK(cv.grads > 0); CHECK(cv.has("Gram") && cv.has("Notas") && !cv.has("Sem celular"));
+
+		// ---- Loja ----
+		CHECK(pm.openApp("loja")); step(30);
+		for (int i = 0; i < 300 && !P.store.catalogLoaded; ++i) step(1);
+		cv.reset(); step(3);
+		CHECK(cv.has("DISPONÍVEIS") && cv.has("INSTALADOS"));
+		CHECK(cv.has("Radio") || cv.has("Rádio") || cv.has("Radio"));                              // liberado pelo admin
+		CHECK(cv.has("Requer atualizar o jogo"));                                                    // liberado mas o cliente ainda nao tem de verdade
+		CHECK(!cv.has("Telefone"));                                                                  // sistema nao entra na Loja
+		CHECK(cv.has("Tirar"));                                                                      // instalados tem "Tirar"
+		{
+			auto* sa = dynamic_cast<StoreApp*>(pm.apps().foreground()); CHECK(sa != nullptr);
+			if (sa)
+			{
+				// "Tirar" do 1o instalado: toca no botao e confere que o servidor removeu
+				const Store::AppEntry* firstHave = nullptr; for (auto& a : P.store.apps) if (!a.core && a.installed) { firstHave = &a; break; }
+				CHECK(firstHave != nullptr);
+				// os ids de toque seguem a ordem: disponiveis primeiro, depois instalados
+				int idx = 0, found = -1; std::vector<const Store::AppEntry*> avail, have;
+				for (auto& a : P.store.apps) { if (a.core) continue; (a.installed ? have : avail).push_back(&a); }
+				found = (int)avail.size();                                                           // 1o instalado
+				const Rect r = sa->hitRect(StoreApp::ID_DEL + found); (void)idx;
+				CHECK(r.w > 0 && r.h > 0);
+				if (firstHave && r.w > 0)
+				{
+					const std::string id = firstHave->id;
+					const Vec2 pt{ r.x + r.w * 0.5f, r.y + r.h * 0.5f };
+					Touch t; t.kind = Touch::Down; t.pos = pt; sa->onTouch(t, pm.metrics(), pm.metrics().content);
+					t.kind = Touch::Up; sa->onTouch(t, pm.metrics(), pm.metrics().content);
+					t.kind = Touch::Tap; sa->onTouch(t, pm.metrics(), pm.metrics().content);
+					CHECK(P.store.busy(id));
+					for (int i = 0; i < 300 && P.store.busy(id); ++i) step(1);
+					step(2);
+					CHECK(!pm.visible(id));                                                          // saiu da tela inicial
+					P.store.install(id, g_now); for (int i = 0; i < 300 && P.store.busy(id); ++i) step(1); step(2);
+					CHECK(pm.visible(id));
+				}
+			}
+		}
+		pm.goHome(); step(30);
+
+		// ---- Ajustes: IMEI e Papel de parede ----
+		CHECK(pm.openApp("ajustes")); step(30);
+		cv.reset(); step(3);
+		CHECK(cv.has("Papel de parede"));
+		{
+			// a lista dos Ajustes rola: desenha numa area alta para conferir tambem as linhas do fim ("Sobre")
+			PhoneContext& cx = pm.context(); SettingsApp se(&cx); NullCanvas c2; const Metrics& mm = pm.metrics();
+			se.draw(c2, mm, Rect{ mm.content.x, mm.content.y, mm.content.w, 3000 });
+			if (!c2.has("IMEI")) for (auto& x : c2.texts) printf("[t] %s\n", x.c_str());
+			CHECK(c2.has("IMEI") && c2.has(Store::FormatImei(P.store.imei)) && c2.has("Papel de parede") && c2.has("Meu número"));
+		}
+		pm.goHome(); step(30);
+	}
+
+	// ---- seletor de papel de parede (direto) ----
+	{
+		Rig P(ta, port); FakePhotos fp; fp.jpeg = jpeg;
+		PhoneContext ctx; ctx.store = &P.store; ctx.photos = &fp; ctx.networked = true;
+		P.store.refresh(g_now); CHECK(P.until([&] { return P.store.wpLoaded; }));
+		ctx.imei = P.store.imei; ctx.wallpaper = P.store.wallpaper;
+		WallpaperPicker wp(&ctx); wp.open();
+		NullCanvas cv; Metrics m = ComputePhoneMetrics(2400, 1080, 1.0f, 1.0f); CHECK(m.valid);
+		ctx.nowMs = g_now; const Rect tall{ m.content.x, m.content.y, m.content.w, 3000 }; wp.draw(cv, m, tall);
+		CHECK(cv.has("PREDEFINIDOS") && cv.has("MINHAS FOTOS") && cv.has("Noite azul") && cv.has("Papel de parede"));
+		const Rect tile = wp.tileRect(3); CHECK(tile.w > 0);                                          // "Oceano"
+		Touch t; t.kind = Touch::Down; t.pos = { tile.x + tile.w * 0.5f, tile.y + tile.h * 0.5f }; wp.onTouch(t); t.kind = Touch::Tap; wp.onTouch(t);
+		CHECK(P.store.wallpaper == "w4");
+		CHECK(P.until([&] { ctx.nowMs = g_now; return true; }, 400));
+		wp.draw(cv, m, tall);
+		const Rect ph = wp.photoRect(0); CHECK(ph.w > 0);
+		g_now += 20000;                                                                              // passa o limite de 1 foto por vez do servidor
+		P.until([&] { return false; }, 3200);
+		t.kind = Touch::Down; t.pos = { ph.x + ph.w * 0.5f, ph.y + ph.h * 0.5f }; wp.onTouch(t); t.kind = Touch::Tap; wp.onTouch(t);
+		CHECK(P.store.uploading);
+		CHECK(P.until([&] { return !P.store.uploading; }));
+		CHECK(Store::IsPhotoWp(P.store.wallpaper));
+		Touch b; b.kind = Touch::Down; b.pos = { 10, 10 };
+		CHECK(!wp.takeClose());
+	}
+
+	// ---------------- jogador B no PhoneManager: sem celular ----------------
+	{
+		Rig P(tb, port);
+		PhoneManager pm; InstallDefaultApps(pm); pm.context().store = &P.store; pm.context().networked = true;
+		StatusInfo st; st.clock = "12:00"; st.weekday = 1; st.day = 15; st.month = 1; st.year = 2024; pm.context().status = [st]() { return st; }; pm.setStatusProvider(pm.context().status); pm.setScreenSize(2400, 1080);
+		NullCanvas cv; pm.open();
+		for (int i = 0; i < 400 && !P.store.meLoaded; ++i) { g_now += 16; pm.context().nowMs = g_now; P.gram.pump(g_now); if (P.due) { P.due = false; P.gram.onToken(0, P.token, port, g_now); } pm.frame(cv, g_now, 16); std::this_thread::sleep_for(std::chrono::milliseconds(8)); }
+		for (int i = 0; i < 4; ++i) { g_now += 16; pm.context().nowMs = g_now; pm.frame(cv, g_now, 16); }
+		CHECK(P.store.meLoaded && !P.store.hasDevice);
+		CHECK(pm.context().deviceMissing);
+		CHECK(!pm.openApp("notas") && !pm.openApp("camera") && !pm.openApp("loja"));
+		CHECK(!pm.visible("telefone") && !pm.visible("gram"));
+		cv.reset(); for (int i = 0; i < 3; ++i) { g_now += 16; pm.context().nowMs = g_now; pm.frame(cv, g_now, 16); }
+		CHECK(cv.has("Sem celular") && cv.has("/comprarcelular"));
+		CHECK(!cv.has("Loja") && !cv.has("Gram"));
+	}
+
+	printf("%d/%d verificacoes OK\n", total - fails, total);
+	return fails ? 1 : 0;
+}
