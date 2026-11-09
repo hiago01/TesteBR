@@ -4,6 +4,7 @@
 #include "../../vendor/SimpleIni/SimpleIni.h"
 #include "../phone/PhoneApps.h"
 #include "../phone/PhoneNet.h"
+#include "../../voice_new/Plugin.h"
 #include "../../net/netgame.h"
 #include "../../vendor/raknet/SAMP/SAMPRPC.h"
 #include "../../vendor/raknet/BitStream.h"
@@ -71,6 +72,7 @@ namespace
 		s.wifi     = ini.GetLongValue("celular", "wifi", 1) != 0;
 		s.sound    = ini.GetLongValue("celular", "som", 1) != 0;
 		s.notif    = ini.GetLongValue("celular", "notificacoes", 1) != 0;
+		s.handsFree = ini.GetLongValue("celular", "vivavoz", 1) != 0;
 		const long sz = ini.GetLongValue("celular", "tamanho", 100);
 		s.sizePct  = (sz == 75 || sz == 100 || sz == 125) ? (int)sz : 100;        // valor invalido -> padrao
 		CSimpleIniA::TNamesDepend keys;
@@ -90,6 +92,7 @@ namespace
 		ini.SetLongValue("celular", "wifi", s.wifi ? 1 : 0);
 		ini.SetLongValue("celular", "som", s.sound ? 1 : 0);
 		ini.SetLongValue("celular", "notificacoes", s.notif ? 1 : 0);
+		ini.SetLongValue("celular", "vivavoz", s.handsFree ? 1 : 0);
 		ini.SetLongValue("celular", "tamanho", s.sizePct);
 		for (auto& kv : g_store.data) ini.SetValue("celular_dados", kv.first.c_str(), kv.second.c_str());
 		if (ini.SaveFile(path.c_str()) < 0) FLog("[Celular] falha ao salvar %s", path.c_str());
@@ -135,6 +138,7 @@ namespace
 				pNetGame->GetRakClient()->RPC(&RPC_PhoneRequest, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
 				return true;
 			};
+			p->context().talk = [](bool on) { Plugin::SetExternalTalk(on); };      // "Segure para falar" da ligacao -> mesmo caminho do botao de microfone do SampVoice
 			g_net.notify = [](const std::string& t, const std::string& x, const std::string& app, int level) { PhoneWidget::PostNotification(t, x, app, level); };
 			g_net.incomingCall = [](const std::string&) { g_openCall.store(true); };
 			return p;

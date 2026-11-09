@@ -136,7 +136,33 @@ void Plugin::MainLoop()
 
     int defaultKey = 0x42;
 
-    
+    // Celular: "Segure para falar" da tela de ligacao (mesmo caminho do botao do microfone)
+    static bool externalPrev = false;
+    if (externalTalk != externalPrev)
+    {
+        externalPrev = externalTalk;
+        if (!Plugin::muteStatus && PluginConfig::GetMicroEnable())
+        {
+            if (externalTalk)
+            {
+                if (pAudioStream) pAudioStream->Stop(true);
+                if (!Plugin::recordBusy) { Plugin::recordStatus = true; Record::StartRecording(); }
+                SV::PressKeyPacket pressKeyPacket{};
+                pressKeyPacket.keyId = defaultKey;
+                if (!Network::SendControlPacket(SV::ControlPacketType::pressKey, &pressKeyPacket, sizeof(pressKeyPacket)))
+                    LogVoice("[sv:err:plugin] : failed to send PressKey packet (celular)");
+            }
+            else
+            {
+                if (!Plugin::recordBusy) Plugin::recordStatus = false;
+                SV::ReleaseKeyPacket releaseKeyPacket{};
+                releaseKeyPacket.keyId = defaultKey;
+                if (!Network::SendControlPacket(SV::ControlPacketType::releaseKey, &releaseKeyPacket, sizeof(releaseKeyPacket)))
+                    LogVoice("[sv:err:plugin] : failed to send ReleaseKey packet (celular)");
+            }
+        }
+    }
+
     //
     if(MicroIcon::IsShowed())
     {
@@ -170,7 +196,7 @@ void Plugin::MainLoop()
                             LogVoice("[sv:err:main:HookWndProc] : failed to send PressKey packet");
                     }
                 }
-                if (!vbutton->recording() && Plugin::recordStatus == 1)
+                if (!vbutton->recording() && Plugin::recordStatus == 1 && !externalTalk)
                 {
                     if (PluginConfig::GetMicroEnable())
                     {

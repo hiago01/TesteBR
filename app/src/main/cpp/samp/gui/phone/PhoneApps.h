@@ -49,7 +49,8 @@ namespace Phone
 				row(1, "Modo avião", "", true, false, s.airplane, true, PC::Orange);
 				row(2, "Wi-Fi", "", false, false, s.wifi, true, PC::Blue);
 				row(3, "Som", "", false, false, s.sound, true, PC::Red);
-				row(4, "Notificações", "", false, true, s.notif, true, PC::Red);
+				row(4, "Notificações", "", false, false, s.notif, true, PC::Red);
+				row(5, "Ligação sem apertar", "", false, true, s.handsFree, true, PC::Green);
 				y += m.px(22);
 				char buf[16]; std::snprintf(buf, sizeof(buf), "%d%%", s.sizePct);
 				row(10, "Tamanho do celular", buf, true, true, false, false, PC::Purple);
@@ -97,6 +98,7 @@ namespace Phone
 					case 2: s.wifi = !s.wifi; break;
 					case 3: s.sound = !s.sound; break;
 					case 4: s.notif = !s.notif; break;
+					case 5: s.handsFree = !s.handsFree; break;
 					case 10: m_screen = 1; m_scroll = ScrollView(); break;
 					case 30: s.sizePct = 75; break;
 					case 31: s.sizePct = 100; break;

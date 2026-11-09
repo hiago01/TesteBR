@@ -16,6 +16,7 @@ namespace Phone
 	struct PhoneSettings
 	{
 		bool airplane = false, wifi = true, sound = true, notif = true;
+		bool handsFree = true;            // ligacao com voz: o microfone fica aberto sozinho (sem apertar nada). Desligado = segurar para falar
 		int  sizePct = 100;               // tamanho do aparelho: 75 / 100 / 125
 	};
 
@@ -26,6 +27,9 @@ namespace Phone
 		std::string number;
 		bool incoming = false;          // a ligacao atual foi recebida
 		bool confirmed = false;         // o servidor ja respondeu ao pedido de ligar
+		bool muted = false;             // viva-voz: microfone mudo (botao da tela de ligacao)
+		bool held = false;              // segurar para falar: dedo no botao
+		bool voice = false;             // audio de voz disponivel nesta ligacao (os dois lados com SampVoice)
 		int64_t startMs = 0;            // inicio da ligacao ativa
 		int64_t endAtMs = 0;            // tela "encerrada" visivel ate este instante (state 0)
 		std::string endText;            // texto da tela "encerrada" (vazio = sem tela)
@@ -48,7 +52,8 @@ namespace Phone
 		std::string myNumber;                                                                     // numero do jogador ("" = ainda desconhecido)
 		bool networked = false;                                                                   // o servidor respondeu ao celular (servico existe)
 		PhoneCall call;
-		std::function<void()> answer, hangup;                                                     // ligacao: atender / desligar (recusar / cancelar)
+		std::function<void()> answer, hangup;
+		std::function<void(bool)> talk;                                                           // ligacao com voz: true = comecou a falar (segurando), false = parou                                                     // ligacao: atender / desligar (recusar / cancelar)
 		// ---- navegacao entre apps ----
 		std::function<bool(const std::string& appId)> openApp;                                    // preenchido pelo PhoneManager
 		std::string launchArg;                                                                    // argumento para o app aberto (ex.: numero); o destino consome em onResume

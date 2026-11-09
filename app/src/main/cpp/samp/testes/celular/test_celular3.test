@@ -38,6 +38,7 @@ struct FakeBS
 	FakeBS& str(const std::string& s) { for (char c : s) b.push_back((uint8_t)c); return *this; }
 };
 
+template <class T2> static T2* fg(PhoneManager& pm) { return dynamic_cast<T2*>(pm.apps().foreground()); }
 static std::map<std::string, std::string> g_store;
 static int64_t T = 5000;
 static void setup(PhoneManager& pm)
@@ -59,6 +60,7 @@ static Net::Event callEv(int state, int reason, const std::string& n) { Net::Eve
 
 struct Rig
 {
+	std::vector<int> talks;      // antes do pm: o destrutor do app ainda chama talk(false)
 	PhoneManager pm; PhoneNet net; NullCanvas cv;
 	std::vector<Net::Request> sent; std::vector<std::string> notes; std::vector<std::string> incoming; bool sendOk = true;
 	Rig()
@@ -67,6 +69,7 @@ struct Rig
 		net.send = [this](const Net::Request& r) { if (sendOk) sent.push_back(r); return sendOk; };
 		net.notify = [this](const std::string& t, const std::string& x, const std::string& app, int lv) { notes.push_back(t + "|" + x + "|" + app); pm.notifications().post(t, x, app, T, lv ? Notification::Warn : Notification::Info); };
 		net.incomingCall = [this](const std::string& n) { incoming.push_back(n); };
+		pm.context().talk = [this](bool on) { talks.push_back(on ? 1 : 0); };
 		pm.open(); frames(pm, cv, 30);
 	}
 	void pump() { T += 16; pm.context().nowMs = T; net.pump(T); }
@@ -251,6 +254,53 @@ int main()
 		Rig r; r.ev(numberEv("1234567"));
 		for (int i = 0; i < 1000; ++i) r.net.onServerPacket(msgEv("7654321", "m"));
 		r.pump(); CHECK(Data::LoadMsgs(r.c()).size() <= Data::kMaxMsgs && Data::LoadMsgs(r.c()).size() >= 100);
+	}
+
+	// ================= audio da ligacao (SampVoice) =================
+	{   // viva-voz (padrao): microfone abre sozinho
+		Rig r; r.ev(numberEv("1234567"));
+		CHECK(r.c().settings.handsFree);
+		CHECK(r.c().dial("7654321").empty()); r.ev(replyEv(Net::OpDial, r.sent[0].req, Net::S_Ok));
+		r.ev(callEv(1, 0, "7654321")); CHECK(r.talks.empty());                                      // chamando: ainda sem microfone
+		r.ev(callEv(3, 1, "7654321"));                                                              // reason 1 em "em ligacao" = com voz
+		CHECK(r.c().call.state == 3 && r.c().call.voice && r.talks.size() == 1 && r.talks.back() == 1);
+		r.pm.openApp("ligacao"); frames(r.pm, r.cv, 20); r.cv.texts.clear(); frames(r.pm, r.cv, 2);
+		CallApp* ca = fg<CallApp>(r.pm); CHECK(ca && r.cv.has("Microfone ligado") && ca->talking());
+		Touch t; t.kind = Touch::Tap; t.pos = ca->talkCenter();
+		ca->onTouch(t, r.pm.metrics(), Rect{}); r.pump();                                           // toque = mudo
+		CHECK(r.c().call.muted && r.talks.back() == 0 && !ca->talking());
+		r.cv.texts.clear(); frames(r.pm, r.cv, 2); CHECK(r.cv.has("Mudo"));
+		ca->onTouch(t, r.pm.metrics(), Rect{}); r.pump(); CHECK(!r.c().call.muted && r.talks.back() == 1);
+		r.pm.goHome(); frames(r.pm, r.cv, 20); r.pump(); CHECK(r.talks.back() == 1);                // sair da tela nao corta o microfone
+		r.ev(callEv(0, 1, "7654321")); CHECK(r.talks.back() == 0);                                  // ligacao caiu: fecha o microfone
+	}
+	{   // desligar pelo botao fecha o microfone mesmo sem evento do servidor
+		Rig r; r.ev(numberEv("1234567")); r.ev(callEv(2, 0, "7654321")); r.c().answer(); r.ev(callEv(3, 1, "7654321"));
+		CHECK(r.talks.back() == 1);
+		r.net.connectionReset(); r.pump(); CHECK(r.talks.back() == 0);                              // reconexao
+	}
+	{   // segurar para falar (viva-voz desligado)
+		Rig r; r.ev(numberEv("1234567")); r.c().settings.handsFree = false;
+		CHECK(r.c().dial("7654321").empty()); r.ev(replyEv(Net::OpDial, r.sent[0].req, Net::S_Ok)); r.ev(callEv(3, 1, "7654321"));
+		CHECK(r.talks.empty());                                                                     // nada de microfone sozinho
+		r.pm.openApp("ligacao"); frames(r.pm, r.cv, 20); r.cv.texts.clear(); frames(r.pm, r.cv, 2);
+		CallApp* ca = fg<CallApp>(r.pm); CHECK(ca && r.cv.has("Segure para falar"));
+		Touch t; t.kind = Touch::Down; t.pos = ca->talkCenter();
+		ca->onTouch(t, r.pm.metrics(), Rect{}); r.pump(); CHECK(ca->talking() && r.talks.back() == 1);
+		r.cv.texts.clear(); frames(r.pm, r.cv, 2); CHECK(r.cv.has("Falando"));
+		t.kind = Touch::Up; ca->onTouch(t, r.pm.metrics(), Rect{}); r.pump(); CHECK(!ca->talking() && r.talks.back() == 0);
+		t.kind = Touch::Down; ca->onTouch(t, r.pm.metrics(), Rect{}); r.pump(); CHECK(r.talks.back() == 1);
+		r.ev(callEv(0, 1, "7654321")); CHECK(r.talks.back() == 0 && !r.c().call.held);               // caiu segurando: solta
+		// ajuste persiste no armazenamento e aparece nos Ajustes
+		r.pm.goHome(); frames(r.pm, r.cv, 20); r.pm.openApp("ajustes"); frames(r.pm, r.cv, 20); r.cv.texts.clear(); frames(r.pm, r.cv, 2);
+		CHECK(r.cv.has("Liga\xC3\xA7\xC3\xA3o sem apertar"));
+	}
+	{   // ligacao sem voz: sem botao, com aviso
+		Rig r; r.ev(numberEv("1234567"));
+		CHECK(r.c().dial("7654321").empty()); r.ev(replyEv(Net::OpDial, r.sent[0].req, Net::S_Ok));
+		r.ev(callEv(3, 0, "7654321")); CHECK(r.c().call.state == 3 && !r.c().call.voice);
+		r.pm.openApp("ligacao"); frames(r.pm, r.cv, 20); r.cv.texts.clear(); frames(r.pm, r.cv, 2);
+		CHECK(!r.cv.has("Segure para falar") && r.cv.has("Sem \xC3\xA1udio"));
 	}
 
 	// ================= Ajustes mostra o numero; bolha de mensagem nao enviada desenha =================

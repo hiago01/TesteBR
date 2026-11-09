@@ -139,6 +139,12 @@ namespace Phone
 				if (now - m_pend[i].sentMs >= Net::kTimeoutMs) { Pending p = m_pend[i]; m_pend.erase(m_pend.begin() + i); fail(p, Net::S_Timeout, now); }
 				else ++i;
 			}
+			// microfone da ligacao: aberto sozinho (viva-voz) ou enquanto segura o botao; nunca fora de uma ligacao com voz
+			{
+				const PhoneCall& pc = m_c->call;
+				const bool want = pc.state == 3 && pc.voice && ((m_c->settings.handsFree && !pc.muted) || (!m_c->settings.handsFree && pc.held));
+				if (want != m_talkSent) { m_talkSent = want; if (m_c->talk) m_c->talk(want); }
+			}
 			// tela "encerrada" some sozinha
 			PhoneCall& c = m_c->call;
 			if (c.state == 0 && !c.endText.empty() && now >= c.endAtMs) c.endText.clear();
@@ -206,7 +212,7 @@ namespace Phone
 		PhoneContext* m_c = nullptr;
 		std::mutex m_mx; std::deque<Net::Event> m_q; std::atomic<bool> m_reset{ false };
 		std::vector<Pending> m_pend;
-		uint16_t m_req = 0; int64_t m_lastHello = 0, m_lastSend = 0;
+		uint16_t m_req = 0; int64_t m_lastHello = 0, m_lastSend = 0; bool m_talkSent = false;
 
 		static bool validNumber(const std::string& n)
 		{
@@ -300,7 +306,7 @@ namespace Phone
 				if (incomingCall) incomingCall(e.number);
 				break;
 			}
-			case 3: if (c.state != 0) { c.state = 3; c.startMs = now; c.number = e.number; c.confirmed = true; } break;
+			case 3: if (c.state != 0) { c.state = 3; c.startMs = now; c.number = e.number; c.confirmed = true; c.voice = (e.reason == 1); } break;
 			default:    // 0 = encerrada
 			{
 				const int prev = c.state; const bool incoming = c.incoming; const std::string num = c.number.empty() ? e.number : c.number;

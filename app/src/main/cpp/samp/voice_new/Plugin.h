@@ -22,6 +22,8 @@ public:
     //static bool recordStatus;
     static int MicRecord;
     static int MicPress;
+    // Celular: tela de ligacao pede para falar/parar (mesmo caminho do botao do microfone: PressKey/ReleaseKey 0x42). Thread de desenho.
+    static void SetExternalTalk(bool on) noexcept { externalTalk = on; }
 
 private:
     static void OnInitGame() noexcept;
@@ -43,6 +45,7 @@ private:
     static bool muteStatus;
     static bool recordStatus;
     static bool recordBusy;
+    static inline bool externalTalk { false };
 
     static std::map<uint32_t, StreamPtr> streamTable;
 };
