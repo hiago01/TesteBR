@@ -48,7 +48,16 @@ namespace Phone
 		{
 			if (!m_c->photos) return;
 			const int s = m_c->photos->shotSerial();
+			const bool busy = m_c->photos->shooting();
 			if (s != m_serial) { m_serial = s; m_msg.set("Foto salva na Galeria", m_c->nowMs, false); m_flashMs = m_c->nowMs; refreshThumb(); }
+			else if (m_wasBusy && !busy && m_shot)
+			{
+				// a captura terminou sem foto nova: mostra o motivo (antes o erro assincrono ficava invisivel)
+				const std::string e = m_c->photos->lastError();
+				m_msg.set(e.empty() ? "Não foi possível tirar a foto." : e, m_c->nowMs);
+			}
+			if (!busy) m_shot = false;
+			m_wasBusy = busy;
 		}
 		void draw(Canvas& cv, const Metrics& m, const Rect& content) override
 		{
@@ -98,10 +107,12 @@ namespace Phone
 		void shoot()
 		{
 			if (!m_c->photos || !m_c->photos->canShoot()) { m_msg.set(NoPhotoText(), m_c->nowMs); return; }
-			if (!m_c->photos->shoot()) { const std::string e = m_c->photos->lastError(); m_msg.set(e.empty() ? "Aguarde a foto anterior." : e, m_c->nowMs); }
+			if (m_c->photos->shoot()) m_shot = true;
+			else { const std::string e = m_c->photos->lastError(); m_msg.set(e.empty() ? "Aguarde a foto anterior." : e, m_c->nowMs); }
 		}
 		const std::string& thumb() const { return m_thumb; }
 	private:
+		bool m_wasBusy = false, m_shot = false;
 		void refreshThumb() { m_thumb.clear(); if (m_c->photos) { auto l = m_c->photos->list(); if (!l.empty()) m_thumb = l[0]; } }
 		PhoneContext* m_c; HitList m_hit; int m_press = 0, m_serial = 0; int64_t m_flashMs = 0; std::string m_thumb; InlineMsg m_msg;
 	};

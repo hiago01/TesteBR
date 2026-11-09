@@ -244,19 +244,35 @@ namespace
 			for (size_t i = 0; i + kMaxCache < v.size(); ++i) ::unlink((dir + v[i].second).c_str());
 		}
 
+		static bool AllBlack(const std::vector<uint8_t>& px)
+		{
+			for (size_t i = 0; i < px.size(); i += 4 * 211) if (px[i] || px[i + 1] || px[i + 2]) return false;
+			return true;
+		}
 		void capture()
 		{
 			GLint vp[4] = { 0, 0, 0, 0 }; glGetIntegerv(GL_VIEWPORT, vp);
-			const int w = vp[2], h = vp[3];
-			if (w < 64 || h < 64 || w > 8192 || h > 8192) { fail("Não foi possível capturar a tela."); return; }
+			GLint readFbo = 0, packAlign = 4; glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFbo); glGetIntegerv(GL_PACK_ALIGNMENT, &packAlign);
+			int w = vp[2], h = vp[3];
+			if (w < 64 || h < 64 || w > 8192 || h > 8192) { fail("Não foi possível capturar a tela (viewport " + std::to_string(w) + "x" + std::to_string(h) + ")."); return; }
 			std::vector<uint8_t> px((size_t)w * h * 4);
-			while (glGetError() != GL_NO_ERROR) {}
-			glPixelStorei(GL_PACK_ALIGNMENT, 1);
-			glReadPixels(vp[0], vp[1], w, h, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
-			if (glGetError() != GL_NO_ERROR) { fail("Não foi possível capturar a tela."); return; }
+			bool okRead = false, black = true; GLint usedFbo = readFbo;
+			// tentativa 1: o framebuffer de leitura atual; tentativa 2: o framebuffer padrao (tela)
+			for (int attempt = 0; attempt < 2 && !(okRead && !black); ++attempt)
+			{
+				if (attempt == 1) { if (readFbo == 0) break; glBindFramebuffer(GL_READ_FRAMEBUFFER, 0); usedFbo = 0; }
+				while (glGetError() != GL_NO_ERROR) {}
+				glPixelStorei(GL_PACK_ALIGNMENT, 1);
+				glReadPixels(vp[0], vp[1], w, h, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+				okRead = glGetError() == GL_NO_ERROR;
+				black = okRead ? AllBlack(px) : true;
+			}
+			glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)readFbo);
+			glPixelStorei(GL_PACK_ALIGNMENT, packAlign);
+			char dbg[96]; std::snprintf(dbg, sizeof(dbg), " (fbo %d, %dx%d)", (int)usedFbo, w, h);
+			if (!okRead) { fail(std::string("Não foi possível capturar a tela.") + dbg); return; }
 			// tela toda preta = captura nao funcionou (nao grava foto preta fingindo que deu certo)
-			bool any = false; for (size_t i = 0; i < px.size() && !any; i += 4 * 997) any = px[i] || px[i + 1] || px[i + 2];
-			if (!any) { fail("A captura veio preta. Tente de novo."); return; }
+			if (black) { fail(std::string("A captura veio preta.") + dbg); return; }
 			std::shared_ptr<Shared> sh = m_sh;
 			std::thread([sh, w, h, p = std::move(px)]() mutable
 			{

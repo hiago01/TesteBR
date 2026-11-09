@@ -121,6 +121,7 @@ int main()
 		ph.busy = true; tapAt(pm, cv, shutter); CHECK(ph.shots == 1 && cv.has("Aguarde"));                       // ocupado: nao dispara, avisa
 		ph.busy = false; ph.can = false; tapAt(pm, cv, shutter); CHECK(ph.shots == 1 && cv.has("não disponíveis"));
 		ph.can = true;
+		ph.busy = false; fg<CameraApp>(pm)->shoot(); ph.busy = true; frames(pm, cv, 2); ph.err = "A captura veio preta. (fbo 0, 2400x1080)"; ph.busy = false; frames(pm, cv, 2); CHECK(cv.has("A captura veio preta"));   // erro assincrono da captura aparece
 		// miniatura abre a galeria
 		tapAt(pm, cv, { m.content.x + m.px(26 + 25), m.content.bottom() - m.px(59) }); CHECK(pm.apps().foreground() && fg<GalleryApp>(pm) != nullptr);
 	}
