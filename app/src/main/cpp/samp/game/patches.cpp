@@ -148,6 +148,9 @@ void ApplyPatches_level0()
     CHook::RET("_ZN5CHeli9InitHelisEv"); // CHeli::InitHelis(void) (เริ่มต้นเฮลิคอปเตอร์)
     CHook::RET("_ZN11CFileLoader10LoadPickupEPKc"); // CFileLoader::LoadPickup (โหลดของที่เก็บได้)
     CHook::RET("_ZN14CLoadingScreen15DisplayPCScreenEv"); // Loading screen (หน้าจอโหลด)
+    // Maximo RP: a tela de loading e o fade pretos nativos do GTA ("Loading..." + faixa preta) ficavam por cima do jogo; o overlay Java ja cobre o carregamento.
+    CHook::RET("_ZN14CLoadingScreen12RenderSplashEv"); // splash nativo (retangulo preto + texto)
+    CHook::RET("_Z6DoFadev"); // fade nativo (preto parcial)
 
     // entryexit
     //CHook::RET("_ZN17CEntryExitManager4InitEv"); // (เริ่มต้นตัวจัดการทางเข้า-ออก)
