@@ -7,6 +7,7 @@
 #include "../../vendor/armhook/patch.h"
 #include "../../vendor/SimpleIni/SimpleIni.h"
 #include "maximomenu.h"
+#include "../gfxsettings.h"
 #include "worldmap.h"
 #include "controlmode.h"
 #include "controlsselector.h"
@@ -164,6 +165,8 @@ namespace
 		}
 	}
 
+	void ApplyRes();   // definida mais abaixo (escala de resolucao)
+
 	// Cada frame: se algo do jogo desfez a distancia/brilho escolhidos (a tabela nativa e reescrita por varias rotinas do
 	// motor), restaura e registra no log (SAMP/samp_log.txt) para sabermos quem desfez.
 	void KeepSettings()
@@ -180,12 +183,64 @@ namespace
 					 nd ? (int)*nd : -1, lp ? *lp : -1.0f, g_cfg.draw);
 			ApplyDraw(g_cfg.draw);
 		}
+		ApplyRes();                                      // escala de resolucao escolhida (se o jogo/preset desfez)
 		int32_t* nb = NativeField(N_BRIGHT, 0x10);
 		if (nb && *nb != g_cfg.bright)
 		{
 			if (s_logs++ < 12) FLog("[MaximoMenu] brilho desfeito pelo jogo (tabela=%d) -> restaurando %d", (int)*nb, g_cfg.bright);
 			*nb = g_cfg.bright;
 		}
+	}
+
+	// ---- ESCALA DE RESOLUCAO (50..100 %) ----
+	// Conferido no assembly do libGTASA.so (funcao Idle): a cada frame o jogo calcula
+	//     largura = 640 + (OS_ScreenGetWidth - 640) * MobileSettings::settings[1] / 100     (altura mantem a proporcao, multiplos de 4)
+	// e chama emu_SetAltRenderTarget(largura, altura), que SO recria o alvo quando o tamanho muda. O mundo e desenhado nesse alvo
+	// menor; Render2dStuff (hooks.cpp) faz emu_FlushAltRenderTarget (upscale) ANTES da HUD -> HUD/controles continuam nitidos.
+	// Entao a escala em % so converte "% da largura da tela" no valor 0..100 dessa opcao nativa (sem hook novo, sem FBO novo).
+	int ScreenW()
+	{
+		static auto fn = (unsigned(*)())dlsym(CHook::lib, "_Z17OS_ScreenGetWidthv");
+		return fn ? (int)fn() : 0;
+	}
+	int ResNativeFor(int pct)       // valor da opcao nativa para "pct % da largura"; -1 = tela pequena demais (sem escala)
+	{
+		const int W = ScreenW();
+		if (W <= 640) return -1;
+		const double v = ((double)pct * 0.01 * (double)W - 640.0) * 100.0 / (double)(W - 640);
+		return std::clamp((int)std::lround(v), 0, 100);
+	}
+	int ResIdxFromNative()          // aproxima o que o motor usa agora (para mostrar sem mudar nada)
+	{
+		const int W = ScreenW();
+		if (W <= 640) return 5;
+		const int v = std::clamp(NativeGet(N_RES), 0, 100);
+		const double pct = (640.0 + (double)(W - 640) * v / 100.0) * 100.0 / (double)W;
+		int best = 5; double bd = 1e9;
+		for (int i = 0; i < 6; i++) { const double d = std::fabs(pct - GfxSettings::kResOpts[i]); if (d < bd) { bd = d; best = i; } }
+		return best;
+	}
+	void ApplyRes()
+	{
+		const int idx = GfxSettings::g_resIdx.load();
+		if (idx < 0 || idx > 5) return;                       // ainda nao escolhido: nao mexe no que o motor usa
+		const int v = ResNativeFor(GfxSettings::kResOpts[idx]);
+		if (v < 0) return;
+		if (NativeGet(N_RES) != v) NativeSet(N_RES, v);       // so escreve quando difere (o jogo reaplica sozinho no proximo frame)
+	}
+	int IdxOf(const int* opts, int n, long val, int def)
+	{
+		for (int i = 0; i < n; i++) if (opts[i] == val) return i;
+		return def;
+	}
+	void RestoreGfx()
+	{
+		GfxSettings::g_aspectMode.store(0);
+		GfxSettings::g_resIdx.store(5);                       // 100 %
+		GfxSettings::g_safeIdx.store(0);                      // 0 % = area padrao
+		ApplyRes();
+		g_dirty = true;
+		FLog("[MaximoMenu] graficos restaurados: aspecto=AUTO escala=100%% safezone=0%%");
 	}
 
 	void ApplyStream(int pct)
@@ -213,6 +268,11 @@ namespace
 		int mn = 0, mx = 100;
 		if (d >= 0) { NativeRange(N_DRAW, mn, mx);   g_cfg.draw   = std::clamp((int)d, mn, mx); }
 		if (b >= 0) { NativeRange(N_BRIGHT, mn, mx); g_cfg.bright = std::clamp((int)b, mn, mx); }
+
+		// graficos (valores ausentes/invalidos -> padrao; resolutionScale ausente -> continua o valor atual do motor)
+		GfxSettings::g_aspectMode.store(0);   // so AUTO e suportado: qualquer outro valor gravado e ignorado
+		GfxSettings::g_resIdx.store(IdxOf(GfxSettings::kResOpts, 6, ini.GetLongValue("maximo", "resolutionScale", -1), -1));
+		GfxSettings::g_safeIdx.store(IdxOf(GfxSettings::kSafeOpts, 5, ini.GetLongValue("maximo", "safeZoneScale", 0), 0));
 	}
 
 	void SaveCfg()
@@ -233,6 +293,9 @@ namespace
 		if (g_doneId > 0) ini.SetLongValue("maximo", "preset_done_id", g_doneId);
 		if (g_cfg.draw >= 0)   ini.SetLongValue("maximo", "draw_dist", g_cfg.draw);
 		if (g_cfg.bright >= 0) ini.SetLongValue("maximo", "brightness", g_cfg.bright);
+		ini.SetLongValue("maximo", "aspectRatioMode", GfxSettings::g_aspectMode.load());
+		if (GfxSettings::g_resIdx.load() >= 0) ini.SetLongValue("maximo", "resolutionScale", GfxSettings::kResOpts[std::clamp(GfxSettings::g_resIdx.load(), 0, 5)]);
+		ini.SetLongValue("maximo", "safeZoneScale", GfxSettings::SafePct());
 		if (pSettings)
 			ini.SetBoolValue("gui", "fps", pSettings->Get().iFPSCounter);
 
@@ -327,7 +390,8 @@ namespace
 	enum { K_INFO = 0, K_TOGGLE, K_SLIDER, K_ACTION, K_CHOICE };
 	enum { ID_NONE = 0, ID_SKID, ID_FPSCOUNT, ID_STREAM, ID_NATIVE, ID_RESUME, ID_QUIT, ID_PRESET, ID_CTLRESET,
 	       ID_CTLMODE, ID_MC_EDIT, ID_MC_RESET, ID_MC_JOYSCALE, ID_MC_BTNSCALE, ID_MC_ALPHA, ID_MC_SENS, ID_MC_DEAD, ID_MC_MAXD, ID_MC_JOYX, ID_MC_JOYY, ID_MC_AIMSENS, ID_MC_AIMSMOOTH, ID_MC_AIMDRAG, ID_MC_SHOWINV, ID_MC_SHOWSLOTS,
-	       ID_VOIP_VOL, ID_VOIP_PRESET, ID_VOIP_HDR, ID_VOIP_RESETP, ID_VOIP_PLAYER };
+	       ID_VOIP_VOL, ID_VOIP_PRESET, ID_VOIP_HDR, ID_VOIP_RESETP, ID_VOIP_PLAYER,
+	       ID_RESSCALE, ID_ASPECT, ID_SAFEZONE, ID_GFXRESET };
 
 	struct Row { const char* label; int kind; int id; int nidx = -1; };
 
@@ -385,10 +449,14 @@ namespace
 		{ "Qualidade das texturas",      K_INFO, ID_NONE },
 		{ "Névoa",                       K_INFO, ID_NONE },
 		{ "Limite de FPS",               K_INFO, ID_NONE },
+		{ "Escala de resolução",         K_CHOICE, ID_RESSCALE },
+		{ "Proporção da tela (Aspect Ratio)", K_INFO, ID_ASPECT },
+		{ "Outras proporções (4:3, 16:9, 19.5:9, 20:9)", K_INFO, ID_NONE },
+		{ "Zona segura (Safe Zone)",     K_SLIDER, ID_SAFEZONE },
+		{ "Restaurar configurações gráficas", K_ACTION, ID_GFXRESET },
 	}};
 	const Page kSubTela = { "Tela", {
 		{ "Brilho",                      K_SLIDER, ID_NATIVE, N_BRIGHT },
-		{ "Resolução",                   K_SLIDER, ID_NATIVE, N_RES },
 		{ "Legendas",                    K_TOGGLE, ID_NATIVE, N_SUBT },
 		{ "Contador de FPS",             K_TOGGLE, ID_FPSCOUNT },
 	}};
@@ -543,6 +611,8 @@ namespace
 			case ID_VOIP_PRESET: return VoiceMix::LevelOf(VoiceMix::GetMaster());
 			case ID_VOIP_PLAYER: return VoiceMix::LevelOf(VoiceMix::GetPlayer(r.nidx));
 			case ID_PRESET:   return CurrentPreset();
+			case ID_RESSCALE: { const int i = GfxSettings::g_resIdx.load(); return i >= 0 ? i : ResIdxFromNative(); }
+			case ID_SAFEZONE: return std::clamp(GfxSettings::g_safeIdx.load(), 0, 4);
 			case ID_NATIVE:
 				if (r.nidx == N_DRAW)   { if (g_cfg.draw < 0)   InitFromEngine(); return g_cfg.draw; }
 				if (r.nidx == N_BRIGHT) { if (g_cfg.bright < 0) InitFromEngine(); return g_cfg.bright; }
@@ -564,6 +634,8 @@ namespace
 			case ID_FPSCOUNT: if (pSettings) pSettings->Get().iFPSCounter = (v != 0); break;
 			case ID_STREAM:   g_cfg.stream = std::clamp(v, 0, 100); ApplyStream(g_cfg.stream); break;
 			case ID_PRESET:   ApplyPreset(v); break;
+			case ID_RESSCALE: GfxSettings::g_resIdx.store(std::clamp(v, 0, 5)); ApplyRes(); break;
+			case ID_SAFEZONE: GfxSettings::g_safeIdx.store(std::clamp(v, 0, 4)); break;
 			case ID_VOIP_VOL: VoiceMix::SetMaster(v); break;
 			case ID_VOIP_PRESET: if (v >= 0 && v < VoiceMix::kLevels) VoiceMix::SetMaster(VoiceMix::kLevelPct[v]); break;
 			case ID_VOIP_PLAYER: if (v >= 0 && v < VoiceMix::kLevels) VoiceMix::SetPlayer(r.nidx, VoiceMix::kLevelPct[v]); return;   // por sessao (IDs mudam): nao grava
@@ -581,6 +653,8 @@ namespace
 		if (r.id >= ID_MC_JOYSCALE && r.id <= ID_MC_AIMSMOOTH) { mn = 0; mx = 100; return; }
 		if (r.id == ID_VOIP_VOL) { mn = 0; mx = VoiceMix::kMaxPct; return; }
 		if (r.id == ID_VOIP_PRESET || r.id == ID_VOIP_PLAYER) { mn = 0; mx = VoiceMix::kLevels - 1; return; }
+		if (r.id == ID_RESSCALE) { mn = 0; mx = 5; return; }
+		if (r.id == ID_SAFEZONE) { mn = 0; mx = 4; return; }
 		if (r.id == ID_PRESET) { mn = 0; mx = P_COUNT - 1; return; }   // 0..4 (a volta de "Personalizada" cai em 0)
 		if (r.id == ID_NATIVE) { NativeRange(r.nidx, mn, mx); return; }
 		mn = 0; mx = (r.id == ID_STREAM) ? 100 : 1;
@@ -785,6 +859,7 @@ void MaximoMenu::draw(ImGuiRenderer* r)
 							else g_resetArmedUntil = NowMs() + 3000;
 						}
 						if (row.id == ID_VOIP_RESETP) VoiceMix::ResetPlayers();
+						if (row.id == ID_GFXRESET) RestoreGfx();
 						if (row.id == ID_RESUME) { g_open.store(false); if (g_dirty) SaveCfg(); g_drag = Drag(); return; }
 						if (row.id == ID_QUIT)
 						{
@@ -858,6 +933,12 @@ void MaximoMenu::draw(ImGuiRenderer* r)
 
 		if (row.kind == K_INFO)
 		{
+			if (row.id == ID_ASPECT)
+			{
+				const char* s = "AUTO (recomendado)";
+				const ImVec2 ts = r->calculateTextSize(s, fs);
+				r->drawText(ImVec2(panX + panW - pad - ts.x, ty), cText, s, false, fs);
+			}
 			if (row.id == ID_NONE && g_tab != T_SAIR && g_tab != T_MAPA && g_tab != T_CONTROLES && g_tab != T_JOGO
 				&& !(g_tab == T_CONFIG && g_sub == 2))
 			{
@@ -886,6 +967,7 @@ void MaximoMenu::draw(ImGuiRenderer* r)
 				else snprintf(buf, sizeof(buf), "Personalizado (%d%%)", pct);
 			}
 			else if (row.id == ID_PRESET) s = (v >= 0 && v < P_COUNT) ? kPresets[v].name : "Personalizada";
+			else if (row.id == ID_RESSCALE) { snprintf(buf, sizeof(buf), (v == 5) ? "%d%% (padrão)" : "%d%%", GfxSettings::kResOpts[std::clamp(v, 0, 5)]); }
 			else if (row.nidx == N_SHADOW && v == 2) s = "Avançado";
 			else if (row.nidx == N_TLAYOUT) s = (v == 0) ? "Clássico" : "Alternativo";
 			else if (row.nidx == N_STEER)   s = (v == 0) ? "Analógico" : (v == 1) ? "Botões" : "Inclinação";
@@ -908,6 +990,7 @@ void MaximoMenu::draw(ImGuiRenderer* r)
 
 			char buf[24];
 			// escala 0..100 mostra o valor do jogo direto; outras escalas viram porcentagem
+			if (row.id == ID_SAFEZONE) snprintf(buf, sizeof(buf), "%d%%", GfxSettings::kSafeOpts[std::clamp(v, 0, 4)]); else
 			snprintf(buf, sizeof(buf), "%d%%", (mx == 100 || row.nidx == N_ANALOG || row.id == ID_VOIP_VOL) ? v : (int)std::lround(100.0f * (v - mn) / (mx - mn)));
 			const ImVec2 ts = r->calculateTextSize(buf, fs);
 			r->drawText(ImVec2(trackX - 10.0f * k - ts.x, ty), cText, buf, false, fs);

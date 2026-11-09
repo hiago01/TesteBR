@@ -1,5 +1,6 @@
 #include "../../main.h"
 #include "../gui.h"
+#include "../gfxsettings.h"
 #include "../../game/game.h"
 #include "../../net/netgame.h"
 #include "../../net/localplayer.h"
@@ -427,6 +428,7 @@ void ModernControls::draw(ImGuiRenderer* r)
 		g_sw = screen.x; g_sh = screen.y;
 		const uint32_t ver = ControlMode::ConfigVersion();
 		if (ver != g_seenVer) { g_ctl.ApplyConfig(ControlMode::GetConfig()); g_seenVer = ver; }
+		{ const GfxSettings::Insets zi = GfxSettings::SafeInsets(screen.x, screen.y); g_ctl.SetInsets(zi.x, zi.y); }   // Safe Zone (desenho e toque usam o mesmo g_ctl.lay)
 		g_ctl.SetScreen(screen.x, screen.y);
 		// CORRIDA LOCK ligado: o botao CORRER some (nao desenha nem recebe toque); no editor de HUD ele continua visivel.
 		g_ctl.disabledMask = (!editing && g_runLock.load()) ? (1u << B_RUN) : 0u;

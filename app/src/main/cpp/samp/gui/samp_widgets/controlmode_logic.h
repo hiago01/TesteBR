@@ -152,17 +152,22 @@ namespace CtlLogic
 		CtlCircle btn[B_COUNT]{};
 	};
 
-	inline ModernLayout MakeLayout(const ModernConfig& c, float sw, float sh)
+	// Safe Zone (ix/iy = margem em px de CADA borda): desloca so as POSICOES (centros) para dentro, como x' = ix + x*(1-2*ix/sw);
+	// tamanhos e area de toque (a mesma geometria) nao mudam. ix=iy=0 -> layout identico ao anterior.
+	inline ModernLayout MakeLayout(const ModernConfig& c, float sw, float sh, float ix = 0.0f, float iy = 0.0f)
 	{
 		ModernLayout L;
+		const float kx = (ix > 0.0f && sw > 1.0f) ? (1.0f - 2.0f * ix / sw) : 1.0f;
+		const float ky = (iy > 0.0f && sh > 1.0f) ? (1.0f - 2.0f * iy / sh) : 1.0f;
+		const float ox = (kx != 1.0f) ? ix : 0.0f, oy = (ky != 1.0f) ? iy : 0.0f;
 		const float baseR = sh * 0.15f * c.joyScale * c.ctlScale[B_COUNT];
-		L.base      = CtlCircle{ c.joyPos.x * sw, c.joyPos.y * sh, baseR };
+		L.base      = CtlCircle{ ox + c.joyPos.x * sw * kx, oy + c.joyPos.y * sh * ky, baseR };
 		L.knobR     = baseR * 0.42f;
 		L.maxDistPx = baseR * c.maxDist;
 		L.zoneR     = baseR * 1.55f;
 		const float rb = sh * 0.058f * c.btnScale;
 		for (int i = 0; i < B_COUNT; i++)
-			L.btn[i] = CtlCircle{ c.btnPos[i].x * sw, c.btnPos[i].y * sh, rb * c.ctlScale[i] * (i == B_ATTACK ? 1.45f : 1.0f) };
+			L.btn[i] = CtlCircle{ ox + c.btnPos[i].x * sw * kx, oy + c.btnPos[i].y * sh * ky, rb * c.ctlScale[i] * (i == B_ATTACK ? 1.45f : 1.0f) };
 		return L;
 	}
 
@@ -303,6 +308,7 @@ namespace CtlLogic
 	public:
 		ModernConfig cfg;
 		ModernLayout lay;
+		float insX = 0.0f, insY = 0.0f;   // Safe Zone (px por borda); ignorada no editor de HUD
 		bool editing = false;
 		uint32_t disabledMask = 0;      // bit i = botao i ausente (ex.: CORRER com o LOCK ligado): nao desenha nem recebe toque
 		int slotPressed = -1;           // ultima casa da barra de slots tocada (0..kHotbarN-1), lida junto com a borda de B_SLOTS
@@ -325,7 +331,7 @@ namespace CtlLogic
 		{
 			for (int i = 0; i < kHudCount; i++) hudStore[i] = h[i];
 			hud = ClampHud(cur); sel = B_ATTACK; editAction = 0; soundReq = 0; dirty = false;
-			ApplyLayout(cfg, hudStore[hud]); lay = MakeLayout(cfg, sw, sh);
+			ApplyLayout(cfg, hudStore[hud]); lay = MakeLayout(cfg, sw, sh, editing ? 0.0f : insX, editing ? 0.0f : insY);
 			dragFinger = -1; dragWhat = -1; panelFinger = -1; panelWhat = 0;
 		}
 		void StoreHud() { hudStore[hud] = ExtractLayout(cfg); }
@@ -333,20 +339,20 @@ namespace CtlLogic
 		void SwitchHud(int n)
 		{
 			n = ClampHud(n); if (n == hud) return;
-			StoreHud(); hud = n; ApplyLayout(cfg, hudStore[hud]); lay = MakeLayout(cfg, sw, sh);
+			StoreHud(); hud = n; ApplyLayout(cfg, hudStore[hud]); lay = MakeLayout(cfg, sw, sh, editing ? 0.0f : insX, editing ? 0.0f : insY);
 		}
-		void ResetHud() { ApplyLayout(cfg, HudLayout()); lay = MakeLayout(cfg, sw, sh); dirty = true; }    // so o HUD atual
+		void ResetHud() { ApplyLayout(cfg, HudLayout()); lay = MakeLayout(cfg, sw, sh, editing ? 0.0f : insX, editing ? 0.0f : insY); dirty = true; }    // so o HUD atual
 		void CopyHudToAll() { StoreHud(); const HudLayout cur = hudStore[hud]; for (int i = 0; i < kHudCount; i++) hudStore[i] = cur; dirty = true; }
 		bool  HasSel() const { return sel >= 0 && sel <= B_COUNT; }
 		float SelScale() const { return HasSel() ? cfg.ctlScale[sel] : 1.0f; }
 		float SelAlpha() const { return HasSel() ? cfg.ctlAlpha[sel] : cfg.alpha; }
-		void  SetSelScale(float v) { if (!HasSel()) return; cfg.ctlScale[sel] = Clampf(v, kScaleMin, kScaleMax); lay = MakeLayout(cfg, sw, sh); dirty = true; }
+		void  SetSelScale(float v) { if (!HasSel()) return; cfg.ctlScale[sel] = Clampf(v, kScaleMin, kScaleMax); lay = MakeLayout(cfg, sw, sh, editing ? 0.0f : insX, editing ? 0.0f : insY); dirty = true; }
 		void  SetSelAlpha(float v) { if (!HasSel()) return; cfg.ctlAlpha[sel] = Clampf(v, kAlphaMin, kAlphaMax); dirty = true; }
 		void  Nudge(float dx, float dy)      // setas de posicao
 		{
 			if (!HasSel()) return;
 			CtlVec& p = (sel == B_COUNT) ? cfg.joyPos : cfg.btnPos[sel];
-			p.x += dx; p.y += dy; cfg.Clamp(); lay = MakeLayout(cfg, sw, sh); dirty = true;
+			p.x += dx; p.y += dy; cfg.Clamp(); lay = MakeLayout(cfg, sw, sh, editing ? 0.0f : insX, editing ? 0.0f : insY); dirty = true;
 		}
 		EditPanel Panel() const { return MakeEditPanel(sw, sh, panelOx, panelOy, collapsed); }
 
@@ -357,8 +363,9 @@ namespace CtlLogic
 			pendingPressed = pendingReleased = 0;
 		}
 
-		void SetScreen(float w, float h) { sw = w; sh = h; lay = MakeLayout(cfg, w, h); }
-		void ApplyConfig(const ModernConfig& c) { cfg = c; cfg.Clamp(); lay = MakeLayout(cfg, sw, sh); }
+		void SetInsets(float ix, float iy) { if (ix == insX && iy == insY) return; insX = ix; insY = iy; lay = MakeLayout(cfg, sw, sh, editing ? 0.0f : insX, editing ? 0.0f : insY); }
+		void SetScreen(float w, float h) { sw = w; sh = h; lay = MakeLayout(cfg, w, h, editing ? 0.0f : insX, editing ? 0.0f : insY); }
+		void ApplyConfig(const ModernConfig& c) { cfg = c; cfg.Clamp(); lay = MakeLayout(cfg, sw, sh, editing ? 0.0f : insX, editing ? 0.0f : insY); }
 
 		// type: 2 push, 3 move, 1 pop (igual a AND_TouchEvent). true = o evento e nosso.
 		bool OnTouch(int type, int num, float x, float y)
@@ -569,7 +576,7 @@ namespace CtlLogic
 				SnapPos(fx, fy, dragWhat);
 				if (dragWhat == -2) { cfg.joyPos = CtlVec{ fx, fy }; }
 				else if (dragWhat >= 0) { cfg.btnPos[dragWhat] = CtlVec{ fx, fy }; }
-				cfg.Clamp(); lay = MakeLayout(cfg, sw, sh); dirty = true;
+				cfg.Clamp(); lay = MakeLayout(cfg, sw, sh, editing ? 0.0f : insX, editing ? 0.0f : insY); dirty = true;
 				return true;
 			}
 			if (type == 1) { dragFinger = -1; dragWhat = -1; return true; }

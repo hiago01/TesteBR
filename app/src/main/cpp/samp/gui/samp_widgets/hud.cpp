@@ -10,6 +10,7 @@
 #include "minimaptap_logic.h"
 #include "worldmap.h"
 #include "../../game/stamina.h"
+#include "../gfxsettings.h"
 
 #include <chrono>
 #include <mutex>
@@ -792,7 +793,9 @@ void HudInfo::draw(ImGuiRenderer* r)
 	const ImVec2 screen = ImGui::GetIO().DisplaySize;
 	const float S = (screen.y / 941.0f) * Hud::g.scale.load();
 
-	const float right = screen.x - kMargin * S;
+	// Safe Zone (menu > Graficos): afasta a HUD das bordas direita/superior (so desenho; a HUD nao recebe toque)
+	const GfxSettings::Insets sz = GfxSettings::SafeInsets(screen.x, screen.y);
+	const float right = screen.x - sz.x - kMargin * S;
 	const float fs = kFont * S;
 
 	DrawMiniTv(r, screen);           // efeito de TV ligando quando o minimapa aparece (entrar no veiculo)
@@ -804,8 +807,8 @@ void HudInfo::draw(ImGuiRenderer* r)
 		const float lw = lh * ((float)HudAtlas::kLogo.w / (float)HudAtlas::kLogo.h);
 		// logo SEPARADO da HUD: centralizado no topo da tela (os circulos continuam na direita, no mesmo lugar)
 		const float lx = (screen.x - lw) * 0.5f;
-		const ImVec2 a(lx, kLogoTop * S);
-		const ImVec2 b(lx + lw, kLogoTop * S + lh);
+		const ImVec2 a(lx, sz.y + kLogoTop * S);
+		const ImVec2 b(lx + lw, sz.y + kLogoTop * S + lh);
 
 		if (tex)
 		{
@@ -825,12 +828,12 @@ void HudInfo::draw(ImGuiRenderer* r)
 		const float lh = kLogoH * S;
 		const float lw = lh * ((float)HudAtlas::kLogo.w / (float)HudAtlas::kLogo.h);
 		const float lx = (screen.x - lw) * 0.5f;
-		DrawChristmasLights(r, ImVec2(lx, kLogoTop * S), ImVec2(lx + lw, kLogoTop * S + lh), S);
+		DrawChristmasLights(r, ImVec2(lx, sz.y + kLogoTop * S), ImVec2(lx + lw, sz.y + kLogoTop * S + lh), S);
 	}
 
 	// ------------------------------------------------------------------ linha 1: status
 	const float R  = kRadius * S;
-	const float y1 = (kTop + kLogoH + kLogoGap + kRadius) * S;
+	const float y1 = sz.y + (kTop + kLogoH + kLogoGap + kRadius) * S;
 	{
 		struct Item { const HudAtlas::Rect* icon; ImColor col; float pct; bool alert; };
 		const Item items[5] = {

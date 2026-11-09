@@ -251,6 +251,18 @@ int main()
 	CHECK(!ModernActiveOnFoot(Mode::Modern, false, true, true));
 	CHECK(!ModernActiveOnFoot(Mode::Modern, false, false, false));
 
+	// --- Safe Zone (MakeLayout com margem) ---
+	{
+		ModernConfig c; const float W = 2400, H = 1080;
+		ModernLayout a = MakeLayout(c, W, H), z = MakeLayout(c, W, H, 0.0f, 0.0f), s = MakeLayout(c, W, H, 120.0f, 54.0f);
+		CHECK(a.base.cx == z.base.cx && a.base.cy == z.base.cy && a.btn[B_ATTACK].cx == z.btn[B_ATTACK].cx);   // margem 0 = layout identico
+		CHECK(s.base.r == a.base.r && s.btn[B_ATTACK].r == a.btn[B_ATTACK].r);                                 // tamanho nao muda
+		CHECK(s.base.cx > a.base.cx && s.base.cy < a.base.cy);                                                  // esquerda/baixo: anda para dentro
+		CHECK(s.btn[B_ATTACK].cx < a.btn[B_ATTACK].cx);                                                         // direita: anda para a esquerda
+		for (int i = 0; i < B_COUNT; i++) { CHECK(s.btn[i].cx >= 120.0f - 1.0f && s.btn[i].cx <= W - 120.0f + 1.0f); CHECK(s.btn[i].cy >= 54.0f - 1.0f && s.btn[i].cy <= H - 54.0f + 1.0f); }
+		ModernController mc; mc.SetScreen(W, H); const float x0 = mc.lay.base.cx; mc.SetInsets(120.0f, 54.0f); CHECK(mc.lay.base.cx > x0);
+		mc.editing = true; mc.SetScreen(W, H); CHECK(mc.lay.base.cx == x0);                                      // editor ignora a Safe Zone
+	}
 	printf("%d/%d verificacoes OK\n", total - fails, total);
 	return fails ? 1 : 0;
 }
