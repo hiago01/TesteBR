@@ -28,6 +28,13 @@ namespace Phone
 		std::function<std::string(const std::string&, const std::string&)> getString;             // armazenamento local: chave, padrao
 		std::function<void(const std::string&, const std::string&)> setString;
 		std::function<StatusInfo()> status;                                                       // relogio/data/bateria
+		// ---- ganchos de SERVICO (preenchidos pela integracao com o servidor, Fase 3). Retornam "" em sucesso ou o texto do erro a mostrar. ----
+		// Sem gancho = servico indisponivel: o app avisa de forma honesta e NAO simula sucesso.
+		std::function<std::string(const std::string& number)> dial;
+		std::function<std::string(const std::string& number, const std::string& text)> sendMessage;
+		// ---- navegacao entre apps ----
+		std::function<bool(const std::string& appId)> openApp;                                    // preenchido pelo PhoneManager
+		std::string launchArg;                                                                    // argumento para o app aberto (ex.: numero); o destino consome em onResume
 		void changed() { if (settingsChanged) settingsChanged(); }
 		std::string get(const std::string& k, const std::string& def = std::string()) const { return getString ? getString(k, def) : def; }
 		void set(const std::string& k, const std::string& v) { if (setString) setString(k, v); }

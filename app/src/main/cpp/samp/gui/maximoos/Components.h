@@ -134,8 +134,10 @@ namespace MaximoOS
 		{
 			m_vp = viewport; m_contentH = contentH;
 			m_offset = std::clamp(m_offset, 0.0f, maxOffset());
+			if (m_pinEnd) { m_offset = maxOffset(); m_pinEnd = false; }
 		}
 		float maxOffset() const { return std::max(0.0f, m_contentH - m_vp.h); }
+		void jumpToEnd() { m_pinEnd = true; }          // no proximo setLayout vai para o fim (conversas, editor de texto)
 		float offset() const { return m_offset; }
 		const Rect& viewport() const { return m_vp; }
 		bool dragging() const { return m_drag; }
@@ -166,6 +168,6 @@ namespace MaximoOS
 		bool visible(const Rect& r) const { return r.bottom() > m_vp.y && r.y < m_vp.bottom(); }
 	private:
 		static constexpr float kMaxVel = 6000.0f;
-		Rect m_vp; float m_contentH = 0, m_offset = 0, m_vel = 0; bool m_drag = false, m_inside = false;
+		Rect m_vp; float m_contentH = 0, m_offset = 0, m_vel = 0; bool m_drag = false, m_inside = false, m_pinEnd = false;
 	};
 }

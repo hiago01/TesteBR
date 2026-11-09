@@ -1,0 +1,284 @@
+// Testes de PC da FASE 2 do celular: texto/UTF-8, teclado nativo, dados locais, calendario e fluxos reais dos apps
+// (Contatos, Notas, Calendario, Telefone, Mensagens). NAO testa NDK/Android/aparelho.
+#include "../../gui/phone/PhoneApps.h"
+#include <cstdio>
+#include <map>
+using namespace Phone;
+static int fails = 0, total = 0;
+#define CHECK(c) do { total++; if (!(c)) { fails++; printf("FALHOU L%d: %s\n", __LINE__, #c); } } while (0)
+
+struct NullCanvas : Canvas
+{
+	int n = 0;
+	void fillRect(const Rect&, Color, float) override { ++n; }
+	void strokeRect(const Rect&, Color, float, float) override { ++n; }
+	void fillGradientV(const Rect&, Color, Color) override { ++n; }
+	void fillCircle(Vec2, float, Color) override { ++n; }
+	void strokeCircle(Vec2, float, Color, float) override { ++n; }
+	void line(Vec2, Vec2, Color, float) override { ++n; }
+	void fillTriangle(Vec2, Vec2, Vec2, Color) override { ++n; }
+	void text(Vec2, Color, const std::string&, float) override { ++n; }
+	Vec2 measure(const std::string& s, float size) override { return { (float)Text::CpCount(s) * size * 0.52f, size * 1.2f }; }
+	void pushClip(const Rect&) override {} void popClip() override {} void setAlpha(float) override {}
+};
+
+static std::map<std::string, std::string> g_store;
+static int64_t T = 5000;
+static void setup(PhoneManager& pm)
+{
+	pm.context().getString = [](const std::string& k, const std::string& d) { auto it = g_store.find(k); return it == g_store.end() ? d : it->second; };
+	pm.context().setString = [](const std::string& k, const std::string& v) { g_store[k] = v; };
+	StatusInfo st; st.clock = "12:00"; st.weekday = 1; st.day = 15; st.month = 1; st.year = 2024;
+	pm.context().status = [st]() { return st; };
+	pm.setStatusProvider(pm.context().status);
+	pm.setScreenSize(2400, 1080);
+}
+static void frames(PhoneManager& pm, NullCanvas& cv, int n) { for (int i = 0; i < n; ++i) pm.frame(cv, T += 16, 16); }
+static void tapAt(PhoneManager& pm, NullCanvas& cv, Vec2 p)
+{
+	pm.input().handleRaw(2, 0, (int)p.x, (int)p.y, false); pm.input().handleRaw(1, 0, (int)p.x, (int)p.y, false);
+	frames(pm, cv, 3);
+}
+static Vec2 navAction(PhoneManager& pm) { const Metrics& m = pm.metrics(); return { m.content.right() - m.px(45), m.content.y + m.px(22) }; }
+template <class T2> static T2* fg(PhoneManager& pm) { return dynamic_cast<T2*>(pm.apps().foreground()); }
+static bool pressKey(PhoneManager& pm, NullCanvas& cv, const std::string& label)
+{
+	KeyboardApp* a = fg<KeyboardApp>(pm); if (!a) return false;
+	Vec2 p; if (!a->keyboard().keyCenter(label, p) && !a->keyboard().keyCenter(Text::Upper(label), p)) return false;
+	tapAt(pm, cv, p); return true;
+}
+static void typeStr(PhoneManager& pm, NullCanvas& cv, const std::string& s)
+{
+	for (size_t i = 0; i < s.size();) { const size_t l = Text::CpLen(s, i); const std::string ch = s.substr(i, l); i += l; if (ch == " ") pressKey(pm, cv, "espa\xC3\xA7o"); else pressKey(pm, cv, ch); }
+}
+
+int main()
+{
+	// ================= texto =================
+	{
+		std::string s = "a\xC3\xA7";  // aç
+		Text::PopBack(s); CHECK(s == "a");
+		s = "\xE2\x82\xAC"; Text::PopBack(s); CHECK(s.empty());       // 3 bytes
+		CHECK(Text::CpCount("n\xC3\xA3o") == 3);
+		CHECK(Text::ValidUtf8("ol\xC3\xA1") && !Text::ValidUtf8("ol\xC3") && !Text::ValidUtf8("\xFF"));
+		CHECK(Text::Upper("a\xC3\xA7\xC3\xA3o z") == "A\xC3\x87\xC3\x83O Z");
+		CHECK(Text::Upper("\xC3\xB7") == "\xC3\xB7");                    // ÷ nao muda
+		const std::string tricky = "Ol\xC3\xA1, mundo; #1 | 50% \"ok\"\nlinha2\t,";
+		CHECK(Text::Unesc(Text::Esc(tricky)) == tricky);
+		const std::string e = Text::Esc(tricky);
+		CHECK(e.find(',') == std::string::npos && e.find('|') == std::string::npos && e.find(';') == std::string::npos && e.find(' ') == std::string::npos && e.find('\n') == std::string::npos && e.find('#') == std::string::npos);
+		CHECK(Text::Unesc("%zz%4") == "%zz%4");                           // lixo nao quebra
+		CHECK(Text::Split("a,,b", ',').size() == 3 && Text::Join({ "x", "y" }, '|') == "x|y");
+		CHECK(Text::ToInt("123") == 123 && Text::ToInt("12a", -1) == -1 && Text::ToInt("", 7) == 7 && Text::ToInt("99999999999", 5) == 5);
+		NullCanvas cv;
+		auto L = Text::Wrap(cv, "uma frase longa para quebrar em varias linhas\nsegunda", 10.0f, 80.0f);   // ~15 chars por linha
+		CHECK(L.size() >= 4);
+		for (auto& l : L) CHECK(cv.measure(l, 10.0f).x <= 80.5f);
+		CHECK(Text::Wrap(cv, "", 10, 80).size() == 1);
+		auto L2 = Text::Wrap(cv, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 10.0f, 50.0f);
+		CHECK(L2.size() > 1); for (auto& l : L2) CHECK(cv.measure(l, 10.0f).x <= 50.5f);
+		std::string joined; for (auto& l : L2) joined += l; CHECK(joined == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");   // nada perdido
+		CHECK(TailFit(cv, "abcdefghij", 10.0f, 26.0f).size() <= 5);
+	}
+
+	// ================= teclado =================
+	{
+		Keyboard k; NullCanvas cv; Metrics m = ComputePhoneMetrics(2400, 1080);
+		const Rect area{ m.screen.x, m.screen.bottom() - m.px(300), m.screen.w, m.px(232) };
+		k.setMode(Keyboard::Mode::Text); k.draw(cv, m, area);
+		Vec2 p; CHECK(k.keyCenter("q", p) && k.keyCenter("m", p) && k.keyCenter("123", p) && k.keyCenter("espa\xC3\xA7o", p));
+		// todas as teclas dentro da area, sem sobreposicao entre teclas
+		// (conferido via centros: letras de uma mesma linha crescem em x)
+		Vec2 a, b; k.keyCenter("q", a); k.keyCenter("w", b); CHECK(b.x > a.x && std::fabs(b.y - a.y) < 0.01f);
+		auto touch = [&](Touch::Kind kind, Vec2 pos) { Touch t; t.kind = kind; t.pos = t.start = pos; t.t = T += 50; return k.onTouch(t); };
+		Keyboard::Event e = touch(Touch::Down, a); touch(Touch::Up, a);
+		CHECK(e.kind == Keyboard::Event::Char && e.ch == "q");
+		// shift: 1 toque = maiuscula de UMA letra
+		Vec2 sh; CHECK(k.shiftCenter(sh));
+		touch(Touch::Down, sh); touch(Touch::Up, sh); CHECK(k.shiftState() == 1);
+		k.draw(cv, m, area); k.keyCenter("Q", p); e = touch(Touch::Down, p); touch(Touch::Up, p);
+		CHECK(e.ch == "Q" && k.shiftState() == 0);
+		// acentos: pagina 123 -> pagina "áç"
+		k.draw(cv, m, area); Vec2 n123; k.keyCenter("123", n123); touch(Touch::Down, n123); touch(Touch::Up, n123); CHECK(k.page() == 1);
+		k.draw(cv, m, area); CHECK(k.keyCenter("1", p) && k.keyCenter("@", p) && k.keyCenter("\xC3\xA1\xC3\xA7", p));
+		Vec2 ac; k.keyCenter("\xC3\xA1\xC3\xA7", ac); touch(Touch::Down, ac); touch(Touch::Up, ac); CHECK(k.page() == 2);
+		k.draw(cv, m, area); CHECK(k.keyCenter("\xC3\xA7", p));
+		e = touch(Touch::Down, p); touch(Touch::Up, p); CHECK(e.ch == "\xC3\xA7");
+		// apply
+		std::string s;
+		Keyboard::Event c; c.kind = Keyboard::Event::Char; c.ch = "\xC3\xA7";
+		Keyboard::Apply(s, c, 10, false); CHECK(s == "\xC3\xA7");
+		Keyboard::Event bk; bk.kind = Keyboard::Event::Back; Keyboard::Apply(s, bk, 10, false); CHECK(s.empty());
+		s = "abcde"; c.ch = "x"; Keyboard::Apply(s, c, 5, false); CHECK(s == "abcde");                       // limite
+		s = "abcd"; c.ch = "\xC3\xA7"; Keyboard::Apply(s, c, 5, false); CHECK(s == "abcd");                   // 2 bytes nao cabem: nunca corta no meio
+		Keyboard::Event en; en.kind = Keyboard::Event::Enter;
+		CHECK(Keyboard::Apply(s, en, 10, false) && !Keyboard::Apply(s, en, 10, true) && s == "abcd\n");
+		s.clear(); c.ch = "a"; Keyboard::Apply(s, c, 10, false, Keyboard::Mode::Phone); CHECK(s.empty());       // letra nao entra no telefone
+		c.ch = "+"; Keyboard::Apply(s, c, 10, false, Keyboard::Mode::Phone); CHECK(s == "+");
+		c.ch = "#"; Keyboard::Apply(s, c, 10, false, Keyboard::Mode::Time); CHECK(s == "+");
+		// auto-maiuscula
+		Keyboard k2; k2.setMode(Keyboard::Mode::Text); k2.autoShift(""); CHECK(k2.shiftState() == 1);
+		k2.autoShift("Oi"); CHECK(k2.shiftState() == 0); k2.autoShift("Oi. "); CHECK(k2.shiftState() == 1);
+		// repeticao do apagar
+		Keyboard k3; k3.setMode(Keyboard::Mode::Text); k3.draw(cv, m, area);
+		Vec2 bp; CHECK(k3.backspaceCenter(bp));
+		Touch d; d.kind = Touch::Down; d.pos = d.start = bp; d.t = 1; e = k3.onTouch(d); CHECK(e.kind == Keyboard::Event::Back);
+		int reps = 0; for (int i = 0; i < 60; ++i) reps += k3.update(16);                                     // ~960 ms
+		CHECK(reps >= 6 && reps <= 10);
+		Touch u; u.kind = Touch::Up; u.pos = bp; k3.onTouch(u); CHECK(k3.update(16) == 0);
+		// teclado numerico
+		Keyboard kp; kp.setMode(Keyboard::Mode::Phone); kp.draw(cv, m, area);
+		CHECK(kp.keyCenter("5", p) && kp.keyCenter("+", p) && kp.keyCenter("#", p) && !kp.keyCenter("q", p));
+		Keyboard kt; kt.setMode(Keyboard::Mode::Time); kt.draw(cv, m, area); CHECK(kt.keyCenter(":", p) && !kt.keyCenter("#", p));
+	}
+
+	// ================= dados locais =================
+	{
+		g_store.clear();
+		PhoneContext c; c.getString = [](const std::string& k, const std::string& d) { auto it = g_store.find(k); return it == g_store.end() ? d : it->second; };
+		c.setString = [](const std::string& k, const std::string& v) { g_store[k] = v; };
+		using namespace Data;
+		CHECK(CleanNumber("(21) 9-9999+8888") == "21999998888" || CleanNumber("(21) 9-9999+8888") == "2199999+8888");
+		CHECK(CleanNumber("abc") == "" && CleanNumber("+55 11") == "+5511" && CleanNumber("12345678901234567890").size() == kNumberMax);
+		// contatos
+		std::vector<Contact> v = LoadContacts(c); CHECK(v.empty());
+		CHECK(ValidateContact(v, "", "123", -1) != "" && ValidateContact(v, "Ana", "abc", -1) != "" && ValidateContact(v, "Ana", "123", -1).empty());
+		v.push_back({ "Zeca \xC3\xA1", "111", false }); v.push_back({ "ana, \"x\"; #", "222", true }); v.push_back({ "Bia", "333", false });
+		SortContacts(v); CHECK(v[0].name[0] == 'a' && v[1].name == "Bia");
+		SaveContacts(c, v);
+		auto r = LoadContacts(c); CHECK(r.size() == 3 && r[0].name == "ana, \"x\"; #" && r[0].emergency && r[2].name == "Zeca \xC3\xA1");
+		CHECK(ValidateContact(r, "Novo", "222", -1) != "" && ValidateContact(r, "Ana2", "222", 0).empty());     // duplicado so quando e outro contato
+		CHECK(NameFor(r, "333") == "Bia" && NameFor(r, "999").empty());
+		// registro corrompido e descartado sem derrubar o resto
+		g_store["contatos"] = "Bia|333|0,LIXO,%FF%FE|444|0,|||,Ok|555|1";
+		r = LoadContacts(c); CHECK(r.size() == 2 && r[0].name == "Bia" && r[1].name == "Ok");
+		g_store["contatos"] = "";
+		CHECK(LoadContacts(c).empty());
+		// limites
+		std::vector<Contact> big; for (size_t i = 0; i < kMaxContacts + 20; ++i) big.push_back({ "n" + std::to_string(i), std::to_string(1000 + i), false });
+		SaveContacts(c, big); CHECK(LoadContacts(c).size() == kMaxContacts);
+		CHECK(ValidateContact(LoadContacts(c), "x", "5", -1) == "Limite de contatos atingido.");
+		// notas
+		std::vector<Note> ns; ns.push_back({ 1, "Primeira\nlinha dois\n\nfim; com , e | e % e \xC3\xA7" }); ns.push_back({ 2, "" });
+		SaveNotes(c, ns); auto nr = LoadNotes(c); CHECK(nr.size() == 2 && nr[0].text == ns[0].text && NextNoteId(nr) == 3);
+		CHECK(FirstLine(nr[0].text) == "Primeira" && SecondLine(nr[0].text) == "linha dois" && SecondLine("so uma").empty());
+		std::string huge(kNoteMax + 500, 'x'); ns[0].text = huge; SaveNotes(c, ns); CHECK(LoadNotes(c)[0].text.size() == kNoteMax);
+		ns[0].text = std::string(kNoteMax - 1, 'x') + "\xC3\xA7"; SaveNotes(c, ns); CHECK(Text::ValidUtf8(LoadNotes(c)[0].text));     // corte nunca no meio do UTF-8
+		// calendario
+		CHECK(ValidTime("") && ValidTime("08:05") && ValidTime("23:59") && !ValidTime("24:00") && !ValidTime("8:05") && !ValidTime("12:60") && !ValidTime("ab:cd"));
+		CHECK(Weekday(2024, 1, 1) == 1 && Weekday(1970, 1, 1) == 4 && Weekday(2000, 2, 29) == 2 && Weekday(2026, 11, 9) == 1);
+		CHECK(DaysInMonth(2024, 2) == 29 && DaysInMonth(2023, 2) == 28 && DaysInMonth(1900, 2) == 28 && DaysInMonth(2000, 2) == 29 && DaysInMonth(2024, 12) == 31 && DaysInMonth(2024, 4) == 30);
+		CHECK(ValidDate(2024, 2, 29) && !ValidDate(2023, 2, 29) && !ValidDate(2024, 13, 1) && !ValidDate(2024, 4, 31) && !ValidDate(1800, 1, 1));
+		std::vector<Event> ev = { { 20240301, "10:00", "B" }, { 20240301, "", "A" }, { 20240101, "09:00", "C" } };
+		SortEvents(ev); CHECK(ev[0].title == "C" && ev[1].title == "A" && ev[2].title == "B");
+		SaveEvents(c, ev); auto er = LoadEvents(c); CHECK(er.size() == 3 && er[2].time == "10:00");
+		g_store["eventos"] = "20240101|%2599%3A99|x,20241301|08%3A00|y,20240101||ok,abc||z"; er = LoadEvents(c);
+		CHECK(er.size() == 1 || er.size() == 2);
+		// mensagens
+		g_store.erase("mensagens");
+		AddMessage(c, "111", "oi", true); AddMessage(c, "222", "ola", false); AddMessage(c, "111", "tudo bem?", false); AddMessage(c, "", "x", true); AddMessage(c, "333", "", true);
+		CHECK(LoadMsgs(c).size() == 3 && UnreadMessages(c) == 2);
+		auto th = Threads(c); CHECK(th.size() == 2 && th[0].number == "111" && th[0].unread == 1 && th[0].last == "tudo bem?" && th[1].unread == 1);
+		MarkThreadRead(c, "111"); CHECK(UnreadMessages(c) == 1);
+		ReceiveMessage(c, "444", "recebida"); CHECK(UnreadMessages(c) == 2 && Threads(c)[0].number == "444");
+		DeleteThread(c, "111"); CHECK(Threads(c).size() == 2);
+		for (int i = 0; i < (int)kMaxMsgs + 30; ++i) AddMessage(c, "555", "m" + std::to_string(i), true);
+		CHECK(LoadMsgs(c).size() == kMaxMsgs);
+		// chamadas
+		AddCall(c, "111", 0); AddCall(c, "222", 2); AddCall(c, "", 0);
+		auto cl = LoadCalls(c); CHECK(cl.size() == 2 && cl[0].number == "222" && cl[0].dir == 2 && cl[0].seq > cl[1].seq);
+		for (int i = 0; i < (int)kMaxCalls + 10; ++i) AddCall(c, "9" + std::to_string(i), 0);
+		CHECK(LoadCalls(c).size() == kMaxCalls);
+	}
+
+	// ================= fluxos reais nos apps =================
+	{
+		g_store.clear();
+		PhoneManager pm; InstallDefaultApps(pm); setup(pm); NullCanvas cv;
+		pm.open(); frames(pm, cv, 40);
+		// todos os apps abrem e desenham sem quebrar (reais e pendentes)
+		int drawn = 0;
+		for (auto& a : pm.registry().list())
+		{
+			CHECK(pm.openApp(a.id)); frames(pm, cv, 20); cv.n = 0; frames(pm, cv, 2); CHECK(cv.n > 5); ++drawn;
+			pm.goHome(); frames(pm, cv, 20);
+		}
+		CHECK(drawn == 25);
+
+		// ---- Notas: nova nota -> digitar -> voltar -> persiste ----
+		pm.openApp("notas"); frames(pm, cv, 20);
+		CHECK(fg<NotesApp>(pm) && fg<NotesApp>(pm)->count() == 0);
+		tapAt(pm, cv, navAction(pm));                                                   // "Nova"
+		CHECK(fg<NotesApp>(pm)->screen() == 1 && fg<NotesApp>(pm)->keyboardVisible());
+		typeStr(pm, cv, "Oi mundo");
+		CHECK(fg<NotesApp>(pm)->currentText() == "Oi mundo");                           // 1a maiuscula automatica
+		pressKey(pm, cv, "retorno"); typeStr(pm, cv, "linha");
+		CHECK(fg<NotesApp>(pm)->currentText() == "Oi mundo\nLinha");      // maiuscula automatica depois da quebra de linha
+		typeStr(pm, cv, "\xC3\xA7");                                                    // acento: precisa trocar de pagina
+		pressKey(pm, cv, "123"); pressKey(pm, cv, "\xC3\xA1\xC3\xA7"); pressKey(pm, cv, "\xC3\xA7");
+		CHECK(Text::ValidUtf8(fg<NotesApp>(pm)->currentText()) && fg<NotesApp>(pm)->currentText().size() >= 16);
+		pressKey(pm, cv, "retorno");                                                    // pagina de acentos nao tem "retorno"; so garante que nao quebra
+		CHECK(Data::LoadNotes(pm.context()).size() == 1 && Data::LoadNotes(pm.context())[0].text == fg<NotesApp>(pm)->currentText());      // gravado a cada tecla
+		CHECK(pm.back() && fg<NotesApp>(pm)->screen() == 1 && !fg<NotesApp>(pm)->keyboardVisible());   // 1o Voltar fecha o teclado
+		CHECK(pm.back() && fg<NotesApp>(pm)->screen() == 0 && fg<NotesApp>(pm)->count() == 1);         // 2o volta a lista
+		CHECK(Data::LoadNotes(pm.context()).size() == 1);
+		// nova nota vazia nao e mantida
+		tapAt(pm, cv, navAction(pm)); CHECK(fg<NotesApp>(pm)->count() == 2);
+		pm.back(); pm.back(); CHECK(fg<NotesApp>(pm)->count() == 1 && Data::LoadNotes(pm.context()).size() == 1);
+		pm.goHome(); frames(pm, cv, 20);
+
+		// ---- Contatos: novo -> nome -> numero -> salvar ----
+		pm.openApp("contatos"); frames(pm, cv, 20);
+		tapAt(pm, cv, navAction(pm));                                                   // "Novo"
+		CHECK(fg<ContactsApp>(pm)->screen() == 2 && fg<ContactsApp>(pm)->keyboardVisible());
+		tapAt(pm, cv, navAction(pm));                                                   // "Salvar" sem nome: erro
+		CHECK(fg<ContactsApp>(pm)->count() == 0);
+		typeStr(pm, cv, "Ana silva"); pressKey(pm, cv, "Pr\xC3\xB3ximo");               // -> campo numero (teclado numerico)
+		CHECK(fg<ContactsApp>(pm)->keyboard().mode() == Keyboard::Mode::Phone);
+		for (char ch : std::string("2199")) pressKey(pm, cv, std::string(1, ch));
+		pressKey(pm, cv, "Salvar");
+		CHECK(fg<ContactsApp>(pm)->count() == 1 && fg<ContactsApp>(pm)->screen() == 1);
+		auto cts = Data::LoadContacts(pm.context()); CHECK(cts.size() == 1 && cts[0].name == "Ana silva" && cts[0].number == "2199");
+		pm.goHome(); frames(pm, cv, 20);
+
+		// ---- Telefone: sem servico NAO finge ligar; com servico registra ----
+		pm.context().launchArg = "dial:2199";
+		pm.openApp("telefone"); frames(pm, cv, 20);
+		CHECK(fg<DialerApp>(pm)->number() == "2199" && pm.context().launchArg.empty());
+		fg<DialerApp>(pm)->place(); frames(pm, cv, 2);
+		CHECK(Data::LoadCalls(pm.context()).empty());                                   // sem gancho: nada registrado
+		std::string dialed; pm.context().dial = [&](const std::string& n) { dialed = n; return std::string(); };
+		fg<DialerApp>(pm)->place(); CHECK(dialed == "2199" && Data::LoadCalls(pm.context()).size() == 1);
+		pm.context().dial = [](const std::string&) { return std::string("Sem sinal."); };
+		fg<DialerApp>(pm)->place(); CHECK(Data::LoadCalls(pm.context()).size() == 1);   // erro do servidor: nao registra
+		pm.goHome(); frames(pm, cv, 20);
+
+		// ---- Mensagens ----
+		pm.context().launchArg = "to:2199";
+		pm.openApp("mensagens"); frames(pm, cv, 20);
+		CHECK(fg<MessagesApp>(pm)->screen() == 1 && fg<MessagesApp>(pm)->thread() == "2199");
+		fg<MessagesApp>(pm)->setCompose("oi tudo bem"); fg<MessagesApp>(pm)->send();
+		CHECK(Data::LoadMsgs(pm.context()).empty() && fg<MessagesApp>(pm)->compose() == "oi tudo bem");   // sem servico: nao envia e mantem o texto
+		std::string sentTo, sentTxt; pm.context().sendMessage = [&](const std::string& n, const std::string& t) { sentTo = n; sentTxt = t; return std::string(); };
+		fg<MessagesApp>(pm)->send();
+		CHECK(sentTo == "2199" && sentTxt == "oi tudo bem" && Data::LoadMsgs(pm.context()).size() == 1 && fg<MessagesApp>(pm)->compose().empty());
+		Data::ReceiveMessage(pm.context(), "2199", "resposta"); frames(pm, cv, 80);      // recarrega sozinho com a conversa aberta
+		CHECK(Data::LoadMsgs(pm.context()).size() == 2 && Data::UnreadMessages(pm.context()) == 0);      // conversa aberta: ja marca como lida
+		pm.back(); frames(pm, cv, 3); CHECK(fg<MessagesApp>(pm)->screen() == 0);
+		Data::ReceiveMessage(pm.context(), "7777", "nova"); frames(pm, cv, 80);
+		CHECK(Data::UnreadMessages(pm.context()) == 1);
+		pm.goHome(); frames(pm, cv, 20);
+
+		// ---- Calendario ----
+		pm.openApp("calendario"); frames(pm, cv, 20);
+		CHECK(fg<CalendarApp>(pm)->year() == 2024 && fg<CalendarApp>(pm)->month() == 1);
+		pm.goHome(); frames(pm, cv, 20);
+
+		// dados sobrevivem a fechar e reabrir o celular
+		pm.close(); frames(pm, cv, 40); pm.open(); frames(pm, cv, 40);
+		pm.openApp("contatos"); frames(pm, cv, 20); CHECK(fg<ContactsApp>(pm)->count() == 1);
+	}
+
+	printf("%d/%d verificacoes OK\n", total - fails, total);
+	return fails ? 1 : 0;
+}

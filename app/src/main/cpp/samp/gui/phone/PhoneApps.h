@@ -1,8 +1,10 @@
 #pragma once
 // Celular - apps. Cada app e uma classe independente (App do Maximo OS) que so usa PhoneContext + componentes de PhoneUI.h.
-// Fase 1: Ajustes, Calculadora e Relogio com funcao real (locais). Os demais apps ficam em ServicoPendente: tela honesta dizendo o que falta,
+// Fase 1: Ajustes, Calculadora e Relogio. Fase 2: Telefone, Mensagens, Contatos, Notas e Calendario (dados locais reais; envio/chamada dependem do servidor). Os demais apps ficam em ServicoPendente: tela honesta dizendo o que falta,
 // ate a implementacao do servidor (fases seguintes). Nenhum dado falso e exibido.
 #include "PhoneManager.h"
+#include "PhoneAppsLocal.h"
+#include "PhoneAppsComms.h"
 #include <cstdio>
 
 namespace Phone
@@ -238,16 +240,16 @@ namespace Phone
 		{ PhoneAppDef d; d.id = id; d.title = title; d.color = col; d.page = page; d.dock = dock; d.light = light; d.factory = std::move(f); pm.addApp(d); };
 
 		// dock
-		add("telefone",  "Telefone",  PC::Green,  -1, 0, true,  pend("telefone", "Telefone", "Requer servidor: chamadas, histórico e número.", true));
+		add("telefone",  "Telefone",  PC::Green,  -1, 0, true,  [c]() { return std::unique_ptr<App>(new DialerApp(c)); });
 		add("loja",      "Loja",      PC::Blue,   -1, 1, false, pend("loja", "Loja", "Requer servidor: catálogo e instalação de apps.", false));
 		add("camera",    "Câmera",    Color(90, 90, 96), -1, 2, false, pend("camera", "Câmera", "Requer captura de tela do jogo (ainda não implementada).", false));
-		add("mensagens", "Mensagens", PC::Green,  -1, 3, true,  pend("mensagens", "Mensagens", "Requer servidor: conversas e entrega.", true));
+		add("mensagens", "Mensagens", PC::Green,  -1, 3, true,  [c]() { return std::unique_ptr<App>(new MessagesApp(c)); });
 		// pagina 1
-		add("contatos",  "Contatos",  Color(120, 124, 132), 0, -1, true, pend("contatos", "Contatos", "Requer servidor: lista e emergência.", true));
+		add("contatos",  "Contatos",  Color(120, 124, 132), 0, -1, true, [c]() { return std::unique_ptr<App>(new ContactsApp(c)); });
 		add("galeria",   "Galeria",   Color(255, 90, 100),  0, -1, false, pend("galeria", "Galeria", "Depende da Câmera.", false));
 		add("ajustes",   "Ajustes",   Color(120, 124, 132), 0, -1, true, [c]() { return std::unique_ptr<App>(new SettingsApp(c)); });
-		add("notas",     "Notas",     Color(255, 204, 0),   0, -1, true, pend("notas", "Notas", "Requer servidor: sincronização.", true));
-		add("calendario","Calendário",Color(255, 255, 255), 0, -1, true, pend("calendario", "Calendário", "Requer servidor: eventos.", true));
+		add("notas",     "Notas",     Color(255, 204, 0),   0, -1, true, [c]() { return std::unique_ptr<App>(new NotesApp(c)); });
+		add("calendario","Calendário",Color(255, 255, 255), 0, -1, true, [c]() { return std::unique_ptr<App>(new CalendarApp(c)); });
 		add("relogio",   "Relógio",   Color(30, 30, 34),    0, -1, false, [c]() { return std::unique_ptr<App>(new ClockApp(c)); });
 		add("calculadora","Calculadora", Color(70, 70, 76), 0, -1, false, []() { return std::unique_ptr<App>(new CalculatorApp()); });
 		add("mapas",     "Mapas",     PC::Green,   0, -1, true,  pend("mapas", "Mapas", "Requer o mapa do GTA dentro da interface.", true));

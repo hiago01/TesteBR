@@ -18,7 +18,7 @@ namespace Phone
 	public:
 		static constexpr int kCols = 4, kRows = 6, kDockN = 4;
 
-		PhoneManager() : m_apps(m_reg) {}
+		PhoneManager() : m_apps(m_reg) { m_ctx.openApp = [this](const std::string& id) { return openApp(id); }; }
 
 		PhoneContext& context() { return m_ctx; }
 		PhoneInput& input() { return m_input; }
@@ -350,9 +350,26 @@ namespace Phone
 				cv.fillRect({ m.screen.center().x - bw * 0.5f, m.navBar.y + m.px(14) + m_barDy * 0.0f, bw, bh }, lightBg ? Color(0, 0, 0, 220) : Color(255, 255, 255, 230), bh * 0.5f);
 			}
 			cv.popClip();
-			// mascara dos cantos arredondados da tela (o clip do ImGui e retangular)
-			const float T = m.bezel + m.screenRadius * 0.32f;
-			cv.strokeRect(m.frame.inset(T * 0.5f), Colors::Bezel, std::max(1.0f, m.frameRadius - T * 0.5f), T);
+			// mascara dos cantos arredondados da tela (o clip do ImGui e retangular): so a regiao entre o canto do quadrado e o arco,
+			// leque de triangulos por canto. NAO cobre as bordas retas (antes um aro grosso comia ~15 lu de conteudo de cada lado).
+			{
+				const Rect s = m.screen; const float R = std::min(m.screenRadius, std::min(s.w, s.h) * 0.5f);
+				const Vec2 cp[4] = { { s.x, s.y }, { s.right(), s.y }, { s.right(), s.bottom() }, { s.x, s.bottom() } };
+				const Vec2 ct[4] = { { s.x + R, s.y + R }, { s.right() - R, s.y + R }, { s.right() - R, s.bottom() - R }, { s.x + R, s.bottom() - R } };
+				const float a0[4] = { 3.14159265f, 4.71238898f, 0.0f, 1.57079633f };
+				const int N = 12;
+				for (int c = 0; c < 4; ++c)
+				{
+					Vec2 prev{ ct[c].x + std::cos(a0[c]) * R, ct[c].y + std::sin(a0[c]) * R };
+					for (int i = 1; i <= N; ++i)
+					{
+						const float an = a0[c] + 1.57079633f * i / N;
+						const Vec2 cur{ ct[c].x + std::cos(an) * R, ct[c].y + std::sin(an) * R };
+						cv.fillTriangle(cp[c], prev, cur, Colors::Bezel);
+						prev = cur;
+					}
+				}
+			}
 			cv.strokeRect(m.frame, Colors::BezelEdge, m.frameRadius, std::max(1.5f, m.px(1.6f)));
 			// ilha dinamica
 			const float iw = m.px(112), ih = m.px(32);
