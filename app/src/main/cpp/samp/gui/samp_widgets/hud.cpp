@@ -590,6 +590,65 @@ namespace
 		return true;
 	}
 
+	// Efeito "TV ligando" (mesmo do mapa grande) quando o MINIMAPA aparece (motorista entra no veiculo):
+	// uma linha branca cresce na horizontal e depois abre na vertical, com brilho e linhas de varredura, so dentro do disco do radar.
+	// O radar e desenhado pelo jogo ANTES da UI; aqui a UI cobre de preto o que ainda "nao acendeu". Sem animacao ao apagar
+	// (o jogo para de desenhar o radar de uma vez).
+	void DrawMiniTv(ImGuiRenderer* r, const ImVec2& screen)
+	{
+		using namespace std::chrono;
+		static float   s_vis = 1.0f;          // 0 = apagado, 1 = ligado
+		static int64_t s_last = 0, s_seen = 0;
+		const int64_t now = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+		const float gw = RsGlobal ? (float)RsGlobal->maximumWidth : 0.0f, gh = RsGlobal ? (float)RsGlobal->maximumHeight : 0.0f;
+		bool visible = Hud::MapAllowed() && !WorldMapWidget::IsOpen() && gw > 1.0f && gh > 1.0f
+		            && (now - MiniMapTap::gStamp.load()) <= MiniMapTap::kFreshMs;
+		MiniMapTap::Rect ru{ 0, 0, 0, 0 };
+		if (visible)
+		{
+			ru = { MiniMapTap::gL.load(), MiniMapTap::gT.load(), MiniMapTap::gR.load(), MiniMapTap::gB.load() };
+			visible = MiniMapTap::RectOk(ru, gw, gh);
+		}
+		if (!visible) { if (now - s_seen > 250) s_vis = 0.0f; s_last = now; return; }   // sumiu: a proxima aparicao anima de novo
+		s_seen = now;
+		const float dt = s_last ? std::min(0.1f, std::max(0.0f, (float)(now - s_last) / 1000.0f)) : 0.0f;
+		s_last = now;
+		constexpr float kOn = 0.42f, kLine = 0.40f;     // iguais ao mapa grande (WorldMapUI.h)
+		s_vis = std::min(1.0f, s_vis + dt / kOn);
+		if (s_vis >= 0.999f) return;
+
+		const float sx = screen.x / gw, sy = screen.y / gh;
+		const float cx = (ru.l + ru.r) * 0.5f * sx, cy = (ru.t + ru.b) * 0.5f * sy;
+		const float R = std::max((ru.r - ru.l) * sx, (ru.b - ru.t) * sy) * 0.5f * 1.03f;
+		const float k = R / 100.0f;
+		const float pp = s_vis;
+		float lw, lh, flash = 0.0f;
+		const float lineH = std::max(2.0f, 3.0f * k);
+		if (pp < kLine) { const float u = pp / kLine, e = 1.0f - (1.0f - u) * (1.0f - u); lw = std::max(6.0f * k, 2.0f * R * e); lh = lineH; flash = 1.0f; }
+		else            { const float u = (pp - kLine) / (1.0f - kLine), e = 1.0f - (1.0f - u) * (1.0f - u); lw = 2.0f * R; lh = lineH + (2.0f * R - lineH) * e; flash = 1.0f - u; }
+		const float litL = cx - lw * 0.5f, litR = cx + lw * 0.5f, litT = cy - lh * 0.5f, litB = cy + lh * 0.5f;
+
+		const ImColor blk(0, 0, 0, 255);
+		const float step = std::max(1.5f, 2.0f * k);
+		const int fa = (int)std::lround(220.0f * std::clamp(flash, 0.0f, 1.0f));
+		const int sa = (int)std::lround(90.0f * std::clamp(flash, 0.0f, 1.0f));
+		int row = 0;
+		for (float y = cy - R; y < cy + R; y += step, row++)
+		{
+			const float ym = y + step * 0.5f, dy = ym - cy;
+			const float hw = std::sqrt(std::max(0.0f, R * R - dy * dy));
+			if (hw < 1.0f) continue;
+			const float x0 = cx - hw, x1 = cx + hw, y1 = y + step + 0.5f;
+			if (ym < litT || ym > litB) { r->drawRect(ImVec2(x0, y), ImVec2(x1, y1), blk, true); continue; }
+			if (litL > x0) r->drawRect(ImVec2(x0, y), ImVec2(std::min(litL, x1), y1), blk, true);
+			if (litR < x1) r->drawRect(ImVec2(std::max(litR, x0), y), ImVec2(x1, y1), blk, true);
+			const float a = std::max(x0, litL), b = std::min(x1, litR);
+			if (b <= a) continue;
+			if (fa > 0) r->drawRect(ImVec2(a, y), ImVec2(b, y1), ImColor(255, 255, 255, fa), true);     // brilho branco que some ao ligar
+			if (sa > 2 && (row % 2) == 0) r->drawRect(ImVec2(a, y), ImVec2(b, y1), ImColor(0, 0, 0, sa), true);   // varredura
+		}
+	}
+
 	// Nome do local (cidade | zona) numa etiqueta escura com icone de pino, logo ACIMA do minimapa e alinhada a esquerda dele.
 	// So aparece enquanto o minimapa esta sendo desenhado (retangulo publicado por game/sprite2d.cpp) e a regra do motorista permite.
 	void DrawLocationTag(ImGuiRenderer* r, const ImVec2& screen, float S)
@@ -736,6 +795,7 @@ void HudInfo::draw(ImGuiRenderer* r)
 	const float right = screen.x - kMargin * S;
 	const float fs = kFont * S;
 
+	DrawMiniTv(r, screen);           // efeito de TV ligando quando o minimapa aparece (entrar no veiculo)
 	DrawLocationTag(r, screen, S);   // nome do local acima do minimapa (so motorista no veiculo)
 
 	// ------------------------------------------------------------------ logo
