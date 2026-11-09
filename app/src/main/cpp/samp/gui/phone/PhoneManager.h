@@ -330,10 +330,14 @@ namespace Phone
 			cv.pushClip(m.screen);
 			const std::string fg = m_apps.foregroundId();
 			const PhoneAppDef* fd = fg.empty() ? nullptr : def(fg);
-			// papel de parede
-			cv.fillGradientV({ m.screen.x, m.screen.y, m.screen.w, m.screen.h * 0.45f }, PC::Wall0, PC::Wall1);
-			cv.fillGradientV({ m.screen.x, m.screen.y + m.screen.h * 0.45f, m.screen.w, m.screen.h * 0.55f + 1 }, PC::Wall1, PC::Wall2);
 			const bool animating = m_anim.t < 1.0f;
+			// app "seeThrough" (Camera) totalmente aberto: a tela mostra o jogo, sem papel de parede
+			const bool clearScreen = fd && fd->seeThrough && !animating && !m_recents;
+			if (!clearScreen)
+			{
+				cv.fillGradientV({ m.screen.x, m.screen.y, m.screen.w, m.screen.h * 0.45f }, PC::Wall0, PC::Wall1);
+				cv.fillGradientV({ m.screen.x, m.screen.y + m.screen.h * 0.45f, m.screen.w, m.screen.h * 0.55f + 1 }, PC::Wall1, PC::Wall2);
+			}
 			const bool appVisible = fd && !(animating && m_anim.dir > 0 && m_anim.t < 0.55f);
 			const bool homeVisible = fg.empty() || animating;
 			if (homeVisible && !m_recents) drawHome(cv);

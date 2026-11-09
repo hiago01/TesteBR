@@ -13,7 +13,8 @@ struct RecCanvas : Canvas
 	int n = 0, images = 0; std::vector<std::pair<std::string, Vec2>> texts; std::vector<uint64_t> imgIds; std::vector<Rect> imgRects;
 	void fillRect(const Rect&, Color, float) override { ++n; }
 	void strokeRect(const Rect&, Color, float, float) override { ++n; }
-	void fillGradientV(const Rect&, Color, Color) override { ++n; }
+	int grads = 0;
+	void fillGradientV(const Rect&, Color, Color) override { ++n; ++grads; }
 	void fillCircle(Vec2, float, Color) override { ++n; }
 	void strokeCircle(Vec2, float, Color, float) override { ++n; }
 	void line(Vec2, Vec2, Color, float) override { ++n; }
@@ -105,10 +106,12 @@ int main()
 	{
 		PhoneManager pm; RecCanvas cv; InstallDefaultApps(pm); setup(pm); FakePhotos ph; pm.open(); frames(pm, cv, 30);
 		CHECK(pm.openApp("camera")); frames(pm, cv, 30);
+		cv.grads = 0; frames(pm, cv, 2); CHECK(cv.grads == 0);                          // camera aberta: sem papel de parede (o jogo aparece)
 		CameraApp* ca = fg<CameraApp>(pm); CHECK(ca != nullptr);
 		const Metrics& m = pm.metrics();
 		const Vec2 shutter{ m.content.center().x, m.content.bottom() - m.px(59) };
 		tapAt(pm, cv, shutter); CHECK(cv.has("não disponíveis"));                       // sem suporte: aviso honesto
+		pm.goHome(); frames(pm, cv, 20); cv.grads = 0; frames(pm, cv, 2); CHECK(cv.grads > 0);   // inicio: papel de parede volta
 		pm.context().photos = &ph; pm.goHome(); frames(pm, cv, 20); pm.openApp("camera"); frames(pm, cv, 30);
 		tapAt(pm, cv, shutter); CHECK(ph.shots == 1);
 		ph.add("foto_1.jpg"); T += 16; pm.context().nowMs = T; frames(pm, cv, 1); CHECK(cv.has("Foto salva")); frames(pm, cv, 2);
