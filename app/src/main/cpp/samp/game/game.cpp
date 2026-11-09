@@ -753,6 +753,14 @@ bool CGame::InitialiseRenderWare() {
     // (banco de texturas "touch" removido: o jogo nao le mais texdb/touch)
 
     // banco de texturas das roupas/skins (texdb/skins/). So personagens; independe de CustomImg::kCustomContent.
+    // texturas dos celulares da mao (texdb/celular/: iph17pro, iph16aqua), usadas pelos DFFs texdb/DFF/cellphone.dff e camera.dff.
+    // So carrega se a pasta existir; o motor acha a textura pelo nome nos bancos carregados.
+    if (g_pszStorage && g_pszStorage[0])
+    {
+        std::string cel(g_pszStorage); if (cel.back() != '/') cel.push_back('/');
+        cel += "texdb/celular/celular.txt";
+        if (::access(cel.c_str(), R_OK) == 0) SafeTexDb::Load("celular", false, TextureDatabaseFormat::DF_Default);
+    }
     SkinTexDb::Load();
     FLog("[SKINTEXDB] %s", SkinTexDb::Status().c_str());
     FLog("[SKINTEXDB] %s", SkinTexDb::Files().c_str());
