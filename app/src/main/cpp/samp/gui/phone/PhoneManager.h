@@ -101,7 +101,8 @@ namespace Phone
 			// animacao de entrada/saida do aparelho
 			const float step = dtMs / 240.0f;
 			m_slide = m_closing ? std::max(0.0f, m_slide - step) : std::min(1.0f, m_slide + step);
-			if (m_closing && m_slide <= 0.0f) { m_open = false; m_closing = false; m_apps.pauseAll(); m_input.setOpen(false); m_input.setCaptureRect(0, 0, 0, 0); return; }
+			if (m_closing && m_slide <= 0.0f) { m_open = false; m_closing = false; m_apps.pauseAll(); m_input.setOpen(false); m_input.setCaptureRect(0, 0, 0, 0); m_centerK = 0.0f; return; }
+			{ const float cs = dtMs / 260.0f; const bool toCenter = (m_apps.foregroundId() == "camera") && !m_closing; m_centerK = toCenter ? std::min(1.0f, m_centerK + cs) : std::max(0.0f, m_centerK - cs); }
 			relayout();
 
 			std::vector<RawTouch> raw; m_input.drain(raw);
@@ -144,7 +145,7 @@ namespace Phone
 		{
 			if (!(m_sw > 50.0f) || !(m_sh > 50.0f)) return;
 			const float eased = 1.0f - (1.0f - m_slide) * (1.0f - m_slide);
-			m_m = ComputePhoneMetrics(m_sw, m_sh, m_ctx.settings.sizePct / 100.0f, eased);
+			m_m = ComputePhoneMetrics(m_sw, m_sh, m_ctx.settings.sizePct / 100.0f, eased, 1.0f - (1.0f - m_centerK) * (1.0f - m_centerK));
 			m_gest.slop = std::max(8.0f, m_m.px(8));
 			if (!m_m.valid) return;
 			m_apps.resize(m_m);
@@ -564,7 +565,7 @@ namespace Phone
 		std::vector<Touch> m_touches;
 		AppAnim m_anim; std::string m_animId;
 		bool m_open = false, m_closing = false, m_recents = false, m_barDrag = false;
-		float m_slide = 0.0f, m_sw = 0, m_sh = 0, m_pageDrag = 0, m_barDy = 0, m_recentScroll = 0;
+		float m_centerK = 0.0f, m_slide = 0.0f, m_sw = 0, m_sh = 0, m_pageDrag = 0, m_barDy = 0, m_recentScroll = 0;
 		float m_cardDy[6] = { 0, 0, 0, 0, 0, 0 };
 		int m_page = 0, m_recentSel = 0, m_cardDrag = -1, m_dragMode = 0;
 		std::string m_pressedKey;
