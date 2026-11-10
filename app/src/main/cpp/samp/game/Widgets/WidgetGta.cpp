@@ -224,7 +224,12 @@ void CTouchInterface__Update_hook()
     for(int i = 0; i < WidgetIDs::NUM_WIDGETS; i++)
     {
         CWidgetGta* w = CTouchInterface::m_pWidgets[i];
-        if(w && w->m_bEnabled && WidgetVis::ShouldHide(i, inVeh, jet))
+        if(w && WidgetVis::AlwaysHidden(i))
+        {
+            if(w->m_bEnabled) CWidget__SetEnabled(w, false);   // sem toque
+            w->m_Color.a = 0;                                  // e sem desenho (desligar nao apaga o icone)
+        }
+        else if(w && w->m_bEnabled && WidgetVis::ShouldHide(i, inVeh, jet))
             CWidget__SetEnabled(w, false);
         // MODERNO a pe: desliga os controles nativos que o sistema moderno substitui (no CLASSICO esta condicao e sempre falsa).
         else if(w && modernFoot && WidgetVis::ModernReplaces(i))

@@ -15,6 +15,9 @@ namespace WidgetVis
         ID_PED_MOVE = 0xA7, ID_SPRINT = 0xA8
     };
 
+    /** Botoes removidos do HUD do Maximo RP (buzina e camera): sempre ocultos e sem toque, a pe e em veiculo. */
+    inline bool AlwaysHidden(int id) { return id == ID_HORN || id == ID_CAM_TOGGLE; }
+
     /** Botoes que so fazem sentido A PE: somem dentro de veiculo/jetpack. */
     inline bool FootOnly(int id)
     {
@@ -54,6 +57,7 @@ namespace WidgetVis
     inline bool ShouldHide(int id, bool inVehicle, bool inJetpack)
     {
         if (id < 0) return false;
+        if (AlwaysHidden(id)) return true;
         if (inVehicle || inJetpack) { if (FootOnly(id)) return true; }
         if (!inVehicle && !inJetpack) { if (VehicleOnly(id)) return true; }
         return false;
