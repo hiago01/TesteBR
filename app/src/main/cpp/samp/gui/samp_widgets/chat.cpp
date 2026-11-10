@@ -34,6 +34,9 @@ extern CJavaWrapper *pJavaWrapper;
 
 namespace { std::atomic<bool> g_chatAllowed{false}; }
 void ChatSetAllowed(bool allowed) { g_chatAllowed.store(allowed); }
+static std::atomic<bool> g_provAllowed{false};
+void ProvadorSetAllowed(bool allowed) { g_provAllowed.store(allowed); }
+bool ProvadorAllowed() { return g_provAllowed.load(); }
 bool ChatAllowed() { return g_chatAllowed.load(); }
 
 Chat::Chat()
@@ -235,6 +238,7 @@ if (input == "/provador" || input.rfind("/provador ", 0) == 0)
             // interface de personalizacao do /skin7: /provador (abre/fecha) | /provador fechar
             // (/roupas ja existe: tela HTML ligada ao servidor)
             const std::string args = input.size() > 9 ? input.substr(10) : std::string();
+            if (!ProvadorAllowed()) { addDebugMessage("O /provador est\xC3\xA1 bloqueado: s\xC3\xB3 administradores ou jogadores liberados."); return; }
             if (args == "fechar") Provador::RequestClose();
             else                  Provador::Toggle();
 

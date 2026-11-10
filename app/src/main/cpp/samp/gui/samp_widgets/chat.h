@@ -5,6 +5,9 @@
 // Chat so para administradores: o servidor avisa (RPC 245 op 8) e, enquanto nao for admin, o chat nao e desenhado e o toque nao abre o teclado.
 void ChatSetAllowed(bool allowed);
 bool ChatAllowed();
+// /provador so para admin ou jogador liberado (/liberar provador [id]): o servidor avisa (RPC 245 op 12)
+void ProvadorSetAllowed(bool allowed);
+bool ProvadorAllowed();
 
 class Chat : public ListBox
 {
