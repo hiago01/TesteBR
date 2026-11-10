@@ -262,6 +262,15 @@ void UI::drawList()
 		return;
 	}
 
+	if (GarageIsOpenNow() && m_jobs)
+	{
+		// garagem aberta: esconde TODO o HUD (radar, chat, etiquetas, botoes); so a garagem + dialogo/teclado
+		m_jobs->draw(renderer());
+		if (m_dialog && m_dialog->visible()) m_dialog->draw(renderer());
+		if (m_keyboard && m_keyboard->visible()) m_keyboard->draw(renderer());
+		return;
+	}
+
 	if (InventoryIsOpenNow() && m_inventory)
 	{
 		// inventario aberto: esconde TODO o HUD (radar/icones/slots do HUD/chat/etiquetas); so o inventario + dialogo/teclado

@@ -46,3 +46,5 @@ public:
 void JobsUI_RenderWorld();
 // true com o patinete dobrado na mao (servidor mostra o botao "Montar patinete"): P1/P2 e o botao nativo de entrar somem.
 bool JobsUI_ScooterFolded();
+// true com a tela da GARAGEM aberta: HUD, chat, botoes de toque, voz e aneis do mundo ficam escondidos (como no inventario).
+bool GarageIsOpenNow();

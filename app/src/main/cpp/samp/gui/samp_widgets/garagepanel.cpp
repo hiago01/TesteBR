@@ -62,8 +62,9 @@ void GaragePanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 		std::lock_guard<std::mutex> l(g_mtx);
 		if (g_ver != g_seen) { g_cars = g_net; g_seen = g_ver; }
 	}
-	const float u = std::min(scrW / 1280.0f, scrH / 720.0f);
-	const float ox = (scrW - 1280.0f * u) * 0.5f, oy = (scrH - 720.0f * u) * 0.5f;
+	// layout de 1280 x 540 (so 2 fileiras de cartoes): ocupa a tela toda em escala maior e fica um pouco mais abaixo do topo
+	const float u = std::min(scrW / 1280.0f, scrH / 540.0f);
+	const float ox = (scrW - 1280.0f * u) * 0.5f, oy = (scrH - 540.0f * u) * 0.5f + 12.0f * u;
 	auto V = [&](float x, float y) { return ImVec2(ox + x * u, oy + y * u); };
 	auto txt = [&](float x, float y, const ImColor& c, const std::string& s, float fs) { r->drawText(V(x, y), c, s, false, fs * u); };
 	auto txtR = [&](float xr, float y, const ImColor& c, const std::string& s, float fs)
@@ -121,7 +122,7 @@ void GaragePanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 	// ---- veiculos da aba ----
 	std::vector<int> idx;
 	for (int i = 0; i < (int)g_cars.size(); i++) if (g_cars[(size_t)i].cat == g_tab) idx.push_back(i);
-	const int perPage = 12, pages = std::max(1, ((int)idx.size() + perPage - 1) / perPage);
+	const int perPage = 8, pages = std::max(1, ((int)idx.size() + perPage - 1) / perPage);
 	g_page = std::clamp(g_page, 0, pages - 1);
 	int selI = -1;
 	for (int i : idx) if (g_cars[(size_t)i].reg == g_sel) selI = i;
@@ -167,11 +168,11 @@ void GaragePanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 	if (pages > 1)
 	{
 		char pg[24]; snprintf(pg, sizeof pg, "%d / %d", g_page + 1, pages);
-		txtC(315, 925, 664, cSub, pg, 10.0f);
-		r->drawRoundedRect(V(560, 656), V(600, 686), cOff, 5.0f * u, true); txtC(560, 600, 662, cText, "<", 12.0f);
-		r->drawRoundedRect(V(640, 656), V(680, 686), cOff, 5.0f * u, true); txtC(640, 680, 662, cText, ">", 12.0f);
-		hits.push_back({V(560, 656), V(600, 686), H_PREV, 0});
-		hits.push_back({V(640, 656), V(680, 686), H_NEXT, 0});
+		txtC(315, 925, 478, cSub, pg, 10.0f);
+		r->drawRoundedRect(V(560, 470), V(600, 500), cOff, 5.0f * u, true); txtC(560, 600, 476, cText, "<", 12.0f);
+		r->drawRoundedRect(V(640, 470), V(680, 500), cOff, 5.0f * u, true); txtC(640, 680, 476, cText, ">", 12.0f);
+		hits.push_back({V(560, 470), V(600, 500), H_PREV, 0});
+		hits.push_back({V(640, 470), V(680, 500), H_NEXT, 0});
 	}
 
 	// ---- coluna esquerda: veiculo selecionado ----

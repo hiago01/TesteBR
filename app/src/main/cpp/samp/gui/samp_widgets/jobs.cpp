@@ -184,6 +184,7 @@ void JobsUI::Close(bool notifyServer)
 	if (notifyServer) Send(4);
 }
 bool JobsUI_ScooterFolded() { return g_scFolded.load(); }
+bool GarageIsOpenNow() { return g_open.load() && g_garage.load(); }
 void JobsUI::Reset()
 {
 	g_open.store(false); g_garage.store(false); GaragePanel::Reset(); g_confirm = 0; g_drag = Drag(); g_tapReq.store(false); for (WorldTap& w : g_wt) w.valid = false;
@@ -750,6 +751,7 @@ void JobsUI::draw(ImGuiRenderer* r)
 void JobsUI_RenderWorld()
 {
 	if (!pNetGame || !pGame || pNetGame->GetGameState() != GAMESTATE_CONNECTED) return;
+	if (GarageIsOpenNow()) return;                     // garagem aberta: nada do mundo (aneis/icones) por tras da tela
 	static std::vector<Mk> mk;
 	static uint32_t seen = ~0u;
 	{

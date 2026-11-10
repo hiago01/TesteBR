@@ -70,12 +70,13 @@ void SpeakerList::Hide() noexcept
 }
 
 bool InventoryIsOpenNow();   // gui/samp_widgets/inventory.cpp
+bool GarageIsOpenNow();      // gui/samp_widgets/jobs.cpp
 
 void SpeakerList::Render()
 {
     if(!SpeakerList::initStatus || !SpeakerList::IsShowed())
         return;
-    if(Hud::g.hideAll.load() || InventoryIsOpenNow()) return;   // jogador congelado (cutscene): sem icones de voz
+    if(Hud::g.hideAll.load() || InventoryIsOpenNow() || GarageIsOpenNow()) return;   // jogador congelado (cutscene): sem icones de voz
 
     if(!pNetGame) return;
 

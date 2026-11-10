@@ -686,7 +686,7 @@ void Render2dStuff()
 
     //((void (*)()) (g_libGTASA + 0x51CFF0))(); // CHud::DrawRadar
     //CHook::CallFunction<void>("_ZN4CHud14DrawScriptTextEh", true);
-    const bool hideHud = Hud::g.hideAll.load() || InventoryIsOpenNow();   // jogador congelado (cutscene): nenhuma HUD
+    const bool hideHud = Hud::g.hideAll.load() || InventoryIsOpenNow() || GarageIsOpenNow();   // jogador congelado (cutscene): nenhuma HUD
     if (!hideHud)
     {
         if (!Hud::g.photoCam.load())   // Camera do celular aberta: sem radar/icones nativos (os botoes de toque continuam)
