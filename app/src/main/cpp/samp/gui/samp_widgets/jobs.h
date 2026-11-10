@@ -11,7 +11,7 @@
 //     grava no PostgreSQL; a tela so muda quando o servidor manda o novo estado.
 //   - os empregos NAO existem aqui: tudo vem do cadastro do administrador (painel web do servidor).
 //  Tocar na recepcionista ou no botao ao lado dela (marcadores, RPC 245 op 4): tudo por toque, sem tecla.
-//  Marcadores: RPC 245 op 4 (emprego, grupo A) e op 6 (patinete, grupo B); tipos 1 agencia, 2 ponto de trabalho, 3 suporte de patinete
+//  Marcadores: RPC 245 op 4 (emprego, grupo A), op 6 (patinete, grupo B) e op 7 (organizacoes, grupo C; tipo 5, toque envia op 10); op 5 = aviso em texto livre; tipos 1 agencia, 2 ponto de trabalho, 3 suporte de patinete
 //  (anel + icone + botao; toque envia RPC 246 op 8) e 4 botao fixo na tela (Montar/Dobrar patinete; toque envia op 9). Protocolo: servidor patinete.pwn.
 //  Tocar na recepcionista (actor do servidor): ObserveWorldTouch() reconhece o toque curto e, no desenho, procura o actor
 //  sob o dedo e envia RPC 246 op 1 (o servidor confere a distancia e abre a tela).
