@@ -712,13 +712,22 @@ void JobsUI_RenderWorld()
 	}
 
 	{
-		uint32_t bits = 0;
-		for (size_t i = 0; i < mk.size() && i < 32; i++)
+		// linha de visao do nome/botao: so para NPCs a menos de 14 m (o botao so aparece a ate 12 m) e so a cada 150 ms (a consulta de colisao e cara)
+		static int64_t nextLos = 0;
+		const int64_t nowMs = NowMs();
+		if (nowMs >= nextLos)
 		{
-			const CVector npc(mk[i].ax, mk[i].ay, mk[i].az + 0.8f);
-			if (CWorld::GetIsLineOfSightClear(npc, cam, true, true, false, true, false, false, false)) bits |= 1u << i;
+			nextLos = nowMs + 150;
+			uint32_t bits = 0;
+			for (size_t i = 0; i < mk.size() && i < 32; i++)
+			{
+				const float dx = mk[i].ax - cam.x, dy = mk[i].ay - cam.y, dz = mk[i].az - cam.z;
+				if (dx * dx + dy * dy + dz * dz > 14.0f * 14.0f) continue;
+				const CVector npc(mk[i].ax, mk[i].ay, mk[i].az + 0.8f);
+				if (CWorld::GetIsLineOfSightClear(npc, cam, true, true, false, true, false, false, false)) bits |= 1u << i;
+			}
+			g_mkLos.store(bits);
 		}
-		g_mkLos.store(bits);
 	}
 
 	const float t = (float)(NowMs() % 100000) * 0.001f;
@@ -747,9 +756,28 @@ void JobsUI_RenderWorld()
 	RwRenderStateSet(rwRENDERSTATETEXTUREFILTER,     RWRSTATE(rwFILTERLINEAR));
 	RwRenderStateSet(rwRENDERSTATETEXTUREADDRESS,    RWRSTATE(rwTEXTUREADDRESSCLAMP));
 
+	// relevo do chao: guardado por marcador e refeito so a cada 4 s (colisao e cara; o chao nao muda)
+	constexpr int N = 32;
+	struct Ground { float z[N]; int64_t t = 0; uint32_t ver = ~0u; };
+	static std::vector<Ground> gcache;
+	if (gcache.size() != mk.size()) gcache.assign(mk.size(), Ground());
+	const int64_t nowG = NowMs();
+
 	for (const Job3& o : order)
 	{
 		const Mk& m = *o.m;
+		Ground& g = gcache[(size_t)(o.m - mk.data())];
+		if (g.ver != seen || nowG - g.t > 4000)
+		{
+			g.ver = seen; g.t = nowG;
+			for (int i = 0; i < N; i++)
+			{
+				const float ang = (float)i * (6.2831853f / (float)N);
+				float gz = CWorld::FindGroundZForCoord(m.x + std::cos(ang) * m.radius * 0.87f, m.y + std::sin(ang) * m.radius * 0.87f);   // meio da faixa do anel
+				if (!(std::fabs(gz - m.z) < 1.5f)) gz = m.z;               // leitura invalida: usa a altura do servidor
+				g.z[i] = gz;
+			}
+		}
 		const bool inside = havePl && std::fabs(pz - m.z) < 2.5f && (px - m.x) * (px - m.x) + (py - m.y) * (py - m.y) <= m.radius * m.radius;
 		int rr = (int)((m.rgb >> 16) & 255), gg = (int)((m.rgb >> 8) & 255), bb = (int)(m.rgb & 255);
 		int aa = (int)(200.0f + std::sin(ph / 3.0f) * 35.0f);
@@ -759,7 +787,6 @@ void JobsUI_RenderWorld()
 
 		// ---- anel colado no chao ----
 		{
-			constexpr int N = 40;
 			static RxObjSpace3DVertex v[N * 2];
 			static uint16_t idx[N * 6];
 			const float ro = m.radius * (1.0f - sn * 0.07f), ri = ro * 0.74f;
@@ -769,8 +796,7 @@ void JobsUI_RenderWorld()
 				for (int k = 0; k < 2; k++)
 				{
 					const float rad = k == 0 ? ro : ri, x = m.x + c * rad, y = m.y + s2 * rad;
-					float gz = CWorld::FindGroundZForCoord(x, y);                // nativo (sem passar pelo interpretador de scripts a cada vertice/quadro)
-					if (!(std::fabs(gz - m.z) < 1.5f)) gz = m.z;               // leitura invalida: usa a altura do servidor
+					const float gz = g.z[i];
 					RxObjSpace3DVertex& w = v[i * 2 + k];
 					w.objVertex = { x, y, gz + 0.04f };
 					w.objNormal = { 0.0f, 0.0f, 1.0f };
@@ -792,7 +818,10 @@ void JobsUI_RenderWorld()
 		// ---- icone flutuante (billboard) ----
 		if (o.d < 60.0f)
 		{
-			RwTexture* tex = IconTexDb::Texture(m.kind == 2 ? (m.state ? "mk_cozinha" : "mk_servico") : "mk_jobs");
+			static RwTexture* texCache[3] = {nullptr, nullptr, nullptr};          // evita procurar o icone pelo nome a cada quadro
+			const int ti = m.kind == 2 ? (m.state ? 2 : 1) : 0;
+			if (!texCache[ti]) texCache[ti] = IconTexDb::Texture(ti == 2 ? "mk_cozinha" : (ti == 1 ? "mk_servico" : "mk_jobs"));
+			RwTexture* tex = texCache[ti];
 			if (tex && tex->raster)
 			{
 				const float cx = m.x, cy = m.y, cz = m.z + 1.2f + sn * 0.1f;
