@@ -104,6 +104,7 @@ namespace
 				g_hud = 0;
 			}
 		}
+		if (kClassicMaintenance) { g_mode.store((int)Mode::Modern); g_chosen.store(true); }   // classico em manutencao: todos no MODERNO, sem tela de escolha
 		ApplyLayout(g_cfg, g_huds[g_hud]);
 		g_loadedSection = sec;
 		g_loaded.store(true);
@@ -179,6 +180,7 @@ uint32_t ControlMode::ConfigVersion() { return g_ver.load(); }
 void ControlMode::Set(Mode m)
 {
 	std::lock_guard<std::mutex> l(g_mu);
+	if (CtlLogic::kClassicMaintenance) m = Mode::Modern;     // classico em manutencao
 	g_mode.store((int)m);
 	g_chosen.store(true);
 	SaveLocked();

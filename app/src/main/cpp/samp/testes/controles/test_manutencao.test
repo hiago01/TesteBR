@@ -1,0 +1,18 @@
+// Classico em manutencao (CTL_CLASSIC_MAINTENANCE = 1, o padrao): so o moderno pode ser escolhido.
+#include "../../gui/samp_widgets/controlmode_logic.h"
+#include <cstdio>
+using namespace CtlLogic;
+static int fails = 0, total = 0;
+#define CHECK(c) do { total++; if (!(c)) { fails++; printf("FALHOU L%d: %s\n", __LINE__, #c); } } while (0)
+int main()
+{
+	CHECK(kClassicMaintenance);
+	SelectorState st; st.Open(Mode::Classic);          // gravado antigo = classico
+	CHECK(st.selected == Mode::Modern);                // abre ja no moderno
+	st.Act(SelAction::Select0);                        // tocar no cartao classico
+	CHECK(st.selected == Mode::Modern);                // nada muda
+	st.Act(SelAction::Select1); st.Act(SelAction::Confirm);
+	CHECK(st.apply && st.done && st.selected == Mode::Modern);
+	printf("%d/%d ok\n", total - fails, total);
+	return fails ? 1 : 0;
+}

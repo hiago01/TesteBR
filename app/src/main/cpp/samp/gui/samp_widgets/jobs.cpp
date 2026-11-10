@@ -15,6 +15,7 @@
 #include "../../vendor/armhook/patch.h"
 #include "jobs.h"
 #include "garagepanel.h"
+#include "carinteract.h"
 #include "maximomenu.h"
 
 #include <algorithm>
@@ -96,7 +97,7 @@ namespace
 		FLog("[JOBS3D] Send op %d arg %d", op, arg);
 		RakNet::BitStream bs;
 		bs.Write((uint8_t)op);
-		if (op == 1 || op == 2 || op == 12) bs.Write((uint16_t)arg);
+		if (op == 1 || op == 2 || op == 12 || op == 13) bs.Write((uint16_t)arg);
 		pNetGame->GetRakClient()->RPC(&RPC_JobsRequest, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
 	}
 
@@ -190,6 +191,7 @@ void JobsUI::Reset()
 	g_open.store(false); g_garage.store(false); GaragePanel::Reset(); g_confirm = 0; g_drag = Drag(); g_tapReq.store(false); for (WorldTap& w : g_wt) w.valid = false;
 	{ std::lock_guard<std::mutex> l(g_mkMutex); g_mkNetA.clear(); g_mkNetB.clear(); g_mkNetC.clear(); g_mkNetD.clear(); g_mkNet.clear(); }
 	g_scFolded.store(false);
+	CarInteract::Reset();
 	ChatSetAllowed(false);
 	ProvadorSetAllowed(false);
 	g_mkVer.fetch_add(1);
@@ -248,6 +250,7 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	if (op == 3) { Close(false); return; }
 	if (op == 2) { uint8_t c = 0; if (bs.Read(c)) g_resultCode.store(c); return; }
 	if (op == 13) { GaragePanel::OnList(bs); g_garage.store(true); if (!g_open.exchange(true)) { g_flush.store(true); g_resetView.store(true); } return; }   // lista da garagem: abre a tela
+	if (op == 15) { CarInteract::OnPacket(bs); return; }   // interacao com o proprio carro (chave): ponto "Abrir interacao"
 	if (op == 14) { if (g_garage.load()) JobsUI::Close(false); return; }                                                                 // o servidor fecha a garagem (carro retirado)
 	if (op == 12) { uint8_t a = 0; if (bs.Read(a)) ProvadorSetAllowed(a != 0); return; }   // u8: libera o /provador
 	if (op == 8) { uint8_t a = 0; if (bs.Read(a)) ChatSetAllowed(a != 0); return; }   // u8 admin: libera/esconde o chat
@@ -368,6 +371,15 @@ void JobsUI::draw(ImGuiRenderer* r)
 	// ---- marcadores no mundo (anel no chao, circulo com icone, seta, texto sobre o NPC) ----
 	if (!g_open.load()) DrawMarkers(r, k, now);
 	else g_mkHit.clear();
+
+	// ---- interacao com o proprio carro (chave): ponto "Abrir interacao" + menu Trancar/Destrancar; o toque dele vem antes dos demais ----
+	if (!g_open.load())
+	{
+		int lockVeh = 0;
+		if (CarInteract::Draw(r, k, g_tapReq.load(), g_tapX.load(), g_tapY.load(), lockVeh)) g_tapReq.store(false);
+		if (lockVeh > 0) Send(13, lockVeh);
+	}
+	else CarInteract::CloseMenu();
 
 	// ---- toque de mundo: primeiro nos circulos, depois na propria recepcionista (tela fechada) ----
 	bool tapped = false;

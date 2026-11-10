@@ -21,6 +21,13 @@ namespace CtlLogic
 	// ---------------------------------------------------------------- modo ----------
 	enum class Mode : int { Classic = 0, Modern = 1 };
 
+	// HUD/controle CLASSICO em MANUTENCAO: enquanto ligado, so o MODERNO existe (ninguem escolhe, ninguem cai no classico).
+	// Para liberar o classico de novo, compile com -DCTL_CLASSIC_MAINTENANCE=0.
+#ifndef CTL_CLASSIC_MAINTENANCE
+#define CTL_CLASSIC_MAINTENANCE 1
+#endif
+	constexpr bool kClassicMaintenance = CTL_CLASSIC_MAINTENANCE != 0;
+
 	inline Mode ModeFromString(const char* s)
 	{
 		if (!s) return Mode::Classic;                                   // padrao: CLASSICO
@@ -710,12 +717,12 @@ namespace CtlLogic
 		bool done = false;               // fechar a tela
 		bool apply = false;              // gravar/aplicar `selected`
 
-		void Open(Mode saved) { current = saved; selected = saved; done = false; apply = false; }
+		void Open(Mode saved) { current = saved; selected = kClassicMaintenance ? Mode::Modern : saved; done = false; apply = false; }
 		void Act(SelAction a)
 		{
 			switch (a)
 			{
-				case SelAction::Select0: selected = Mode::Classic; break;
+				case SelAction::Select0: if (!kClassicMaintenance) selected = Mode::Classic; break;   // classico em manutencao: toque ignorado
 				case SelAction::Select1: selected = Mode::Modern;  break;
 				case SelAction::Confirm: apply = true; done = true; break;
 				case SelAction::Back:    apply = false; done = true; break;   // VOLTAR: nao muda nada

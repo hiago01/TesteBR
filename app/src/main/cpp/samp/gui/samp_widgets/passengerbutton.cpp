@@ -41,6 +41,7 @@ namespace
 		const VEHICLEID id = vp->FindNearestToLocalPlayerPed();
 		CVehicle* v = vp->GetAt(id);
 		if (!v || !v->m_pVehicle) return -1.0f;
+		if (v->m_bDoorsLocked) busyOut = true;       // trancado: o botao some (mesmo efeito de "ocupado")
 		return v->m_pVehicle->GetDistanceFromLocalPlayerPed();
 	}
 

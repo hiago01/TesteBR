@@ -184,7 +184,8 @@ void ControlsSelector::draw(ImGuiRenderer* r)
 	for (int i = 0; i < 2; i++)
 	{
 		const CtlRect& c = S.card[i];
-		const bool sel = (st.selected == (i == 0 ? Mode::Classic : Mode::Modern));
+		const bool maint = (i == 0 && kClassicMaintenance);          // classico em manutencao: cartao apagado, sem selecao
+		const bool sel = !maint && (st.selected == (i == 0 ? Mode::Classic : Mode::Modern));
 		r->drawRect(ImVec2(c.l, c.t), ImVec2(c.r, c.b), cCard, true);
 		r->drawRect(ImVec2(c.l, c.t), ImVec2(c.r, c.b), sel ? cGreen : ImColor(70, 80, 90, 255), false, sel ? 4.0f : 1.5f);
 
@@ -198,11 +199,20 @@ void ControlsSelector::draw(ImGuiRenderer* r)
 		Preview(r, CtlRect{ c.l + pad, pvT, c.r - pad, S.selectBtn[i].t - pad }, i == 1);
 
 		const CtlRect& b = S.selectBtn[i];
-		r->drawRect(ImVec2(b.l, b.t), ImVec2(b.r, b.b), sel ? cGreen : cBlue, true);
-		const char* bl = sel ? "SELECIONADO" : "SELECIONAR";
+		r->drawRect(ImVec2(b.l, b.t), ImVec2(b.r, b.b), maint ? ImColor(70, 76, 84, 255) : (sel ? cGreen : cBlue), true);
+		const char* bl = maint ? "INDISPONÍVEL" : (sel ? "SELECIONADO" : "SELECIONAR");
 		const ImVec2 tb = r->calculateTextSize(bl, fsB);
 		r->drawText(ImVec2((b.l + b.r) * 0.5f - tb.x * 0.5f, (b.t + b.b) * 0.5f - tb.y * 0.5f), cText, bl, false, fsB);
 
+		if (maint)  // aviso sobre a previa: escurece o cartao e mostra EM MANUTENÇÃO
+		{
+			r->drawRect(ImVec2(c.l, c.t), ImVec2(c.r, c.b), ImColor(10, 12, 16, 170), true);
+			const char* mt = "EM MANUTENÇÃO";
+			const ImVec2 tm = r->calculateTextSize(mt, fsC);
+			const float my = (c.t + c.b) * 0.5f - tm.y * 0.5f;
+			r->drawRect(ImVec2(c.l, my - pad * 0.6f), ImVec2(c.r, my + tm.y + pad * 0.6f), ImColor(200, 150, 20, 235), true);
+			r->drawText(ImVec2((c.l + c.r) * 0.5f - tm.x * 0.5f, my), ImColor(20, 20, 20, 255), mt, false, fsC);
+		}
 		if (sel)    // indicador claro no canto do cartao
 		{
 			const float rad = ph * 0.035f, cx = c.r - pad - rad, cy = c.t + pad + rad;

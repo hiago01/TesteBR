@@ -362,8 +362,8 @@ if (input == "/controles" || input.rfind("/controles ", 0) == 0 || input == "/co
             ControlMode::EnsureLoaded();
             if (arg == "classico" || arg == "clássico" || arg == "classic")
             {
-                ControlMode::Set(CtlLogic::Mode::Classic);
-                addDebugMessage("[CONTROLES] Controle classico ativado.");
+                if (CtlLogic::kClassicMaintenance) addDebugMessage("[CONTROLES] O controle classico esta em manutencao. Somente o moderno esta disponivel.");
+                else { ControlMode::Set(CtlLogic::Mode::Classic); addDebugMessage("[CONTROLES] Controle classico ativado."); }
             }
             else if (arg == "moderno" || arg == "modern")
             {

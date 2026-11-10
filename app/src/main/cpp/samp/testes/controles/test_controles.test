@@ -1,4 +1,5 @@
 // Testes de PC da logica dos controles (controlmode_logic.h). Nao testa NDK/Android/aparelho.
+#define CTL_CLASSIC_MAINTENANCE 0   // estes testes cobrem o fluxo com o classico liberado; a manutencao tem teste proprio (test_manutencao.test)
 #include "../../gui/samp_widgets/controlmode_logic.h"
 #include <cstdio>
 using namespace CtlLogic;

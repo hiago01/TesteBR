@@ -1302,6 +1302,7 @@ bool CLocalPlayer::HandlePassengerEntry()
 	CVehicle* pVehicle = pVehiclePool->GetAt(ClosetVehicleID);
 	if (!pVehicle || !pVehicle->m_pVehicle) return true;
 	if (pVehicle->m_pVehicle->GetDistanceFromLocalPlayerPed() >= 8.0f) return true;          // longe demais: nada sai
+	if (pVehicle->m_bDoorsLocked) return true;                                               // trancado: P2 nao entra (destranque pela interacao com a chave)
 	if (!m_enterLimiter.Check(GetTickCount(), ClosetVehicleID, true)) return true;           // flood: recusa ANTES de mandar o ped andar
 
 	if (m_pPlayerPed->GetCurrentWeapon() == WEAPON_PARACHUTE) {
@@ -1331,6 +1332,7 @@ bool CLocalPlayer::HandleDriverEntry()
 	CVehicle* pVehicle = pVehiclePool->GetAt(ClosetVehicleID);
 	if (!pVehicle || !pVehicle->m_pVehicle) return true;
 	if (pVehicle->m_pVehicle->GetDistanceFromLocalPlayerPed() >= 8.0f) return true;
+	if (pVehicle->m_bDoorsLocked) return true;                                               // trancado: P1 nao entra
 	if (!m_enterLimiter.Check(GetTickCount(), ClosetVehicleID, false)) return true;
 
 	if (m_pPlayerPed->GetCurrentWeapon() == WEAPON_PARACHUTE) {

@@ -451,6 +451,7 @@ void ModernControls::draw(ImGuiRenderer* r)
 				const float dist = (v && v->m_pVehicle) ? v->m_pVehicle->GetDistanceFromLocalPlayerPed() : -1.0f;
 				const bool busyEnter = ped->IsEnteringCar() || ped->IsExitingVehicle();
 				showEnter = PassengerLogic::ShouldShow(true, UiBlocked(), vehicle, alive, dist, busyEnter);
+				if (v && v->m_bDoorsLocked) showEnter = false;   // carro TRANCADO: P1 e P2 somem (o dono destranca pela interacao com a chave)
 			}
 			if (JobsUI_ScooterFolded()) showEnter = false;   // patinete dobrado na mao: sem P1/P2
 			if (!showEnter) g_ctl.disabledMask |= (1u << B_P1) | (1u << B_P2);
