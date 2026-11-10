@@ -71,7 +71,7 @@ namespace
 
 	// toques de mundo
 	struct WorldTap { bool valid = false; float x = 0, y = 0; int64_t t = 0; };
-	WorldTap g_wt;                 // dedo 0 em andamento (thread do jogo)
+	WorldTap g_wt[4];              // um por dedo (thread do jogo): tocar com o 2o dedo enquanto o 1o segura o joystick tambem vale
 	std::atomic<bool>  g_tapReq{false};
 	std::atomic<float> g_tapX{0}, g_tapY{0};
 	int64_t g_lastTapSent = 0;
@@ -109,6 +109,17 @@ namespace
 		case 6: return "Este emprego não existe mais.";
 		case 7: return "Agência indisponível: o serviço de empregos não respondeu.";
 		case 8: return "Faça login para usar a agência.";
+		// patinete (servidor patinete.pwn, RPC 245 op 2)
+		case 20: return "Dinheiro insuficiente: o patinete custa R$ 4 por minuto.";
+		case 21: return "Faça login para alugar o patinete.";
+		case 22: return "Chegue mais perto do suporte de patinetes.";
+		case 23: bad = false; return "Patinete alugado! Toque em Montar patinete.";
+		case 24: bad = false; return "Patinete devolvido.";
+		case 25: return "Você já está com um patinete.";
+		case 26: return "Pare o patinete para dobrar.";
+		case 27: return "Dobre o patinete antes de devolver.";
+		case 28: return "Desça do veículo para alugar um patinete.";
+		case 29: return "Esse patinete está alugado por outro jogador.";
 		default: return "Erro no servidor. Tente de novo.";
 		}
 	}
@@ -168,7 +179,7 @@ void JobsUI::Close(bool notifyServer)
 }
 void JobsUI::Reset()
 {
-	g_open.store(false); g_confirm = 0; g_drag = Drag(); g_tapReq.store(false); g_wt.valid = false;
+	g_open.store(false); g_confirm = 0; g_drag = Drag(); g_tapReq.store(false); for (WorldTap& w : g_wt) w.valid = false;
 	{ std::lock_guard<std::mutex> l(g_mkMutex); g_mkNetA.clear(); g_mkNetB.clear(); g_mkNet.clear(); }
 	g_mkVer.fetch_add(1);
 	{ std::lock_guard<std::mutex> l(g_snapMutex); g_snap = Snap(); }
@@ -202,17 +213,18 @@ bool JobsUI::HandleRawTouch(int type, int num, int x, int y)
 
 void JobsUI::ObserveWorldTouch(int type, int num, int x, int y)
 {
-	if (g_open.load() || (num & 3) != 0) return;
+	if (g_open.load()) return;
+	WorldTap& wt = g_wt[num & 3];
 	const int64_t now = NowMs();
-	if (type == 2) { g_wt.valid = true; g_wt.x = (float)x; g_wt.y = (float)y; g_wt.t = now; }
+	if (type == 2) { wt.valid = true; wt.x = (float)x; wt.y = (float)y; wt.t = now; }
 	else if (type == 3)
 	{
-		if (g_wt.valid && (std::fabs((float)x - g_wt.x) > 28.0f || std::fabs((float)y - g_wt.y) > 28.0f)) g_wt.valid = false;
+		if (wt.valid && (std::fabs((float)x - wt.x) > 28.0f || std::fabs((float)y - wt.y) > 28.0f)) wt.valid = false;
 	}
 	else if (type == 1)
 	{
-		if (g_wt.valid && !g_bTouchCancel && now - g_wt.t < 380) { g_tapX.store(g_wt.x); g_tapY.store(g_wt.y); g_tapReq.store(true); }
-		g_wt.valid = false;
+		if (wt.valid && !g_bTouchCancel && now - wt.t < 450) { g_tapX.store(wt.x); g_tapY.store(wt.y); g_tapReq.store(true); }
+		wt.valid = false;
 	}
 }
 
