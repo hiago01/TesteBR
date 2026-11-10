@@ -233,10 +233,13 @@ if (input == "/provador" || input.rfind("/provador ", 0) == 0)
 
             return;
         }
-if (input == "/corp" || input.rfind("/corp ", 0) == 0)
+const std::string corpArgs = input.size() > 5 ? input.substr(6) : std::string();
+        // /corp <nome> e /corp limpar vao para o SERVIDOR (online: grava e todos veem); so info/lista/271/7 sao locais
+        if ((input == "/corp" || input.rfind("/corp ", 0) == 0)
+            && (corpArgs.empty() || corpArgs == "info" || corpArgs == "lista" || corpArgs == "list" || corpArgs == "271" || corpArgs == "7"))
         {
-            // texturas por corporacao no seu ator: /corp <nome> | limpar | lista | info
-            std::string args = input.size() > 5 ? input.substr(6) : std::string();
+            // diagnostico local: /corp | info | lista | 271 | 7
+            std::string args = corpArgs;
             std::string reply = CorpTex::DebugCommand(args);
             addDebugMessage("%s", reply.c_str());
 
