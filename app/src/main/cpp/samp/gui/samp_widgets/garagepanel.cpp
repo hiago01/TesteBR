@@ -2,6 +2,8 @@
 #include "../gui.h"
 #include "../imguirenderer.h"
 #include "../../vendor/raknet/BitStream.h"
+#include "../../game/IconTexDb.h"
+#include "../../game/RW/RenderWare.h"
 #include "garagepanel.h"
 
 #include <algorithm>
@@ -142,25 +144,9 @@ void GaragePanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 		txt(cx + 10, cy + 10, cText, nm, 10.5f);
 		if (c.state == 1) txt(cx + 10, cy + 26, cAmber, "Na rua", 8.5f);
 		else if (c.state == 2) txt(cx + 10, cy + 26, cRed, "Desmanchado", 8.5f);
-		const bool moto = c.cat == 0;
-		const ImColor sil(14, 12, 16, 235);
-		const float mx = cx + 71.0f, my = cy + 84.0f;
-		if (!moto)
-		{
-			r->drawRoundedRect(V(mx - 36, my + 2), V(mx + 36, my + 18), sil, 6.0f * u, true);
-			ImVec2 cab[4] = {V(mx - 24, my + 3), V(mx - 15, my - 13), V(mx + 13, my - 13), V(mx + 26, my + 3)};
-			r->drawConvexPolyFilled(cab, 4, sil);
-			r->drawRoundedRect(V(mx - 27, my + 11), V(mx - 13, my + 25), sil, 7.0f * u, true);
-			r->drawRoundedRect(V(mx + 13, my + 11), V(mx + 27, my + 25), sil, 7.0f * u, true);
-		}
-		else
-		{
-			r->drawRoundedRect(V(mx - 36, my - 2), V(mx - 12, my + 22), sil, 12.0f * u, false, 3.0f * u);
-			r->drawRoundedRect(V(mx + 12, my - 2), V(mx + 36, my + 22), sil, 12.0f * u, false, 3.0f * u);
-			ImVec2 fr[5] = {V(mx - 24, my + 10), V(mx - 6, my - 6), V(mx + 8, my - 6), V(mx + 18, my - 12), V(mx + 24, my + 10)};
-			r->drawPolyline(fr, 5, sil, false, 3.0f * u);
-			r->drawRoundedRect(V(mx - 10, my - 10), V(mx + 8, my - 5), sil, 2.0f * u, true);
-		}
+		// imagem do veiculo: carro/moto coberto de preto; VIP coberto de vermelho (texturas car_preto / car_vip do banco texdb/icones)
+		if (RwTexture* tex = IconTexDb::Texture(c.cat == 2 ? "car_vip" : "car_preto"); tex && tex->raster)
+			r->drawImage(V(cx + 8, cy + 56), V(cx + 135, cy + 120), (ImTextureID)tex->raster, ImColor(255, 255, 255, 255));
 		r->drawRoundedRect(V(cx + 10, cy + 137), V(cx + 133, cy + 166), sel ? cPink : ImColor(46, 38, 46, 220), 4.0f * u, true);
 		txtC(cx + 10, cx + 133, cy + 144, sel ? cText : cSub, sel ? "Selecionado" : "Selecionar", 10.0f);
 		hits.push_back({V(cx, cy), V(cx + 143, cy + 176), H_CARD, c.reg});
