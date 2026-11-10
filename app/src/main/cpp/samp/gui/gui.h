@@ -33,6 +33,7 @@
 #include "samp_widgets/inventory.h"
 #include "samp_widgets/worldmap.h"
 #include "samp_widgets/provador.h"
+#include "samp_widgets/jobs.h"
 #include "samp_widgets/maximomenu.h"
 #include "samp_widgets/maximoos.h"
 #include "samp_widgets/phone.h"
@@ -127,6 +128,7 @@ private:
 	InventoryUI* m_inventory = nullptr;
 	WorldMapWidget* m_worldmap = nullptr;
 	Provador* m_provador = nullptr;
+	JobsUI* m_jobs = nullptr;
 	CelOfsPanel* m_celofs = nullptr;
 	Label* label;
     Label* label2;

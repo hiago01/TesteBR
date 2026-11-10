@@ -163,4 +163,6 @@ extern int RPC_ScrMap;
 extern int RPC_ScrGiroflex;
 extern int RPC_PhoneRequest;
 extern int RPC_PhoneEvent;
+extern int RPC_JobsEvent;
+extern int RPC_JobsRequest;
 extern int RPC_ScrWeapSkin;

@@ -368,6 +368,7 @@ extern "C" {
 		// So abre/fecha o menu quando o jogo esta pronto (UI criada); antes disso, engole o Voltar.
 		if (WorldMapWidget::OnBackPressed()) return JNI_TRUE;   // mapa aberto: Voltar fecha so ele
 		if (InventoryUI::OnBackPressed()) return JNI_TRUE;   // inventário aberto: Voltar fecha só ele
+		if (JobsUI::OnBackPressed()) return JNI_TRUE;        // agencia de empregos aberta: Voltar fecha so ela
 		if (Provador::OnBackPressed()) return JNI_TRUE;      // /provador aberto: Voltar cancela a prévia e fecha só ele
 		if (PhoneWidget::OnBackPressed()) return JNI_TRUE;      // celular aberto: Voltar navega/fecha so ele
 		if (MaximoOSWidget::OnBackPressed()) return JNI_TRUE;   // tablet (Maximo OS) aberto: Voltar navega/fecha so ele

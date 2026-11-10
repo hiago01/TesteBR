@@ -151,6 +151,13 @@ bool UI::initialize()
 	m_provador->setPosition(ImVec2(0.0f, 0.0f));
 	m_provador->setVisible(true);
 
+	// Agencia de Empregos (aberta pelo servidor: RPC 245). So desenha quando aberta; toques em AND_TouchEvent_hook (JobsUI::HandleRawTouch).
+	m_jobs = new JobsUI();
+	this->addChild(m_jobs);
+	m_jobs->setFixedSize(size());
+	m_jobs->setPosition(ImVec2(0.0f, 0.0f));
+	m_jobs->setVisible(true);
+
 	// Menu "Maximo RP" (substitui o menu de pausa nativo). Ultimo filho = desenhado por cima.
 	// So desenha quando aberto (/menu ou botao Voltar); a captura de toque fica em AND_TouchEvent_hook.
 	m_maximoMenu = new MaximoMenu();

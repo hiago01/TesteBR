@@ -13,6 +13,7 @@
 #include "../game/Giroflex.h"
 #include "../game/Weapskin.h"
 #include "../gui/samp_widgets/inventory.h"
+#include "../gui/samp_widgets/jobs.h"
 #include "../gui/samp_widgets/worldmap.h"
 #include "../gui/samp_widgets/phone.h"
 #include "../game/CustomAnimSync.h"
@@ -2106,6 +2107,15 @@ void ScrPhone(RPCParameters* rpcParams)
 	PhoneWidget::OnServerPacket(Data, (iBitLength + 7) / 8);
 }
 
+// Agencia de Empregos Maximo RP: servidor -> client (RPC_JobsEvent = 245). Formato em gui/samp_widgets/jobs.h / filterscripts/emprego.pwn.
+void ScrJobs(RPCParameters* rpcParams)
+{
+	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
+	int iBitLength = rpcParams->numberOfBitsOfData;
+	if (!Data || iBitLength <= 0) return;
+	JobsUI::OnServerPacket(Data, (iBitLength + 7) / 8);
+}
+
 void RegisterScriptRPCs(RakClientInterface *pRakClient)
 {
 	FLog("Registering script RPC's..");
@@ -2169,6 +2179,8 @@ void RegisterScriptRPCs(RakClientInterface *pRakClient)
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrInventory, ScrInventory);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrMap, ScrMap);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_PhoneEvent, ScrPhone);
+	pRakClient->RegisterAsRemoteProcedureCall(&RPC_JobsEvent, ScrJobs);
+	JobsUI::Reset();         // nova conexao: agencia fechada
 	PhoneWidget::Reset();    // nova conexao: celular sem numero/ligacao
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrGiroflex, ScrGiroflex);
 	Giroflex_Reset();      // nova conexao: giroflex desligado
@@ -2239,6 +2251,8 @@ void UnregisterScriptRPCs(RakClientInterface *pRakClient)
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrInventory);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrMap);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_PhoneEvent);
+	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_JobsEvent);
+	JobsUI::Reset();
 	PhoneWidget::Reset();
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrGiroflex);
 	Giroflex_Reset();

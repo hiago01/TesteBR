@@ -1088,6 +1088,14 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 	}
 	if (Provador::HandleRawTouch(type, num, posX, posY))
 		return;
+	// Agencia de Empregos (aberta pelo servidor): mesmo esquema; consome todos os toques enquanto aberta.
+	if (JobsUI::ConsumeFlushRequest())
+	{
+		for (int i = 0; i < 3; i++)
+			AND_TouchEvent(1, i, 0, 0);
+	}
+	if (JobsUI::HandleRawTouch(type, num, posX, posY))
+		return;
 	// Maximo OS (tablet): consome todos os toques enquanto aberto; mesmo esquema do menu.
 	if (MaximoOSWidget::ConsumeFlushRequest())
 	{
@@ -1150,6 +1158,7 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 		if (pUI->jumpbutton() && pUI->jumpbutton()->onRawTouch(type, num, posX, posY))
 			return;
 
+		JobsUI::ObserveWorldTouch(type, num, posX, posY);     // toque curto na recepcionista (actor) -> RPC 246; nao consome
 		switch (type)
 		{
 			case 2: // push
