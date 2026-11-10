@@ -31,14 +31,18 @@ namespace
 	struct Job  { int id = 0; std::string name, descr, image; uint32_t smin = 0, smax = 0; int minLvl = 0, vac = 0, used = 0; };
 	struct Mine { bool has = false; int id = 0; std::string name, date; int lvl = 1, xp = 0, done = 0; uint32_t earned = 0; bool duty = false; };
 	struct Snap { int plLevel = 0; Mine mine; std::vector<Job> jobs; };
+	// marcador desenhado no mundo (RPC 245 op 4): anel no chao + circulo com icone + seta + texto sobre o NPC
+	struct Mk { int kind = 1; float x = 0, y = 0, z = 0, ax = 0, ay = 0, az = 0, radius = 1.3f; uint32_t rgb = 0xFFFFFF; std::string text; };
+	struct MkHit { ImVec2 a, b; int kind; };
 
 	std::atomic<bool> g_open{false}, g_flush{false}, g_resetView{false};
 	std::atomic<bool> g_claimed[4] = {{false}, {false}, {false}, {false}};
-	std::atomic<uint32_t> g_ver{0};
+	std::atomic<uint32_t> g_ver{0}, g_mkVer{0};
 	std::atomic<int>  g_resultCode{-1};
-	std::mutex        g_evMutex, g_snapMutex;
+	std::mutex        g_evMutex, g_snapMutex, g_mkMutex;
 	std::vector<TouchEv> g_events;
 	Snap              g_snap;
+	std::vector<Mk>   g_mkNet;                       // recebido do servidor (protegido por g_mkMutex)
 
 	int64_t NowMs()
 	{
@@ -48,7 +52,9 @@ namespace
 
 	// ---- estado da tela (so a thread de desenho) ----
 	Snap     g_s;                  // copia local
-	uint32_t g_seenVer = ~0u;
+	uint32_t g_seenVer = ~0u, g_seenMkVer = ~0u;
+	std::vector<Mk>    g_mk;                 // copia local dos marcadores
+	std::vector<MkHit> g_mkHit;              // areas tocaveis dos circulos (do quadro anterior)
 	int      g_sel = -1;           // indice em g_s.jobs
 	int      g_page = 0;           // pagina de cartoes (3 por pagina)
 	int      g_confirm = 0;        // 0 nada | 1 assinar | 2 demissao | 3 informacoes da vaga
@@ -125,6 +131,31 @@ namespace
 		r->drawText(ImVec2((a.x + b.x - ts.x) * 0.5f, (a.y + b.y - ts.y) * 0.5f), ImColor(236, 40, 96, 200), ch, false, fs);
 	}
 
+	bool Proj(float x, float y, float z, ImVec2& o, float& depth)
+	{
+		CVector w(x, y, z), sc;
+		((void (*)(CVector*, CVector*, float*, float*, bool, bool))(g_libGTASA + 0x6E9DF8))(&w, &sc, 0, 0, 0, 0);   // CSprite::CalcScreenCoors
+		if (sc.z < 1.0f) return false;
+		o = ImVec2(sc.x, sc.y); depth = sc.z;
+		return true;
+	}
+
+	// icone dentro do circulo: 1 = maleta (agencia), 2 = panela (cozinha)
+	void DrawMkIcon(ImGuiRenderer* r, int kind, const ImVec2& c, float rp, const ImColor& col)
+	{
+		if (kind == 2)
+		{
+			r->drawRoundedRect(ImVec2(c.x - rp * 0.45f, c.y - rp * 0.10f), ImVec2(c.x + rp * 0.45f, c.y + rp * 0.45f), col, rp * 0.12f, true);
+			r->drawRect(ImVec2(c.x - rp * 0.52f, c.y - rp * 0.24f), ImVec2(c.x + rp * 0.52f, c.y - rp * 0.12f), col, true);
+			r->drawLine(ImVec2(c.x - rp * 0.45f, c.y), ImVec2(c.x - rp * 0.68f, c.y), col, std::max(1.5f, rp * 0.10f));
+			r->drawLine(ImVec2(c.x + rp * 0.45f, c.y), ImVec2(c.x + rp * 0.68f, c.y), col, std::max(1.5f, rp * 0.10f));
+			return;
+		}
+		r->drawRoundedRect(ImVec2(c.x - rp * 0.22f, c.y - rp * 0.52f), ImVec2(c.x + rp * 0.22f, c.y - rp * 0.18f), col, rp * 0.08f, false, std::max(1.5f, rp * 0.10f));
+		r->drawRoundedRect(ImVec2(c.x - rp * 0.55f, c.y - rp * 0.28f), ImVec2(c.x + rp * 0.55f, c.y + rp * 0.50f), col, rp * 0.12f, true);
+		r->drawLine(ImVec2(c.x - rp * 0.55f, c.y + rp * 0.04f), ImVec2(c.x + rp * 0.55f, c.y + rp * 0.04f), ImColor(24, 24, 28, 255), std::max(1.2f, rp * 0.07f));
+	}
+
 	enum Kind { K_NONE = 0, K_CLOSE, K_CARD, K_SIGN, K_QUIT, K_YES, K_NO, K_PANEL, K_PREV, K_NEXT, K_INFO };
 	struct Hit { ImVec2 a, b; int kind; int idx; };
 	struct Drag { int finger = -1; Hit hit{ImVec2(), ImVec2(), K_NONE, 0}; float sx = 0, sy = 0, dx = 0; bool moved = false; };
@@ -144,6 +175,8 @@ void JobsUI::Close(bool notifyServer)
 void JobsUI::Reset()
 {
 	g_open.store(false); g_confirm = 0; g_drag = Drag(); g_tapReq.store(false); g_wt.valid = false;
+	{ std::lock_guard<std::mutex> l(g_mkMutex); g_mkNet.clear(); }
+	g_mkVer.fetch_add(1);
 	{ std::lock_guard<std::mutex> l(g_snapMutex); g_snap = Snap(); }
 	g_ver.fetch_add(1);
 }
@@ -197,6 +230,23 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	if (!bs.Read(op)) return;
 	if (op == 3) { Close(false); return; }
 	if (op == 2) { uint8_t c = 0; if (bs.Read(c)) g_resultCode.store(c); return; }
+	if (op == 4)
+	{
+		uint8_t n = 0;
+		if (!bs.Read(n) || n > 8) return;
+		std::vector<Mk> v;
+		for (int i = 0; i < n; i++)
+		{
+			Mk m; uint8_t kind = 0;
+			if (!bs.Read(kind) || !bs.Read(m.x) || !bs.Read(m.y) || !bs.Read(m.z) || !bs.Read(m.ax) || !bs.Read(m.ay) || !bs.Read(m.az) || !bs.Read(m.radius) || !bs.Read(m.rgb) || !RdStr(bs, m.text)) return;
+			if (!(m.radius >= 0.3f && m.radius <= 6.0f)) m.radius = 1.3f;
+			m.kind = kind == 2 ? 2 : 1; m.rgb &= 0xFFFFFF;
+			v.push_back(std::move(m));
+		}
+		{ std::lock_guard<std::mutex> l(g_mkMutex); g_mkNet = std::move(v); }
+		g_mkVer.fetch_add(1);
+		return;
+	}
 	if (op != 1) return;
 
 	Snap s;
@@ -222,6 +272,66 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	if (!g_open.exchange(true)) { g_flush.store(true); g_resetView.store(true); }
 }
 
+// anel no chao (so contorno, centro vazio), circulo com icone sobre o NPC, seta para baixo e o texto "[ E ] ..."
+static void DrawMarkers(ImGuiRenderer* r, float k, int64_t now)
+{
+	g_mkHit.clear();
+	{
+		const uint32_t v = g_mkVer.load();
+		if (v != g_seenMkVer) { std::lock_guard<std::mutex> l(g_mkMutex); g_mk = g_mkNet; g_seenMkVer = v; }
+	}
+	if (g_mk.empty()) return;
+	const float t = (float)(now % 100000) * 0.001f;
+	for (const Mk& m : g_mk)
+	{
+		const int cr = (int)((m.rgb >> 16) & 255), cg = (int)((m.rgb >> 8) & 255), cb = (int)(m.rgb & 255);
+		// ---- anel no chao ----
+		{
+			const int N = 40; ImVec2 pts[N]; bool ok = true; float dep = 0.0f;
+			const float rad = m.radius * (1.0f + 0.03f * std::sin(t * 3.0f));
+			for (int i = 0; i < N && ok; i++)
+			{
+				const float a = (float)i * (6.2831853f / (float)N); float d = 0.0f;
+				ok = Proj(m.x + std::cos(a) * rad, m.y + std::sin(a) * rad, m.z + 0.06f, pts[i], d);
+				if (i == 0) dep = d;
+			}
+			if (ok && dep < 48.0f)
+			{
+				const int al = (int)(255.0f * std::clamp((48.0f - dep) / 16.0f, 0.0f, 1.0f));
+				for (int i = 0; i < N; i++)
+				{
+					const ImVec2& p0 = pts[i]; const ImVec2& p1 = pts[(i + 1) % N];
+					r->drawLine(p0, p1, ImColor(cr, cg, cb, al / 4), 6.0f * k);
+					r->drawLine(p0, p1, ImColor(cr, cg, cb, al), 2.4f * k);
+				}
+			}
+		}
+		// ---- circulo + seta + texto sobre o NPC ----
+		ImVec2 c; float dep = 0.0f;
+		if (!Proj(m.ax, m.ay, m.az + 1.55f + 0.06f * std::sin(t * 3.0f), c, dep) || dep > 36.0f) continue;
+		const float rp = std::clamp(234.0f * k / std::max(dep, 3.0f), 9.0f * k, 26.0f * k);
+		r->drawRoundedRect(ImVec2(c.x - rp - 2.0f * k, c.y - rp - 2.0f * k), ImVec2(c.x + rp + 2.0f * k, c.y + rp + 2.0f * k), ImColor(cr, cg, cb, 70), rp + 2.0f * k, true);
+		r->drawRoundedRect(ImVec2(c.x - rp, c.y - rp), ImVec2(c.x + rp, c.y + rp), ImColor(24, 24, 28, 238), rp, true);
+		r->drawRoundedRect(ImVec2(c.x - rp, c.y - rp), ImVec2(c.x + rp, c.y + rp), ImColor(cr, cg, cb, 255), rp, false, std::max(1.6f, 2.0f * k));
+		DrawMkIcon(r, m.kind, c, rp, ImColor(255, 255, 255, 255));
+		const float bob = rp * 0.18f * std::sin(t * 4.0f);
+		const ImVec2 tip(c.x, c.y + rp * 2.15f + bob);
+		r->drawTriangle(ImVec2(c.x - rp * 0.55f, c.y + rp * 1.25f + bob), ImVec2(c.x + rp * 0.55f, c.y + rp * 1.25f + bob), tip, ImColor(cr, cg, cb, 255), true);
+		ImVec2 ha(c.x - rp * 1.4f, c.y - rp * 1.2f), hb(c.x + rp * 1.4f, tip.y);
+		if (dep < 16.0f)
+		{
+			const std::string txt = !m.text.empty() ? m.text : (m.kind == 2 ? std::string("[ E ] PREPARAR PEDIDO") : std::string("[ E ] ABRIR AGÊNCIA DE EMPREGOS"));
+			const float fs = std::clamp(rp * 0.62f, 9.0f * k, 16.0f * k);
+			const ImVec2 ts = r->calculateTextSize(txt, fs);
+			const ImVec2 pa(c.x - ts.x * 0.5f - 8.0f * k, c.y - rp - ts.y - 12.0f * k), pb(c.x + ts.x * 0.5f + 8.0f * k, c.y - rp - 4.0f * k);
+			r->drawRoundedRect(pa, pb, ImColor(18, 18, 22, 225), 6.0f * k, true);
+			r->drawText(ImVec2(pa.x + 8.0f * k, pa.y + (pb.y - pa.y - ts.y) * 0.5f), ImColor(255, 255, 255, 255), txt, false, fs);
+			ha.x = std::min(ha.x, pa.x); hb.x = std::max(hb.x, pb.x); ha.y = pa.y;
+		}
+		g_mkHit.push_back({ha, hb, m.kind});
+	}
+}
+
 JobsUI::JobsUI() : Widget() {}
 
 // =====================================================================================
@@ -233,8 +343,24 @@ void JobsUI::draw(ImGuiRenderer* r)
 	const float  k   = scr.y / 540.0f;
 	const int64_t now = NowMs();
 
-	// ---- toque de mundo na recepcionista (tela fechada) ----
-	if (g_tapReq.exchange(false) && !g_open.load() && pNetGame && pNetGame->GetActorPool() && pNetGame->GetPlayerPool() && now - g_lastTapSent > 1200)
+	// ---- marcadores no mundo (anel no chao, circulo com icone, seta, texto sobre o NPC) ----
+	if (!g_open.load()) DrawMarkers(r, k, now);
+	else g_mkHit.clear();
+
+	// ---- toque de mundo: primeiro nos circulos, depois na propria recepcionista (tela fechada) ----
+	bool tapped = false;
+	if (g_tapReq.load() && !g_open.load() && now - g_lastTapSent > 1200)
+	{
+		const float tx = g_tapX.load(), ty = g_tapY.load();
+		for (const MkHit& h : g_mkHit)
+			if (tx >= h.a.x && tx <= h.b.x && ty >= h.a.y && ty <= h.b.y)
+			{
+				g_tapReq.store(false); g_lastTapSent = now; tapped = true;
+				Send(h.kind == 2 ? 7 : 6);
+				break;
+			}
+	}
+	if (!tapped && g_tapReq.exchange(false) && !g_open.load() && pNetGame && pNetGame->GetActorPool() && pNetGame->GetPlayerPool() && now - g_lastTapSent > 1200)
 	{
 		const float tx = g_tapX.load(), ty = g_tapY.load();
 		CActorPool* ap = pNetGame->GetActorPool();
