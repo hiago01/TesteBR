@@ -10,6 +10,7 @@
 //   - o cliente so desenha e PEDE (RPC 246): contratar, pedir demissao, fechar. O SERVIDOR valida nivel, vaga, vagas e
 //     grava no PostgreSQL; a tela so muda quando o servidor manda o novo estado.
 //   - os empregos NAO existem aqui: tudo vem do cadastro do administrador (painel web do servidor).
+//  Tocar na recepcionista ou no botao ao lado dela (marcadores, RPC 245 op 4): tudo por toque, sem tecla.
 //  Tocar na recepcionista (actor do servidor): ObserveWorldTouch() reconhece o toque curto e, no desenho, procura o actor
 //  sob o dedo e envia RPC 246 op 1 (o servidor confere a distancia e abre a tela).
 //  Protocolo: ver servidor filterscripts/emprego.pwn.

@@ -31,8 +31,8 @@ namespace
 	struct Job  { int id = 0; std::string name, descr, image; uint32_t smin = 0, smax = 0; int minLvl = 0, vac = 0, used = 0; };
 	struct Mine { bool has = false; int id = 0; std::string name, date; int lvl = 1, xp = 0, done = 0; uint32_t earned = 0; bool duty = false; };
 	struct Snap { int plLevel = 0; Mine mine; std::vector<Job> jobs; };
-	// marcador desenhado no mundo (RPC 245 op 4): anel no chao + circulo com icone + seta + texto sobre o NPC
-	struct Mk { int kind = 1; float x = 0, y = 0, z = 0, ax = 0, ay = 0, az = 0, radius = 1.3f; uint32_t rgb = 0xFFFFFF; std::string text; };
+	// marcador desenhado no mundo (RPC 245 op 4): anel no chao + "(NPC) nome" + botao tocavel ao lado do NPC
+	struct Mk { int kind = 1, state = 0; float x = 0, y = 0, z = 0, ax = 0, ay = 0, az = 0, radius = 1.3f; uint32_t rgb = 0xFFFFFF; std::string text, name; };
 	struct MkHit { ImVec2 a, b; int kind; };
 
 	std::atomic<bool> g_open{false}, g_flush{false}, g_resetView{false};
@@ -140,22 +140,6 @@ namespace
 		return true;
 	}
 
-	// icone dentro do circulo: 1 = maleta (agencia), 2 = panela (cozinha)
-	void DrawMkIcon(ImGuiRenderer* r, int kind, const ImVec2& c, float rp, const ImColor& col)
-	{
-		if (kind == 2)
-		{
-			r->drawRoundedRect(ImVec2(c.x - rp * 0.45f, c.y - rp * 0.10f), ImVec2(c.x + rp * 0.45f, c.y + rp * 0.45f), col, rp * 0.12f, true);
-			r->drawRect(ImVec2(c.x - rp * 0.52f, c.y - rp * 0.24f), ImVec2(c.x + rp * 0.52f, c.y - rp * 0.12f), col, true);
-			r->drawLine(ImVec2(c.x - rp * 0.45f, c.y), ImVec2(c.x - rp * 0.68f, c.y), col, std::max(1.5f, rp * 0.10f));
-			r->drawLine(ImVec2(c.x + rp * 0.45f, c.y), ImVec2(c.x + rp * 0.68f, c.y), col, std::max(1.5f, rp * 0.10f));
-			return;
-		}
-		r->drawRoundedRect(ImVec2(c.x - rp * 0.22f, c.y - rp * 0.52f), ImVec2(c.x + rp * 0.22f, c.y - rp * 0.18f), col, rp * 0.08f, false, std::max(1.5f, rp * 0.10f));
-		r->drawRoundedRect(ImVec2(c.x - rp * 0.55f, c.y - rp * 0.28f), ImVec2(c.x + rp * 0.55f, c.y + rp * 0.50f), col, rp * 0.12f, true);
-		r->drawLine(ImVec2(c.x - rp * 0.55f, c.y + rp * 0.04f), ImVec2(c.x + rp * 0.55f, c.y + rp * 0.04f), ImColor(24, 24, 28, 255), std::max(1.2f, rp * 0.07f));
-	}
-
 	enum Kind { K_NONE = 0, K_CLOSE, K_CARD, K_SIGN, K_QUIT, K_YES, K_NO, K_PANEL, K_PREV, K_NEXT, K_INFO };
 	struct Hit { ImVec2 a, b; int kind; int idx; };
 	struct Drag { int finger = -1; Hit hit{ImVec2(), ImVec2(), K_NONE, 0}; float sx = 0, sy = 0, dx = 0; bool moved = false; };
@@ -237,10 +221,10 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 		std::vector<Mk> v;
 		for (int i = 0; i < n; i++)
 		{
-			Mk m; uint8_t kind = 0;
-			if (!bs.Read(kind) || !bs.Read(m.x) || !bs.Read(m.y) || !bs.Read(m.z) || !bs.Read(m.ax) || !bs.Read(m.ay) || !bs.Read(m.az) || !bs.Read(m.radius) || !bs.Read(m.rgb) || !RdStr(bs, m.text)) return;
+			Mk m; uint8_t kind = 0, st = 0;
+			if (!bs.Read(kind) || !bs.Read(m.x) || !bs.Read(m.y) || !bs.Read(m.z) || !bs.Read(m.ax) || !bs.Read(m.ay) || !bs.Read(m.az) || !bs.Read(m.radius) || !bs.Read(m.rgb) || !RdStr(bs, m.text) || !RdStr(bs, m.name) || !bs.Read(st)) return;
 			if (!(m.radius >= 0.3f && m.radius <= 6.0f)) m.radius = 1.3f;
-			m.kind = kind == 2 ? 2 : 1; m.rgb &= 0xFFFFFF;
+			m.kind = kind == 2 ? 2 : 1; m.state = st ? 1 : 0; m.rgb &= 0xFFFFFF;
 			v.push_back(std::move(m));
 		}
 		{ std::lock_guard<std::mutex> l(g_mkMutex); g_mkNet = std::move(v); }
@@ -272,7 +256,7 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	if (!g_open.exchange(true)) { g_flush.store(true); g_resetView.store(true); }
 }
 
-// anel no chao (so contorno, centro vazio), circulo com icone sobre o NPC, seta para baixo e o texto "[ E ] ..."
+// anel no chao (so contorno, centro vazio) + "(NPC) nome" sobre a cabeca + botao tocavel ao lado do NPC (tudo e por toque: o Android nao tem tecla E)
 static void DrawMarkers(ImGuiRenderer* r, float k, int64_t now)
 {
 	g_mkHit.clear();
@@ -306,29 +290,29 @@ static void DrawMarkers(ImGuiRenderer* r, float k, int64_t now)
 				}
 			}
 		}
-		// ---- circulo + seta + texto sobre o NPC ----
-		ImVec2 c; float dep = 0.0f;
-		if (!Proj(m.ax, m.ay, m.az + 1.55f + 0.06f * std::sin(t * 3.0f), c, dep) || dep > 36.0f) continue;
-		const float rp = std::clamp(234.0f * k / std::max(dep, 3.0f), 9.0f * k, 26.0f * k);
-		r->drawRoundedRect(ImVec2(c.x - rp - 2.0f * k, c.y - rp - 2.0f * k), ImVec2(c.x + rp + 2.0f * k, c.y + rp + 2.0f * k), ImColor(cr, cg, cb, 70), rp + 2.0f * k, true);
-		r->drawRoundedRect(ImVec2(c.x - rp, c.y - rp), ImVec2(c.x + rp, c.y + rp), ImColor(24, 24, 28, 238), rp, true);
-		r->drawRoundedRect(ImVec2(c.x - rp, c.y - rp), ImVec2(c.x + rp, c.y + rp), ImColor(cr, cg, cb, 255), rp, false, std::max(1.6f, 2.0f * k));
-		DrawMkIcon(r, m.kind, c, rp, ImColor(255, 255, 255, 255));
-		const float bob = rp * 0.18f * std::sin(t * 4.0f);
-		const ImVec2 tip(c.x, c.y + rp * 2.15f + bob);
-		r->drawTriangle(ImVec2(c.x - rp * 0.55f, c.y + rp * 1.25f + bob), ImVec2(c.x + rp * 0.55f, c.y + rp * 1.25f + bob), tip, ImColor(cr, cg, cb, 255), true);
-		ImVec2 ha(c.x - rp * 1.4f, c.y - rp * 1.2f), hb(c.x + rp * 1.4f, tip.y);
-		if (dep < 16.0f)
+		// ---- nome do NPC (acima da cabeca) e botao (ao lado, na altura do peito) ----
+		ImVec2 head, chest; float dh = 0.0f, dc = 0.0f;
+		if (!Proj(m.ax, m.ay, m.az + 1.05f, head, dh) || !Proj(m.ax, m.ay, m.az + 0.25f, chest, dc)) continue;
+		if (dc > (m.kind == 2 ? 7.0f : 12.0f)) continue;           // so perto: o servidor tambem confere a distancia
+		if (!m.name.empty())
 		{
-			const std::string txt = !m.text.empty() ? m.text : (m.kind == 2 ? std::string("[ E ] PREPARAR PEDIDO") : std::string("[ E ] ABRIR AGÊNCIA DE EMPREGOS"));
-			const float fs = std::clamp(rp * 0.62f, 9.0f * k, 16.0f * k);
-			const ImVec2 ts = r->calculateTextSize(txt, fs);
-			const ImVec2 pa(c.x - ts.x * 0.5f - 8.0f * k, c.y - rp - ts.y - 12.0f * k), pb(c.x + ts.x * 0.5f + 8.0f * k, c.y - rp - 4.0f * k);
-			r->drawRoundedRect(pa, pb, ImColor(18, 18, 22, 225), 6.0f * k, true);
-			r->drawText(ImVec2(pa.x + 8.0f * k, pa.y + (pb.y - pa.y - ts.y) * 0.5f), ImColor(255, 255, 255, 255), txt, false, fs);
-			ha.x = std::min(ha.x, pa.x); hb.x = std::max(hb.x, pb.x); ha.y = pa.y;
+			const std::string nm = "(NPC) " + m.name;
+			const float fs = 12.0f * k;
+			const ImVec2 ts = r->calculateTextSize(nm, fs);
+			r->drawText(ImVec2(head.x - ts.x * 0.5f, head.y - ts.y), ImColor(255, 255, 255, 255), nm, true, fs);
 		}
-		g_mkHit.push_back({ha, hb, m.kind});
+		const std::string label = !m.text.empty() ? m.text : (m.kind == 2 ? std::string(m.state ? "Preparar pedido" : "Iniciar serviço") : std::string("Abrir agência"));
+		const float fs = 11.5f * k, h = 24.0f * k;
+		const ImVec2 ts = r->calculateTextSize(label, fs);
+		const ImVec2 a(chest.x + 22.0f * k, chest.y - h * 0.5f), b(a.x + ts.x + 34.0f * k, a.y + h);
+		const float pulse = 0.5f + 0.5f * std::sin(t * 4.0f);
+		r->drawRoundedRect(a, b, ImColor(22, 22, 26, 215), 6.0f * k, true);
+		r->drawRoundedRect(a, b, ImColor(255, 255, 255, 60 + (int)(60.0f * pulse)), 6.0f * k, false, 1.2f);
+		const ImVec2 dc2(a.x + 13.0f * k, a.y + h * 0.5f);
+		r->drawRoundedRect(ImVec2(dc2.x - 5.5f * k, dc2.y - 5.5f * k), ImVec2(dc2.x + 5.5f * k, dc2.y + 5.5f * k), ImColor(236, 40, 96, 255), 5.5f * k, true);
+		r->drawText(ImVec2(a.x + 26.0f * k, a.y + (h - ts.y) * 0.5f), ImColor(235, 235, 240, 255), label, false, fs);
+		const float pad = 8.0f * k;
+		g_mkHit.push_back({ImVec2(a.x - pad, a.y - pad), ImVec2(b.x + pad, b.y + pad), m.kind});
 	}
 }
 
@@ -607,7 +591,7 @@ void JobsUI::draw(ImGuiRenderer* r)
 			txt(mx + 16, my + 82, g_s.plLevel < j.minLvl ? cRed : cGreen, bf, 9.0f);
 			txt(mx + 16, my + 98, cText, "Remuneração: " + Money(j.smin) + " – " + Money(j.smax) + " por tarefa", 9.0f);
 			txt(mx + 16, my + 114, cSub, "O pagamento sobe com o nível do emprego (1 a 5).", 8.5f);
-			wrap(mx + 16, my + 136, "Depois de assinar a carteira use /servico para iniciar o expediente. Você só pode ter um emprego por vez e ele fica salvo na sua conta.", cSub, 8.5f, mw - 32, 4, 12.0f);
+			wrap(mx + 16, my + 136, "Depois de assinar a carteira, vá ao local de trabalho e toque em Iniciar serviço. Você só pode ter um emprego por vez e ele fica salvo na sua conta.", cSub, 8.5f, mw - 32, 4, 12.0f);
 			button(mx + 16, my + mh - 40, mx + mw - 16, my + mh - 14, "FECHAR", cOff, true, K_NO, 0, 9.5f);
 		}
 		else
