@@ -70,7 +70,7 @@ bool ImGuiWrapper::initialize()
 
 	// SF Pro do celular: fontes extras no MESMO atlas (so o celular escolhe usa-las); arquivo ausente = fica a fonte antiga
 	{
-		static const ImWchar sfRanges[] = { 0x0020, 0x00FF, 0x2010, 0x2030, 0x20AC, 0x20AC, 0x2122, 0x2122, 0x2190, 0x2193, 0 };
+		static const ImWchar sfRanges[] = { 0x0020, 0x00FF, 0x2013, 0x2014, 0x2018, 0x201D, 0x2022, 0x2022, 0x2026, 0x2026, 0x20AC, 0x20AC, 0 };   // so o que existe nos TTF (Latin-1 + pontuacao)
 		const size_t slash = m_fontPath.find_last_of("/\\");
 		const std::string dir = slash == std::string::npos ? std::string() : m_fontPath.substr(0, slash + 1);
 		for (int r = 0; r < SfFonts::Count; r++)
@@ -80,6 +80,7 @@ bool ImGuiWrapper::initialize()
 			if (!ff) { Log::addParameter("SF Pro ausente: %s", fp.c_str()); continue; }
 			fclose(ff);
 			ImFontConfig sfCfg;
+			sfCfg.OversampleH = 1; sfCfg.OversampleV = 1;   // padrao do ImGui (3x1) multiplicava o atlas por ~30: de 0,5 MB para 16-32 MB na GPU + copias
 			SfFonts::table()[r] = io.Fonts->AddFontFromFileTTF(fp.c_str(), UISettings::fontSize(), &sfCfg, sfRanges);
 		}
 	}

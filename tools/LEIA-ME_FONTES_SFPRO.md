@@ -25,4 +25,6 @@ OTF (CFF) -> TrueType quadratico, subconjunto U+0020-00FF + pontuacao (aspas, tr
 O ImGui 1.71 do projeto so le TrueType e cada OTF completo tem ~6 MB; cada TTF gerado tem ~25 KB.
 Sem cirilico/tailandes: texto digitado nesses alfabetos aparece como `?` no celular (portugues nao e afetado).
 
+Atlas: as 6 fontes entram com OversampleH/V = 1 e so o subconjunto acima (com o padrao 3x1 do ImGui o atlas passava de ~0,5 MB para 16-32 MB de textura + copias).
+
 Teste de PC: `app/src/main/cpp/samp/testes/celular/run_fontes.sh`
