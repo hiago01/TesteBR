@@ -10,6 +10,9 @@
 #include "../../vendor/raknet/BitStream.h"
 #include "../../game/actor.h"
 #include "../../game/IconTexDb.h"
+#include "../../game/World.h"
+#include "../../game/Camera.h"
+#include "../../vendor/armhook/patch.h"
 #include "jobs.h"
 #include "maximomenu.h"
 
@@ -39,6 +42,7 @@ namespace
 	std::atomic<bool> g_open{false}, g_flush{false}, g_resetView{false};
 	std::atomic<bool> g_claimed[4] = {{false}, {false}, {false}, {false}};
 	std::atomic<uint32_t> g_ver{0}, g_mkVer{0};
+	std::atomic<uint32_t> g_mkLos{0xFFFFFFFFu};      // bit i = marcador i visivel da camera (calculado na thread do jogo, JobsUI_RenderWorld)
 	std::atomic<int>  g_resultCode{-1};
 	std::mutex        g_evMutex, g_snapMutex, g_mkMutex;
 	std::vector<TouchEv> g_events;
@@ -258,7 +262,7 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	if (!g_open.exchange(true)) { g_flush.store(true); g_resetView.store(true); }
 }
 
-// Marcador no estilo PlayNow_markers (MTA) de "theking" (creditos mantidos): anel pulsante no chao + icone flutuante; + "(NPC) nome" sobre a cabeca + botao tocavel ao lado do NPC (tudo e por toque: o Android nao tem tecla E)
+// Marcador no estilo PlayNow_markers (MTA) de "theking" (creditos mantidos). Anel e icone sao desenhados NA CENA 3D (JobsUI_RenderWorld); aqui no overlay ficam so "(NPC) nome" sobre a cabeca + botao tocavel ao lado do NPC (tudo e por toque: o Android nao tem tecla E)
 static void DrawMarkers(ImGuiRenderer* r, float k, int64_t now)
 {
 	g_mkHit.clear();
@@ -268,52 +272,11 @@ static void DrawMarkers(ImGuiRenderer* r, float k, int64_t now)
 	}
 	if (g_mk.empty()) return;
 	const float t = (float)(now % 100000) * 0.001f;
-	float px = 0.0f, py = 0.0f, pz = 0.0f; bool havePos = false;
-	if (pNetGame && pNetGame->GetPlayerPool())
+	const uint32_t los = g_mkLos.load();
+	for (size_t mi = 0; mi < g_mk.size(); mi++)
 	{
-		CLocalPlayer* lp = pNetGame->GetPlayerPool()->GetLocalPlayer();
-		CPlayerPed* pp = lp ? lp->GetPlayerPed() : nullptr;
-		if (pp && pp->m_pPed) { const CVector pv = pp->m_pPed->GetPosition(); px = pv.x; py = pv.y; pz = pv.z; havePos = true; }
-	}
-	for (const Mk& m : g_mk)
-	{
-		const bool inside = havePos && std::fabs(pz - m.z) < 2.5f && (px - m.x) * (px - m.x) + (py - m.y) * (py - m.y) <= m.radius * m.radius;
-		const int cr = (int)((m.rgb >> 16) & 255), cg = (int)((m.rgb >> 8) & 255), cb = (int)(m.rgb & 255);
-		// ---- anel no chao + icone flutuante (estilo PlayNow_markers) ----
-		{
-			const float ph = t * 2.0f;                                   // MARKER_ANIMATION_SPEED 0.002/ms = 2 rad/s
-			const float sn = std::sin(ph);
-			int rr = cr, gg = cg, bb = cb, aa = (int)(200.0f + std::sin(ph / 3.0f) * 35.0f);
-			if (inside) { rr = (int)(190 + sn * 23); gg = (int)(200 + sn * 20); bb = (int)std::min(255.0f, 216 + sn * 30); aa = 255; }
-			const float ro = m.radius * (1.0f - sn * 0.07f), ri = ro * 0.74f;    // faixa externa do floor.png (25% do raio)
-			const int N = 40; ImVec2 po[N], pi[N]; bool ok = true; float dep = 0.0f;
-			for (int i = 0; i < N && ok; i++)
-			{
-				const float ang = (float)i * (6.2831853f / (float)N), c = std::cos(ang), sa = std::sin(ang); float d = 0.0f, d2 = 0.0f;
-				ok = Proj(m.x + c * ro, m.y + sa * ro, m.z + 0.06f, po[i], d) && Proj(m.x + c * ri, m.y + sa * ri, m.z + 0.06f, pi[i], d2);
-				if (i == 0) dep = d;
-			}
-			if (ok && dep < 60.0f)
-			{
-				const float fade = std::clamp((60.0f - dep) / 20.0f, 0.0f, 1.0f);
-				const ImColor col(rr, gg, bb, (int)((float)aa * fade));
-				for (int i = 0; i < N; i++)
-				{
-					const int j = (i + 1) % N;
-					ImVec2 q[4] = {po[i], po[j], pi[j], pi[i]};
-					r->drawConvexPolyFilled(q, 4, col);
-				}
-				RwTexture* tex = IconTexDb::Texture(m.kind == 2 ? (m.state ? "mk_cozinha" : "mk_servico") : "mk_jobs");
-				ImVec2 ic, ie; float di = 0.0f, de = 0.0f;
-				const float cz = m.z + 1.2f + sn * 0.1f;               // MARKER_TEXT_OFFSET 1.2 m, balanco de 0,1 m
-				if (tex && tex->raster && Proj(m.x, m.y, cz, ic, di) && Proj(m.x, m.y, cz + 0.4f, ie, de))
-				{
-					const float hs = std::fabs(ic.y - ie.y);             // metade do lado (0,8 m)
-					if (hs > 2.0f && hs < 400.0f)
-						r->drawImage(ImVec2(ic.x - hs, ic.y - hs), ImVec2(ic.x + hs, ic.y + hs), (ImTextureID)tex->raster, ImColor(255, 255, 255, (int)(255.0f * fade)), ImVec2(0, 0), ImVec2(1, 1));
-				}
-			}
-		}
+		const Mk& m = g_mk[mi];
+		if (mi < 32 && !(los & (1u << mi))) continue;      // atras de parede/carro: sem nome nem botao
 		// ---- nome do NPC (acima da cabeca) e botao (ao lado, na altura do peito) ----
 		ImVec2 head, chest; float dh = 0.0f, dc = 0.0f;
 		if (!Proj(m.ax, m.ay, m.az + 1.05f, head, dh) || !Proj(m.ax, m.ay, m.az + 0.25f, chest, dc)) continue;
@@ -709,6 +672,148 @@ void JobsUI::draw(ImGuiRenderer* r)
 			{
 				const Hit h1 = hitTest(e.x, e.y);
 				if (h1.kind == d.hit.kind && h1.idx == d.hit.idx) activate(d.hit);
+			}
+		}
+	}
+}
+
+// =====================================================================================
+//  Marcador NA CENA 3D (RwIm3D, chamado 1x por frame em hooks.cpp RenderEffects, junto do IdCard3D_Render)
+//  Base visual: recurso PlayNow_markers (MTA), autoria de "theking" - creditos mantidos.
+//   - anel: faixa externa (25% do raio, como o floor.png) COLADA NO CHAO (cada vertice segue o terreno), pulsando em tamanho e
+//     transparencia (200 +- 35); com teste de profundidade -> paredes, carros e objetos escondem o anel de verdade;
+//   - icone: quad branco voltado para a camera, 0,8 m a 1,2 m do chao, balancando 0,1 m; tambem com teste de profundidade.
+// =====================================================================================
+void JobsUI_RenderWorld()
+{
+	if (!pNetGame || !pGame || pNetGame->GetGameState() != GAMESTATE_CONNECTED) return;
+	static std::vector<Mk> mk;
+	static uint32_t seen = ~0u;
+	{
+		const uint32_t v = g_mkVer.load();
+		if (v != seen) { std::lock_guard<std::mutex> l(g_mkMutex); mk = g_mkNet; seen = v; }
+	}
+	if (mk.empty()) return;
+
+	static CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + 0xBBA8D0);
+	const CVector cam = TheCamera.GetPosition();
+	float px = cam.x, py = cam.y, pz = cam.z;
+	bool havePl = false;
+	if (CPlayerPool* pool = pNetGame->GetPlayerPool())
+	{
+		CLocalPlayer* lp = pool->GetLocalPlayer();
+		CPlayerPed* pp = lp ? lp->GetPlayerPed() : nullptr;
+		if (pp && pp->m_pPed) { const CVector pv = pp->m_pPed->GetPosition(); px = pv.x; py = pv.y; pz = pv.z; havePl = true; }
+	}
+
+	{
+		uint32_t bits = 0;
+		for (size_t i = 0; i < mk.size() && i < 32; i++)
+		{
+			const CVector npc(mk[i].ax, mk[i].ay, mk[i].az + 0.8f);
+			if (CWorld::GetIsLineOfSightClear(npc, cam, true, true, false, true, false, false, false)) bits |= 1u << i;
+		}
+		g_mkLos.store(bits);
+	}
+
+	const float t = (float)(NowMs() % 100000) * 0.001f;
+	const float ph = t * 2.0f, sn = std::sin(ph);          // MARKER_ANIMATION_SPEED 0.002/ms = 2 rad/s
+
+	struct Job3 { const Mk* m; float d; };
+	static std::vector<Job3> order; order.clear();
+	for (const Mk& m : mk)
+	{
+		const float dx = m.x - cam.x, dy = m.y - cam.y, dz = m.z - cam.z, d = std::sqrt(dx * dx + dy * dy + dz * dz);
+		if (d < 70.0f) order.push_back({&m, d});
+	}
+	if (order.empty()) return;
+	std::sort(order.begin(), order.end(), [](const Job3& a, const Job3& b) { return a.d > b.d; });   // translucido: de tras pra frente
+
+	CHook::CallFunction<void>(g_libGTASA + 0x6F4EC4);   // DefinedState(), igual ao Hose.cpp / IdCard3D.cpp
+	RwRenderStateSet(rwRENDERSTATEVERTEXALPHAENABLE, RWRSTATE(TRUE));
+	RwRenderStateSet(rwRENDERSTATESRCBLEND,          RWRSTATE(rwBLENDSRCALPHA));
+	RwRenderStateSet(rwRENDERSTATEDESTBLEND,         RWRSTATE(rwBLENDINVSRCALPHA));
+	RwRenderStateSet(rwRENDERSTATEZTESTENABLE,       RWRSTATE(TRUE));
+	RwRenderStateSet(rwRENDERSTATEZWRITEENABLE,      RWRSTATE(FALSE));
+	RwRenderStateSet(rwRENDERSTATECULLMODE,          RWRSTATE(rwCULLMODECULLNONE));
+	RwRenderStateSet(rwRENDERSTATEFOGENABLE,         RWRSTATE(FALSE));
+	RwRenderStateSet(rwRENDERSTATETEXTUREFILTER,     RWRSTATE(rwFILTERLINEAR));
+	RwRenderStateSet(rwRENDERSTATETEXTUREADDRESS,    RWRSTATE(rwTEXTUREADDRESSCLAMP));
+
+	for (const Job3& o : order)
+	{
+		const Mk& m = *o.m;
+		const bool inside = havePl && std::fabs(pz - m.z) < 2.5f && (px - m.x) * (px - m.x) + (py - m.y) * (py - m.y) <= m.radius * m.radius;
+		int rr = (int)((m.rgb >> 16) & 255), gg = (int)((m.rgb >> 8) & 255), bb = (int)(m.rgb & 255);
+		int aa = (int)(200.0f + std::sin(ph / 3.0f) * 35.0f);
+		if (inside) { rr = (int)(190 + sn * 23); gg = (int)(200 + sn * 20); bb = (int)std::min(255.0f, 216 + sn * 30); aa = 255; }
+		const float fade = std::clamp((70.0f - o.d) / 20.0f, 0.0f, 1.0f);
+		const uint32_t col = ((uint32_t)(aa * fade) << 24) | ((uint32_t)rr << 16) | ((uint32_t)gg << 8) | (uint32_t)bb;
+
+		// ---- anel colado no chao ----
+		{
+			constexpr int N = 40;
+			static RxObjSpace3DVertex v[N * 2];
+			static uint16_t idx[N * 6];
+			const float ro = m.radius * (1.0f - sn * 0.07f), ri = ro * 0.74f;
+			for (int i = 0; i < N; i++)
+			{
+				const float ang = (float)i * (6.2831853f / (float)N), c = std::cos(ang), s2 = std::sin(ang);
+				for (int k = 0; k < 2; k++)
+				{
+					const float rad = k == 0 ? ro : ri, x = m.x + c * rad, y = m.y + s2 * rad;
+					float gz = pGame->FindGroundZForCoord(x, y, m.z + 1.5f);
+					if (!(std::fabs(gz - m.z) < 1.5f)) gz = m.z;               // leitura invalida: usa a altura do servidor
+					RxObjSpace3DVertex& w = v[i * 2 + k];
+					w.objVertex = { x, y, gz + 0.04f };
+					w.objNormal = { 0.0f, 0.0f, 1.0f };
+					w.color = col; w.u = 0.0f; w.v = 0.0f;
+				}
+				const int j = (i + 1) % N, a0 = i * 2, a1 = j * 2;
+				uint16_t* q = &idx[i * 6];
+				q[0] = (uint16_t)a0; q[1] = (uint16_t)a1; q[2] = (uint16_t)(a1 + 1);
+				q[3] = (uint16_t)a0; q[4] = (uint16_t)(a1 + 1); q[5] = (uint16_t)(a0 + 1);
+			}
+			RwRenderStateSet(rwRENDERSTATETEXTURERASTER, RWRSTATE(NULL));
+			if (RwIm3DTransform(v, N * 2, nullptr, 0))
+			{
+				RwIm3DRenderIndexedPrimitive(rwPRIMTYPETRILIST, reinterpret_cast<RwImVertexIndex*>(idx), N * 6);
+				RwIm3DEnd();
+			}
+		}
+
+		// ---- icone flutuante (billboard) ----
+		if (o.d < 60.0f)
+		{
+			RwTexture* tex = IconTexDb::Texture(m.kind == 2 ? (m.state ? "mk_cozinha" : "mk_servico") : "mk_jobs");
+			if (tex && tex->raster)
+			{
+				const float cx = m.x, cy = m.y, cz = m.z + 1.2f + sn * 0.1f;
+				float fx = cx - cam.x, fy = cy - cam.y; const float fl = std::sqrt(fx * fx + fy * fy);
+				if (fl > 0.01f)
+				{
+					fx /= fl; fy /= fl;
+					const float rx = fy, ry = -fx, h = 0.4f;               // direita na tela (eixo vertical = Z do mundo)
+					RxObjSpace3DVertex q[4];
+					const float px4[4] = { cx - rx * h, cx + rx * h, cx + rx * h, cx - rx * h };
+					const float py4[4] = { cy - ry * h, cy + ry * h, cy + ry * h, cy - ry * h };
+					const float pz4[4] = { cz - h, cz - h, cz + h, cz + h };
+					const float u4[4] = { 0, 1, 1, 0 }, v4[4] = { 1, 1, 0, 0 };
+					const uint32_t ic = ((uint32_t)(255.0f * fade) << 24) | 0x00FFFFFFu;
+					for (int i = 0; i < 4; i++)
+					{
+						q[i].objVertex = { px4[i], py4[i], pz4[i] };
+						q[i].objNormal = { -fx, -fy, 0.0f };
+						q[i].color = ic; q[i].u = u4[i]; q[i].v = v4[i];
+					}
+					static const uint16_t qi[6] = { 0, 1, 2, 0, 2, 3 };
+					RwRenderStateSet(rwRENDERSTATETEXTURERASTER, RWRSTATE(tex->raster));
+					if (RwIm3DTransform(q, 4, nullptr, rwIM3D_VERTEXUV))
+					{
+						RwIm3DRenderIndexedPrimitive(rwPRIMTYPETRILIST, reinterpret_cast<RwImVertexIndex*>(const_cast<uint16_t*>(qi)), 6);
+						RwIm3DEnd();
+					}
+				}
 			}
 		}
 	}

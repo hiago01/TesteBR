@@ -39,3 +39,6 @@ public:
 	virtual void draw(ImGuiRenderer* renderer) override;
 	virtual void touchEvent(const ImVec2& pos, TouchType type) override { (void)pos; (void)type; }
 };
+
+// Anel no chao + icone flutuante NA CENA 3D (RwIm3D, com teste de profundidade). Chamar 1x por frame em hooks.cpp RenderEffects().
+void JobsUI_RenderWorld();
