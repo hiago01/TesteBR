@@ -14,6 +14,7 @@
 #include "../../game/Camera.h"
 #include "../../vendor/armhook/patch.h"
 #include "jobs.h"
+#include "garagepanel.h"
 #include "maximomenu.h"
 
 #include <algorithm>
@@ -42,6 +43,7 @@ namespace
 	struct MkHit { ImVec2 a, b; int kind; };
 
 	std::atomic<bool> g_open{false}, g_flush{false}, g_resetView{false};
+	std::atomic<bool> g_garage{false};               // a tela aberta e a GARAGEM (RPC 245 op 13), nao a agencia
 	std::atomic<bool> g_claimed[4] = {{false}, {false}, {false}, {false}};
 	std::atomic<uint32_t> g_ver{0}, g_mkVer{0};
 	std::atomic<bool> g_scFolded{false};             // patinete dobrado na mao: o servidor mostra o botao fixo "Montar patinete" (op 6, kind 4, state 0 = montar)
@@ -94,7 +96,7 @@ namespace
 		FLog("[JOBS3D] Send op %d arg %d", op, arg);
 		RakNet::BitStream bs;
 		bs.Write((uint8_t)op);
-		if (op == 1 || op == 2) bs.Write((uint16_t)arg);
+		if (op == 1 || op == 2 || op == 12) bs.Write((uint16_t)arg);
 		pNetGame->GetRakClient()->RPC(&RPC_JobsRequest, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
 	}
 
@@ -178,12 +180,13 @@ void JobsUI::Close(bool notifyServer)
 {
 	if (!g_open.exchange(false)) return;
 	g_confirm = 0; g_drag = Drag();
+	if (g_garage.exchange(false)) return;            // a garagem nao avisa o servidor: ele nao guarda estado dela
 	if (notifyServer) Send(4);
 }
 bool JobsUI_ScooterFolded() { return g_scFolded.load(); }
 void JobsUI::Reset()
 {
-	g_open.store(false); g_confirm = 0; g_drag = Drag(); g_tapReq.store(false); for (WorldTap& w : g_wt) w.valid = false;
+	g_open.store(false); g_garage.store(false); GaragePanel::Reset(); g_confirm = 0; g_drag = Drag(); g_tapReq.store(false); for (WorldTap& w : g_wt) w.valid = false;
 	{ std::lock_guard<std::mutex> l(g_mkMutex); g_mkNetA.clear(); g_mkNetB.clear(); g_mkNetC.clear(); g_mkNetD.clear(); g_mkNet.clear(); }
 	g_scFolded.store(false);
 	ChatSetAllowed(false);
@@ -243,6 +246,8 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	if (!bs.Read(op)) return;
 	if (op == 3) { Close(false); return; }
 	if (op == 2) { uint8_t c = 0; if (bs.Read(c)) g_resultCode.store(c); return; }
+	if (op == 13) { GaragePanel::OnList(bs); g_garage.store(true); if (!g_open.exchange(true)) { g_flush.store(true); g_resetView.store(true); } return; }   // lista da garagem: abre a tela
+	if (op == 14) { if (g_garage.load()) JobsUI::Close(false); return; }                                                                 // o servidor fecha a garagem (carro retirado)
 	if (op == 12) { uint8_t a = 0; if (bs.Read(a)) ProvadorSetAllowed(a != 0); return; }   // u8: libera o /provador
 	if (op == 8) { uint8_t a = 0; if (bs.Read(a)) ChatSetAllowed(a != 0); return; }   // u8 admin: libera/esconde o chat
 	if (op == 5)      // aviso em texto livre: u8 erro(0/1) + string
@@ -422,6 +427,17 @@ void JobsUI::draw(ImGuiRenderer* r)
 	}
 
 	if (g_resetView.exchange(false)) { g_sel = -1; g_page = 0; g_confirm = 0; g_drag = Drag(); g_toastUntil = 0; g_seenVer = ~0u; }
+	if (g_garage.load())
+	{
+		std::vector<TouchEv> evs; std::vector<GarageTouch> ge;
+		{ std::lock_guard<std::mutex> l(g_evMutex); evs.swap(g_events); }
+		for (const TouchEv& e : evs) ge.push_back({e.type, e.num, e.x, e.y, e.cancel});
+		bool closeReq = false; int pull = 0;
+		GaragePanel::Draw(r, scr.x, scr.y, ge, closeReq, pull);
+		if (pull > 0) Send(12, pull);
+		if (closeReq) JobsUI::Close(false);
+		return;
+	}
 	{
 		const uint32_t v = g_ver.load();
 		if (v != g_seenVer)
