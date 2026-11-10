@@ -27,7 +27,7 @@ namespace Phone
 		Color b = pressed ? Color::mix(bg, Color(0, 0, 0), 0.22f) : bg;
 		if (!enabled) b = Color::mix(bg, Color(200, 200, 205), 0.6f);
 		cv.fillRect(r, b, m.px(12));
-		DrawTextIn(cv, r, label, fg, m.font(16), Align::Center);
+		DrawTextAs(cv, FontTextSemibold, r, label, fg, m.font(16), Align::Center);
 	}
 
 	// mostra o FIM do texto (onde o cursor esta) quando nao cabe

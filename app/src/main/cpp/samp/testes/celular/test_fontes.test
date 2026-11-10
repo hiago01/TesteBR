@@ -1,0 +1,63 @@
+// Teste de PC da tipografia SF Pro do celular: papeis (FontRole) por tipo de texto; o papel sempre volta ao padrao; textos nao mudam de lugar/conteudo.
+#include "../../gui/phone/PhoneApps.h"
+#include <cstdio>
+#include <cstdlib>
+#include <map>
+using namespace Phone;
+static int fails = 0, total = 0;
+#define CHECK(c) do { total++; if (!(c)) { fails++; printf("FALHOU L%d: %s\n", __LINE__, #c); } } while (0)
+
+struct FontCanvas : Canvas
+{
+	int role = 0, texts = 0, leaked = 0; std::map<std::string, int> roleOf; std::map<int, int> perRole;
+	void fillRect(const Rect&, Color, float) override {} void strokeRect(const Rect&, Color, float, float) override {}
+	void fillGradientV(const Rect&, Color, Color) override {} void fillCircle(Vec2, float, Color) override {}
+	void strokeCircle(Vec2, float, Color, float) override {} void line(Vec2, Vec2, Color, float) override {}
+	void fillTriangle(Vec2, Vec2, Vec2, Color) override {}
+	void setFont(int r) override { role = r; }
+	void text(Vec2, Color, const std::string& s, float) override { ++texts; roleOf[s] = role; perRole[role]++; }
+	Vec2 measure(const std::string& s, float size) override { return { (float)Text::CpCount(s) * size * 0.52f, size * 1.2f }; }
+	void pushClip(const Rect&) override {} void popClip() override {} void setAlpha(float) override {}
+};
+static std::map<std::string, std::string> g_store;
+static int64_t T = 5000;
+static void setup(PhoneManager& pm)
+{
+	pm.context().getString = [](const std::string& k, const std::string& d) { auto it = g_store.find(k); return it == g_store.end() ? d : it->second; };
+	pm.context().setString = [](const std::string& k, const std::string& v) { g_store[k] = v; };
+	StatusInfo st; st.clock = "12:00"; st.weekday = 1; st.day = 15; st.month = 1; st.year = 2024;
+	pm.context().status = [st]() { return st; };
+	pm.setStatusProvider(pm.context().status);
+	pm.setScreenSize(2400, 1080);
+}
+static void frames(PhoneManager& pm, FontCanvas& cv, int n) { for (int i = 0; i < n; ++i) { T += 16; pm.context().nowMs = T; cv.roleOf.clear(); cv.perRole.clear(); cv.texts = 0; pm.frame(cv, T, 16); if (cv.role != FontText) ++cv.leaked; } }
+
+int main()
+{
+	{   // enum do Canvas == enum das fontes carregadas (gui/sffonts.h precisa do mesmo numero)
+		CHECK(FontText == 0 && FontTextMedium == 1 && FontTextSemibold == 2 && FontDisplaySemibold == 3 && FontDisplayBold == 4 && FontRounded == 5);
+	}
+	PhoneManager pm; InstallDefaultApps(pm); setup(pm); pm.open(); FontCanvas cv;
+	frames(pm, cv, 30);
+	{   // inicio: relogio da barra = Text Semibold; nomes dos apps = Text Medium
+		CHECK(cv.texts > 0 && cv.leaked == 0);
+		CHECK(cv.roleOf.count("12:00") && cv.roleOf["12:00"] == FontTextSemibold);
+		int labels = 0, med = 0; for (auto& kv : cv.roleOf) if (kv.second == FontTextMedium) ++med; labels = med;
+		CHECK(labels >= 4);                                                    // varios nomes de apps na grade
+	}
+	{   // Ajustes: titulo do cabecalho = Display Semibold, linhas = Text Semibold
+		CHECK(pm.openApp("ajustes")); frames(pm, cv, 40);
+		CHECK(cv.leaked == 0);
+		CHECK(cv.perRole[FontDisplaySemibold] >= 1 && cv.perRole[FontTextSemibold] >= 1);
+		CHECK(cv.perRole[FontDisplayBold] == 0 && cv.perRole[FontRounded] == 0);   // so onde faz sentido
+		pm.goHome(); frames(pm, cv, 20);
+	}
+	for (const char* app : { "contatos", "mensagens", "notas", "calendario", "relogio", "calculadora", "galeria" })
+	{
+		pm.openApp(app); frames(pm, cv, 40);
+		CHECK(cv.texts > 0 && cv.leaked == 0);                                // todo desenho devolve o papel ao padrao
+		pm.goHome(); frames(pm, cv, 20);
+	}
+	printf("%d/%d verificacoes OK\n", total - fails, total);
+	return fails ? 1 : 0;
+}

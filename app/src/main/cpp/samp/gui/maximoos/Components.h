@@ -53,7 +53,7 @@ namespace MaximoOS
 			Icons::Draw(cv, icon, { r.x + m.px(14), r.y + (r.h - is) * 0.5f, is, is }, fg);
 			tr.x += is + m.px(10); tr.w -= is + m.px(10);
 		}
-		DrawTextIn(cv, tr, label, fg, m.font(Fonts::Body), icon == Icon::None ? Align::Center : Align::Left);
+		DrawTextAs(cv, FontTextSemibold, tr, label, fg, m.font(Fonts::Body), icon == Icon::None ? Align::Center : Align::Left);
 	}
 
 	// ---- icone de aplicativo (grade da tela inicial / dock) ----
@@ -87,12 +87,12 @@ namespace MaximoOS
 			const float br = q.w * 0.17f;
 			const Vec2 bc{ q.right() - br * 0.4f, q.y + br * 0.4f };
 			cv.fillCircle(bc, br, Colors::Danger);
-			DrawTextIn(cv, { bc.x - br, bc.y - br, br * 2, br * 2 }, st.badge > 9 ? "9+" : std::to_string(st.badge), Colors::Text, std::max(Metrics::kMinFontPx - 2.0f, br * 1.2f), Align::Center);
+			DrawTextAs(cv, FontRounded, { bc.x - br, bc.y - br, br * 2, br * 2 }, st.badge > 9 ? "9+" : std::to_string(st.badge), Colors::Text, std::max(Metrics::kMinFontPx - 2.0f, br * 1.2f), Align::Center);
 		}
 		if (st.showLabel && st.shadowLabel)
-			DrawTextIn(cv, { cell.x + m.px(2), cell.bottom() - m.px(34) + m.px(2) + std::max(1.0f, m.px(1)), cell.w - m.px(4), m.px(26) }, title, Color(0, 0, 0, 150), m.font(Fonts::Caption), Align::Center);
+			DrawTextAs(cv, FontTextMedium, { cell.x + m.px(2), cell.bottom() - m.px(34) + m.px(2) + std::max(1.0f, m.px(1)), cell.w - m.px(4), m.px(26) }, title, Color(0, 0, 0, 150), m.font(Fonts::Caption), Align::Center);
 		if (st.showLabel)
-			DrawTextIn(cv, { cell.x + m.px(2), cell.bottom() - m.px(34) + m.px(2), cell.w - m.px(4), m.px(26) }, title, Colors::Text.alpha(st.dim ? 0.85f : 1.0f), m.font(Fonts::Caption), Align::Center);
+			DrawTextAs(cv, FontTextMedium, { cell.x + m.px(2), cell.bottom() - m.px(34) + m.px(2), cell.w - m.px(4), m.px(26) }, title, Colors::Text.alpha(st.dim ? 0.85f : 1.0f), m.font(Fonts::Caption), Align::Center);
 	}
 
 	// ---- chave liga/desliga ----
@@ -121,7 +121,7 @@ namespace MaximoOS
 			Icons::Draw(cv, Icon::Back, res.backBtn.inset(m.px(11)), Colors::Text);
 			tx = res.backBtn.right() + m.px(8);
 		}
-		DrawTextIn(cv, { tx, bar.y, bar.right() - tx - m.px(16), hh }, title, Colors::Text, m.font(Fonts::Header));
+		DrawTextAs(cv, FontDisplaySemibold, { tx, bar.y, bar.right() - tx - m.px(16), hh }, title, Colors::Text, m.font(Fonts::Header));
 		res.body = { content.x, bar.bottom(), content.w, content.h - hh };
 		return res;
 	}

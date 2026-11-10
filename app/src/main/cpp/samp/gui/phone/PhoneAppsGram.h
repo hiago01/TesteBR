@@ -179,7 +179,7 @@ namespace Phone
 			if (!m_c->photos) { DrawTextIn(cv, nv.body.inset(m.px(24), 0), NoPhotoText(), PC::Gray, m.font(15), Align::Center); return; }
 			if (m_names.empty())
 			{
-				DrawTextIn(cv, { nv.body.x, nv.body.center().y - m.px(30), nv.body.w, m.px(28) }, "Nenhuma foto", PC::Gray, m.font(19), Align::Center);
+				DrawTextAs(cv, FontDisplaySemibold, { nv.body.x, nv.body.center().y - m.px(30), nv.body.w, m.px(28) }, "Nenhuma foto", PC::Gray, m.font(19), Align::Center);
 				DrawTextIn(cv, { nv.body.x + m.px(20), nv.body.center().y, nv.body.w - m.px(40), m.px(24) }, "Tire fotos no app Câmera.", PC::Gray, m.font(14), Align::Center);
 				return;
 			}
@@ -384,7 +384,7 @@ namespace Phone
 			if (!m_c->networked) { DrawTextIn(cv, { body.x + m.px(20), body.center().y - m.px(14), body.w - m.px(40), m.px(28) }, "Sem conexão com o servidor.", PC::Gray, m.font(16), Align::Center); return; }
 			if (g->accountState != 2) { DrawTextIn(cv, { body.x + m.px(20), body.center().y - m.px(14), body.w - m.px(40), m.px(28) }, "Conectando...", PC::Gray, m.font(16), Align::Center); return; }
 			const float mx = m.px(24), w = body.w - 2 * mx; float y = body.y + m.px(14);
-			DrawTextIn(cv, { body.x, y, body.w, m.px(30) }, m_regMode ? "Criar conta" : "Entrar", PC::LabelL, m.font(m_kbOn ? 18 : 22), Align::Center); y += m.px(m_kbOn ? 26 : 32);
+			DrawTextAs(cv, FontDisplayBold, { body.x, y, body.w, m.px(30) }, m_regMode ? "Criar conta" : "Entrar", PC::LabelL, m.font(m_kbOn ? 18 : 22), Align::Center); y += m.px(m_kbOn ? 26 : 32);
 			if (!m_kbOn) { DrawTextIn(cv, { body.x + mx, y, w, m.px(32) }, m_regMode ? "A conta fica salva neste celular (IMEI), não no chip." : "Sua conta do Gram é só sua: vale em qualquer celular, sem depender do chip.", PC::Gray, m.font(11.5f), Align::Center); y += m.px(38); }
 			auto field = [&](int idf, int which, const std::string& txt, const char* hint, bool mask)
 			{

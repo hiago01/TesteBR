@@ -23,7 +23,7 @@ namespace MaximoOS
 		cv.fillRect(r, Color(0, 0, 0, 90), 0);
 		const float fs = m.font(Fonts::Caption);
 		const float pad = m.px(18);
-		DrawTextIn(cv, { r.x + pad, r.y, m.px(120), r.h }, st.clock, Colors::Text, fs);
+		DrawTextAs(cv, FontTextSemibold, { r.x + pad, r.y, m.px(120), r.h }, st.clock, Colors::Text, fs);
 		DrawTextIn(cv, { r.center().x - m.px(80), r.y, m.px(160), r.h }, "MÁXIMO RP", Colors::Text.alpha(0.7f), fs, Align::Center);
 		float x = r.right() - pad;
 		StatusBarResult res;

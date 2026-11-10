@@ -73,7 +73,7 @@ namespace Phone
 			}
 			else
 			{
-				DrawTextIn(cv, m_scroll.itemRect(y, m.px(22)).moved(m.px(20), 0), "ESCALA DO APARELHO", PC::DimL, m.font(12));
+				DrawTextAs(cv, FontDisplaySemibold, m_scroll.itemRect(y, m.px(22)).moved(m.px(20), 0), "ESCALA DO APARELHO", PC::DimL, m.font(12));
 				y += m.px(26);
 				const int opts[3] = { 75, 100, 125 };
 				for (int i = 0; i < 3; ++i)
@@ -221,7 +221,7 @@ namespace Phone
 		{
 			cv.fillRect(content, PC::Dark, 0);
 			const StatusInfo st = m_c->status ? m_c->status() : StatusInfo();
-			DrawTextIn(cv, { content.x, content.y + m.px(70), content.w, m.px(100) }, st.clock, Color(255, 255, 255), m.font(84), Align::Center);
+			DrawTextAs(cv, FontDisplaySemibold, { content.x, content.y + m.px(70), content.w, m.px(100) }, st.clock, Color(255, 255, 255), m.font(84), Align::Center);
 			static const char* wd[7] = { "Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado" };
 			if (st.weekday >= 0 && st.weekday < 7 && st.day > 0)
 			{
@@ -245,7 +245,7 @@ namespace Phone
 			cv.fillRect(content, m_light ? PC::Light : PC::Dark, 0);
 			const Color fg = m_light ? PC::LabelL : Colors::Text;
 			DrawGlyph(cv, m_id, Rect{ content.center().x - m.px(34), content.y + m.px(150), m.px(68), m.px(68) }, PC::Gray);
-			DrawTextIn(cv, { content.x, content.y + m.px(232), content.w, m.px(32) }, m_title, fg, m.font(22), Align::Center);
+			DrawTextAs(cv, FontDisplaySemibold, { content.x, content.y + m.px(232), content.w, m.px(32) }, m_title, fg, m.font(22), Align::Center);
 			DrawTextIn(cv, { content.x + m.px(24), content.y + m.px(272), content.w - m.px(48), m.px(24) }, "Ainda não disponível neste servidor", PC::Gray, m.font(14), Align::Center);
 			DrawTextIn(cv, { content.x + m.px(24), content.y + m.px(298), content.w - m.px(48), m.px(40) }, m_need, PC::Gray, m.font(12), Align::Center);
 		}

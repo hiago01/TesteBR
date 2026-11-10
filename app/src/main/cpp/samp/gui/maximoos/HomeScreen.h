@@ -135,7 +135,7 @@ namespace MaximoOS
 			m_page = std::clamp(m_page, 0, pages - 1);
 
 			// ---- relogio ----
-			DrawTextIn(cv, L.clock, st.clock, Colors::Text, m.font(54));
+			DrawTextAs(cv, FontDisplaySemibold, L.clock, st.clock, Colors::Text, m.font(54));
 			std::string d = st.weekday >= 0 ? Pt::Weekday(st.weekday) : std::string();
 			if (st.day > 0) d += (d.empty() ? "" : ", ") + std::to_string(st.day) + " de " + Pt::Month(st.month);
 			DrawTextIn(cv, L.date, d, Colors::Text.alpha(0.92f), m.font(Fonts::Body));

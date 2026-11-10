@@ -1,6 +1,8 @@
 #include "../main.h"
 #include "imguiwrapper.h"
 #include "uisettings.h"
+#include "sffonts.h"
+#include <stdio.h>
 
 #include "../game/game.h"
 #include "../net/netgame.h"
@@ -64,6 +66,22 @@ bool ImGuiWrapper::initialize()
 	{
 		Log::addParameter("font", font);
 		return false;
+	}
+
+	// SF Pro do celular: fontes extras no MESMO atlas (so o celular escolhe usa-las); arquivo ausente = fica a fonte antiga
+	{
+		static const ImWchar sfRanges[] = { 0x0020, 0x00FF, 0x2010, 0x2030, 0x20AC, 0x20AC, 0x2122, 0x2122, 0x2190, 0x2193, 0 };
+		const size_t slash = m_fontPath.find_last_of("/\\");
+		const std::string dir = slash == std::string::npos ? std::string() : m_fontPath.substr(0, slash + 1);
+		for (int r = 0; r < SfFonts::Count; r++)
+		{
+			const std::string fp = dir + SfFonts::fileName(r);
+			FILE* ff = fopen(fp.c_str(), "rb");           // ImGui da assert se o arquivo nao existe: confere antes
+			if (!ff) { Log::addParameter("SF Pro ausente: %s", fp.c_str()); continue; }
+			fclose(ff);
+			ImFontConfig sfCfg;
+			SfFonts::table()[r] = io.Fonts->AddFontFromFileTTF(fp.c_str(), UISettings::fontSize(), &sfCfg, sfRanges);
+		}
 	}
 
 	createFontTexture();

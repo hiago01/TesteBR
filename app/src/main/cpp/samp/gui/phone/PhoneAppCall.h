@@ -30,7 +30,7 @@ namespace Phone
 			cv.fillCircle({ cx, top + m.px(44) }, m.px(44), Color(255, 255, 255, 40));
 			const std::string ini = nm.empty() ? std::string("#") : Text::FirstChar(nm);
 			DrawTextIn(cv, { cx - m.px(44), top, m.px(88), m.px(88) }, ini, Color(255, 255, 255), m.font(36), Align::Center);
-			DrawTextIn(cv, { content.x + m.px(16), top + m.px(104), content.w - m.px(32), m.px(34) }, shown, Color(255, 255, 255), m.font(26), Align::Center);
+			DrawTextAs(cv, FontDisplaySemibold, { content.x + m.px(16), top + m.px(104), content.w - m.px(32), m.px(34) }, shown, Color(255, 255, 255), m.font(26), Align::Center);
 			if (!nm.empty()) DrawTextIn(cv, { content.x + m.px(16), top + m.px(138), content.w - m.px(32), m.px(22) }, Data::FormatNumber(c.number), Color(255, 255, 255, 150), m.font(14), Align::Center);
 			DrawTextIn(cv, { content.x + m.px(16), top + m.px(166), content.w - m.px(32), m.px(26) }, statusLine(c), Color(255, 255, 255, 200), m.font(17), Align::Center);
 

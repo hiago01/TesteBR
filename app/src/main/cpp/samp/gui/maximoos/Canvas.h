@@ -21,6 +21,7 @@ namespace MaximoOS
 		virtual void fillTriangle(Vec2 a, Vec2 b, Vec2 c, Color col) = 0;
 		virtual void text(Vec2 pos, Color c, const std::string& s, float size) = 0;  // pos = canto superior esquerdo
 		virtual Vec2 measure(const std::string& s, float size) = 0;
+		virtual void setFont(int /*FontRole*/) {}                                      // papel tipografico (SF Pro); o gravador de testes ignora
 		virtual void pushClip(const Rect& r) = 0;                                    // intersecta com o clip atual
 		virtual void popClip() = 0;
 		virtual void setAlpha(float a) = 0;                                          // multiplicador global (transicoes)
@@ -29,6 +30,9 @@ namespace MaximoOS
 	};
 
 	enum class Align { Left, Center, Right };
+
+	// papeis tipograficos do celular (SF Pro). Texto comum = FontText (padrao). Valores iguais a SfFonts::Role (gui/sffonts.h).
+	enum FontRole { FontText = 0, FontTextMedium = 1, FontTextSemibold = 2, FontDisplaySemibold = 3, FontDisplayBold = 4, FontRounded = 5 };
 
 	// Corta o texto em UTF-8 com "..." para caber em maxW (ASCII "..." porque a fonte do jogo e Latin-1).
 	inline std::string FitText(Canvas& cv, const std::string& s, float size, float maxW)
@@ -57,5 +61,13 @@ namespace MaximoOS
 		if (al == Align::Center) x = box.x + (box.w - m.x) * 0.5f;
 		else if (al == Align::Right) x = box.right() - m.x;
 		cv.text({ x, box.y + (box.h - m.y) * 0.5f }, c, t, size);
+	}
+
+	// DrawTextIn com um papel tipografico: troca a fonte so para esta linha (a medida de corte usa a mesma fonte) e volta ao padrao.
+	inline void DrawTextAs(Canvas& cv, int role, const Rect& box, const std::string& s, Color c, float size, Align al = Align::Left)
+	{
+		cv.setFont(role);
+		DrawTextIn(cv, box, s, c, size, al);
+		cv.setFont(FontText);
 	}
 }

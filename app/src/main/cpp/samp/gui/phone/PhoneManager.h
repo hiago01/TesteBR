@@ -431,7 +431,7 @@ namespace Phone
 			if (m_ctx.settings.airplane) st.signal = 0;
 			const Color fg = dark ? Color(0, 0, 0) : Color(255, 255, 255);
 			const float fs = m.font(15), y0 = m.statusBar.y + m.px(11), hh = m.px(32);
-			DrawTextIn(cv, { m.screen.x + m.px(32), y0, m.px(70), hh }, st.clock, fg, fs);
+			DrawTextAs(cv, FontTextSemibold, { m.screen.x + m.px(32), y0, m.px(70), hh }, st.clock, fg, fs);
 			float x = m.screen.right() - m.px(26);
 			if (st.battery >= 0)
 			{
@@ -455,7 +455,7 @@ namespace Phone
 				// sem celular comprado: aviso no lugar da grade (o servidor e quem sabe; nada e simulado)
 				const Rect box{ m.screen.x + m.px(22), m.screen.center().y - m.px(96), m.screen.w - m.px(44), m.px(192) };
 				cv.fillRect(box, Color(0, 0, 0, 120), m.px(22));
-				DrawTextIn(cv, { box.x, box.y + m.px(18), box.w, m.px(30) }, "Sem celular", Color(255, 255, 255), m.font(22), Align::Center);
+				DrawTextAs(cv, FontDisplaySemibold, { box.x, box.y + m.px(18), box.w, m.px(30) }, "Sem celular", Color(255, 255, 255), m.font(22), Align::Center);
 				DrawTextIn(cv, { box.x + m.px(14), box.y + m.px(58), box.w - m.px(28), m.px(24) }, "Você ainda não comprou um aparelho.", Color(235, 235, 245), m.font(13), Align::Center);
 				DrawTextIn(cv, { box.x + m.px(14), box.y + m.px(90), box.w - m.px(28), m.px(24) }, "Digite /comprarcelular no chat", Color(255, 214, 90), m.font(14), Align::Center);
 				DrawTextIn(cv, { box.x + m.px(14), box.y + m.px(122), box.w - m.px(28), m.px(24) }, "ou peça a um administrador.", Color(200, 200, 215), m.font(12), Align::Center);
@@ -508,9 +508,9 @@ namespace Phone
 			{
 				const float br = q.w * 0.19f; const Vec2 bc{ q.right() - br * 0.3f, q.y + br * 0.3f };
 				cv.fillCircle(bc, br, PC::Red);
-				DrawTextIn(cv, { bc.x - br, bc.y - br, br * 2, br * 2 }, badge > 9 ? "9+" : std::to_string(badge), Color(255, 255, 255), std::max(Metrics::kMinFontPx - 1.0f, br * 1.2f), Align::Center);
+				DrawTextAs(cv, FontRounded, { bc.x - br, bc.y - br, br * 2, br * 2 }, badge > 9 ? "9+" : std::to_string(badge), Color(255, 255, 255), std::max(Metrics::kMinFontPx - 1.0f, br * 1.2f), Align::Center);
 			}
-			if (label) DrawTextIn(cv, { cell.x, cell.bottom() - m.px(30), cell.w, m.px(20) }, title, Color(255, 255, 255), m.font(11.5f), Align::Center);
+			if (label) DrawTextAs(cv, FontTextMedium, { cell.x, cell.bottom() - m.px(30), cell.w, m.px(20) }, title, Color(255, 255, 255), m.font(11.5f), Align::Center);
 		}
 
 		void drawApp(Canvas& cv, const PhoneAppDef& d, float k)
@@ -548,7 +548,7 @@ namespace Phone
 			const Metrics& m = m_m;
 			cv.fillRect(m.screen, Color(0, 0, 0, 120), 0);
 			const std::vector<std::string> list = m_apps.recents();
-			DrawTextIn(cv, { m.screen.x, m.screen.y + m.px(64), m.screen.w, m.px(30) }, "Aplicativos abertos", Color(255, 255, 255), m.font(19), Align::Center);
+			DrawTextAs(cv, FontDisplaySemibold, { m.screen.x, m.screen.y + m.px(64), m.screen.w, m.px(30) }, "Aplicativos abertos", Color(255, 255, 255), m.font(19), Align::Center);
 			if (list.empty())
 			{
 				DrawTextIn(cv, { m.screen.x, m.screen.center().y - m.px(15), m.screen.w, m.px(30) }, "Nenhum aplicativo aberto", Color(255, 255, 255, 200), m.font(16), Align::Center);
@@ -564,12 +564,12 @@ namespace Phone
 				if (d)
 				{
 					DrawGlyph(cv, d->id, Rect{ c.center().x - m.px(34), c.center().y - m.px(44), m.px(68), m.px(68) }, d->color);
-					DrawTextIn(cv, { c.x, c.center().y + m.px(34), c.w, m.px(28) }, d->title, d->light ? PC::LabelL : Colors::Text, m.font(17), Align::Center);
+					DrawTextAs(cv, FontTextMedium, { c.x, c.center().y + m.px(34), c.w, m.px(28) }, d->title, d->light ? PC::LabelL : Colors::Text, m.font(17), Align::Center);
 				}
 			}
 			const Rect b = closeAllRect();
 			cv.fillRect(b, Color(255, 255, 255, 70), m.px(20));
-			DrawTextIn(cv, b, "Fechar todos", Color(255, 255, 255), m.font(15), Align::Center);
+			DrawTextAs(cv, FontTextSemibold, b, "Fechar todos", Color(255, 255, 255), m.font(15), Align::Center);
 		}
 
 		void drawBanner(Canvas& cv)
@@ -586,7 +586,7 @@ namespace Phone
 			const float is = m.px(34);
 			cv.fillRect({ b.x + m.px(12), b.y + (b.h - is) * 0.5f, is, is }, d ? d->color : PC::Blue, m.px(8));
 			if (d) DrawGlyph(cv, d->id, Rect{ b.x + m.px(12), b.y + (b.h - is) * 0.5f, is, is }.inset(is * 0.2f), Color(255, 255, 255));
-			DrawTextIn(cv, { b.x + m.px(56), b.y + m.px(8), b.w - m.px(68), m.px(22) }, n->title, PC::LabelL, m.font(14));
+			DrawTextAs(cv, FontTextSemibold, { b.x + m.px(56), b.y + m.px(8), b.w - m.px(68), m.px(22) }, n->title, PC::LabelL, m.font(14));
 			DrawTextIn(cv, { b.x + m.px(56), b.y + m.px(30), b.w - m.px(68), m.px(24) }, n->text, PC::DimL, m.font(13));
 		}
 

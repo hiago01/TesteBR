@@ -37,6 +37,9 @@ public:
 	ImColor RenderTextAndGetLastColor(const float font_size, uint8_t outline, ImVec2 pos, ImColor col, const char *szStr);
 	ImVec2 CalcTextSizeWithoutTags(const float font_size, const char* szStr);
 
+	// troca temporaria da fonte (usada so pelo celular, ver sffonts.h); devolve a anterior
+	ImFont* swapFont(ImFont* f) { ImFont* old = m_font; if (f) m_font = f; return old; }
+
 private:
 	// low-level
 	ImVec2 calculateTextSize(const char* begin, const char* end, float font_size = 0.0f);

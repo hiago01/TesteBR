@@ -1,5 +1,6 @@
 #include "../../main.h"
 #include "../gui.h"
+#include "../sffonts.h"
 #include "../../game/game.h"
 #include "../maximoos/OSManager.h"
 #include "maximoos.h"
@@ -72,12 +73,26 @@ namespace
 		}
 		void line(Vec2 a, Vec2 b, Color c, float th) override { if (c.a) m_r->drawLine(V(a.x, a.y), V(b.x, b.y), C(c), th); }
 		void fillTriangle(Vec2 a, Vec2 b, Vec2 c, Color col) override { if (col.a) m_r->drawTriangle(V(a.x, a.y), V(b.x, b.y), V(c.x, c.y), C(col), true); }
-		void text(Vec2 p, Color c, const std::string& s, float size) override { if (c.a && !s.empty()) m_r->drawText(V(p.x, p.y), C(c), s, false, size); }
-		Vec2 measure(const std::string& s, float size) override { const ImVec2 v = m_r->calculateTextSize(s, size); return { v.x, v.y }; }
+		void setFont(int role) override { m_role = role; }
+		void text(Vec2 p, Color c, const std::string& s, float size) override
+		{
+			if (!c.a || s.empty()) return;
+			ImFont* sf = SfFonts::get(m_role); ImFont* old = sf ? m_r->swapFont(sf) : nullptr;
+			m_r->drawText(V(p.x, p.y), C(c), s, false, size);
+			if (old) m_r->swapFont(old);
+		}
+		Vec2 measure(const std::string& s, float size) override
+		{
+			ImFont* sf = SfFonts::get(m_role); ImFont* old = sf ? m_r->swapFont(sf) : nullptr;
+			const ImVec2 v = m_r->calculateTextSize(s, size);
+			if (old) m_r->swapFont(old);
+			return { v.x, v.y };
+		}
 		void pushClip(const Rect& r) override { m_r->pushClipRect(V(r.x, r.y), V(r.right(), r.bottom()), true); ++m_clips; }
 		void popClip() override { if (m_clips > 0) { m_r->popClipRect(); --m_clips; } }
 		void setAlpha(float a) override { m_alpha = std::clamp(a, 0.0f, 1.0f); }
 	private:
+		int m_role = 0;
 		static ImVec2 V(float x, float y) { return ImVec2(x, y); }
 		ImColor C(Color c) const { return ImColor(c.r, c.g, c.b, (int)std::lround(c.a * m_alpha)); }
 		static int poly(ImVec2* p, Vec2 c, float rad)

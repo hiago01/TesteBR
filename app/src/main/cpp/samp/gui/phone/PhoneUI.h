@@ -85,13 +85,13 @@ namespace Phone
 			r.back = { bar.x + m.px(6), bar.y, m.px(110), hh };
 			const float is = m.px(16);
 			cv.fillTriangle({ r.back.x + m.px(10) + is * 0.55f, bar.y + hh * 0.5f - is * 0.55f }, { r.back.x + m.px(10) + is * 0.55f, bar.y + hh * 0.5f + is * 0.55f }, { r.back.x + m.px(10), bar.y + hh * 0.5f }, backPressed ? PC::Blue.alpha(0.5f) : PC::Blue);
-			DrawTextIn(cv, { r.back.x + m.px(28), bar.y, r.back.w - m.px(28), hh }, backLabel, backPressed ? PC::Blue.alpha(0.5f) : PC::Blue, m.font(17));
+			DrawTextAs(cv, FontText, { r.back.x + m.px(28), bar.y, r.back.w - m.px(28), hh }, backLabel, backPressed ? PC::Blue.alpha(0.5f) : PC::Blue, m.font(17));
 		}
-		DrawTextIn(cv, { bar.x + m.px(100), bar.y, bar.w - m.px(200), hh }, title, fg, m.font(17), Align::Center);
+		DrawTextAs(cv, FontDisplaySemibold, { bar.x + m.px(100), bar.y, bar.w - m.px(200), hh }, title, fg, m.font(17), Align::Center);
 		if (!actionLabel.empty())
 		{
 			r.action = { bar.right() - m.px(100), bar.y, m.px(92), hh };
-			DrawTextIn(cv, r.action, actionLabel, actionPressed ? PC::Blue.alpha(0.5f) : PC::Blue, m.font(17), Align::Right);
+			DrawTextAs(cv, FontTextSemibold, r.action, actionLabel, actionPressed ? PC::Blue.alpha(0.5f) : PC::Blue, m.font(17), Align::Right);
 		}
 		r.body = { content.x, bar.bottom(), content.w, content.h - hh };
 		return r;
@@ -112,7 +112,7 @@ namespace Phone
 		if (dot) { const float d = m.px(30); cv.fillRect({ r.x + m.px(12), r.y + (r.h - d) * 0.5f, d, d }, *dot, m.px(7)); tx = r.x + m.px(54); }
 		const Color fg = st.light ? PC::LabelL : Colors::Text;
 		const float vw = value.empty() ? 0 : m.px(st.valueW > 0 ? st.valueW : 110);
-		DrawTextIn(cv, { tx, r.y, r.right() - tx - m.px(st.chevron ? 34 : 16) - vw, r.h }, label, fg, m.font(16));
+		DrawTextAs(cv, FontTextSemibold, { tx, r.y, r.right() - tx - m.px(st.chevron ? 34 : 16) - vw, r.h }, label, fg, m.font(16));
 		if (!value.empty()) DrawTextIn(cv, { r.right() - m.px(st.chevron ? 34 : 16) - vw, r.y, vw, r.h }, value, PC::Gray, m.font(16), Align::Right);
 		if (st.chevron)
 		{

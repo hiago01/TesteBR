@@ -40,7 +40,7 @@ namespace Phone
 			for (int i = 0; i < 3; ++i)
 			{
 				const Rect r{ tabs.x + i * tabs.w / 3.0f, tabs.y, tabs.w / 3.0f, tabs.h };
-				DrawTextIn(cv, r, L[i], m_tab == i ? PC::Blue : PC::Gray, m.font(14), Align::Center);
+				DrawTextAs(cv, FontTextSemibold, r, L[i], m_tab == i ? PC::Blue : PC::Gray, m.font(14), Align::Center);
 				m_nav.add(ID_TAB + i, r);
 			}
 			m_msg.draw(cv, m, body, m_c->nowMs);
@@ -116,7 +116,7 @@ namespace Phone
 			const size_t n = m_tab == 1 ? m_calls.size() : m_contacts.size();
 			if (n == 0)
 			{
-				DrawTextIn(cv, { body.x, body.center().y - m.px(14), body.w, m.px(28) }, m_tab == 1 ? "Nenhuma chamada" : "Nenhum contato", PC::Gray, m.font(18), Align::Center);
+				DrawTextAs(cv, FontDisplaySemibold, { body.x, body.center().y - m.px(14), body.w, m.px(28) }, m_tab == 1 ? "Nenhuma chamada" : "Nenhum contato", PC::Gray, m.font(18), Align::Center);
 				return;
 			}
 			m_scroll.setLayout(body, m.px(16) + n * rowH);
@@ -251,7 +251,7 @@ namespace Phone
 			const Rect body = nv.body;
 			if (m_threads.empty())
 			{
-				DrawTextIn(cv, { body.x, body.center().y - m.px(30), body.w, m.px(28) }, "Nenhuma conversa", PC::Gray, m.font(19), Align::Center);
+				DrawTextAs(cv, FontDisplaySemibold, { body.x, body.center().y - m.px(30), body.w, m.px(28) }, "Nenhuma conversa", PC::Gray, m.font(19), Align::Center);
 				DrawTextIn(cv, { body.x + m.px(20), body.center().y, body.w - m.px(40), m.px(24) }, "Toque em Nova para escrever.", PC::Gray, m.font(14), Align::Center);
 				return;
 			}
@@ -266,7 +266,7 @@ namespace Phone
 				DrawRow(cv, m, rr, std::string(), std::string(), st);
 				const Data::Thread& th = m_threads[i];
 				if (th.unread > 0) cv.fillCircle({ rr.x + m.px(14), rr.y + rowH * 0.5f }, m.px(5), PC::Blue);
-				DrawTextIn(cv, { rr.x + m.px(28), rr.y + m.px(9), rr.w - m.px(44), m.px(22) }, title(th.number), PC::LabelL, m.font(16));
+				DrawTextAs(cv, FontTextSemibold, { rr.x + m.px(28), rr.y + m.px(9), rr.w - m.px(44), m.px(22) }, title(th.number), PC::LabelL, m.font(16));
 				DrawTextIn(cv, { rr.x + m.px(28), rr.y + m.px(33), rr.w - m.px(44), m.px(20) }, th.last, PC::Gray, m.font(13));
 				m_hits.add(ID_ROW + (int)i, rr);
 			}
@@ -352,7 +352,7 @@ namespace Phone
 			y += m.px(26);
 			if (!m_contacts.empty() && !m_kbOn)
 			{
-				DrawTextIn(cv, { body.x + mx + m.px(8), y, body.w, m.px(22) }, "CONTATOS", PC::DimL, m.font(12)); y += m.px(24);
+				DrawTextAs(cv, FontDisplaySemibold, { body.x + mx + m.px(8), y, body.w, m.px(22) }, "CONTATOS", PC::DimL, m.font(12)); y += m.px(24);
 				const Rect view{ body.x, y, body.w, body.bottom() - y };
 				m_scroll.setLayout(view, m_contacts.size() * m.px(48) + m.px(8));
 				cv.pushClip(view);

@@ -121,7 +121,7 @@ namespace Phone
 			const Rect body = nv.body;
 			if (m_list.empty())
 			{
-				DrawTextIn(cv, { body.x, body.center().y - m.px(30), body.w, m.px(28) }, "Nenhum contato", PC::Gray, m.font(19), Align::Center);
+				DrawTextAs(cv, FontDisplaySemibold, { body.x, body.center().y - m.px(30), body.w, m.px(28) }, "Nenhum contato", PC::Gray, m.font(19), Align::Center);
 				DrawTextIn(cv, { body.x + m.px(20), body.center().y, body.w - m.px(40), m.px(24) }, "Toque em Novo para adicionar.", PC::Gray, m.font(14), Align::Center);
 				return;
 			}
@@ -166,7 +166,7 @@ namespace Phone
 			cv.fillCircle({ cx, body.y + m.px(60) }, av * 0.5f, Color(165, 170, 180));
 			std::string ini = k.name.empty() ? "?" : k.name.substr(0, Text::CpLen(k.name, 0));
 			DrawTextIn(cv, { cx - av * 0.5f, body.y + m.px(60) - av * 0.5f, av, av }, Text::Upper(ini), Color(255, 255, 255), m.font(36), Align::Center);
-			DrawTextIn(cv, { body.x + m.px(16), body.y + m.px(112), body.w - m.px(32), m.px(34) }, k.name, PC::LabelL, m.font(26), Align::Center);
+			DrawTextAs(cv, FontDisplaySemibold, { body.x + m.px(16), body.y + m.px(112), body.w - m.px(32), m.px(34) }, k.name, PC::LabelL, m.font(26), Align::Center);
 			DrawTextIn(cv, { body.x + m.px(16), body.y + m.px(146), body.w - m.px(32), m.px(24) }, k.number, PC::DimL, m.font(16), Align::Center);
 			const float bw = (body.w - m.px(32) - m.px(12)) * 0.5f, bh = m.px(46), by = body.y + m.px(186);
 			const Rect b1{ body.x + m.px(16), by, bw, bh }, b2{ b1.right() + m.px(12), by, bw, bh };
@@ -289,7 +289,7 @@ namespace Phone
 			const Rect body = nv.body;
 			if (m_notes.empty())
 			{
-				DrawTextIn(cv, { body.x, body.center().y - m.px(30), body.w, m.px(28) }, "Nenhuma nota", PC::Gray, m.font(19), Align::Center);
+				DrawTextAs(cv, FontDisplaySemibold, { body.x, body.center().y - m.px(30), body.w, m.px(28) }, "Nenhuma nota", PC::Gray, m.font(19), Align::Center);
 				DrawTextIn(cv, { body.x + m.px(20), body.center().y, body.w - m.px(40), m.px(24) }, "Toque em Nova para escrever.", PC::Gray, m.font(14), Align::Center);
 				return;
 			}
@@ -461,7 +461,7 @@ namespace Phone
 			const Rect body = nv.body; const float mx = m.px(14), cw = (body.w - 2 * mx) / 7.0f;
 			const float hy = body.y + m.px(8);
 			const Rect pv{ body.x + mx, hy, m.px(52), m.px(40) }, nx{ body.right() - mx - m.px(52), hy, m.px(52), m.px(40) };
-			DrawTextIn(cv, { body.x + m.px(70), hy, body.w - m.px(140), m.px(40) }, std::string(names[m_mo - 1]) + " " + std::to_string(m_y), PC::LabelL, m.font(20), Align::Center);
+			DrawTextAs(cv, FontDisplaySemibold, { body.x + m.px(70), hy, body.w - m.px(140), m.px(40) }, std::string(names[m_mo - 1]) + " " + std::to_string(m_y), PC::LabelL, m.font(20), Align::Center);
 			DrawTextIn(cv, pv, "<", m_press == ID_PREV ? PC::Blue.alpha(0.5f) : PC::Blue, m.font(24), Align::Center); m_hits.add(ID_PREV, pv);
 			DrawTextIn(cv, nx, ">", m_press == ID_NEXT ? PC::Blue.alpha(0.5f) : PC::Blue, m.font(24), Align::Center); m_hits.add(ID_NEXT, nx);
 			static const char* wd[7] = { "D","S","T","Q","Q","S","S" };
