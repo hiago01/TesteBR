@@ -124,6 +124,7 @@ namespace Hud
 		g.moneyFromServer.store(false);
 		g.slotA.store(0);
 		g.slotB.store(0);
+		g.peopleManual.store(false);
 		g.extra.store(0);
 	}
 
@@ -170,6 +171,7 @@ namespace Hud
 			g.moneyFromServer.store(true);
 			g.slotA.store(0);
 			g.slotB.store(10);
+			g.peopleManual.store(true);
 			g.extra.store(24600);
 			return "[HUD] valores de teste aplicados (use /hud reset para voltar)";
 		}
@@ -212,7 +214,8 @@ namespace Hud
 			{
 				g.slotA.store(v);
 				g.slotB.store(a.size() >= 4 ? atoi(a[3].c_str()) : 0);
-				return "[HUD] pessoa ok";
+				g.peopleManual.store(true);
+				return "[HUD] pessoa ok (valor fixo; /hud reset volta a mostrar os jogadores online)";
 			}
 		}
 
@@ -862,7 +865,17 @@ void HudInfo::draw(ImGuiRenderer* r)
 		char moneyTxt[48], personTxt[48], extraTxt[48];
 		snprintf(moneyTxt, sizeof(moneyTxt), "R$ %s", FormatThousands(Hud::g.money.load()).c_str());
 
-		const int a = Hud::g.slotA.load(), b = Hud::g.slotB.load();
+		int a = Hud::g.slotA.load(), b = Hud::g.slotB.load();
+		if (!Hud::g.peopleManual.load())        // padrao: jogadores online (voce + os do pool, sem NPC)
+		{
+			a = 0; b = 0;
+			if (pNetGame && pNetGame->GetPlayerPool())
+			{
+				CPlayerPool* pool = pNetGame->GetPlayerPool();
+				a = 1;
+				for (int i = 0; i < MAX_PLAYERS; i++) if (pool->GetAt(i) && !pool->IsPlayerNPC(i)) a++;
+			}
+		}
 		if (b > 0) snprintf(personTxt, sizeof(personTxt), "%d/%d", a, b);
 		else       snprintf(personTxt, sizeof(personTxt), "%d", a);
 

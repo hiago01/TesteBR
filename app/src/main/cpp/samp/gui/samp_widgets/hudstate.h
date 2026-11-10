@@ -39,6 +39,7 @@ namespace Hud
 		std::atomic<bool>  moneyFromServer{false}; // true = 'money' veio do RPC 201
 		std::atomic<int>   slotA{0};               // pilula "pessoa": valor atual
 		std::atomic<int>   slotB{0};               // pilula "pessoa": maximo (0 = nao mostra "/max")
+		std::atomic<bool>  peopleManual{false};    // true = slotA/slotB foram postos a mao (/hud set pessoa, /hud teste); false = a pilula mostra quantos jogadores estao online
 		std::atomic<int>   extra{0};               // pilula "estrela"
 		std::atomic<float> scale{1.0f};            // multiplicador de tamanho (/hud escala)
 		std::atomic<bool>  lights{true};           // luzes de natal sobre o logo (/hud luzes on|off)
