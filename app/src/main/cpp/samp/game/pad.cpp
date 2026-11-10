@@ -5,6 +5,7 @@
 #include "../vendor/armhook/patch.h"
 #include "World.h"
 #include "movemode.h"
+#include "camstick.h"
 #include <dlfcn.h>
 #include <chrono>
 #include "../gui/samp_widgets/controlmode.h"
@@ -40,11 +41,12 @@ uint16_t CPad__GetPedWalkLeftRight_hook(uintptr_t thiz)
 		// Modo de movimento (WALK/JOG/SPRINT): molda o modulo do stick mantendo a direcao.
 		// Lemos os dois eixos do original para escalar o vetor (e nao cada eixo isolado).
 		// MODERNO (a pe): o joystick analogico proprio substitui o stick nativo (intensidade proporcional, sem moldar por WALK/JOG).
-		{ int16_t mlr, mud; if (ModernInput::Stick(mlr, mud)) { LocalPlayerKeys.wKeyLR = (uint16_t)mlr; return LocalPlayerKeys.wKeyLR; } }
+		{ int16_t mlr, mud; if (ModernInput::Stick(mlr, mud)) { if (CamStick::Active()) CamStick::Map(mlr, mud, mlr, mud); LocalPlayerKeys.wKeyLR = (uint16_t)mlr; return LocalPlayerKeys.wKeyLR; } }
 		int16_t lr = (int16_t)CPad__GetPedWalkLeftRight(thiz);
 		if (CPad__GetPedWalkUpDown)
 		{
 			int16_t ud = (int16_t)CPad__GetPedWalkUpDown(thiz);
+			if (CamStick::Active()) CamStick::Map(lr, ud, lr, ud);      // camera do celular (foto/selfie): joystick "tanque" (game/camstick.h)
 			CMoveMode::ApplyToStick(lr, ud);
 		}
 		LocalPlayerKeys.wKeyLR = (uint16_t)lr;
@@ -70,11 +72,12 @@ uint16_t CPad__GetPedWalkUpDown_hook(uintptr_t thiz)
 	{
 		// Local player
 		// Modo de movimento (WALK/JOG/SPRINT): ver CPad__GetPedWalkLeftRight_hook.
-		{ int16_t mlr, mud; if (ModernInput::Stick(mlr, mud)) { LocalPlayerKeys.wKeyUD = (uint16_t)mud; return LocalPlayerKeys.wKeyUD; } }
+		{ int16_t mlr, mud; if (ModernInput::Stick(mlr, mud)) { if (CamStick::Active()) CamStick::Map(mlr, mud, mlr, mud); LocalPlayerKeys.wKeyUD = (uint16_t)mud; return LocalPlayerKeys.wKeyUD; } }
 		int16_t ud = (int16_t)CPad__GetPedWalkUpDown(thiz);
 		if (CPad__GetPedWalkLeftRight)
 		{
 			int16_t lr = (int16_t)CPad__GetPedWalkLeftRight(thiz);
+			if (CamStick::Active()) CamStick::Map(lr, ud, lr, ud);
 			CMoveMode::ApplyToStick(lr, ud);
 		}
 		LocalPlayerKeys.wKeyUD = (uint16_t)ud;

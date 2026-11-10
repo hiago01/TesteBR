@@ -1,0 +1,101 @@
+// Teste de PC: (1) joystick do personagem com a camera do celular (game/camstick.h) e (2) moldura da Camera sem cantos pretos quadrados.
+#include "../../game/camstick.h"
+#include "../../gui/phone/PhoneApps.h"
+#include <cstdio>
+#include <cmath>
+#include <vector>
+using namespace Phone;
+static int fails = 0, total = 0;
+#define CHECK(c) do { total++; if (!(c)) { fails++; printf("FALHOU L%d: %s\n", __LINE__, #c); } } while (0)
+
+// grava os retangulos/triangulos da moldura para conferir cobertura por amostragem
+struct CoverCanvas : Canvas
+{
+	struct T { Vec2 a, b, c; }; std::vector<T> tris; struct RR { Rect r; float rad; }; std::vector<RR> rects;
+	void fillRect(const Rect& r, Color c, float rad) override { if (c.a >= 250) rects.push_back({ r, std::min(rad, std::min(r.w, r.h) * 0.5f) }); }   // o ImGui limita o raio a metade do lado
+	void strokeRect(const Rect&, Color, float, float) override {} void fillGradientV(const Rect&, Color, Color) override {}
+	void fillCircle(Vec2, float, Color) override {} void strokeCircle(Vec2, float, Color, float) override {} void line(Vec2, Vec2, Color, float) override {}
+	void fillTriangle(Vec2 a, Vec2 b, Vec2 c, Color) override { tris.push_back({ a, b, c }); }
+	void text(Vec2, Color, const std::string&, float) override {} Vec2 measure(const std::string&, float s) override { return { s, s }; }
+	void pushClip(const Rect&) override {} void popClip() override {} void setAlpha(float) override {}
+	static bool inTri(Vec2 p, const T& t)
+	{
+		auto s = [](Vec2 a, Vec2 b, Vec2 c) { return (a.x - c.x) * (b.y - c.y) - (b.x - c.x) * (a.y - c.y); };
+		const float d1 = s(p, t.a, t.b), d2 = s(p, t.b, t.c), d3 = s(p, t.c, t.a);
+		const bool neg = d1 < 0 || d2 < 0 || d3 < 0, pos = d1 > 0 || d2 > 0 || d3 > 0; return !(neg && pos);
+	}
+	static bool inRR(Vec2 p, const RR& q)
+	{
+		if (!q.r.contains(p)) return false;
+		const float R = q.rad;
+		if (R <= 0.5f) return true;
+		const float cx = std::clamp(p.x, q.r.x + R, q.r.right() - R), cy = std::clamp(p.y, q.r.y + R, q.r.bottom() - R);
+		return (p.x - cx) * (p.x - cx) + (p.y - cy) * (p.y - cy) <= R * R;
+	}
+	bool covered(Vec2 p) const { for (auto& r : rects) if (inRR(p, r)) return true; for (auto& t : tris) if (inTri(p, t)) return true; return false; }
+};
+// copia de PhoneManager::drawBezelRing (static) chamada pelo proprio PhoneManager: aqui usamos o metodo real
+int main()
+{
+	using namespace CamStick;
+	{   // --- stick: traseira ---
+		SetMode(2); int16_t lr, ud;
+		Map(0, -127, lr, ud);  CHECK(lr == 0 && ud < -100);                       // cima = frente (ud negativo), com o analogico todo
+		Map(0, -64, lr, ud);   CHECK(lr == 0 && ud < -30 && ud > -70);            // proporcional
+		Map(0, 127, lr, ud);   CHECK(lr == 0 && ud == 0);                         // baixo nao anda de re (nao deixa o motor girar 180)
+		Map(127, 0, lr, ud);   CHECK(lr == 0 && ud == 0);                         // de lado: o motor nao anda; so gira (TakeTurn)
+		Map(10, -10, lr, ud);  CHECK(lr == 0 && ud == 0);                         // zona morta
+		Map(127, 0, lr, ud);   CHECK(TakeTurn(0.016f) < 0);                       // direita = heading diminui (vira a direita)
+		Map(-127, 0, lr, ud);  CHECK(TakeTurn(0.016f) > 0);
+		Map(127, 0, lr, ud);   const float full = TakeTurn(0.016f); Map(64, 0, lr, ud); CHECK(std::fabs(TakeTurn(0.016f)) < std::fabs(full)); // proporcional
+		Map(127, 0, lr, ud);   CHECK(std::fabs(TakeTurn(10.0f)) <= kTurnRate * kMaxDt + 1e-4f);                                              // quadro lento nao da salto
+		Map(0, 0, lr, ud);     CHECK(TakeTurn(0.016f) == 0.0f);
+	}
+	{   // --- stick: selfie (camera olha para tras: frente do personagem = ud positivo; direita = anti-horario) ---
+		SetMode(3); int16_t lr, ud;
+		Map(0, -127, lr, ud);  CHECK(lr == 0 && ud > 100);
+		Map(0, 127, lr, ud);   CHECK(lr == 0 && ud == 0);
+		Map(127, 0, lr, ud);   CHECK(TakeTurn(0.016f) > 0);
+		Map(-127, 0, lr, ud);  CHECK(TakeTurn(0.016f) < 0);
+	}
+	{   // --- sem camera: nada ativo, giro zero ---
+		SetMode(0); CHECK(!Active() && TakeTurn(0.016f) == 0.0f);
+		SetMode(7); CHECK(!Active());
+	}
+	{   // --- simulacao: o heading nao oscila e a posicao anda para a frente (selfie, cima segurado por 3 s) ---
+		SetMode(3); float h = 0.5f, x = 0, y = 0; int16_t lr, ud;
+		for (int i = 0; i < 180; ++i)
+		{
+			Map(0, -127, lr, ud);
+			h += TakeTurn(1.0f / 60.0f);
+			// o motor anda na direcao da camera (olhar = -frente) * (-ud/128): ud > 0 => oposto ao olhar => frente
+			const float fx = -std::sin(h), fy = std::cos(h), lx = -fx, ly = -fy, k = -(float)ud / 128.0f;
+			x += lx * k * 0.05f; y += ly * k * 0.05f;
+		}
+		CHECK(std::fabs(h - 0.5f) < 1e-6f);                                       // sem giro descontrolado
+		const float fx = -std::sin(h), fy = std::cos(h);
+		CHECK(x * fx + y * fy > 5.0f);                                            // andou para a frente do personagem
+		CHECK(std::fabs(x * fy - y * fx) < 1e-3f);                                // em linha reta
+	}
+	{   // --- moldura da Camera: anel concentrico, sem cantos quadrados fora do arco ---
+		PhoneManager pm; InstallDefaultApps(pm); pm.open();
+		pm.setScreenSize(1600, 720);
+		CoverCanvas cv; for (int i = 0; i < 40; ++i) pm.frame(cv, 100 + i * 16, 16);
+		pm.openApp("camera"); for (int i = 0; i < 60; ++i) { cv.tris.clear(); cv.rects.clear(); pm.frame(cv, 1000 + i * 16, 16); }
+		const Metrics& m = pm.metrics(); const Rect f = m.frame;
+		const float Rf = m.screenRadius + m.bezel;
+		// frame() desenha mais coisas (apps/faixas); separamos so a moldura pelos pontos de teste abaixo
+		const Vec2 corners[4] = { { f.x, f.y }, { f.right(), f.y }, { f.right(), f.bottom() }, { f.x, f.bottom() } };
+		for (int c = 0; c < 4; ++c)
+		{   // ponto logo DENTRO do canto quadrado do retangulo da moldura, mas FORA do arco: tem de estar vazio
+			const float sx = (c == 0 || c == 3) ? 1.0f : -1.0f, sy = (c < 2) ? 1.0f : -1.0f;
+			const Vec2 p{ corners[c].x + sx * Rf * 0.12f, corners[c].y + sy * Rf * 0.12f };
+			CHECK(!cv.covered(p));
+		}
+		// meio da moldura (reta e arco): coberto
+		CHECK(cv.covered({ f.center().x, f.y + m.bezel * 0.5f }) && cv.covered({ f.center().x, f.bottom() - m.bezel * 0.5f }));
+		CHECK(cv.covered({ f.x + m.bezel * 0.5f, f.center().y }) && cv.covered({ f.right() - m.bezel * 0.5f, f.center().y }));
+	}
+	printf("%d/%d verificacoes OK\n", total - fails, total);
+	return fails ? 1 : 0;
+}

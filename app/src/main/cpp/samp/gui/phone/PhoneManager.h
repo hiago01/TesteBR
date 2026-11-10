@@ -347,6 +347,34 @@ namespace Phone
 
 		Rect bannerRect() const { return { m_m.screen.x + m_m.px(10), m_m.screen.y + m_m.px(46), m_m.screen.w - m_m.px(20), m_m.px(64) }; }
 
+
+		// Moldura como ANEL (tela transparente no meio) com os MESMOS arcos concentricos da moldura normal. Antes eram 4 faixas retas e o raio
+		// do canto era limitado pela espessura da faixa: sobravam cantos PRETOS quadrados fora do aparelho (arco externo) na Camera.
+		// Retas = retangulos sem arredondar; cantos = setores anulares (raio da tela .. raio da tela + moldura) com o centro do canto da tela.
+		static void drawBezelRing(Canvas& cv, const Metrics& m)
+		{
+			const Rect& f = m.frame; const Rect& sc = m.screen;
+			const float Rs = std::min(m.screenRadius, std::min(sc.w, sc.h) * 0.5f), Rf = Rs + m.bezel;
+			const Color bz = Colors::Bezel;
+			cv.fillRect({ f.x + Rf, f.y, f.w - 2 * Rf, sc.y - f.y }, bz, 0);                       // topo
+			cv.fillRect({ f.x + Rf, sc.bottom(), f.w - 2 * Rf, f.bottom() - sc.bottom() }, bz, 0);   // base
+			cv.fillRect({ f.x, f.y + Rf, sc.x - f.x, f.h - 2 * Rf }, bz, 0);                        // esquerda
+			cv.fillRect({ sc.right(), f.y + Rf, f.right() - sc.right(), f.h - 2 * Rf }, bz, 0);    // direita
+			const Vec2 ct[4] = { { sc.x + Rs, sc.y + Rs }, { sc.right() - Rs, sc.y + Rs }, { sc.right() - Rs, sc.bottom() - Rs }, { sc.x + Rs, sc.bottom() - Rs } };
+			const float a0[4] = { 3.14159265f, 4.71238898f, 0.0f, 1.57079633f };
+			const int N = 12; const float step = 1.57079633f / N, eps = step * 0.06f;               // eps: sobreposicao minima para nao aparecer fresta entre fatias
+			for (int c = 0; c < 4; ++c)
+			{
+				for (int i = 0; i < N; ++i)
+				{
+					const float a = a0[c] + step * i - eps, b = a0[c] + step * (i + 1) + eps;
+					const Vec2 oa{ ct[c].x + std::cos(a) * Rf, ct[c].y + std::sin(a) * Rf }, ob{ ct[c].x + std::cos(b) * Rf, ct[c].y + std::sin(b) * Rf };
+					const Vec2 ia{ ct[c].x + std::cos(a) * Rs, ct[c].y + std::sin(a) * Rs }, ib{ ct[c].x + std::cos(b) * Rs, ct[c].y + std::sin(b) * Rs };
+					cv.fillTriangle(oa, ob, ib, bz); cv.fillTriangle(oa, ib, ia, bz);
+				}
+			}
+		}
+
 		// ---------------- desenho ----------------
 		void draw(Canvas& cv)
 		{
@@ -358,17 +386,9 @@ namespace Phone
 			// app "seeThrough" (Camera) totalmente aberto: a tela mostra o jogo, sem papel de parede NEM fundo da moldura sob a tela
 			const bool clearScreen = fd && fd->seeThrough && !animating && !m_recents;
 			// corpo
-			cv.fillRect(m.frame.moved(0, m.px(3)), Color(0, 0, 0, 70), m.frameRadius);
+			if (!clearScreen) cv.fillRect(m.frame.moved(0, m.px(3)), Color(0, 0, 0, 70), m.frameRadius);   // (a sombra tambem escurecia o visor da camera)
 			if (!clearScreen) cv.fillRect(m.frame, Colors::Bezel, m.frameRadius);
-			else
-			{
-				// moldura em 4 faixas ao redor da tela (o interior fica transparente)
-				const Rect& f = m.frame; const Rect& sc = m.screen;
-				cv.fillRect({ f.x, f.y, f.w, sc.y - f.y }, Colors::Bezel, m.frameRadius);
-				cv.fillRect({ f.x, sc.bottom(), f.w, f.bottom() - sc.bottom() }, Colors::Bezel, m.frameRadius);
-				cv.fillRect({ f.x, sc.y - 1, sc.x - f.x, sc.h + 2 }, Colors::Bezel, 0);
-				cv.fillRect({ sc.right(), sc.y - 1, f.right() - sc.right(), sc.h + 2 }, Colors::Bezel, 0);
-			}
+			else drawBezelRing(cv, m);
 			cv.strokeRect(m.frame, Colors::BezelEdge, m.frameRadius, std::max(1.5f, m.px(1.6f)));
 			cv.pushClip(m.screen);
 			if (!clearScreen)
