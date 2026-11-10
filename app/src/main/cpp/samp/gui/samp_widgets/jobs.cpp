@@ -49,10 +49,9 @@ namespace
 	// ---- estado da tela (so a thread de desenho) ----
 	Snap     g_s;                  // copia local
 	uint32_t g_seenVer = ~0u;
-	int      g_tab = 0;            // 0 vagas | 1 meu emprego | 2 informacoes
 	int      g_sel = -1;           // indice em g_s.jobs
 	int      g_page = 0;           // pagina de cartoes (3 por pagina)
-	int      g_confirm = 0;        // 0 nada | 1 assinar | 2 demissao
+	int      g_confirm = 0;        // 0 nada | 1 assinar | 2 demissao | 3 informacoes da vaga
 	std::string g_toast; int64_t g_toastUntil = 0; bool g_toastBad = false;
 
 	// toques de mundo
@@ -102,30 +101,31 @@ namespace
 	{
 		std::string s = std::to_string(v), o;
 		for (size_t i = 0; i < s.size(); i++) { if (i && (s.size() - i) % 3 == 0) o += '.'; o += s[i]; }
-		return "US$ " + o;
+		return "R$ " + o;
 	}
 
-	// pinta o icone/imagem do emprego (textura do banco texdb/icones) ou uma letra no lugar
-	void DrawJobImage(ImGuiRenderer* r, const Job& j, const ImVec2& a, const ImVec2& b, float k)
+	// pinta a imagem do emprego (textura do banco texdb/icones) preenchendo o retangulo (corta o excesso) ou uma letra no lugar
+	void DrawJobImage(ImGuiRenderer* r, const Job& j, const ImVec2& a, const ImVec2& b, float u)
 	{
 		RwTexture* t = j.image.empty() ? nullptr : IconTexDb::Texture(j.image);
 		if (t && t->raster)
 		{
 			const float cw = b.x - a.x, ch = b.y - a.y;
 			const float iw = (float)(t->raster->width > 0 ? t->raster->width : 1), ih = (float)(t->raster->height > 0 ? t->raster->height : 1);
-			const float s = std::min(cw / iw, ch / ih), dw = iw * s, dh = ih * s;
-			const ImVec2 a2(a.x + (cw - dw) * 0.5f, a.y + (ch - dh) * 0.5f);
-			r->drawImage(a2, ImVec2(a2.x + dw, a2.y + dh), (ImTextureID)t->raster, ImColor(255, 255, 255, 255), ImVec2(0, 0), ImVec2(1, 1));
+			ImVec2 uv0(0, 0), uv1(1, 1);
+			if (iw / ih > cw / ch) { const float f = (cw / ch) / (iw / ih); uv0.x = (1.0f - f) * 0.5f; uv1.x = 1.0f - uv0.x; }
+			else                   { const float f = (iw / ih) / (cw / ch); uv0.y = (1.0f - f) * 0.5f; uv1.y = 1.0f - uv0.y; }
+			r->drawImage(a, b, (ImTextureID)t->raster, ImColor(190, 190, 190, 255), uv0, uv1);
 			return;
 		}
-		r->drawRoundedRect(a, b, ImColor(40, 52, 74, 255), 8.0f * k, true);
+		r->drawRoundedRect(a, b, ImColor(26, 26, 30, 255), 5.0f * u, true);
 		std::string ch = j.name.empty() ? "?" : j.name.substr(0, 1);
 		const float fs = (b.y - a.y) * 0.5f;
 		const ImVec2 ts = r->calculateTextSize(ch, fs);
-		r->drawText(ImVec2((a.x + b.x - ts.x) * 0.5f, (a.y + b.y - ts.y) * 0.5f), ImColor(120, 170, 240, 255), ch, false, fs);
+		r->drawText(ImVec2((a.x + b.x - ts.x) * 0.5f, (a.y + b.y - ts.y) * 0.5f), ImColor(236, 40, 96, 200), ch, false, fs);
 	}
 
-	enum Kind { K_NONE = 0, K_CLOSE, K_TAB, K_CARD, K_SIGN, K_QUIT, K_YES, K_NO, K_PANEL, K_PREV, K_NEXT };
+	enum Kind { K_NONE = 0, K_CLOSE, K_CARD, K_SIGN, K_QUIT, K_YES, K_NO, K_PANEL, K_PREV, K_NEXT, K_INFO };
 	struct Hit { ImVec2 a, b; int kind; int idx; };
 	struct Drag { int finger = -1; Hit hit{ImVec2(), ImVec2(), K_NONE, 0}; float sx = 0, sy = 0, dx = 0; bool moved = false; };
 	Drag g_drag;
@@ -263,7 +263,7 @@ void JobsUI::draw(ImGuiRenderer* r)
 
 	if (!g_open.load()) { g_drag = Drag(); return; }
 
-	if (g_resetView.exchange(false)) { g_tab = 0; g_sel = -1; g_page = 0; g_confirm = 0; g_drag = Drag(); g_toastUntil = 0; g_seenVer = ~0u; }
+	if (g_resetView.exchange(false)) { g_sel = -1; g_page = 0; g_confirm = 0; g_drag = Drag(); g_toastUntil = 0; g_seenVer = ~0u; }
 	{
 		const uint32_t v = g_ver.load();
 		if (v != g_seenVer)
@@ -271,260 +271,239 @@ void JobsUI::draw(ImGuiRenderer* r)
 			std::lock_guard<std::mutex> l(g_snapMutex);
 			g_s = g_snap; g_seenVer = v;
 			if (g_sel >= (int)g_s.jobs.size()) g_sel = -1;
+			if (g_sel < 0 && g_s.mine.has)
+				for (int i = 0; i < (int)g_s.jobs.size(); i++) if (g_s.jobs[(size_t)i].id == g_s.mine.id) { g_sel = i; g_page = i / 3; break; }
 			g_confirm = 0;
 		}
 	}
 	{
 		const int rc = g_resultCode.exchange(-1);
-		if (rc >= 0) { g_toast = ResultText(rc, g_toastBad); g_toastUntil = now + 3200; g_confirm = 0; if (rc == 0) g_tab = 1; }
+		if (rc >= 0) { g_toast = ResultText(rc, g_toastBad); g_toastUntil = now + 3200; g_confirm = 0; }
 	}
 
-	// paleta Maximo RP (mesma familia do inventario: rosa 0xEC2860 sobre grafite)
-	const ImColor cDim(0, 0, 0, 150), cPanel(17, 17, 20, 240), cCard(34, 34, 38, 240), cLine(62, 62, 70, 255), cText(240, 240, 244, 255), cSub(150, 150, 160, 255);
-	const ImColor cPink(236, 40, 96, 255), cPinkBg(236, 40, 96, 40), cGreen(47, 191, 113, 255), cRed(229, 72, 77, 255), cOff(44, 44, 50, 255), cAmber(240, 176, 56, 255);
+	// ---- layout identico ao da referencia (coordenadas em "pixels de referencia": painel 797 x 448) ----
+	const ImColor cDim(0, 0, 0, 120), cPanel(30, 30, 33, 236), cCard(46, 46, 50, 228), cLine(82, 82, 90, 255), cText(244, 244, 247, 255), cSub(160, 160, 170, 255);
+	const ImColor cPink(236, 40, 96, 255), cGreen(60, 200, 120, 255), cRed(229, 72, 77, 255), cOff(58, 58, 64, 255), cDark(22, 22, 25, 255);
 
 	std::vector<Hit> hits;
 	r->drawRect(ImVec2(0, 0), scr, cDim, true);
 
-	const float pw = std::min(scr.x - 24.0f * k, 860.0f * k), ph = std::min(scr.y - 20.0f * k, 440.0f * k);
-	const ImVec2 P0((scr.x - pw) * 0.5f, (scr.y - ph) * 0.5f), P1(P0.x + pw, P0.y + ph);
-	r->drawRoundedRect(P0, P1, cPanel, 12.0f * k, true);
-	r->drawRoundedRect(P0, P1, cLine, 12.0f * k, false, 1.5f);
-	hits.push_back({P0, P1, K_PANEL, 0});
-
-	auto button = [&](const ImVec2& a2, const ImVec2& b2, const char* text, const ImColor& col, bool enabled, int kind, int idx, float fs = 13.0f)
+	const float u = std::min(0.74f * scr.y / 448.0f, 0.95f * scr.x / 797.0f);
+	const ImVec2 P0((scr.x - 797.0f * u) * 0.5f, (scr.y - 448.0f * u) * 0.5f), P1(P0.x + 797.0f * u, P0.y + 448.0f * u);
+	auto V   = [&](float x, float y) { return ImVec2(P0.x + x * u, P0.y + y * u); };
+	auto txt = [&](float x, float y, const ImColor& c, const std::string& s, float fs) { r->drawText(V(x, y), c, s, false, fs * u); };
+	auto txtR = [&](float xr, float y, const ImColor& c, const std::string& s, float fs)
+	{ const ImVec2 ts = r->calculateTextSize(s, fs * u); r->drawText(ImVec2(P0.x + xr * u - ts.x, P0.y + y * u), c, s, false, fs * u); };
+	auto wrap = [&](float x, float y, const std::string& text, const ImColor& col, float fs, float maxW, int maxLines, float lh) -> int
 	{
-		r->drawRoundedRect(a2, b2, enabled ? col : cOff, 7.0f * k, true);
-		const ImVec2 ts = r->calculateTextSize(text, fs * k);
-		r->drawText(ImVec2((a2.x + b2.x - ts.x) * 0.5f, (a2.y + b2.y - ts.y) * 0.5f), enabled ? cText : cSub, text, false, fs * k);
+		std::string line, word; int lines = 0; const std::string t = text + " ";
+		for (char ch : t)
+		{
+			if (ch != ' ') { word += ch; continue; }
+			const std::string t2 = line.empty() ? word : line + " " + word;
+			if (r->calculateTextSize(t2, fs * u).x > maxW * u && !line.empty()) { if (lines < maxLines) txt(x, y + lines * lh, col, line, fs); lines++; line = word; }
+			else line = t2;
+			word.clear();
+		}
+		if (!line.empty() && lines < maxLines) { txt(x, y + lines * lh, col, line, fs); lines++; }
+		return lines < maxLines ? lines : maxLines;
+	};
+	auto button = [&](float x0, float y0, float x1, float y1, const char* text, const ImColor& col, bool enabled, int kind, int idx, float fs)
+	{
+		const ImVec2 a2 = V(x0, y0), b2 = V(x1, y1);
+		r->drawRoundedRect(a2, b2, enabled ? col : cOff, 5.0f * u, true);
+		if (col.Value.x != cPink.Value.x || !enabled) r->drawRoundedRect(a2, b2, cLine, 5.0f * u, false, 1.0f);
+		const ImVec2 ts = r->calculateTextSize(text, fs * u);
+		r->drawText(ImVec2((a2.x + b2.x - ts.x) * 0.5f, (a2.y + b2.y - ts.y) * 0.5f), enabled ? cText : cSub, text, false, fs * u);
 		if (enabled) hits.push_back({a2, b2, kind, idx});
 	};
+	auto briefcase = [&](float x, float y, float s, const ImColor& c)
+	{
+		r->drawRoundedRect(V(x + s * 0.30f, y + s * 0.10f), V(x + s * 0.70f, y + s * 0.38f), c, 1.5f * u, false, 1.4f);
+		r->drawRoundedRect(V(x + s * 0.05f, y + s * 0.30f), V(x + s * 0.95f, y + s * 0.90f), c, 2.0f * u, true);
+	};
+	auto dot = [&](float cx, float cy, float rad, const ImColor& c) { r->drawRoundedRect(V(cx - rad, cy - rad), V(cx + rad, cy + rad), c, rad * u, true); };
+
+	r->drawRoundedRect(P0, P1, cPanel, 8.0f * u, true);
+	r->drawRoundedRect(P0, P1, cLine, 8.0f * u, false, 1.2f);
+	hits.push_back({P0, P1, K_PANEL, 0});
 
 	// ---- cabecalho ----
-	{
-		const ImVec2 ia(P0.x + 14.0f * k, P0.y + 12.0f * k), ib(ia.x + 30.0f * k, ia.y + 30.0f * k);
-		r->drawRoundedRect(ia, ib, cPink, 8.0f * k, true);
-		r->drawRoundedRect(ImVec2(ia.x + 8.0f * k, ia.y + 12.0f * k), ImVec2(ib.x - 8.0f * k, ib.y - 7.0f * k), cText, 2.0f * k, true);     // maleta
-		r->drawRoundedRect(ImVec2(ia.x + 12.0f * k, ia.y + 7.0f * k), ImVec2(ib.x - 12.0f * k, ia.y + 13.0f * k), cText, 1.5f * k, false, 1.5f);
-		r->drawText(ImVec2(ib.x + 10.0f * k, P0.y + 10.0f * k), cText, "Agência de Empregos", false, 17.0f * k);
-		r->drawText(ImVec2(ib.x + 10.0f * k, P0.y + 30.0f * k), cPink, "MÁXIMO RP", false, 11.0f * k);
-		const ImVec2 xa(P1.x - 46.0f * k, P0.y + 10.0f * k), xb(P1.x - 14.0f * k, P0.y + 42.0f * k);
-		r->drawRoundedRect(xa, xb, cOff, 8.0f * k, true);
-		const float m = 10.0f * k;
-		r->drawLine(ImVec2(xa.x + m, xa.y + m), ImVec2(xb.x - m, xb.y - m), cText, 2.2f);
-		r->drawLine(ImVec2(xb.x - m, xa.y + m), ImVec2(xa.x + m, xb.y - m), cText, 2.2f);
-		hits.push_back({ImVec2(xa.x - 8 * k, xa.y - 8 * k), ImVec2(xb.x + 8 * k, xb.y + 8 * k), K_CLOSE, 0});
-	}
-	const float top = P0.y + 54.0f * k, bot = P1.y - 14.0f * k;
-	r->drawRect(ImVec2(P0.x + 1.0f, top - 4.0f * k), ImVec2(P1.x - 1.0f, top - 3.0f * k), cLine, true);
+	r->drawRoundedRect(V(15, 15), V(41, 41), cPink, 6.0f * u, true);
+	briefcase(20.0f, 20.0f, 16.0f, cText);
+	txt(50, 20, cText, "Agência de Empregos", 12.5f);
+	r->drawRoundedRect(V(756, 16), V(782, 42), cOff, 6.0f * u, true);
+	r->drawLine(V(765, 25), V(773, 33), cText, 2.0f);
+	r->drawLine(V(773, 25), V(765, 33), cText, 2.0f);
+	{ const ImVec2 xa = V(748, 8), xb = V(790, 50); hits.push_back({xa, xb, K_CLOSE, 0}); }
 
-	// ---- barra lateral: navegacao + emprego atual + nivel ----
-	const float sx0 = P0.x + 14.0f * k, sx1 = sx0 + 196.0f * k;
-	r->drawText(ImVec2(sx0, top + 2.0f * k), cSub, "NAVEGAÇÃO", false, 10.5f * k);
-	static const char* kTabs[4] = { "Empregos disponíveis", "Meu emprego atual", "Informações", "Sair" };
-	float ny = top + 18.0f * k;
-	for (int i = 0; i < 4; i++)
-	{
-		const ImVec2 a2(sx0, ny), b2(sx1, ny + 30.0f * k);
-		const bool act = (i == g_tab) && i < 3;
-		r->drawRoundedRect(a2, b2, act ? cPink : (i == 3 ? ImColor(92, 30, 40, 255) : cCard), 7.0f * k, true);
-		if (!act) r->drawRoundedRect(a2, b2, cLine, 7.0f * k, false);
-		r->drawText(ImVec2(a2.x + 12.0f * k, a2.y + 8.0f * k), cText, kTabs[i], false, 12.5f * k);
-		if (i < 3) r->drawText(ImVec2(b2.x - 18.0f * k, a2.y + 6.0f * k), cText, ">", false, 14.0f * k);
-		hits.push_back({a2, b2, K_TAB, i});
-		ny += 36.0f * k;
-	}
 	const bool employed = g_s.mine.has;
-	{   // cartao EMPREGO ATUAL
-		const ImVec2 a2(sx0, ny + 4.0f * k), b2(sx1, bot - 52.0f * k);
-		r->drawRoundedRect(a2, b2, cCard, 8.0f * k, true);
-		r->drawRoundedRect(a2, b2, cLine, 8.0f * k, false);
-		r->drawText(ImVec2(a2.x + 10.0f * k, a2.y + 8.0f * k), cSub, "EMPREGO ATUAL", false, 10.5f * k);
-		if (!employed) r->drawText(ImVec2(a2.x + 10.0f * k, a2.y + 28.0f * k), cText, "Desempregado", false, 14.0f * k);
+	const int nJobs = (int)g_s.jobs.size();
+	int curIdx = -1;
+	if (employed) for (int i = 0; i < nJobs; i++) if (g_s.jobs[(size_t)i].id == g_s.mine.id) { curIdx = i; break; }
+
+	// ---- barra lateral ----
+	txt(15, 58, cSub, "NAVEGAÇÃO", 8.0f);
+	r->drawRoundedRect(V(15, 73), V(200, 110), cPink, 6.0f * u, true);
+	briefcase(25.0f, 82.0f, 18.0f, cText);
+	txt(52, 85, cText, "AGÊNCIA", 10.0f);
+	txtR(190, 84, cText, ">", 12.0f);
+
+	{   // EMPREGO ATUAL
+		r->drawRoundedRect(V(15, 123), V(200, 312), cCard, 7.0f * u, true);
+		txt(25, 131, cSub, "EMPREGO ATUAL", 8.0f);
+		Job cur; cur.name = g_s.mine.name;
+		if (curIdx >= 0) cur = g_s.jobs[(size_t)curIdx];
+		if (employed)
+		{
+			DrawJobImage(r, cur, V(20, 147), V(195, 226), u);
+			char lv[24]; snprintf(lv, sizeof lv, "LVL %d", g_s.mine.lvl);
+			const ImVec2 ts = r->calculateTextSize(lv, 7.5f * u);
+			r->drawRoundedRect(V(26, 207), ImVec2(V(26, 207).x + ts.x + 10.0f * u, V(26, 221).y), cPink, 3.0f * u, true);
+			txt(31, 208.5f, cText, lv, 7.5f);
+			txt(25, 233, cText, g_s.mine.name, 11.5f);
+			dot(30, 258, 3.0f, cPink);
+			txt(38, 253, cText, curIdx >= 0 ? Money(cur.smin) + " até " + Money(cur.smax) : "", 8.0f);
+			button(25, 277, 190, 302, "DEMITIR-SE", cOff, true, K_QUIT, 0, 9.0f);
+		}
 		else
 		{
-			Job cur; cur.name = g_s.mine.name;
-			for (const Job& j : g_s.jobs) if (j.id == g_s.mine.id) { cur = j; break; }
-			DrawJobImage(r, cur, ImVec2(a2.x + 10.0f * k, a2.y + 26.0f * k), ImVec2(a2.x + 54.0f * k, a2.y + 70.0f * k), k);
-			r->drawText(ImVec2(a2.x + 62.0f * k, a2.y + 28.0f * k), cText, g_s.mine.name, false, 14.0f * k);
-			char b1[48]; snprintf(b1, sizeof b1, "LVL %d", g_s.mine.lvl);
-			r->drawText(ImVec2(a2.x + 62.0f * k, a2.y + 48.0f * k), cPink, b1, false, 11.5f * k);
-			button(ImVec2(a2.x + 10.0f * k, b2.y - 34.0f * k), ImVec2(b2.x - 10.0f * k, b2.y - 8.0f * k), "DEMITIR-SE", cOff, true, K_QUIT, 0, 11.5f);
-			r->drawRoundedRect(ImVec2(a2.x + 10.0f * k, b2.y - 34.0f * k), ImVec2(b2.x - 10.0f * k, b2.y - 8.0f * k), cLine, 7.0f * k, false);
+			r->drawRoundedRect(V(20, 147), V(195, 226), cDark, 5.0f * u, true);
+			txt(30, 175, cSub, "Desempregado", 11.0f);
+			txt(30, 195, cSub, "Escolha uma vaga ao lado.", 8.0f);
 		}
 	}
 	{   // nivel + XP
-		const ImVec2 a2(sx0, bot - 44.0f * k), b2(sx1, bot);
+		r->drawRoundedRect(V(15, 322), V(200, 388), cCard, 7.0f * u, true);
 		char b1[64]; const int lvl = employed ? g_s.mine.lvl : 0;
-		snprintf(b1, sizeof b1, employed ? "Nível %d" : "Nível do jogador: %d", employed ? lvl : g_s.plLevel);
-		r->drawText(ImVec2(a2.x, a2.y), cText, b1, false, 13.0f * k);
+		snprintf(b1, sizeof b1, "Nível %d", employed ? lvl : g_s.plLevel);
+		txt(25, 331, cText, b1, 11.0f);
+		float frac = 0.0f;
 		if (employed)
 		{
-			snprintf(b1, sizeof b1, "%d XP", g_s.mine.xp);
-			const ImVec2 ts = r->calculateTextSize(b1, 11.0f * k);
-			r->drawText(ImVec2(b2.x - ts.x, a2.y + 1.0f * k), cPink, b1, false, 11.0f * k);
 			const int into = lvl >= 5 ? 60 : g_s.mine.xp - (lvl - 1) * 60;
-			const float frac = lvl >= 5 ? 1.0f : std::clamp(into / 60.0f, 0.0f, 1.0f);
-			const ImVec2 ba(a2.x, a2.y + 20.0f * k), bb(b2.x, a2.y + 26.0f * k);
-			r->drawRoundedRect(ba, bb, cOff, 3.0f * k, true);
-			if (frac > 0.01f) r->drawRoundedRect(ba, ImVec2(ba.x + (bb.x - ba.x) * frac, bb.y), cPink, 3.0f * k, true);
-			r->drawText(ImVec2(a2.x, a2.y + 29.0f * k), cSub, "Complete tarefas para subir de nível.", false, 10.0f * k);
+			frac = lvl >= 5 ? 1.0f : std::clamp(into / 60.0f, 0.0f, 1.0f);
+			snprintf(b1, sizeof b1, "%d XP - %d%%", g_s.mine.xp, (int)std::lround(frac * 100.0f));
+			txtR(190, 334, cPink, b1, 8.0f);
 		}
+		r->drawRoundedRect(V(25, 350), V(190, 355), cOff, 2.5f * u, true);
+		if (frac > 0.01f) r->drawRoundedRect(V(25, 350), V(25 + 165.0f * frac, 355), cPink, 2.5f * u, true);
+		wrap(25, 362, "Complete trabalhos para subir de nível e desbloquear novas profissões", cSub, 7.5f, 165, 2, 10.0f);
+	}
+	{   // jogador
+		dot(33, 413, 10.0f, cOff);
+		dot(33, 410, 3.2f, cText);
+		r->drawRoundedRect(V(27.5f, 415), V(38.5f, 420), cText, 2.5f * u, true);
+		CPlayerPool* pp = (pNetGame && pNetGame->GetPlayerPool()) ? pNetGame->GetPlayerPool() : nullptr;
+		const char* nm = pp ? pp->GetLocalPlayerName() : nullptr;
+		txt(50, 404, cText, nm ? nm : "", 8.5f);
+		if (pp) { char b1[24]; snprintf(b1, sizeof b1, "ID: %d", (int)pp->GetLocalPlayerID()); txt(50, 417, cPink, b1, 7.5f); }
 	}
 
-	// ---- area principal ----
-	const float mx0 = sx1 + 18.0f * k, mx1 = P1.x - 14.0f * k, my0 = top + 2.0f * k;
-	float listMax = 0.0f;
+	// ---- vagas ----
 	const int perPage = 3;
-	const int nJobs = (int)g_s.jobs.size();
 	const int pages = std::max(1, (nJobs + perPage - 1) / perPage);
-	if (g_tab == 0)
+	g_page = std::clamp(g_page, 0, pages - 1);
+	txt(232, 54, cText, "VAGAS DISPONÍVEIS", 15.0f);
+	txt(232, 74, cSub, "Selecione uma vaga para iniciar o serviço", 8.0f);
+	button(719, 56, 747, 82, "<", cOff, g_page > 0, K_PREV, 0, 12.0f);
+	button(754, 56, 782, 82, ">", cOff, g_page < pages - 1, K_NEXT, 0, 12.0f);
+	if (nJobs == 0) txt(236, 120, cSub, "Nenhuma vaga aberta no momento.", 11.0f);
+	for (int c = 0; c < perPage; c++)
 	{
-		g_page = std::clamp(g_page, 0, pages - 1);
-		r->drawText(ImVec2(mx0, my0), cText, "VAGAS DISPONÍVEIS", false, 17.0f * k);
-		r->drawText(ImVec2(mx0, my0 + 22.0f * k), cSub, "Selecione uma vaga para ver os detalhes e assinar a carteira", false, 11.5f * k);
-		if (pages > 1)
-		{
-			const ImVec2 la(mx1 - 70.0f * k, my0 + 2.0f * k), lb(la.x + 30.0f * k, la.y + 28.0f * k), ra(lb.x + 10.0f * k, la.y), rb(ra.x + 30.0f * k, lb.y);
-			button(la, lb, "<", cOff, g_page > 0, K_PREV, 0, 14.0f); button(ra, rb, ">", cOff, g_page < pages - 1, K_NEXT, 0, 14.0f);
+		const int i = g_page * perPage + c; if (i >= nJobs) break;
+		const Job& j = g_s.jobs[(size_t)i];
+		const float cx = 232.0f + c * 188.0f, cy = 97.0f, cw = 176.0f, ch = 336.0f;
+		const bool sel = (i == g_sel), cur = (i == curIdx);
+		const bool full = j.vac > 0 && j.used >= j.vac;
+		const bool lowLvl = g_s.plLevel < j.minLvl;
+		if (sel) for (int gI = 4; gI >= 1; gI--)
+			r->drawRoundedRect(V(cx - gI * 1.6f, cy - gI * 1.6f), V(cx + cw + gI * 1.6f, cy + ch + gI * 1.6f), ImColor(236, 40, 96, 80 - gI * 16), (7.0f + gI) * u, false, 1.6f);
+		r->drawRoundedRect(V(cx, cy), V(cx + cw, cy + ch), cCard, 7.0f * u, true);
+		r->drawRoundedRect(V(cx, cy), V(cx + cw, cy + ch), sel ? cPink : cLine, 7.0f * u, false, sel ? 2.0f : 1.0f);
+		hits.push_back({V(cx, cy), V(cx + cw, cy + ch), K_CARD, i});
+		DrawJobImage(r, j, V(cx + 4, cy + 4), V(cx + cw - 4, cy + 112), u);
+		{   // selo de nivel
+			char lv[24]; snprintf(lv, sizeof lv, "LVL %d", j.minLvl);
+			const ImVec2 ts = r->calculateTextSize(lv, 7.5f * u);
+			const ImVec2 la = V(cx + 10, cy + 90);
+			r->drawRoundedRect(la, ImVec2(la.x + ts.x + 10.0f * u, V(0, cy + 104).y), lowLvl ? cRed : cPink, 3.0f * u, true);
+			txt(cx + 15, cy + 91.5f, cText, lv, 7.5f);
 		}
-		const float cy0 = my0 + 44.0f * k, cy1 = bot, gap = 12.0f * k;
-		const float cw = (mx1 - mx0 - gap * (perPage - 1)) / perPage;
-		if (nJobs == 0) r->drawText(ImVec2(mx0 + 4.0f * k, cy0 + 12.0f * k), cSub, "Nenhuma vaga aberta no momento.", false, 14.0f * k);
-		for (int c = 0; c < perPage; c++)
-		{
-			const int i = g_page * perPage + c; if (i >= nJobs) break;
-			const Job& j = g_s.jobs[(size_t)i];
-			const ImVec2 a2(mx0 + c * (cw + gap), cy0), b2(a2.x + cw, cy1);
-			const bool sel = (i == g_sel);
-			const bool full = j.vac > 0 && j.used >= j.vac;
-			const bool lowLvl = g_s.plLevel < j.minLvl;
-			r->drawRoundedRect(a2, b2, sel ? ImColor(44, 30, 36, 245) : cCard, 10.0f * k, true);
-			r->drawRoundedRect(a2, b2, sel ? cPink : cLine, 10.0f * k, false, sel ? 2.2f : 1.0f);
-			const float ih = (cy1 - cy0) * (sel ? 0.30f : 0.36f);
-			DrawJobImage(r, j, ImVec2(a2.x + 8.0f * k, a2.y + 8.0f * k), ImVec2(b2.x - 8.0f * k, a2.y + ih), k);
-			{   // selo de nivel
-				char lv[24]; snprintf(lv, sizeof lv, "LVL %d", j.minLvl);
-				const ImVec2 ts = r->calculateTextSize(lv, 10.0f * k);
-				const ImVec2 la2(a2.x + 14.0f * k, a2.y + ih - 24.0f * k), lb2(la2.x + ts.x + 14.0f * k, la2.y + 17.0f * k);
-				r->drawRoundedRect(la2, lb2, lowLvl ? cRed : cPink, 4.0f * k, true);
-				r->drawText(ImVec2(la2.x + 7.0f * k, la2.y + 2.5f * k), cText, lv, false, 10.0f * k);
-			}
-			float y = a2.y + ih + 8.0f * k; const float px = a2.x + 12.0f * k, maxW = cw - 24.0f * k;
-			r->drawText(ImVec2(px, y), cText, j.name, false, 15.5f * k); y += 22.0f * k;
-			r->drawText(ImVec2(px, y), cGreen, Money(j.smin) + " até " + Money(j.smax), false, 11.5f * k); y += 19.0f * k;
-			{   // descricao (quebra por largura)
-				const float fs = 11.0f * k; const int maxLines = sel ? 5 : 3;
-				std::string line, word, text = (j.descr.empty() ? "Sem descrição." : j.descr) + " ";
-				int lines = 0;
-				for (char ch : text)
-				{
-					if (ch != ' ') { word += ch; continue; }
-					std::string t2 = line.empty() ? word : line + " " + word;
-					if (r->calculateTextSize(t2, fs).x > maxW && !line.empty()) { if (lines < maxLines) r->drawText(ImVec2(px, y), cSub, line, false, fs); y += 14.0f * k; lines++; line = word; }
-					else line = t2;
-					word.clear();
-				}
-				if (!line.empty() && lines < maxLines) { r->drawText(ImVec2(px, y), cSub, line, false, fs); y += 14.0f * k; }
-			}
-			if (sel)
-			{
-				y += 4.0f * k;
-				char bf[80];
-				r->drawText(ImVec2(px, y), cText, "Requisitos", false, 11.5f * k); y += 15.0f * k;
-				snprintf(bf, sizeof bf, "• Nível %d ou mais (você: %d)", j.minLvl, g_s.plLevel);
-				r->drawText(ImVec2(px, y), lowLvl ? cRed : cGreen, bf, false, 10.5f * k); y += 14.0f * k;
-				r->drawText(ImVec2(px, y), cSub, "• Não ter outro emprego", false, 10.5f * k); y += 18.0f * k;
-				r->drawText(ImVec2(px, y), cText, "Remuneração", false, 11.5f * k); y += 15.0f * k;
-				r->drawText(ImVec2(px, y), cGreen, Money(j.smin) + " – " + Money(j.smax) + " por tarefa", false, 10.5f * k);
-			}
-			std::string st = full ? "Vagas esgotadas" : (j.vac > 0 ? "Vagas: " + std::to_string(j.vac - j.used) + " de " + std::to_string(j.vac) : "Vagas abertas");
-			r->drawText(ImVec2(px, b2.y - 62.0f * k), full ? cRed : cGreen, st, false, 10.5f * k);
-			const ImVec2 ba(a2.x + 10.0f * k, b2.y - 40.0f * k), bb(b2.x - 10.0f * k, b2.y - 10.0f * k);
-			if (!sel) button(ba, bb, "SELECIONAR", cOff, true, K_CARD, i, 12.0f);
-			else
-			{
-				const char* label = employed ? "VOCÊ JÁ TEM EMPREGO" : (full ? "VAGAS ESGOTADAS" : (lowLvl ? "NÍVEL INSUFICIENTE" : "ASSINAR CARTEIRA"));
-				button(ba, bb, label, cPink, !employed && !full && !lowLvl, K_SIGN, i, 12.0f);
-				hits.push_back({a2, ImVec2(b2.x, ba.y - 2.0f * k), K_CARD, i});
-			}
-			if (!sel) hits.push_back({a2, b2, K_CARD, i});
+		{   // icone de livro = informacoes completas
+			r->drawRoundedRect(V(cx + cw - 28, cy + 10), V(cx + cw - 10, cy + 28), ImColor(0, 0, 0, 140), 4.0f * u, true);
+			r->drawRoundedRect(V(cx + cw - 25, cy + 14), V(cx + cw - 13, cy + 24), cText, 1.5f * u, false, 1.3f);
+			r->drawLine(V(cx + cw - 19, cy + 14), V(cx + cw - 19, cy + 24), cText, 1.3f);
+			hits.push_back({V(cx + cw - 34, cy + 6), V(cx + cw - 6, cy + 32), K_INFO, i});
 		}
-	}
-	else if (g_tab == 1)
-	{
-		if (!employed)
+		txt(cx + 12, cy + 121, cText, j.name, 12.5f);
+		dot(cx + 16, cy + 151, 3.0f, cPink);
+		txt(cx + 24, cy + 146, cText, Money(j.smin) + " até " + Money(j.smax), 8.5f);
+		wrap(cx + 12, cy + 166, j.descr.empty() ? "Sem descrição." : j.descr, cSub, 8.5f, cw - 24, sel ? 3 : 4, 11.0f);
+		if (sel)
 		{
-			r->drawText(ImVec2(mx0, my0 + 6.0f * k), cText, "Você está desempregado.", false, 20.0f * k);
-			r->drawText(ImVec2(mx0, my0 + 36.0f * k), cSub, "Abra \"Empregos disponíveis\", escolha uma vaga e assine sua carteira.", false, 13.0f * k);
+			char bf[80];
+			txt(cx + 12, cy + 212, cText, "Requisitos", 8.5f);
+			snprintf(bf, sizeof bf, "• Nível %d ou mais (você: %d)", j.minLvl, g_s.plLevel);
+			txt(cx + 12, cy + 225, lowLvl ? cRed : cGreen, bf, 8.0f);
+			txt(cx + 12, cy + 237, cSub, "• Não ter outro emprego", 8.0f);
+			txt(cx + 12, cy + 251, cText, "Remuneração", 8.5f);
+			txt(cx + 12, cy + 264, cGreen, Money(j.smin) + " – " + Money(j.smax) + " por tarefa", 8.0f);
 		}
+		const std::string st = full ? "Vagas esgotadas" : (j.vac > 0 ? "Vagas: " + std::to_string(j.vac - j.used) + " de " + std::to_string(j.vac) : "Vagas abertas");
+		txt(cx + 12, cy + 282, full ? cRed : cGreen, st, 8.0f);
+		if (cur) button(cx + 10, cy + 300, cx + cw - 10, cy + 324, "DEMITIR-SE", cOff, true, K_QUIT, 0, 9.0f);
 		else
 		{
-			const Mine& m = g_s.mine;
-			r->drawText(ImVec2(mx0, my0), cSub, "EMPREGO ATUAL", false, 11.0f * k);
-			r->drawText(ImVec2(mx0, my0 + 16.0f * k), cText, m.name, false, 26.0f * k);
-			char b1[96]; float y = my0 + 62.0f * k;
-			auto row = [&](const char* label, const std::string& val, const ImColor& col)
-			{
-				r->drawText(ImVec2(mx0, y), cSub, label, false, 13.0f * k);
-				r->drawText(ImVec2(mx0 + 190.0f * k, y), col, val, false, 14.5f * k);
-				y += 25.0f * k;
-			};
-			row("Contratado em", m.date, cText);
-			snprintf(b1, sizeof b1, "%d de 5", m.lvl); row("Nível do emprego", b1, cText);
-			snprintf(b1, sizeof b1, "%d tarefas", m.done); row("Tarefas concluídas", b1, cText);
-			row("Total recebido", Money(m.earned), cGreen);
-			row("Expediente", m.duty ? "Em serviço" : "Fora de serviço (use /servico)", m.duty ? cGreen : cAmber);
-			button(ImVec2(mx1 - 200.0f * k, bot - 40.0f * k), ImVec2(mx1, bot), "PEDIR DEMISSÃO", cRed, true, K_QUIT, 0, 13.5f);
+			const char* label = employed ? "JÁ POSSUI EMPREGO" : (full ? "VAGAS ESGOTADAS" : (lowLvl ? "NÍVEL INSUFICIENTE" : "ASSINAR CARTEIRA"));
+			button(cx + 10, cy + 300, cx + cw - 10, cy + 324, label, sel ? cPink : cOff, !employed && !full && !lowLvl, K_SIGN, i, 9.0f);
 		}
 	}
-	else
-	{
-		float y = my0 + 2.0f * k;
-		const char* lines[] = {
-			"Como funciona", "",
-			"1. Escolha uma vaga em \"Empregos disponíveis\" e toque em ASSINAR CARTEIRA.",
-			"2. O servidor confere seu nível, as vagas e se você já tem emprego.",
-			"3. Cozinheiro: use /servico para iniciar o expediente, vá ao balcão da cozinha",
-			"    e use a tecla de ação (ou /cozinhar) para preparar pedidos. Cada pedido paga",
-			"    entre o salário mínimo e o máximo, e o pagamento sobe com o nível do emprego.",
-			"4. Você só pode ter um emprego por vez. Para trocar, peça demissão.",
-			"5. Seu emprego fica salvo na sua conta: continua valendo quando você volta." };
-		for (int i = 0; i < 9; i++)
-		{
-			r->drawText(ImVec2(mx0, y), i == 0 ? cPink : cSub, lines[i], false, i == 0 ? 18.0f * k : 12.5f * k);
-			y += (i == 0 ? 28.0f : 20.0f) * k;
-		}
-	}
-	(void)listMax;
 
-	// ---- confirmacao ----
+	// ---- confirmacao / informacoes ----
 	if (g_confirm != 0)
 	{
 		r->drawRect(P0, P1, ImColor(0, 0, 0, 150), true);
-		const float cw2 = 380.0f * k, ch2 = 150.0f * k;
-		const ImVec2 a((scr.x - cw2) * 0.5f, (scr.y - ch2) * 0.5f), b(a.x + cw2, a.y + ch2);
-		r->drawRoundedRect(a, b, cCard, 12.0f * k, true);
-		r->drawRoundedRect(a, b, cPink, 12.0f * k, false, 2.0f);
-		std::string t1, t2;
-		if (g_confirm == 1 && g_sel >= 0 && g_sel < (int)g_s.jobs.size()) { t1 = "Assinar carteira?"; t2 = "Contratação: " + g_s.jobs[(size_t)g_sel].name; }
-		else { t1 = "Pedir demissão?"; t2 = "Você perde o vínculo com " + g_s.mine.name + "."; }
-		r->drawText(ImVec2(a.x + 18.0f * k, a.y + 14.0f * k), cText, t1, false, 20.0f * k);
-		r->drawText(ImVec2(a.x + 18.0f * k, a.y + 46.0f * k), cSub, t2, false, 13.0f * k);
 		hits.clear();
 		hits.push_back({P0, P1, K_PANEL, 0});
-		button(ImVec2(a.x + 18.0f * k, b.y - 52.0f * k), ImVec2(a.x + cw2 * 0.5f - 6.0f * k, b.y - 14.0f * k), "CONFIRMAR", g_confirm == 1 ? cGreen : cRed, true, K_YES, 0, 13.0f);
-		button(ImVec2(a.x + cw2 * 0.5f + 6.0f * k, b.y - 52.0f * k), ImVec2(b.x - 18.0f * k, b.y - 14.0f * k), "CANCELAR", cOff, true, K_NO, 0, 13.0f);
+		const bool info = (g_confirm == 3);
+		const float mw = info ? 400.0f : 330.0f, mh = info ? 250.0f : 140.0f, mx = 398.5f - mw * 0.5f, my = 224.0f - mh * 0.5f;
+		r->drawRoundedRect(V(mx, my), V(mx + mw, my + mh), ImColor(36, 36, 40, 250), 8.0f * u, true);
+		r->drawRoundedRect(V(mx, my), V(mx + mw, my + mh), cPink, 8.0f * u, false, 2.0f);
+		const bool okJob = g_sel >= 0 && g_sel < nJobs;
+		if (info && okJob)
+		{
+			const Job& j = g_s.jobs[(size_t)g_sel];
+			char bf[96];
+			txt(mx + 16, my + 14, cText, j.name, 14.0f);
+			wrap(mx + 16, my + 36, j.descr.empty() ? "Sem descrição." : j.descr, cSub, 9.0f, mw - 32, 3, 12.0f);
+			snprintf(bf, sizeof bf, "Requisito: nível %d ou mais (você: %d)", j.minLvl, g_s.plLevel);
+			txt(mx + 16, my + 82, g_s.plLevel < j.minLvl ? cRed : cGreen, bf, 9.0f);
+			txt(mx + 16, my + 98, cText, "Remuneração: " + Money(j.smin) + " – " + Money(j.smax) + " por tarefa", 9.0f);
+			txt(mx + 16, my + 114, cSub, "O pagamento sobe com o nível do emprego (1 a 5).", 8.5f);
+			wrap(mx + 16, my + 136, "Depois de assinar a carteira use /servico para iniciar o expediente. Você só pode ter um emprego por vez e ele fica salvo na sua conta.", cSub, 8.5f, mw - 32, 4, 12.0f);
+			button(mx + 16, my + mh - 40, mx + mw - 16, my + mh - 14, "FECHAR", cOff, true, K_NO, 0, 9.5f);
+		}
+		else
+		{
+			std::string t1, t2;
+			if (g_confirm == 1 && okJob) { t1 = "Assinar carteira?"; t2 = "Contratação: " + g_s.jobs[(size_t)g_sel].name; }
+			else { t1 = "Pedir demissão?"; t2 = "Você perde o vínculo com " + g_s.mine.name + "."; }
+			txt(mx + 16, my + 14, cText, t1, 14.0f);
+			txt(mx + 16, my + 44, cSub, t2, 9.5f);
+			button(mx + 16, my + mh - 42, mx + mw * 0.5f - 5, my + mh - 14, "CONFIRMAR", g_confirm == 1 ? cGreen : cRed, true, K_YES, 0, 9.5f);
+			button(mx + mw * 0.5f + 5, my + mh - 42, mx + mw - 16, my + mh - 14, "CANCELAR", cOff, true, K_NO, 0, 9.5f);
+		}
 	}
 
 	// ---- aviso ----
 	if (now < g_toastUntil)
 	{
-		const float fs = 14.5f * k;
+		const float fs = 10.0f * u;
 		const ImVec2 ts = r->calculateTextSize(g_toast, fs);
-		const ImVec2 a((scr.x - ts.x) * 0.5f - 16.0f * k, P1.y - 66.0f * k), b((scr.x + ts.x) * 0.5f + 16.0f * k, P1.y - 30.0f * k);
-		r->drawRoundedRect(a, b, g_toastBad ? ImColor(120, 36, 40, 245) : ImColor(24, 100, 62, 245), 9.0f * k, true);
-		r->drawText(ImVec2(a.x + 16.0f * k, a.y + (b.y - a.y - ts.y) * 0.5f), cText, g_toast, false, fs);
+		const ImVec2 a((scr.x - ts.x) * 0.5f - 14.0f * u, P0.y + 8.0f * u), b((scr.x + ts.x) * 0.5f + 14.0f * u, P0.y + 38.0f * u);
+		r->drawRoundedRect(a, b, g_toastBad ? ImColor(120, 36, 40, 245) : ImColor(24, 100, 62, 245), 7.0f * u, true);
+		r->drawText(ImVec2(a.x + 14.0f * u, a.y + (b.y - a.y - ts.y) * 0.5f), cText, g_toast, false, fs);
 	}
 
 	// ---- toques ----
@@ -539,13 +518,11 @@ void JobsUI::draw(ImGuiRenderer* r)
 		switch (h.kind)
 		{
 		case K_CLOSE: JobsUI::Close(true); break;
-		case K_TAB:
-			if (h.idx == 3) { JobsUI::Close(true); break; }
-			g_tab = h.idx; break;
 		case K_PREV: if (g_page > 0) g_page--; break;
 		case K_NEXT: g_page++; break;
 		case K_CARD: g_sel = h.idx; break;
-		case K_SIGN: if (!employed && g_sel >= 0) g_confirm = 1; break;
+		case K_SIGN: if (!employed) { g_sel = h.idx; g_confirm = 1; } break;
+		case K_INFO: g_sel = h.idx; g_confirm = 3; break;
 		case K_QUIT: if (employed) g_confirm = 2; break;
 		case K_NO: g_confirm = 0; break;
 		case K_YES:
@@ -577,7 +554,7 @@ void JobsUI::draw(ImGuiRenderer* r)
 			if (e.cancel) continue;
 			if (d.moved)
 			{   // arrastar para os lados troca a pagina de vagas
-				if (g_tab == 0 && g_confirm == 0 && std::fabs(d.dx) > 70.0f * k && std::fabs(e.y - d.sy) < std::fabs(d.dx)) g_page += (d.dx < 0) ? 1 : -1;
+				if (g_confirm == 0 && std::fabs(d.dx) > 70.0f * k && std::fabs(e.y - d.sy) < std::fabs(d.dx)) g_page += (d.dx < 0) ? 1 : -1;
 				continue;
 			}
 			if (d.hit.kind != K_NONE && d.hit.kind != K_PANEL)
