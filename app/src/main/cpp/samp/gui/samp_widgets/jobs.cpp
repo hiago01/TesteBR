@@ -98,6 +98,7 @@ namespace
 		case 4: return "Você já possui um emprego. Peça demissão primeiro.";
 		case 5: return "Não há vagas disponíveis.";
 		case 6: return "Este emprego não existe mais.";
+		case 7: return "Agência indisponível: o serviço de empregos não respondeu.";
 		case 8: return "Faça login para usar a agência.";
 		default: return "Erro no servidor. Tente de novo.";
 		}
@@ -371,7 +372,21 @@ void JobsUI::draw(ImGuiRenderer* r)
 		}
 	}
 
-	if (!g_open.load()) { g_drag = Drag(); return; }
+	if (!g_open.load())
+	{
+		g_drag = Drag();
+		const int rc = g_resultCode.exchange(-1);       // erro/aviso do servidor com a tela fechada (ex.: servico fora do ar): mostra no topo da tela
+		if (rc >= 0) { g_toast = ResultText(rc, g_toastBad); g_toastUntil = now + 4200; }
+		if (now < g_toastUntil)
+		{
+			const float fs = 14.0f * k;
+			const ImVec2 ts = r->calculateTextSize(g_toast, fs);
+			const ImVec2 a((scr.x - ts.x) * 0.5f - 16.0f * k, 70.0f * k), b((scr.x + ts.x) * 0.5f + 16.0f * k, 70.0f * k + ts.y + 16.0f * k);
+			r->drawRoundedRect(a, b, g_toastBad ? ImColor(120, 36, 40, 245) : ImColor(24, 100, 62, 245), 8.0f * k, true);
+			r->drawText(ImVec2(a.x + 16.0f * k, a.y + 8.0f * k), ImColor(244, 244, 247, 255), g_toast, false, fs);
+		}
+		return;
+	}
 
 	if (g_resetView.exchange(false)) { g_sel = -1; g_page = 0; g_confirm = 0; g_drag = Drag(); g_toastUntil = 0; g_seenVer = ~0u; }
 	{

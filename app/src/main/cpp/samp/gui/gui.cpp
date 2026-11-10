@@ -247,6 +247,7 @@ void UI::drawList()
 	if (Hud::g.hideAll.load())
 	{
 		// jogador congelado (cutscene): nenhuma HUD; so dialogos/teclado continuam (senao o jogador ficaria preso)
+		if (JobsUI::IsOpen() && m_jobs) m_jobs->draw(renderer());      // agencia aberta pelo servidor: desenha mesmo com o jogador congelado
 		if (m_dialog && m_dialog->visible()) m_dialog->draw(renderer());
 		if (m_keyboard && m_keyboard->visible()) m_keyboard->draw(renderer());
 		return;
