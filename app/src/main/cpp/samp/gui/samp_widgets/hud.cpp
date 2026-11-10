@@ -329,6 +329,7 @@ namespace
 	constexpr bool  kChristmasLights = true;   // chave geral das luzes de natal sobre o logo
 	constexpr float kLogoTop  = 8.0f;     // distancia do topo da tela ao logo (logo centralizado na horizontal)
 	constexpr float kLogoGap  = 8.0f;     // logo -> linha 1
+	constexpr float kRaise    = 22.0f;    // sobe os circulos/pilulas (ficam ao lado do logo, nao embaixo)
 	constexpr float kRadius   = 20.0f;    // raio dos circulos
 	constexpr float kCircGap  = 11.0f;    // espaco entre circulos da linha 1
 	constexpr float kRowGap   = 9.0f;     // entre linhas (borda -> borda dos circulos)
@@ -838,7 +839,7 @@ void HudInfo::draw(ImGuiRenderer* r)
 
 	// ------------------------------------------------------------------ linha 1: status
 	const float R  = kRadius * S;
-	const float y1 = sz.y + (kTop + kLogoH + kLogoGap + kRadius) * S;
+	const float y1 = sz.y + (kTop + kLogoH + kLogoGap - kRaise + kRadius) * S;
 	{
 		struct Item { const HudAtlas::Rect* icon; ImColor col; float pct; bool alert; };
 		const Item items[5] = {

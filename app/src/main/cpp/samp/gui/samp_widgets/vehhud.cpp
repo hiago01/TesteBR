@@ -155,7 +155,7 @@ namespace
 		const float k = scr.y / 720.0f;
 		const float W = 236.0f * k;
 		const float x1 = scr.x - 16.0f * k;
-		float y = 46.0f * k;                       // abaixo da barra superior da HUD
+		float y = 132.0f * k;                      // abaixo da HUD (circulos + pilulas)
 		const float fsT = 10.5f * k, fsB = 9.0f * k;
 
 		for (const Note& n : g_active)
