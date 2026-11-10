@@ -27,6 +27,7 @@
 
 extern UI*       pUI;
 extern CNetGame* pNetGame;
+extern CGame*    pGame;
 extern volatile bool g_bTouchCancel;     // game/multitouch.cpp
 
 namespace
