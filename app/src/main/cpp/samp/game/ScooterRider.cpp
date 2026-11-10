@@ -114,4 +114,9 @@ void Update() {
     }
 }
 
+bool LocalRiding() {
+    CPlayerPool* pool = pNetGame ? pNetGame->GetPlayerPool() : nullptr;
+    return pool && Riding(PedOf(pool, pool->GetLocalPlayerID()));
+}
+
 } // namespace ScooterRider

@@ -44,6 +44,7 @@ namespace
 	std::atomic<bool> g_open{false}, g_flush{false}, g_resetView{false};
 	std::atomic<bool> g_claimed[4] = {{false}, {false}, {false}, {false}};
 	std::atomic<uint32_t> g_ver{0}, g_mkVer{0};
+	std::atomic<bool> g_scFolded{false};             // patinete dobrado na mao: o servidor mostra o botao fixo "Montar patinete" (op 6, kind 4, state 0 = montar)
 	std::atomic<uint32_t> g_mkLos{0xFFFFFFFFu};      // bit i = marcador i visivel da camera (calculado na thread do jogo, JobsUI_RenderWorld)
 	std::atomic<int>  g_resultCode{-1};
 	std::mutex        g_evMutex, g_snapMutex, g_mkMutex;
@@ -179,10 +180,12 @@ void JobsUI::Close(bool notifyServer)
 	g_confirm = 0; g_drag = Drag();
 	if (notifyServer) Send(4);
 }
+bool JobsUI_ScooterFolded() { return g_scFolded.load(); }
 void JobsUI::Reset()
 {
 	g_open.store(false); g_confirm = 0; g_drag = Drag(); g_tapReq.store(false); for (WorldTap& w : g_wt) w.valid = false;
 	{ std::lock_guard<std::mutex> l(g_mkMutex); g_mkNetA.clear(); g_mkNetB.clear(); g_mkNetC.clear(); g_mkNet.clear(); }
+	g_scFolded.store(false);
 	g_mkVer.fetch_add(1);
 	{ std::lock_guard<std::mutex> l(g_snapMutex); g_snap = Snap(); }
 	g_ver.fetch_add(1);
@@ -259,6 +262,7 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 			m.kind = (kind >= 1 && kind <= 5) ? (int)kind : 1; m.state = st ? 1 : 0; m.rgb &= 0xFFFFFF;
 			v.push_back(std::move(m));
 		}
+		if (op == 6) { bool f = false; for (const Mk& k : v) if (k.kind == 4 && k.text.rfind("Montar", 0) == 0) f = true; g_scFolded.store(f); }
 		{ std::lock_guard<std::mutex> l(g_mkMutex); (op == 4 ? g_mkNetA : op == 6 ? g_mkNetB : g_mkNetC) = std::move(v); MergeMk(); }
 		g_mkVer.fetch_add(1);
 		return;

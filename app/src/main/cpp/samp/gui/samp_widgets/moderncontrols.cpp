@@ -14,6 +14,7 @@
 #include "ctlicons.h"
 #include "passengerbutton_logic.h"
 #include "phone.h"
+#include "jobs.h"
 
 #include <atomic>
 #include <chrono>
@@ -451,6 +452,7 @@ void ModernControls::draw(ImGuiRenderer* r)
 				const bool busyEnter = ped->IsEnteringCar() || ped->IsExitingVehicle();
 				showEnter = PassengerLogic::ShouldShow(true, UiBlocked(), vehicle, alive, dist, busyEnter);
 			}
+			if (JobsUI_ScooterFolded()) showEnter = false;   // patinete dobrado na mao: sem P1/P2
 			if (!showEnter) g_ctl.disabledMask |= (1u << B_P1) | (1u << B_P2);
 		}
 		if (!editing) { if (!g_ctl.cfg.showInv) g_ctl.disabledMask |= (1u << B_INV); if (!g_ctl.cfg.showSlots) g_ctl.disabledMask |= (1u << B_SLOTS); }   // desligados nos ajustes (no editor continuam visiveis)

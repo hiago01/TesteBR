@@ -11,6 +11,8 @@
 #include "TouchInterface.h"
 #include "WidgetButton.h"
 #include "WidgetVisibility.h"
+#include "game/ScooterRider.h"
+bool JobsUI_ScooterFolded();   // gui/samp_widgets/jobs.cpp (jobs.h nao e incluivel aqui sem o resto da GUI)
 #include <cstdio>
 #include "gui/samp_widgets/controlmode.h"
 
@@ -70,6 +72,9 @@ eWidgetState ProcessFixedWidget(CWidgetGta* pWidget)
     // O estado usado e SEMPRE o do ped LOCAL (nunca o de jogadores proximos).
     {
         const int id = LookupWidgetId(pWidget);
+        // Patinete: pilotando, somem o botao nativo de sair e o freio de mao; dobrado na mao, some o de entrar (P1/P2 nativo).
+        if(id == WidgetVis::ID_HANDBRAKE && ScooterRider::LocalRiding()) return STATE_FIXED;
+        if(id == WidgetVis::ID_ENTER_CAR && (ScooterRider::LocalRiding() || JobsUI_ScooterFolded())) return STATE_FIXED;
         if(id >= 0 && WidgetVis::ShouldHide(id, pPlayerPed->IsInVehicle(), pPlayerPed->IsInJetpackMode()))
             return STATE_FIXED;
         // MODERNO a pe: os controles nativos substituidos nao podem ser religados pelo jogo

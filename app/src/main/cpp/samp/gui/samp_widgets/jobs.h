@@ -44,3 +44,5 @@ public:
 
 // Anel no chao + icone flutuante NA CENA 3D (RwIm3D, com teste de profundidade). Chamar 1x por frame em hooks.cpp RenderEffects().
 void JobsUI_RenderWorld();
+// true com o patinete dobrado na mao (servidor mostra o botao "Montar patinete"): P1/P2 e o botao nativo de entrar somem.
+bool JobsUI_ScooterFolded();
