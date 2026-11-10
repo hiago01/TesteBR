@@ -1,3 +1,4 @@
+#include "ScooterRider.h"
 #include "Diag.h"
 #include "../main.h"
 #include "game.h"
@@ -1011,6 +1012,7 @@ void CGame::Process() {
         ((void(*)())(g_libGTASA + 0x6F04CC))(); // CWaterCannons::Update()
 //		CUserDisplay::Process();
         ((void (*)()) (g_libGTASA + 0x50BE40))(); // CWorld::Process()
+        ScooterRider::Update();   // piloto do patinete: depois das tarefas dos veiculos, antes do PreRender (pesos das anims de moto -> 0)
 
 //		CLoadMonitor::EndFrame(&g_LoadMonitor);
 
