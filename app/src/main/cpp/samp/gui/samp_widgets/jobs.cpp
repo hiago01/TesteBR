@@ -36,7 +36,8 @@ namespace
 	struct Job  { int id = 0; std::string name, descr, image; uint32_t smin = 0, smax = 0; int minLvl = 0, vac = 0, used = 0; };
 	struct Mine { bool has = false; int id = 0; std::string name, date; int lvl = 1, xp = 0, done = 0; uint32_t earned = 0; bool duty = false; };
 	struct Snap { int plLevel = 0; Mine mine; std::vector<Job> jobs; };
-	// marcador desenhado no mundo (RPC 245 op 4): anel no chao + "(NPC) nome" + botao tocavel ao lado do NPC
+	// marcador desenhado no mundo (RPC 245 op 4 = empregos, op 6 = patinete): anel no chao + "(NPC) nome" + botao tocavel ao lado do NPC
+	// kind 1 agencia | 2 ponto de trabalho | 3 aluguel de patinete (anel + icone) | 4 botao de acao fixo na tela (montar/dobrar patinete; sem anel)
 	struct Mk { int kind = 1, state = 0; float x = 0, y = 0, z = 0, ax = 0, ay = 0, az = 0, radius = 1.3f; uint32_t rgb = 0xFFFFFF; std::string text, name; };
 	struct MkHit { ImVec2 a, b; int kind; };
 
@@ -48,7 +49,9 @@ namespace
 	std::mutex        g_evMutex, g_snapMutex, g_mkMutex;
 	std::vector<TouchEv> g_events;
 	Snap              g_snap;
-	std::vector<Mk>   g_mkNet;                       // recebido do servidor (protegido por g_mkMutex)
+	std::vector<Mk>   g_mkNetA, g_mkNetB;            // recebido do servidor: A = empregos (op 4), B = patinete (op 6); protegido por g_mkMutex
+	std::vector<Mk>   g_mkNet;                       // A + B (o que o desenho le)
+	void MergeMk() { g_mkNet = g_mkNetA; g_mkNet.insert(g_mkNet.end(), g_mkNetB.begin(), g_mkNetB.end()); }   // chamar com g_mkMutex
 
 	int64_t NowMs()
 	{
@@ -166,7 +169,7 @@ void JobsUI::Close(bool notifyServer)
 void JobsUI::Reset()
 {
 	g_open.store(false); g_confirm = 0; g_drag = Drag(); g_tapReq.store(false); g_wt.valid = false;
-	{ std::lock_guard<std::mutex> l(g_mkMutex); g_mkNet.clear(); }
+	{ std::lock_guard<std::mutex> l(g_mkMutex); g_mkNetA.clear(); g_mkNetB.clear(); g_mkNet.clear(); }
 	g_mkVer.fetch_add(1);
 	{ std::lock_guard<std::mutex> l(g_snapMutex); g_snap = Snap(); }
 	g_ver.fetch_add(1);
@@ -221,7 +224,7 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	if (!bs.Read(op)) return;
 	if (op == 3) { Close(false); return; }
 	if (op == 2) { uint8_t c = 0; if (bs.Read(c)) g_resultCode.store(c); return; }
-	if (op == 4)
+	if (op == 4 || op == 6)
 	{
 		uint8_t n = 0;
 		if (!bs.Read(n) || n > 8) return;
@@ -231,10 +234,10 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 			Mk m; uint8_t kind = 0, st = 0;
 			if (!bs.Read(kind) || !bs.Read(m.x) || !bs.Read(m.y) || !bs.Read(m.z) || !bs.Read(m.ax) || !bs.Read(m.ay) || !bs.Read(m.az) || !bs.Read(m.radius) || !bs.Read(m.rgb) || !RdStr(bs, m.text) || !RdStr(bs, m.name) || !bs.Read(st)) return;
 			if (!(m.radius >= 0.3f && m.radius <= 6.0f)) m.radius = 1.3f;
-			m.kind = kind == 2 ? 2 : 1; m.state = st ? 1 : 0; m.rgb &= 0xFFFFFF;
+			m.kind = (kind >= 1 && kind <= 4) ? (int)kind : 1; m.state = st ? 1 : 0; m.rgb &= 0xFFFFFF;
 			v.push_back(std::move(m));
 		}
-		{ std::lock_guard<std::mutex> l(g_mkMutex); g_mkNet = std::move(v); }
+		{ std::lock_guard<std::mutex> l(g_mkMutex); (op == 4 ? g_mkNetA : g_mkNetB) = std::move(v); MergeMk(); }
 		g_mkVer.fetch_add(1);
 		return;
 	}
@@ -278,21 +281,32 @@ static void DrawMarkers(ImGuiRenderer* r, float k, int64_t now)
 	{
 		const Mk& m = g_mk[mi];
 		if (mi < 32 && !(los & (1u << mi))) continue;      // atras de parede/carro: sem nome nem botao
-		// ---- nome do NPC (acima da cabeca) e botao (ao lado, na altura do peito) ----
-		ImVec2 head, chest; float dh = 0.0f, dc = 0.0f;
-		if (!Proj(m.ax, m.ay, m.az + 1.05f, head, dh) || !Proj(m.ax, m.ay, m.az + 0.25f, chest, dc)) continue;
-		if (dc > (m.kind == 2 ? 7.0f : 12.0f)) continue;           // so perto: o servidor tambem confere a distancia
-		if (!m.name.empty())
-		{
-			const std::string nm = "(NPC) " + m.name;
-			const float fs = 12.0f * k;
-			const ImVec2 ts = r->calculateTextSize(nm, fs);
-			r->drawText(ImVec2(head.x - ts.x * 0.5f, head.y - ts.y), ImColor(255, 255, 255, 255), nm, true, fs);
-		}
-		const std::string label = !m.text.empty() ? m.text : (m.kind == 2 ? std::string(m.state ? "Preparar pedido" : "Iniciar serviço") : std::string("Abrir agência"));
+		const std::string label = !m.text.empty() ? m.text : (m.kind == 4 ? std::string("Patinete") : m.kind == 3 ? std::string("Alugar patinete") : m.kind == 2 ? std::string(m.state ? "Preparar pedido" : "Iniciar serviço") : std::string("Abrir agência"));
 		const float fs = 11.5f * k, h = 24.0f * k;
 		const ImVec2 ts = r->calculateTextSize(label, fs);
-		const ImVec2 a(chest.x + 22.0f * k, chest.y - h * 0.5f), b(a.x + ts.x + 34.0f * k, a.y + h);
+		ImVec2 a, b;
+		if (m.kind == 4)
+		{
+			// botao fixo na tela (nao e de mundo): lado direito, abaixo do topo
+			const ImVec2 scr = pUI ? pUI->displaySize() : ImVec2(1920, 1080);
+			b = ImVec2(scr.x - 20.0f * k, scr.y * 0.32f + h);
+			a = ImVec2(b.x - (ts.x + 34.0f * k), scr.y * 0.32f);
+		}
+		else
+		{
+			// ---- nome do NPC (acima da cabeca) e botao (ao lado, na altura do peito) ----
+			ImVec2 head, chest; float dh = 0.0f, dc = 0.0f;
+			if (!Proj(m.ax, m.ay, m.az + 1.05f, head, dh) || !Proj(m.ax, m.ay, m.az + 0.25f, chest, dc)) continue;
+			if (dc > (m.kind == 2 ? 7.0f : 12.0f)) continue;           // so perto: o servidor tambem confere a distancia
+			if (!m.name.empty())
+			{
+				const std::string nm = "(NPC) " + m.name;
+				const float fn = 12.0f * k;
+				const ImVec2 tn = r->calculateTextSize(nm, fn);
+				r->drawText(ImVec2(head.x - tn.x * 0.5f, head.y - tn.y), ImColor(255, 255, 255, 255), nm, true, fn);
+			}
+			a = ImVec2(chest.x + 22.0f * k, chest.y - h * 0.5f); b = ImVec2(a.x + ts.x + 34.0f * k, a.y + h);
+		}
 		const float pulse = 0.5f + 0.5f * std::sin(t * 4.0f);
 		r->drawRoundedRect(a, b, ImColor(22, 22, 26, 215), 6.0f * k, true);
 		r->drawRoundedRect(a, b, ImColor(255, 255, 255, 60 + (int)(60.0f * pulse)), 6.0f * k, false, 1.2f);
@@ -328,7 +342,7 @@ void JobsUI::draw(ImGuiRenderer* r)
 			if (tx >= h.a.x && tx <= h.b.x && ty >= h.a.y && ty <= h.b.y)
 			{
 				g_tapReq.store(false); g_lastTapSent = now; tapped = true;
-				Send(h.kind == 2 ? 7 : 6);
+				Send(h.kind == 4 ? 9 : h.kind == 3 ? 8 : h.kind == 2 ? 7 : 6);
 				break;
 			}
 	}
@@ -721,6 +735,7 @@ void JobsUI_RenderWorld()
 			uint32_t bits = 0;
 			for (size_t i = 0; i < mk.size() && i < 32; i++)
 			{
+				if (mk[i].kind == 4) { bits |= 1u << i; continue; }            // botao fixo na tela: sem linha de visao
 				const float dx = mk[i].ax - cam.x, dy = mk[i].ay - cam.y, dz = mk[i].az - cam.z;
 				if (dx * dx + dy * dy + dz * dz > 14.0f * 14.0f) continue;
 				const CVector npc(mk[i].ax, mk[i].ay, mk[i].az + 0.8f);
@@ -738,7 +753,7 @@ void JobsUI_RenderWorld()
 	for (const Mk& m : mk)
 	{
 		const float dx = m.x - cam.x, dy = m.y - cam.y, dz = m.z - cam.z, d = std::sqrt(dx * dx + dy * dy + dz * dz);
-		if (d < 70.0f) order.push_back({&m, d});
+		if (m.kind != 4 && d < 70.0f) order.push_back({&m, d});
 	}
 	if (order.empty()) return;
 	static bool firstDraw = true;
@@ -818,9 +833,9 @@ void JobsUI_RenderWorld()
 		// ---- icone flutuante (billboard) ----
 		if (o.d < 60.0f)
 		{
-			static RwTexture* texCache[3] = {nullptr, nullptr, nullptr};          // evita procurar o icone pelo nome a cada quadro
-			const int ti = m.kind == 2 ? (m.state ? 2 : 1) : 0;
-			if (!texCache[ti]) texCache[ti] = IconTexDb::Texture(ti == 2 ? "mk_cozinha" : (ti == 1 ? "mk_servico" : "mk_jobs"));
+			static RwTexture* texCache[4] = {nullptr, nullptr, nullptr, nullptr};          // evita procurar o icone pelo nome a cada quadro
+			const int ti = m.kind == 3 ? 3 : (m.kind == 2 ? (m.state ? 2 : 1) : 0);
+			if (!texCache[ti]) texCache[ti] = IconTexDb::Texture(ti == 3 ? "mk_alugar" : (ti == 2 ? "mk_cozinha" : (ti == 1 ? "mk_servico" : "mk_jobs")));
 			RwTexture* tex = texCache[ti];
 			if (tex && tex->raster)
 			{
