@@ -692,7 +692,11 @@ void JobsUI_RenderWorld()
 	static uint32_t seen = ~0u;
 	{
 		const uint32_t v = g_mkVer.load();
-		if (v != seen) { std::lock_guard<std::mutex> l(g_mkMutex); mk = g_mkNet; seen = v; }
+		if (v != seen)
+		{
+			{ std::lock_guard<std::mutex> l(g_mkMutex); mk = g_mkNet; seen = v; }
+			FLog("[JOBS3D] %d marcador(es) recebido(s) do servidor", (int)mk.size());
+		}
 	}
 	if (mk.empty()) return;
 
@@ -728,6 +732,8 @@ void JobsUI_RenderWorld()
 		if (d < 70.0f) order.push_back({&m, d});
 	}
 	if (order.empty()) return;
+	static bool firstDraw = true;
+	if (firstDraw) { firstDraw = false; FLog("[JOBS3D] primeiro desenho: %d marcador(es) perto", (int)order.size()); }
 	std::sort(order.begin(), order.end(), [](const Job3& a, const Job3& b) { return a.d > b.d; });   // translucido: de tras pra frente
 
 	CHook::CallFunction<void>(g_libGTASA + 0x6F4EC4);   // DefinedState(), igual ao Hose.cpp / IdCard3D.cpp
@@ -763,7 +769,7 @@ void JobsUI_RenderWorld()
 				for (int k = 0; k < 2; k++)
 				{
 					const float rad = k == 0 ? ro : ri, x = m.x + c * rad, y = m.y + s2 * rad;
-					float gz = pGame->FindGroundZForCoord(x, y, m.z + 1.5f);
+					float gz = CWorld::FindGroundZForCoord(x, y);                // nativo (sem passar pelo interpretador de scripts a cada vertice/quadro)
 					if (!(std::fabs(gz - m.z) < 1.5f)) gz = m.z;               // leitura invalida: usa a altura do servidor
 					RxObjSpace3DVertex& w = v[i * 2 + k];
 					w.objVertex = { x, y, gz + 0.04f };
