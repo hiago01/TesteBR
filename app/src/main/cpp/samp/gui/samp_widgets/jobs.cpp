@@ -88,7 +88,8 @@ namespace
 
 	void Send(int op, int arg = -1)
 	{
-		if (!pNetGame || pNetGame->GetGameState() != GAMESTATE_CONNECTED || !pNetGame->GetRakClient()) return;
+		if (!pNetGame || pNetGame->GetGameState() != GAMESTATE_CONNECTED || !pNetGame->GetRakClient()) { FLog("[JOBS3D] Send op %d NAO enviado (sem conexao)", op); return; }
+		FLog("[JOBS3D] Send op %d arg %d", op, arg);
 		RakNet::BitStream bs;
 		bs.Write((uint8_t)op);
 		if (op == 1 || op == 2) bs.Write((uint16_t)arg);
@@ -223,7 +224,7 @@ void JobsUI::ObserveWorldTouch(int type, int num, int x, int y)
 	}
 	else if (type == 1)
 	{
-		if (wt.valid && !g_bTouchCancel && now - wt.t < 450) { g_tapX.store(wt.x); g_tapY.store(wt.y); g_tapReq.store(true); }
+		if (wt.valid && !g_bTouchCancel && now - wt.t < 450) { g_tapX.store(wt.x); g_tapY.store(wt.y); g_tapReq.store(true); FLog("[JOBS3D] toque curto em %.0f,%.0f (dedo %d)", wt.x, wt.y, num & 3); }
 		wt.valid = false;
 	}
 }
@@ -325,7 +326,7 @@ static void DrawMarkers(ImGuiRenderer* r, float k, int64_t now)
 		const ImVec2 dc2(a.x + 13.0f * k, a.y + h * 0.5f);
 		r->drawRoundedRect(ImVec2(dc2.x - 5.5f * k, dc2.y - 5.5f * k), ImVec2(dc2.x + 5.5f * k, dc2.y + 5.5f * k), ImColor(236, 40, 96, 255), 5.5f * k, true);
 		r->drawText(ImVec2(a.x + 26.0f * k, a.y + (h - ts.y) * 0.5f), ImColor(235, 235, 240, 255), label, false, fs);
-		const float pad = 8.0f * k;
+		const float pad = 14.0f * k;
 		g_mkHit.push_back({ImVec2(a.x - pad, a.y - pad), ImVec2(b.x + pad, b.y + pad), m.kind});
 	}
 }
@@ -350,6 +351,7 @@ void JobsUI::draw(ImGuiRenderer* r)
 	if (g_tapReq.load() && !g_open.load() && now - g_lastTapSent > 1200)
 	{
 		const float tx = g_tapX.load(), ty = g_tapY.load();
+		for (const MkHit& h : g_mkHit) FLog("[JOBS3D] area tipo %d: %.0f,%.0f - %.0f,%.0f (toque %.0f,%.0f)", h.kind, h.a.x, h.a.y, h.b.x, h.b.y, tx, ty);
 		for (const MkHit& h : g_mkHit)
 			if (tx >= h.a.x && tx <= h.b.x && ty >= h.a.y && ty <= h.b.y)
 			{
