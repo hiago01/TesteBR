@@ -254,7 +254,7 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 		for (int i = 0; i < n; i++)
 		{
 			Mk m; uint8_t kind = 0, st = 0;
-			if (!bs.Read(kind) || !bs.Read(m.x) || !bs.Read(m.y) || !bs.Read(m.z) || !bs.Read(m.ax) || !bs.Read(m.ay) || !bs.Read(m.az) || !bs.Read(m.radius) || !bs.Read(m.rgb) || !RdStr(bs, m.text) || !RdStr(bs, m.name) || !bs.Read(st)) return;
+			if (!bs.Read(kind) || !bs.Read(m.x) || !bs.Read(m.y) || !bs.Read(m.z) || !bs.Read(m.ax) || !bs.Read(m.ay) || !bs.Read(m.az) || !bs.Read(m.radius) || !bs.Read(m.rgb) || !RdStr(bs, m.text) || !RdStr(bs, m.name) || !bs.Read(st)) { FLog("[JOBS3D] pacote de marcadores (op %d) invalido no marcador %d de %d (%d bytes)", (int)op, i, (int)n, bytes); return; }
 			if (!(m.radius >= 0.3f && m.radius <= 6.0f)) m.radius = 1.3f;
 			m.kind = (kind >= 1 && kind <= 5) ? (int)kind : 1; m.state = st ? 1 : 0; m.rgb &= 0xFFFFFF;
 			v.push_back(std::move(m));
