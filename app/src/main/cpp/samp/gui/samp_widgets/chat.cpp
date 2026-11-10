@@ -4,6 +4,7 @@
 #include "../../game/game.h"
 #include "../../net/netgame.h"
 #include <algorithm>
+#include <atomic>
 #include "../settings.h"
 #include "java/jniutil.h"
 #include "../../game/sprite2d.h"
@@ -30,6 +31,10 @@ extern CGame* pGame;
 extern CNetGame* pNetGame;
 extern CSettings* pSettings;
 extern CJavaWrapper *pJavaWrapper;
+
+namespace { std::atomic<bool> g_chatAllowed{false}; }
+void ChatSetAllowed(bool allowed) { g_chatAllowed.store(allowed); }
+bool ChatAllowed() { return g_chatAllowed.load(); }
 
 Chat::Chat()
 	: ListBox()
@@ -97,6 +102,7 @@ void Chat::addPlayerMessage(const std::string& message, const std::string& nick,
 
 void Chat::draw(ImGuiRenderer* renderer)
 {
+	if (!g_chatAllowed.load()) return;   // jogador comum: sem chat
 	ListBox::draw(renderer);
 }
 
@@ -114,6 +120,7 @@ void Chat::activateEvent(bool active)
 
 void Chat::touchPopEvent()
 {
+	if (!g_chatAllowed.load()) return;   // jogador comum: o toque no chat nao abre o teclado
 	if (pUI->playertablist()->visible()) return;
 
 	pUI->keyboard()->show(this);

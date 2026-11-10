@@ -186,6 +186,7 @@ void JobsUI::Reset()
 	g_open.store(false); g_confirm = 0; g_drag = Drag(); g_tapReq.store(false); for (WorldTap& w : g_wt) w.valid = false;
 	{ std::lock_guard<std::mutex> l(g_mkMutex); g_mkNetA.clear(); g_mkNetB.clear(); g_mkNetC.clear(); g_mkNet.clear(); }
 	g_scFolded.store(false);
+	ChatSetAllowed(false);
 	g_mkVer.fetch_add(1);
 	{ std::lock_guard<std::mutex> l(g_snapMutex); g_snap = Snap(); }
 	g_ver.fetch_add(1);
@@ -241,6 +242,7 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	if (!bs.Read(op)) return;
 	if (op == 3) { Close(false); return; }
 	if (op == 2) { uint8_t c = 0; if (bs.Read(c)) g_resultCode.store(c); return; }
+	if (op == 8) { uint8_t a = 0; if (bs.Read(a)) ChatSetAllowed(a != 0); return; }   // u8 admin: libera/esconde o chat
 	if (op == 5)      // aviso em texto livre: u8 erro(0/1) + string
 	{
 		uint8_t bad = 1; std::string s;

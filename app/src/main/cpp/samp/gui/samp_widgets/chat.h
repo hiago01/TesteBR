@@ -2,6 +2,10 @@
 
 #include <list>
 
+// Chat so para administradores: o servidor avisa (RPC 245 op 8) e, enquanto nao for admin, o chat nao e desenhado e o toque nao abre o teclado.
+void ChatSetAllowed(bool allowed);
+bool ChatAllowed();
+
 class Chat : public ListBox
 {
 public:
