@@ -38,44 +38,41 @@ struct CoverCanvas : Canvas
 int main()
 {
 	using namespace CamStick;
-	{   // --- stick: traseira ---
-		SetMode(2); int16_t lr, ud;
-		Map(0, -127, lr, ud);  CHECK(lr == 0 && ud < -100);                       // cima = frente (ud negativo), com o analogico todo
-		Map(0, -64, lr, ud);   CHECK(lr == 0 && ud < -30 && ud > -70);            // proporcional
-		Map(0, 127, lr, ud);   CHECK(lr == 0 && ud == 0);                         // baixo nao anda de re (nao deixa o motor girar 180)
-		Map(127, 0, lr, ud);   CHECK(lr == 0 && ud == 0);                         // de lado: o motor nao anda; so gira (TakeTurn)
-		Map(10, -10, lr, ud);  CHECK(lr == 0 && ud == 0);                         // zona morta
-		Map(127, 0, lr, ud);   CHECK(TakeTurn(0.016f) < 0);                       // direita = heading diminui (vira a direita)
-		Map(-127, 0, lr, ud);  CHECK(TakeTurn(0.016f) > 0);
-		Map(127, 0, lr, ud);   const float full = TakeTurn(0.016f); Map(64, 0, lr, ud); CHECK(std::fabs(TakeTurn(0.016f)) < std::fabs(full)); // proporcional
-		Map(127, 0, lr, ud);   CHECK(std::fabs(TakeTurn(10.0f)) <= kTurnRate * kMaxDt + 1e-4f);                                              // quadro lento nao da salto
-		Map(0, 0, lr, ud);     CHECK(TakeTurn(0.016f) == 0.0f);
-	}
-	{   // --- stick: selfie (camera olha para tras: frente do personagem = ud positivo; direita = anti-horario) ---
-		SetMode(3); int16_t lr, ud;
-		Map(0, -127, lr, ud);  CHECK(lr == 0 && ud > 100);
-		Map(0, 127, lr, ud);   CHECK(lr == 0 && ud == 0);
-		Map(127, 0, lr, ud);   CHECK(TakeTurn(0.016f) > 0);
-		Map(-127, 0, lr, ud);  CHECK(TakeTurn(0.016f) < 0);
-	}
-	{   // --- sem camera: nada ativo, giro zero ---
-		SetMode(0); CHECK(!Active() && TakeTurn(0.016f) == 0.0f);
-		SetMode(7); CHECK(!Active());
-	}
-	{   // --- simulacao: o heading nao oscila e a posicao anda para a frente (selfie, cima segurado por 3 s) ---
-		SetMode(3); float h = 0.5f, x = 0, y = 0; int16_t lr, ud;
-		for (int i = 0; i < 180; ++i)
+	{   // --- Camera aberta: o motor SEMPRE recebe o stick zerado (personagem parado); so o eixo lateral gira a camera ---
+		for (int mode : { 2, 3 })
 		{
-			Map(0, -127, lr, ud);
-			h += TakeTurn(1.0f / 60.0f);
-			// o motor anda na direcao da camera (olhar = -frente) * (-ud/128): ud > 0 => oposto ao olhar => frente
-			const float fx = -std::sin(h), fy = std::cos(h), lx = -fx, ly = -fy, k = -(float)ud / 128.0f;
-			x += lx * k * 0.05f; y += ly * k * 0.05f;
+			SetMode(mode); CHECK(Active() && Mode() == mode); int16_t lr = 99, ud = 99;
+			for (int x : { -127, -64, 0, 64, 127 }) for (int y : { -127, 0, 127 }) { lr = 99; ud = 99; Map((int16_t)x, (int16_t)y, lr, ud); CHECK(lr == 0 && ud == 0); }
+			Map(127, -127, lr, ud); const float full = TakeTurn(0.016f);
+			Map(64, 0, lr, ud);     const float half = TakeTurn(0.016f);
+			Map(10, 0, lr, ud);     CHECK(TakeTurn(0.016f) == 0.0f);                                  // zona morta
+			Map(0, -127, lr, ud);   CHECK(TakeTurn(0.016f) == 0.0f);                                  // cima/baixo nao giram
+			CHECK(std::fabs(half) > 0 && std::fabs(half) < std::fabs(full));                          // proporcional
+			Map(127, 0, lr, ud);    CHECK(std::fabs(TakeTurn(10.0f)) <= kTurnRate * kMaxDt + 1e-4f);  // quadro lento nao da salto
+			Map(127, 0, lr, ud);    const float r = TakeTurn(0.016f); Map(-127, 0, lr, ud); const float l = TakeTurn(0.016f);
+			CHECK(r * l < 0 && std::fabs(r + l) < 1e-6f);                                             // esquerda e direita simetricas
+			if (mode == 2) CHECK(r < 0 && l > 0);                                                     // traseira: direita = heading diminui (vira a direita)
+			else           CHECK(r > 0 && l < 0);                                                     // selfie: direita = camera anti-horaria em volta (vai a direita)
 		}
-		CHECK(std::fabs(h - 0.5f) < 1e-6f);                                       // sem giro descontrolado
-		const float fx = -std::sin(h), fy = std::cos(h);
-		CHECK(x * fx + y * fy > 5.0f);                                            // andou para a frente do personagem
-		CHECK(std::fabs(x * fy - y * fx) < 1e-3f);                                // em linha reta
+	}
+	{   // --- fechar a Camera limpa tudo: sem giro residual e sem mexer no stick do jogo ---
+		int16_t lr, ud; SetMode(3); Map(127, 0, lr, ud); SetMode(0);
+		CHECK(!Active() && TakeTurn(0.016f) == 0.0f);
+		SetMode(7); CHECK(!Active());
+		SetMode(2); SetMode(0); SetMode(2); CHECK(TakeTurn(0.016f) == 0.0f);                          // reabrir nao herda o toque anterior
+		SetMode(0);
+	}
+	{   // --- simulacao: segurando o joystick para o lado por 2 s a camera da uma volta suave e a posicao do personagem nao muda ---
+		SetMode(3); float h = 0.5f, x = 3.0f, y = -2.0f; int16_t lr, ud; float maxStep = 0;
+		for (int i = 0; i < 120; ++i)
+		{
+			Map(127, -127, lr, ud); const float st = TakeTurn(1.0f / 60.0f); maxStep = std::max(maxStep, std::fabs(st)); h += st;
+			x += (float)lr * 0.01f; y += (float)ud * 0.01f;                                         // o motor recebe 0: nao anda
+		}
+		CHECK(x == 3.0f && y == -2.0f);
+		CHECK(std::fabs((h - 0.5f) - 1.75f * 2.0f) < 0.05f);                                      // ~kTurnRate * 2 s
+		CHECK(maxStep < 0.04f);                                                                    // sem solavanco
+		SetMode(0);
 	}
 	{   // --- moldura da Camera: anel concentrico, sem cantos quadrados fora do arco ---
 		PhoneManager pm; InstallDefaultApps(pm); pm.open();

@@ -831,6 +831,8 @@ void HudInfo::draw(ImGuiRenderer* r)
 		DrawChristmasLights(r, ImVec2(lx, sz.y + kLogoTop * S), ImVec2(lx + lw, sz.y + kLogoTop * S + lh), S);
 	}
 
+	if (Hud::g.photoCam.load()) return;   // Camera do celular aberta: so o logo (acima); circulos, pilulas, minimapa... ficam escondidos
+
 	// ------------------------------------------------------------------ linha 1: status
 	const float R  = kRadius * S;
 	const float y1 = sz.y + (kTop + kLogoH + kLogoGap + kRadius) * S;

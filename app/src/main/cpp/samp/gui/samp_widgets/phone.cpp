@@ -2,6 +2,7 @@
 #include "../gui.h"
 #include "../sffonts.h"
 #include "../../game/camstick.h"
+#include "hudstate.h"
 #include "../../game/game.h"
 #include "../../vendor/SimpleIni/SimpleIni.h"
 #include "../phone/PhoneApps.h"
@@ -44,6 +45,8 @@ namespace
 	int g_poseSent = 0;                  // ultima pose pedida ao servidor (0 = nenhuma)
 	int64_t g_poseAt = 0;
 	bool g_selfieCam = false;            // a camera do jogo esta sob controle da foto (traseira ou selfie)
+	// Estado "Camera do celular aberta": joystick so gira a camera (game/camstick.h) e a HUD some, menos o logo (hud.cpp / hooks.cpp)
+	void PhotoState(int mode) { CamStick::SetMode(mode); Hud::g.photoCam.store(mode == 2 || mode == 3); }
 	Phone::Store::Service* g_storeSvc = nullptr;         // Loja / IMEI / papel de parede (usa o transporte e o token do Gram)
 	Gram::Service* g_gram = nullptr;              // rede social (criado junto com o celular; fala direto com o servico de fotos do servidor)
 	std::atomic<bool> g_gramReset{ false };
@@ -287,7 +290,7 @@ void PhoneWidget::OnServerPacket(const unsigned char* data, int bytes)
 	PM();                                                  // garante que g_net esta ligado
 	g_net.onServerPacketBS(bs);
 }
-void PhoneWidget::Reset() { g_net.connectionReset(); g_gramReset.store(true); g_poseSent = 0; CamStick::SetMode(0); if (g_selfieCam) { g_selfieCam = false; CCamera::SetBehindPlayer(); } }
+void PhoneWidget::Reset() { g_net.connectionReset(); g_gramReset.store(true); g_poseSent = 0; PhotoState(0); if (g_selfieCam) { g_selfieCam = false; CCamera::SetBehindPlayer(); } }
 
 void PhoneWidget::PostNotification(const std::string& title, const std::string& text, const std::string& appId, int level)
 {
@@ -304,12 +307,12 @@ namespace
 	{
 		if (mode == 2 || mode == 3)
 		{
-			if (!pNetGame || !pNetGame->GetPlayerPool()) { CamStick::SetMode(0); return; }
+			if (!pNetGame || !pNetGame->GetPlayerPool()) { PhotoState(0); return; }
 			CLocalPlayer* lp = pNetGame->GetPlayerPool()->GetLocalPlayer();
 			CPlayerPed* pp = lp ? lp->GetPlayerPed() : nullptr;
-			if (!pp || !pp->m_pPed || pp->IsInVehicle()) { CamStick::SetMode(0); return; }
+			if (!pp || !pp->m_pPed || pp->IsInVehicle()) { PhotoState(0); return; }
 			// joystick do personagem com a camera (game/camstick.h): o motor anda so ao longo do heading; o giro e aplicado aqui, uma vez por quadro
-			CamStick::SetMode(mode);
+			PhotoState(mode);
 			{
 				static int64_t s_prevT = 0; const int64_t t = NowMs();
 				const float dtS = (s_prevT && t > s_prevT) ? (float)(t - s_prevT) / 1000.0f : 0.016f; s_prevT = t;
@@ -325,14 +328,14 @@ namespace
 			in.vfX = c.camVfX; in.vfY = c.camVfY; in.vfW = c.camVfW; in.vfH = c.camVfH;
 			in.fovDeg = *reinterpret_cast<const float*>(g_libGTASA + 0x88E6BC);      // FOV horizontal atual (CDraw::SetFOV hook)
 			const Phone::CamOut o = Phone::ComputePhotoCamera(in);
-			if (!o.ok) { CamStick::SetMode(0); return; }
+			if (!o.ok) { PhotoState(0); return; }
 			CCamera::SetPosition(o.cx, o.cy, o.cz, 0.0f, 0.0f, 0.0f);
 			CCamera::LookAtPoint(o.lx, o.ly, o.lz, 2);
 			g_selfieCam = true;
 		}
 		else if (g_selfieCam)
 		{
-			CamStick::SetMode(0);
+			PhotoState(0);
 			g_selfieCam = false;
 			CCamera::SetBehindPlayer();                                             // devolve a camera normal
 		}

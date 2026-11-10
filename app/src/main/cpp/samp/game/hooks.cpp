@@ -686,7 +686,8 @@ void Render2dStuff()
     const bool hideHud = Hud::g.hideAll.load() || InventoryIsOpenNow();   // jogador congelado (cutscene): nenhuma HUD
     if (!hideHud)
     {
-        CHook::CallFunction<void>("_ZN4CHud4DrawEv");   // radar, moldura do mapa, icones nativos
+        if (!Hud::g.photoCam.load())   // Camera do celular aberta: sem radar/icones nativos (os botoes de toque continuam)
+            CHook::CallFunction<void>("_ZN4CHud4DrawEv");   // radar, moldura do mapa, icones nativos
         //	GPS::Draw();
         //
         ((void(*)(bool) )(g_libGTASA + 0x36FB00) )(false); // CTouchInterface::DrawAll (botoes de toque: pular, mira, etc.)
