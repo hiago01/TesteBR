@@ -35,6 +35,7 @@ public:
 	static bool HotbarGet(int slot, int& icon, int& qty, int* flags = nullptr);   // true se ha item atribuido ao slot (flags: 1 equipada, 2 arma)
 	static void HotbarUse(int slot);                                      // usa o item do slot (se houver)
 	static void RequestOpen();                                            // pede ao servidor para abrir o inventario (/inv)
+	static void HotStyle(uint32_t out[5]);                              // cores do slot rapido (painel): 0xRRGGBBAA x {fundo, moldura, selo, numero, "na mao"}
 	static void DrawHotbarIcon(ImGuiRenderer* r, int icon, const ImVec2& a, const ImVec2& b, int alpha);
 
 	// RPC 203 (servidor -> cliente). data/bytes = payload completo.

@@ -557,22 +557,31 @@ void ModernControls::draw(ImGuiRenderer* r)
 		const int A = alphaOf(i);
 		const float bk = (((snap.blockedMask >> i) & 1u) != 0) ? 0.3f : 1.0f;      // bloqueado (pulando/na parede): esmaecido
 		auto Cb = [&](int R, int G, int B2, int A2) { return ImColor(R, G, B2, (int)std::lround((float)A2 * fm * bk)); };
-		if (i == B_SLOTS)       // barra de slots rapidos: casas arredondadas com os primeiros slots do inventario do servidor
+		if (i == B_SLOTS)       // barra de slots rapidos: MESMO visual do inventario aberto (casa quadrada translucida, moldura fina, selo numerado na borda direita), deitada
 		{
 			const float side = HotbarSide(b), pitch = HotbarPitch(b), left = HotbarLeft(b), top = b.cy - b.r;
-			const float rnd = side * 0.18f, lw = std::max(2.0f, side * 0.04f);
+			const float lw = std::max(1.0f, side * 0.02f);
+			const float rnd = side * 0.06f;                                  // so a moldura de edicao (o slot em si e quadrado)
+			uint32_t hs[5]; InventoryUI::HotStyle(hs);                       // cores do painel (padrao = visual atual do inventario)
+			auto Hc = [&](int k, int) -> ImColor {                            // 0xRRGGBBAA do painel * esmaecimento (sem depender da opacidade do botao: moldura/selo/numero sempre legiveis)
+				const uint32_t v = hs[k];
+				const float al = (float)(v & 255u) * fm * bk;
+				return ImColor((int)((v >> 24) & 255u), (int)((v >> 16) & 255u), (int)((v >> 8) & 255u), (int)std::lround(std::min(255.0f, al)));
+			};
 			for (int k = 0; k < kHotbarN; k++)
 			{
 				const ImVec2 a0(left + (float)k * pitch, top), a1(a0.x + side, a0.y + side);
 				const bool dn = snap.BtnDown(B_SLOTS) && snap.slotPressed == k;
-				r->drawRoundedRect(a0, a1, dn ? Cb(255, 255, 255, std::min(255, A + 60)) : Cb(20, 20, 20, A), rnd, true);          // mesmo cinza dos botoes
-				r->drawRoundedRect(a0, a1, Cb(255, 255, 255, std::min(255, A + 50)), rnd, false, lw);
 				int icon = 8, qty = 0, hfl = 0;
-				if (InventoryUI::HotbarGet(k, icon, qty, &hfl))
+				const bool has = InventoryUI::HotbarGet(k, icon, qty, &hfl);
+				const bool hold = has && (hfl & 1) && (hfl & 4);                // arma na mao: moldura na cor "na mao"
+				r->drawRect(a0, a1, dn ? Cb(255, 255, 255, std::min(255, A + 60)) : Cb(20, 20, 20, A / 2), true);          // fundo escuro suave (no inventario aberto quem escurece e o "dim"; no HUD o cenario e claro)
+				if (!dn) r->drawRect(a0, a1, Hc(0, 0), true);
+				r->drawRect(a0, a1, hold ? Hc(4, 0) : Hc(1, 0), false, hold ? std::max(2.0f, lw * 2.0f) : lw);
+				if (has)
 				{
 					const float m = side * 0.14f;
 					const float fade = (qty <= 0 && !(hfl & 1)) ? 0.35f : 1.0f;      // item/municao em falta: apagado
-					if ((hfl & 1) && (hfl & 4)) r->drawRoundedRect(a0, a1, Cb(255, 210, 70, 240), rnd, false, std::max(2.0f, lw * 1.6f));   // so amarelo, e apenas com a arma na mao
 					InventoryUI::DrawHotbarIcon(r, icon, ImVec2(a0.x + m, a0.y + m), ImVec2(a1.x - m, a1.y - m), (int)std::lround((float)std::min(255, A + 170) * fm * bk * fade));
 					if (qty > 1 || ((hfl & 1) && qty <= 0))
 					{
@@ -581,8 +590,13 @@ void ModernControls::draw(ImGuiRenderer* r)
 						r->drawText(ImVec2(a1.x - ts.x - side * 0.07f, a1.y - ts.y - side * 0.05f), Cb(255, 255, 255, std::min(255, A + 150)), q, true, fq);
 					}
 				}
+				// selo numerado na borda DIREITA do slot (igual ao inventario aberto)
+				const float bsz = side * 0.26f;                                 // metade fica fora do slot, no vao entre as casas (kHotbarGap)
+				const float by = a0.y + (side - bsz) * 0.5f;
+				r->drawRect(ImVec2(a1.x - bsz * 0.5f, by), ImVec2(a1.x + bsz * 0.5f, by + bsz), Hc(2, 40), true);
 				char nb[4]; snprintf(nb, sizeof nb, "%d", k + 1);
-				r->drawText(ImVec2(a0.x + side * 0.09f, a0.y + side * 0.04f), Cb(255, 255, 255, std::min(255, A + 60)), nb, false, side * 0.2f);
+				const float fn = bsz * 0.62f; const ImVec2 ns = r->calculateTextSize(nb, fn);
+				r->drawText(ImVec2(a1.x - ns.x * 0.5f, by + (bsz - ns.y) * 0.5f), Hc(3, 40), nb, false, fn);
 			}
 			if (editing && snap.sel == i)
 				r->drawRoundedRect(ImVec2(left - side * 0.1f, top - side * 0.1f), ImVec2(left + HotbarWidth(b) + side * 0.1f, top + side * 1.1f), kYellow, rnd * 1.2f, false, std::max(3.0f, b.r * 0.08f));

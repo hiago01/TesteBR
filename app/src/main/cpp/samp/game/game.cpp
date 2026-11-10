@@ -26,6 +26,7 @@
 #include "PhoneModelTex.h"
 #include "CustomSkinStream.h"
 #include "SkinTexDb.h"
+#include "IconTexDb.h"
 #include "SafeTexDb.h"
 #include <sys/stat.h>
 #include <strings.h>
@@ -755,6 +756,8 @@ bool CGame::InitialiseRenderWare() {
 
     // banco de texturas das roupas/skins (texdb/skins/). So personagens; independe de CustomImg::kCustomContent.
     SkinTexDb::Load();
+    IconTexDb::Load();                                  // banco de icones do inventario (texdb/icones/; opcional)
+    FLog("[ICONTEXDB] %s", IconTexDb::Status().c_str());
     FLog("[SKINTEXDB] %s", SkinTexDb::Status().c_str());
     FLog("[SKINTEXDB] %s", SkinTexDb::Files().c_str());
     FLog("[SKINTEXDB] %s", SkinTexDb::GpuInfo().c_str());

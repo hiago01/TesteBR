@@ -7,6 +7,7 @@
 #include "inventory.h"
 #include "inventory_atlas.h"
 #include "../../util/CUtil.h"
+#include "../../game/IconTexDb.h"
 #include "controlmode.h"
 #include "controlsselector.h"
 
@@ -49,6 +50,15 @@ namespace
 		std::vector<Drop> ground;
 		Trade trade;
 	};
+
+	// ---- aparencia (RPC 203 op 9): cores editaveis pelo painel + nomes das texturas de icone (id 128+i). Mutex proprio. ----
+	// chaves (ordem do servidor): 0 hot_cell 1 hot_line 2 hot_badge 3 hot_badge_txt 4 hot_hold 5 inv_pink 6 inv_pink_fill 7 inv_cell 8 inv_line
+	constexpr int kThemeKeys = 9;
+	const uint32_t kThemeDef[kThemeKeys] = { 0xFFFFFF12u, 0xFFFFFF3Eu, 0xEC2860FFu, 0xFFFFFFFFu, 0xFFD246FFu, 0xEC2860FFu, 0xEC28605Au, 0xFFFFFF12u, 0xFFFFFF3Eu };
+	std::mutex               g_thm;
+	uint32_t                 g_themeRgba[kThemeKeys] = { 0xFFFFFF12u, 0xFFFFFF3Eu, 0xEC2860FFu, 0xFFFFFFFFu, 0xFFD246FFu, 0xEC2860FFu, 0xEC28605Au, 0xFFFFFF12u, 0xFFFFFF3Eu };
+	std::vector<std::string> g_texNames;
+	ImColor ThemeColor(uint32_t v) { return ImColor((int)((v >> 24) & 255), (int)((v >> 16) & 255), (int)((v >> 8) & 255), (int)(v & 255)); }
 
 	struct HotSlot { int id = 0, qty = 0, icon = 8, flags = 0; std::string name; };
 	HotSlot    g_hot[5];
@@ -213,6 +223,21 @@ namespace
 
 	void DrawIcon(ImGuiRenderer* r, int icon, const ImVec2& a, const ImVec2& b, int alpha = 255)
 	{
+		if (icon >= 128)       // textura do banco texdb/icones (nome vem do servidor); sem ela: icone generico do atlas
+		{
+			std::string nm; { std::lock_guard<std::mutex> l(g_thm); const size_t i = (size_t)(icon - 128); if (i < g_texNames.size()) nm = g_texNames[i]; }
+			RwTexture* t = nm.empty() ? nullptr : IconTexDb::Texture(nm);
+			if (t && t->raster)
+			{
+				const float cw = b.x - a.x, ch = b.y - a.y;
+				const float iw = (float)(t->raster->width > 0 ? t->raster->width : 1), ih = (float)(t->raster->height > 0 ? t->raster->height : 1);
+				const float k = std::min(cw / iw, ch / ih), dw = iw * k, dh = ih * k;
+				const ImVec2 a2(a.x + (cw - dw) * 0.5f, a.y + (ch - dh) * 0.5f);
+				r->drawImage(a2, ImVec2(a2.x + dw, a2.y + dh), (ImTextureID)t->raster, ImColor(255, 255, 255, alpha), ImVec2(0, 0), ImVec2(1, 1));
+				return;
+			}
+			icon = 8;
+		}
 		if (const int w = WeaponFromIcon(icon))
 		{
 			if (RwTexture* gt = GetGtaWeaponIcon(w))
@@ -271,6 +296,11 @@ void InventoryUI::Reset()
 	{
 		std::lock_guard<std::mutex> l(g_evMutex);
 		g_events.clear();
+	}
+	{
+		std::lock_guard<std::mutex> lt(g_thm);        // outro servidor: volta ao visual padrao
+		for (int i = 0; i < kThemeKeys; i++) g_themeRgba[i] = kThemeDef[i];
+		g_texNames.clear();
 	}
 	std::lock_guard<std::mutex> l(g_dm);
 	g_state = State();
@@ -394,6 +424,30 @@ void InventoryUI::OnServerPacket(const unsigned char* data, int bytes)
 		std::lock_guard<std::mutex> l(g_dm);
 		for (int i = 0; i < 5; i++) g_hot[i] = tmp[i];
 	}
+	else if (op == 9)   // THEME: cores + nomes das texturas dos icones (valida tudo antes de aplicar)
+	{
+		uint8_t n = 0;
+		if (!bs.Read(n) || n > kThemeKeys) return;
+		uint32_t nv[kThemeKeys]; for (int i = 0; i < kThemeKeys; i++) nv[i] = kThemeDef[i];
+		for (int i = 0; i < n; i++)
+		{
+			uint8_t k = 0, r8 = 0, g8 = 0, b8 = 0, a8 = 0;
+			if (!bs.Read(k) || !bs.Read(r8) || !bs.Read(g8) || !bs.Read(b8) || !bs.Read(a8) || k >= kThemeKeys) return;
+			nv[k] = ((uint32_t)r8 << 24) | ((uint32_t)g8 << 16) | ((uint32_t)b8 << 8) | a8;
+		}
+		uint8_t nt = 0;
+		if (!bs.Read(nt) || nt > 64) return;
+		std::vector<std::string> names;
+		for (int i = 0; i < nt; i++)
+		{
+			std::string nm;
+			if (!ReadStr(bs, nm) || nm.empty() || nm.size() > 31) return;
+			names.push_back(nm);
+		}
+		std::lock_guard<std::mutex> l(g_thm);
+		for (int i = 0; i < kThemeKeys; i++) g_themeRgba[i] = nv[i];
+		g_texNames.swap(names);
+	}
 	else if (op == 8)   // abre a tela de escolha de controles (= /controles); servidor envia ao fim da cutscene de conta nova
 	{
 		ControlMode::EnsureLoaded();
@@ -433,10 +487,19 @@ namespace
 	const ImColor cRed    (235, 90, 90, 255);
 	const ImColor cBtn    (38, 38, 48, 235);
 	const ImColor cBtnOff (28, 28, 34, 200);
-	const ImColor cPink   (236, 40, 96, 255);
-	const ImColor cPinkF  (236, 40, 96, 90);
-	const ImColor cCellBg (255, 255, 255, 18);
-	const ImColor cCellLn (255, 255, 255, 62);
+	// mutaveis: o painel (servidor) troca as cores; ApplyTheme() copia no inicio de cada quadro (thread de desenho)
+	ImColor cPink   (236, 40, 96, 255);
+	ImColor cPinkF  (236, 40, 96, 90);
+	ImColor cCellBg (255, 255, 255, 18);
+	ImColor cCellLn (255, 255, 255, 62);
+	ImColor cHotCell(255, 255, 255, 18), cHotLine(255, 255, 255, 62), cHotBadge(236, 40, 96, 255), cHotBadgeTx(255, 255, 255, 255), cHotHold(255, 210, 70, 255);
+	void ApplyTheme()
+	{
+		uint32_t v[kThemeKeys];
+		{ std::lock_guard<std::mutex> l(g_thm); for (int i = 0; i < kThemeKeys; i++) v[i] = g_themeRgba[i]; }
+		cHotCell = ThemeColor(v[0]); cHotLine = ThemeColor(v[1]); cHotBadge = ThemeColor(v[2]); cHotBadgeTx = ThemeColor(v[3]); cHotHold = ThemeColor(v[4]);
+		cPink = ThemeColor(v[5]); cPinkF = ThemeColor(v[6]); cCellBg = ThemeColor(v[7]); cCellLn = ThemeColor(v[8]);
+	}
 	const ImColor cTint   (26, 14, 40, 150);
 
 	constexpr int INV_TRADE_VIS = 6;       // linhas de oferta exibidas (= INV_TRADE_SLOTS do servidor)
@@ -483,6 +546,7 @@ namespace
 
 void InventoryUI::draw(ImGuiRenderer* r)
 {
+	ApplyTheme();
 	if (g_sendClose.exchange(false) && pNetGame) pNetGame->SendChatCommand("/invx close");
 
 	if (!g_open.load())
@@ -956,15 +1020,15 @@ void InventoryUI::draw(ImGuiRenderer* r)
 			const HotSlot& h = hot[i];
 			const bool eq = (h.flags & 1) != 0, miss = h.id && h.qty <= 0 && !eq;
 			const bool tgt = over == i;
-			r->drawRect(a, b, tgt ? cPinkF : cCellBg, true);
-			r->drawRect(a, b, tgt ? cPink : ((h.flags & 4) ? ImColor(255, 210, 70, 255) : cCellLn), false, (tgt || (h.flags & 4)) ? 2.0f : 1.0f);   // so amarelo, e apenas na mao
+			r->drawRect(a, b, tgt ? cPinkF : cHotCell, true);
+			r->drawRect(a, b, tgt ? cPink : ((h.flags & 4) ? cHotHold : cHotLine), false, (tgt || (h.flags & 4)) ? 2.0f : 1.0f);   // so a cor de "na mao", e apenas na mao
 			if (h.id)
 			{
 				const float m = 8.0f * u;
 				const bool ghost = g_t.dragging && g_t.panel == P_HOT && g_t.src == i;
 				DrawIcon(r, h.icon, ImVec2(a.x + m, a.y + m), ImVec2(b.x - m, b.y - m), ghost ? 70 : (miss ? 90 : 255));
 				if (h.flags & 4)   // arma na mao: travada
-					r->drawText(ImVec2(a.x + 4.0f * u, a.y + 3.0f * u), ImColor(255, 210, 70, 255), "NA MÃO", true, 8.5f * u);
+					r->drawText(ImVec2(a.x + 4.0f * u, a.y + 3.0f * u), cHotHold, "NA MÃO", true, 8.5f * u);
 				if (h.qty > 1 || (h.flags & 8) || (eq && h.qty <= 0))   // arma de fogo sempre mostra a municao carregada
 				{
 					char q[12]; snprintf(q, sizeof(q), "%dx", h.qty);
@@ -974,10 +1038,10 @@ void InventoryUI::draw(ImGuiRenderer* r)
 			}
 			// selo numerado rosa na borda direita do slot
 			const float bs = 18.0f * u, by = a.y + (slot - bs) * 0.5f;
-			r->drawRect(ImVec2(b.x - bs * 0.5f, by), ImVec2(b.x + bs * 0.5f, by + bs), cPink, true);
+			r->drawRect(ImVec2(b.x - bs * 0.5f, by), ImVec2(b.x + bs * 0.5f, by + bs), cHotBadge, true);
 			char nb[4]; snprintf(nb, sizeof(nb), "%d", i + 1);
 			const ImVec2 ns = r->calculateTextSize(nb, 11.0f * u);
-			r->drawText(ImVec2(b.x - ns.x * 0.5f, by + (bs - ns.y) * 0.5f), ImColor(255, 255, 255, 255), nb, false, 11.0f * u);
+			r->drawText(ImVec2(b.x - ns.x * 0.5f, by + (bs - ns.y) * 0.5f), cHotBadgeTx, nb, false, 11.0f * u);
 		}
 	}
 
@@ -1070,6 +1134,12 @@ void InventoryUI::RequestOpen()
 	if (g_open.load() || !pNetGame || now - s_last < 700) return;
 	s_last = now;
 	pNetGame->SendChatCommand("/inv");
+}
+
+void InventoryUI::HotStyle(uint32_t out[5])
+{
+	std::lock_guard<std::mutex> l(g_thm);
+	for (int i = 0; i < 5; i++) out[i] = g_themeRgba[i];       // hot_cell, hot_line, hot_badge, hot_badge_txt, hot_hold (0xRRGGBBAA)
 }
 
 void InventoryUI::DrawHotbarIcon(ImGuiRenderer* r, int icon, const ImVec2& a, const ImVec2& b, int alpha) { DrawIcon(r, icon, a, b, alpha); }
