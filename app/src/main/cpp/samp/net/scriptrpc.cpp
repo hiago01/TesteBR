@@ -8,6 +8,7 @@
 #include "../audiostream.h"
 #include "../game/ClothesSync.h"
 #include "../gui/samp_widgets/hudstate.h"
+#include "../gui/samp_widgets/vehhud.h"
 #include "../game/Hose.h"
 #include "../game/IdCard3D.h"
 #include "../game/Giroflex.h"
@@ -2116,6 +2117,15 @@ void ScrJobs(RPCParameters* rpcParams)
 	JobsUI::OnServerPacket(Data, (iBitLength + 7) / 8);
 }
 
+// Avisos no canto + velocimetro: servidor -> client (RPC_VehHud = 247). Formato em gui/samp_widgets/vehhud.h.
+void ScrVehHud(RPCParameters* rpcParams)
+{
+	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
+	int iBitLength = rpcParams->numberOfBitsOfData;
+	if (!Data || iBitLength <= 0) return;
+	VehHud::OnServerPacket(Data, (iBitLength + 7) / 8);
+}
+
 void RegisterScriptRPCs(RakClientInterface *pRakClient)
 {
 	FLog("Registering script RPC's..");
@@ -2180,7 +2190,9 @@ void RegisterScriptRPCs(RakClientInterface *pRakClient)
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrMap, ScrMap);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_PhoneEvent, ScrPhone);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_JobsEvent, ScrJobs);
+	pRakClient->RegisterAsRemoteProcedureCall(&RPC_VehHud, ScrVehHud);
 	JobsUI::Reset();         // nova conexao: agencia fechada
+	VehHud::Reset();
 	PhoneWidget::Reset();    // nova conexao: celular sem numero/ligacao
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrGiroflex, ScrGiroflex);
 	Giroflex_Reset();      // nova conexao: giroflex desligado
@@ -2252,7 +2264,9 @@ void UnregisterScriptRPCs(RakClientInterface *pRakClient)
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrMap);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_PhoneEvent);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_JobsEvent);
+	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_VehHud);
 	JobsUI::Reset();
+	VehHud::Reset();
 	PhoneWidget::Reset();
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrGiroflex);
 	Giroflex_Reset();

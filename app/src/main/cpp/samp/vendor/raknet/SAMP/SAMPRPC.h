@@ -164,5 +164,6 @@ extern int RPC_ScrGiroflex;
 extern int RPC_PhoneRequest;
 extern int RPC_PhoneEvent;
 extern int RPC_JobsEvent;
+extern int RPC_VehHud;          // avisos + velocimetro (servidor -> cliente), gui/samp_widgets/vehhud.h
 extern int RPC_JobsRequest;
 extern int RPC_ScrWeapSkin;

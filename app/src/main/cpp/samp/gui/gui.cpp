@@ -96,6 +96,15 @@ bool UI::initialize()
 		m_modernControls->setVisible(true);
 	}
 
+	// Avisos no canto (sucesso/erro/aviso) + velocimetro com botoes de motor e trava; tudo vem do servidor (RPC 247)
+	{
+		m_vehHud = new VehHudWidget();
+		this->addChild(m_vehHud);
+		m_vehHud->setFixedSize(VehHudWidget::SizeFor(size()));
+		m_vehHud->setPosition(VehHudWidget::PosFor(size()));
+		m_vehHud->setVisible(true);      // o proprio draw() decide quando aparece
+	}
+
 	// HUD do jogador (logo Maximo RP + vida/colete/fome/energia/sede + dinheiro): canto superior direito.
 	{
 		m_hud = new HudInfo();

@@ -30,6 +30,7 @@
 #include "samp_widgets/voicebutton.h"
 #include "samp_widgets/weaponbar.h"
 #include "samp_widgets/hud.h"
+#include "samp_widgets/vehhud.h"
 #include "samp_widgets/inventory.h"
 #include "samp_widgets/worldmap.h"
 #include "samp_widgets/provador.h"
@@ -122,6 +123,7 @@ private:
 	ModernControls* m_modernControls = nullptr;
 	ControlsSelector* m_controlsSelector = nullptr;
 	HudInfo* m_hud = nullptr;
+	VehHudWidget* m_vehHud = nullptr;
 	MaximoMenu* m_maximoMenu = nullptr;
 	MaximoOSWidget* m_maximoOS = nullptr;
 	PhoneWidget* m_phone = nullptr;

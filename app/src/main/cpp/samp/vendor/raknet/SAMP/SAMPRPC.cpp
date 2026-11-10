@@ -169,4 +169,5 @@ int RPC_PhoneRequest = 240;
 int RPC_PhoneEvent = 241;
 // Agencia de Empregos Maximo RP: servidor -> cliente (245: estado/resultado/fechar) e cliente -> servidor (246: tocar na recepcionista, contratar, demissao, fechar). Ver gui/samp_widgets/jobs.h e filterscripts/emprego.pwn
 int RPC_JobsEvent = 245;
+int RPC_VehHud = 247;
 int RPC_JobsRequest = 246;
