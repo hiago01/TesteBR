@@ -113,6 +113,7 @@ int main()
 		CHECK(r.c().dial("1234567").find("chip") != std::string::npos);                             // nao liga sem chip
 		CHECK(r.c().sendMessage("1234567", "oi").find("chip") != std::string::npos);
 		CHECK(r.sent.empty());
+		CHECK(r.net.requestGramToken(50000) && r.sent.size() == 1 && r.sent[0].op == Net::OpGram); r.sent.clear();   // Gram/Loja pedem token mesmo SEM chip
 		CHECK(r.net.removeChip().find("n\xC3\xA3o tem chip") != std::string::npos);                 // nada para remover
 		d.number = "5551234"; r.ev(d);                                                              // instalou um chip
 		CHECK(changes.size() == 2 && r.c().myNumber == "5551234");

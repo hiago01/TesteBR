@@ -184,7 +184,7 @@ namespace Phone
 		// pede o token do Gram (rede social); no maximo 1 a cada 6 s. false = nao enviou (sem rede / muito cedo)
 		bool requestGramToken(int64_t now)
 		{
-			if (!m_c || !send || !m_c->networked || m_c->myNumber.empty()) return false;
+			if (!m_c || !send || !m_c->networked) return false;           // Gram/Loja funcionam SEM chip (so precisam do celular; o servidor recusa se nao houver)
 			if (m_lastGram && now - m_lastGram < 6000) return false;
 			m_lastGram = now;
 			Net::Request r; r.op = Net::OpGram; r.req = nextReq();
