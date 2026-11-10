@@ -1,3 +1,4 @@
+// Marcador no mundo: base visual do recurso PlayNow_markers (MTA), autoria de "theking" - creditos mantidos.
 #include "../../main.h"
 #include "../gui.h"
 #include "../../game/game.h"
@@ -257,7 +258,7 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	if (!g_open.exchange(true)) { g_flush.store(true); g_resetView.store(true); }
 }
 
-// anel no chao (so contorno, centro vazio) + "(NPC) nome" sobre a cabeca + botao tocavel ao lado do NPC (tudo e por toque: o Android nao tem tecla E)
+// Marcador no estilo PlayNow_markers (MTA) de "theking" (creditos mantidos): anel pulsante no chao + icone flutuante; + "(NPC) nome" sobre a cabeca + botao tocavel ao lado do NPC (tudo e por toque: o Android nao tem tecla E)
 static void DrawMarkers(ImGuiRenderer* r, float k, int64_t now)
 {
 	g_mkHit.clear();
@@ -267,27 +268,49 @@ static void DrawMarkers(ImGuiRenderer* r, float k, int64_t now)
 	}
 	if (g_mk.empty()) return;
 	const float t = (float)(now % 100000) * 0.001f;
+	float px = 0.0f, py = 0.0f, pz = 0.0f; bool havePos = false;
+	if (pNetGame && pNetGame->GetPlayerPool())
+	{
+		CLocalPlayer* lp = pNetGame->GetPlayerPool()->GetLocalPlayer();
+		CPlayerPed* pp = lp ? lp->GetPlayerPed() : nullptr;
+		if (pp && pp->m_pPed) { const CVector pv = pp->m_pPed->GetPosition(); px = pv.x; py = pv.y; pz = pv.z; havePos = true; }
+	}
 	for (const Mk& m : g_mk)
 	{
+		const bool inside = havePos && std::fabs(pz - m.z) < 2.5f && (px - m.x) * (px - m.x) + (py - m.y) * (py - m.y) <= m.radius * m.radius;
 		const int cr = (int)((m.rgb >> 16) & 255), cg = (int)((m.rgb >> 8) & 255), cb = (int)(m.rgb & 255);
-		// ---- anel no chao ----
+		// ---- anel no chao + icone flutuante (estilo PlayNow_markers) ----
 		{
-			const int N = 40; ImVec2 pts[N]; bool ok = true; float dep = 0.0f;
-			const float rad = m.radius * (1.0f + 0.03f * std::sin(t * 3.0f));
+			const float ph = t * 2.0f;                                   // MARKER_ANIMATION_SPEED 0.002/ms = 2 rad/s
+			const float sn = std::sin(ph);
+			int rr = cr, gg = cg, bb = cb, aa = (int)(200.0f + std::sin(ph / 3.0f) * 35.0f);
+			if (inside) { rr = (int)(190 + sn * 23); gg = (int)(200 + sn * 20); bb = (int)std::min(255.0f, 216 + sn * 30); aa = 255; }
+			const float ro = m.radius * (1.0f - sn * 0.07f), ri = ro * 0.74f;    // faixa externa do floor.png (25% do raio)
+			const int N = 40; ImVec2 po[N], pi[N]; bool ok = true; float dep = 0.0f;
 			for (int i = 0; i < N && ok; i++)
 			{
-				const float a = (float)i * (6.2831853f / (float)N); float d = 0.0f;
-				ok = Proj(m.x + std::cos(a) * rad, m.y + std::sin(a) * rad, m.z + 0.06f, pts[i], d);
+				const float ang = (float)i * (6.2831853f / (float)N), c = std::cos(ang), sa = std::sin(ang); float d = 0.0f, d2 = 0.0f;
+				ok = Proj(m.x + c * ro, m.y + sa * ro, m.z + 0.06f, po[i], d) && Proj(m.x + c * ri, m.y + sa * ri, m.z + 0.06f, pi[i], d2);
 				if (i == 0) dep = d;
 			}
-			if (ok && dep < 48.0f)
+			if (ok && dep < 60.0f)
 			{
-				const int al = (int)(255.0f * std::clamp((48.0f - dep) / 16.0f, 0.0f, 1.0f));
+				const float fade = std::clamp((60.0f - dep) / 20.0f, 0.0f, 1.0f);
+				const ImColor col(rr, gg, bb, (int)((float)aa * fade));
 				for (int i = 0; i < N; i++)
 				{
-					const ImVec2& p0 = pts[i]; const ImVec2& p1 = pts[(i + 1) % N];
-					r->drawLine(p0, p1, ImColor(cr, cg, cb, al / 4), 6.0f * k);
-					r->drawLine(p0, p1, ImColor(cr, cg, cb, al), 2.4f * k);
+					const int j = (i + 1) % N;
+					ImVec2 q[4] = {po[i], po[j], pi[j], pi[i]};
+					r->drawConvexPolyFilled(q, 4, col);
+				}
+				RwTexture* tex = IconTexDb::Texture(m.kind == 2 ? (m.state ? "mk_cozinha" : "mk_servico") : "mk_jobs");
+				ImVec2 ic, ie; float di = 0.0f, de = 0.0f;
+				const float cz = m.z + 1.2f + sn * 0.1f;               // MARKER_TEXT_OFFSET 1.2 m, balanco de 0,1 m
+				if (tex && tex->raster && Proj(m.x, m.y, cz, ic, di) && Proj(m.x, m.y, cz + 0.4f, ie, de))
+				{
+					const float hs = std::fabs(ic.y - ie.y);             // metade do lado (0,8 m)
+					if (hs > 2.0f && hs < 400.0f)
+						r->drawImage(ImVec2(ic.x - hs, ic.y - hs), ImVec2(ic.x + hs, ic.y + hs), (ImTextureID)tex->raster, ImColor(255, 255, 255, (int)(255.0f * fade)), ImVec2(0, 0), ImVec2(1, 1));
 				}
 			}
 		}
