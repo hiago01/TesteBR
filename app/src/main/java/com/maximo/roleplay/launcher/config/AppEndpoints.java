@@ -31,28 +31,21 @@ public final class AppEndpoints {
         return base(c) + c.getString(R.string.endpoint_news_path).trim();
     }
 
-    public static String clientConfigUrl(Context c) {
-        return base(c) + c.getString(R.string.endpoint_client_config_path).trim();
+    public static String maximoConfigUrl(Context c) {
+        return base(c) + c.getString(R.string.endpoint_maximo_config_path).trim();
     }
 
-    /** URL completa de um arquivo do jogo, a partir do "path" relativo do client_config. */
+    /** files_testes.json: lista (name/size/path/sha256) dos arquivos do jogo. Fallback de url_cache_files do maximo_config.json. */
+    public static String filesListUrl(Context c) {
+        return base(c) + c.getString(R.string.endpoint_files_list_path).trim();
+    }
+
+    /** URL completa de um arquivo do jogo, a partir do "path" relativo de files_testes.json. */
     public static String fileUrl(Context c, String relativePath) {
         String p = c.getString(R.string.endpoint_files_path).trim();
         if (!p.endsWith("/")) p = p + "/";
         String rel = relativePath.startsWith("/") ? relativePath.substring(1) : relativePath;
         return base(c) + p + rel;
-    }
-
-    /**
-     * URL final de um pacote ZIP do client_config ("packs"[].url): absoluta (http/https) fica como esta;
-     * iniciada por "/" e relativa a base do servidor. Qualquer outra forma e rejeitada (null).
-     */
-    public static String packUrl(Context c, String url) {
-        if (url == null) return null;
-        String u = url.trim();
-        if (u.startsWith("http://") || u.startsWith("https://")) return u;
-        if (u.startsWith("/")) return base(c) + u;
-        return null;
     }
 
     /** samp.json: lista (path/size/sha256) da pasta SAMP/. */

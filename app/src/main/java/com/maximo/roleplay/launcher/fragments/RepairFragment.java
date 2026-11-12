@@ -24,7 +24,6 @@ import com.maximo.roleplay.R;
 import com.maximo.roleplay.launcher.config.AppEndpoints;
 import com.maximo.roleplay.launcher.pack.AtomicInstaller;
 import com.maximo.roleplay.launcher.pack.ClientWipe;
-import com.maximo.roleplay.launcher.pack.InstalledState;
 import com.maximo.roleplay.launcher.pack.CancelToken;
 import com.maximo.roleplay.launcher.pack.FileDownloader;
 import com.maximo.roleplay.launcher.pack.MiniJson;
@@ -196,7 +195,7 @@ public class RepairFragment extends Fragment {
     }
 
     /**
-     * Apaga o jogo instalado (ClientWipe: mantem so configuracoes/favoritos/logs; installed.json e downloads parciais saem)
+     * Apaga o jogo instalado (ClientWipe: mantem so configuracoes/favoritos/logs; downloads parciais saem)
      * e reabre o launcher pela Splash, que ao nao achar instalacao baixa tudo de novo do /filestestes/ (mesmo fluxo da 1a vez).
      */
     private void startReinstall() {
@@ -309,17 +308,23 @@ public class RepairFragment extends Fragment {
         }
     }
 
-    /** client_config -> url_cache_files; samp.json (opcional, como no UpdateService); files.json. */
+    /** maximo_config.json -> url_cache_files; samp.json (opcional, como no UpdateService); files_testes.json. */
     private List<RepairEngine.Entry> loadEntries(File base) throws PackException {
         Activity a = getActivity();
         if (a == null) throw new PackException("tela fechada");
         post("Baixando listas do servidor...", "");
-        String cfgText = FileDownloader.fetchText(AppEndpoints.clientConfigUrl(a), 2 << 20, ATTEMPTS, SLEEP, cancel);
-        Map<String, Object> root = MiniJson.asMap(MiniJson.parse(cfgText));
-        Map<String, Object> cfg = root == null ? null : MiniJson.asMap(root.get("client_config"));
-        String filesUrl = cfg == null ? null : MiniJson.str(cfg, "url_cache_files");
-        if (filesUrl == null || !(filesUrl.startsWith("http://") || filesUrl.startsWith("https://")))
-            throw new PackException("client_config sem url_cache_files válido");
+        String cfgText = FileDownloader.fetchText(AppEndpoints.maximoConfigUrl(a), 2 << 20, ATTEMPTS, SLEEP, cancel);
+        Map<String, Object> cfg = MiniJson.asMap(MiniJson.parse(cfgText));
+        if (cfg == null) throw new PackException("maximo_config.json nao e um objeto JSON");
+        // url_cache_files ausente => <base>/files_testes.json; presente e que nao seja http(s) => erro.
+        String filesUrl = MiniJson.str(cfg, "url_cache_files");
+        if (filesUrl == null || filesUrl.trim().isEmpty()) {
+            filesUrl = AppEndpoints.filesListUrl(a);
+        } else {
+            filesUrl = filesUrl.trim();
+            if (!(filesUrl.startsWith("http://") || filesUrl.startsWith("https://")))
+                throw new PackException("maximo_config.json: url_cache_files invalido");
+        }
 
         List<RepairEngine.Entry> samp = null;
         try {
@@ -328,7 +333,7 @@ public class RepairFragment extends Fragment {
         } catch (CancelToken.Cancelled c) {
             throw c;
         } catch (PackException e) {
-            samp = null; // sem samp.json a SAMP/ vem do files.json (igual ao UpdateService)
+            samp = null; // sem samp.json a SAMP/ vem do files_testes.json (igual ao UpdateService)
         }
         haveSampJson = samp != null;
         List<String> warns = new ArrayList<>();
@@ -336,13 +341,13 @@ public class RepairFragment extends Fragment {
         List<RepairEngine.Entry> files = RepairEngine.fromFilesJson(fj, warns);
         List<RepairEngine.Entry> merged = RepairEngine.merge(samp, files);
         // Skins fora ("download_skins": false no JSON ou DOWNLOAD SEGURO): nao entram na verificacao/reparo.
-        Object ds = cfg == null ? null : cfg.get("download_skins");
+        Object ds = cfg.get("download_skins");
         if (com.maximo.roleplay.launcher.pack.GameFilePolicy.shouldSkipSkins(ds, com.maximo.roleplay.launcher.util.DownloadMode.SAFE.equals(com.maximo.roleplay.launcher.util.DownloadMode.get(a)))) {
             List<RepairEngine.Entry> noSkins = new ArrayList<>();
             for (RepairEngine.Entry en : merged) if (!com.maximo.roleplay.launcher.pack.GameFilePolicy.isSkin(en.path)) noSkins.add(en);
             merged = noSkins;
         }
-        gpuType = detectGpu(a, base);
+        gpuType = detectGpu(a);
         List<RepairEngine.Entry> all = RepairEngine.forGpu(base, merged, gpuType, warns);
         listWarnings = warns;
         if (all.isEmpty()) throw new PackException("as listas do servidor não têm arquivos de texdb/SAMP");
@@ -350,15 +355,11 @@ public class RepairFragment extends Fragment {
         return all;
     }
 
-    /** GPU gravada pelo Splash (1=dxt 2=etc 3=pvr); senao a do installed.json; senao 0 (desconhecida). */
-    private static int detectGpu(Activity a, File base) {
+    /** GPU gravada pelo Splash (1=dxt 2=etc 3=pvr); senao 0 (desconhecida). */
+    private static int detectGpu(Activity a) {
         try {
             int g = a.getSharedPreferences("com.maximo.roleplay", Activity.MODE_PRIVATE).getInt("gpu_type", 0);
             if (g >= 1 && g <= 3) return g;
-        } catch (RuntimeException ignored) { }
-        try {
-            InstalledState st = InstalledState.read(base);
-            if (st != null && st.gpu >= 1 && st.gpu <= 3) return st.gpu;
         } catch (RuntimeException ignored) { }
         return 0;
     }
@@ -471,7 +472,7 @@ public class RepairFragment extends Fragment {
             Activity ka = getActivity();
             if (ka != null) b.append("\n[Teclado]\n").append(com.maximo.roleplay.launcher.util.KeyboardGuard.check(ka));
         } catch (RuntimeException ignored) { }
-        b.append("\nsamp.json: ").append(haveSampJson ? "usado" : "indisponível (SAMP/ pelo files.json)");
+        b.append("\nsamp.json: ").append(haveSampJson ? "usado" : "indisponível (SAMP/ pelo files_testes.json)");
         return b.toString();
     }
 

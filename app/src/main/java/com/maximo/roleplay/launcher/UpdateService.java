@@ -36,13 +36,8 @@ import com.joom.paranoid.Obfuscate;
 import com.maximo.roleplay.launcher.config.AppEndpoints;
 import com.maximo.roleplay.launcher.data.FilesData;
 import com.maximo.roleplay.launcher.pack.AtomicInstaller;
-import com.maximo.roleplay.launcher.pack.CancelToken;
 import com.maximo.roleplay.launcher.pack.GameFilePolicy;
-import com.maximo.roleplay.launcher.pack.InstalledState;
-import com.maximo.roleplay.launcher.pack.PackConfig;
 import com.maximo.roleplay.launcher.pack.PackException;
-import com.maximo.roleplay.launcher.pack.PackInstaller;
-import com.maximo.roleplay.launcher.pack.PackSpec;
 import com.maximo.roleplay.launcher.pack.SampList;
 import com.maximo.roleplay.launcher.util.NotificationHelper;
 
@@ -61,7 +56,8 @@ import java.util.concurrent.ThreadFactory;
 /**
  * Servico de atualizacao. Contrato de mensagens com Splash/UpdateActivity preservado:
  *  0/7 iniciar verificacao (gputype) | 1 verificar/baixar dados do jogo | 2 atualizar APK |
- *  4 status do update | 5 status do jogo | 6 (NOVO) erro com texto, para a Activity oferecer "tentar de novo".
+ *  4 status do update | 5 status do jogo | 6 (NOVO) erro com texto, para a Activity oferecer "tentar de novo" |
+ *  8 progresso da verificacao SHA-256 dos arquivos (currentfile/totalfiles).
  *
  * Threading: TODO o estado e mutado na HandlerThread propria do servico (mInHandler). Callbacks do
  * Volley / PRDownloader (thread principal) apenas repassam para ela com post(). Nada aqui bloqueia
@@ -73,6 +69,8 @@ public class UpdateService extends Service {
 
     private static final String TAG = "UpdateService";
     private static final String REQUEST_TAG = "update_config";
+    /** Servico -> Splash: andamento da conferencia de SHA-256 (currentfile / totalfiles). */
+    public static final int MSG_VERIFY_PROGRESS = 8;
     private static final int MAX_FILE_ATTEMPTS = 3;
     private static final int MAX_GAME_ATTEMPTS = 3;
     /** Falhas seguidas (arquivos que esgotaram as tentativas) apos as quais o download e abortado. */
@@ -94,19 +92,19 @@ public class UpdateService extends Service {
     public long mUpdateGameDataSizeUpdated = 0;
     public String mUpdateGameURL = "";
     public int mUpdateVersion;
-    /** Verificacao do APK novo (client_config.launcher_sha256 / launcher_size). Vazio/0 = sem verificacao (servidor antigo). */
+    /** Verificacao do APK novo (maximo_config.json: launcher_sha256 / launcher_size). Vazio/0 = sem verificacao (servidor antigo). */
     public String mUpdateGameSha = "";
     public long mUpdateGameSize = 0;
 
     public ArrayList<String> mUpdateFiles = new ArrayList<>();
     public ArrayList<String> mUpdateFilesName = new ArrayList<>();
     public ArrayList<Long> mUpdateFilesSize = new ArrayList<>();
-    /** SHA-256 esperado de cada arquivo (do files.json; "" = lista sem hash, so confere o tamanho). */
+    /** SHA-256 esperado de cada arquivo (de files_testes.json; "" = lista sem hash, so confere o tamanho). */
     public ArrayList<String> mUpdateFilesSha = new ArrayList<>();
 
     public int mGpuType = 0;
 
-    private int mSession = 0;
+    private volatile int mSession = 0;   // lido tambem pela thread do SHA-256
     private int mDownloadId = -1;
 
     // estado do download de dados do jogo (somente na HandlerThread)
@@ -117,29 +115,15 @@ public class UpdateService extends Service {
     private int mDlIndex = 0;
     private int mDlConsecutiveFailures = 0;
     private long mDlDoneBytes = 0;
-    /** Arquivos baixados e conferidos nesta rodada (path/size/sha): gravados no installed.json ao final (atualizacoes). */
-    private ArrayList<InstalledState.Entry> mDlOk = new ArrayList<>();
 
-    // ---- primeira instalacao por pacotes ZIP (somente na HandlerThread; o trabalho pesado roda em mPackWorker)
-    /** Pacotes (core + GPU do aparelho) vindos do client_config; null = servidor sem "packs" (fluxo antigo). */
-    private PackConfig mPackConfig = null;
-    private List<PackSpec> mPackSelection = null;
-    /** true = esta rodada de dados do jogo e a PRIMEIRA instalacao e sera feita por pacotes ZIP. */
-    private boolean mUsePacks = false;
     /** DownloadMode.* lido do maximo_config a cada verificacao (LEGACY / SAFE / FULL). */
     private String mDlMode = com.maximo.roleplay.launcher.util.DownloadMode.LEGACY;
     /** true = skins (texdb/skins, SAMP/skins) fora do download: "download_skins": false no JSON ou DOWNLOAD SEGURO. */
     private boolean mSkipSkins = false;
-    private boolean mPackHasSampStep = false; // pacotes seguidos da etapa SAMP (so para a mensagem da tela)
-    private boolean mSampStep = false;        // baixando a pasta SAMP depois dos pacotes
-    private int mListTotalFiles = 0;
-    /** Lista da pasta SAMP/ (samp.json). null = servidor sem samp.json -> a SAMP/ segue pelo files.json (fluxo antigo). */
+    /** Lista da pasta SAMP/ (samp.json). null = servidor sem samp.json -> a SAMP/ segue pelo files_testes.json. */
     private SampList mSampList = null;
-    private static final String PACKS_MARKER = "(packs)";
-    private ExecutorService mPackWorker;
-    private CancelToken mPackCancel;
-    /** Arquivos que ficam pendentes se a instalacao por pacotes falhar (a proxima verificacao refaz). */
-    private ArrayList<String> mPackPendingFiles = new ArrayList<>();
+    /** Conferencia de SHA-256 a cada abertura: roda fora da HandlerThread para o servico continuar respondendo. */
+    private ExecutorService mVerifyWorker;
 
     @Override
     public void onCreate() {
@@ -236,7 +220,7 @@ public class UpdateService extends Service {
         mMainH.removeCallbacksAndMessages(null);
         if (mFgOn) { mFgOn = false; try { stopForeground(true); } catch (RuntimeException ignored) { } }
         mSession++;
-        stopPackWorker();
+        stopVerifyWorker();
         if (mQueue != null) {
             mQueue.cancelAll(REQUEST_TAG);
             mQueue.stop();
@@ -393,19 +377,13 @@ public class UpdateService extends Service {
         mUpdateFilesName = new ArrayList<>();
         mUpdateFilesSize = new ArrayList<>();
         mUpdateFilesSha = new ArrayList<>();
-        mUsePacks = false;
-        mSampStep = false;
-        mPackHasSampStep = false;
-        mPackConfig = null;
-        mPackSelection = null;
         mSampList = null;
-        mListTotalFiles = 0;
         mUpdateGameDataSize = 0;          // original acumulava entre verificacoes
         mUpdateGameDataSizeUpdated = 0;
         mGameStatus = UpdateActivity.GameStatus.Unknown;
 
         setUpdateStatus(UpdateActivity.UpdateStatus.CheckUpdate);
-        loadClientConfig(true, session, new Runnable() {
+        loadMaximoConfig(true, session, new Runnable() {
             @Override
             public void run() {
                 if (!isGameUpdateExists()) {
@@ -423,59 +401,59 @@ public class UpdateService extends Service {
     }
 
     /** Baixa maximo_config.json (e, se withFiles, a lista de arquivos) de forma assincrona. */
-    private void loadClientConfig(final boolean withFiles, final int session, final Runnable onSuccess) {
-        mQueue.add(newRequest(AppEndpoints.clientConfigUrl(this), session, new Response.Listener<String>() {
+    private void loadMaximoConfig(final boolean withFiles, final int session, final Runnable onSuccess) {
+        mQueue.add(newRequest(AppEndpoints.maximoConfigUrl(this), session, new Response.Listener<String>() {
             @Override
             public void onResponse(String response) {
                 try {
-                    JSONObject jSONObject = new JSONObject(response).getJSONObject("client_config");
+                    JSONObject jSONObject = new JSONObject(response);
                     mUpdateVersion = jSONObject.getInt("version_code");
                     mUpdateGameURL = jSONObject.getString("url_launcher");
                     mUpdateGameSha = jSONObject.optString("launcher_sha256", "").trim().toLowerCase(java.util.Locale.ROOT);
                     if (mUpdateGameSha.length() != 64) mUpdateGameSha = "";
                     mUpdateGameSize = jSONObject.optLong("launcher_size", 0);
                     if (withFiles) {
-                        // samp.json DESATIVADO: a pasta SAMP/ vem do files.json (url_cache_files) em <base>/filestestes/<path>.
-                        // Pacotes ZIP (packs): SO no DOWNLOAD COMPLETO (escolha do jogador). Seguro/padrao = arquivo a arquivo.
-                        mPackConfig = null;
-                        mPackSelection = null;
+                        // samp.json DESATIVADO: a pasta SAMP/ vem de files_testes.json (url_cache_files) em <base>/filestestes/<path>.
+                        // Download SEMPRE arquivo a arquivo (PRDownloader).
                         mDlMode = com.maximo.roleplay.launcher.util.DownloadMode.get(UpdateService.this);
                         // maximo_config.json -> "download_skins": true = skins SEMPRE (ate no SEGURO); false = nunca;
                         // "auto"/ausente = escolha do jogador (SEGURO sem skins, COMPLETO com skins).
                         Object skinsCfg = jSONObject.opt("download_skins");
                         mSkipSkins = GameFilePolicy.shouldSkipSkins(skinsCfg, com.maximo.roleplay.launcher.util.DownloadMode.SAFE.equals(mDlMode));
                         Log.d(TAG, "download_skins=" + skinsCfg + " modo=" + mDlMode + " -> pular skins=" + mSkipSkins);
-                        if (com.maximo.roleplay.launcher.util.DownloadMode.FULL.equals(mDlMode)) {
-                            parsePackConfig(response);
+                        // url_cache_files ausente => <base>/files_testes.json; presente e que nao seja http(s) => erro.
+                        final String filesUrl;
+                        if (jSONObject.isNull("url_cache_files")) {
+                            filesUrl = AppEndpoints.filesListUrl(UpdateService.this);
+                        } else {
+                            filesUrl = jSONObject.getString("url_cache_files").trim();
+                            if (!isHttpUrl(filesUrl)) {
+                                failCheck("maximo_config.json: url_cache_files invalido");
+                                return;
+                            }
                         }
-                        String string = jSONObject.getString("url_cache_files");
-                        if (!isHttpUrl(string)) {
-                            failCheck("client_config: invalid url_cache_files");
-                            return;
-                        }
-                        final String filesUrl = string;
                         mSampList = null;
                         getFilesInfo(filesUrl, session, onSuccess);
                     } else {
                         onSuccess.run();
                     }
                 } catch (JSONException e) {
-                    Log.e(TAG, "client_config parse error", e);
+                    Log.e(TAG, "maximo_config parse error", e);
                     failCheck("maximo_config.json is invalid (" + e.getMessage() + ")");
                 }
             }
-        }, "client_config"));
+        }, "maximo_config"));
     }
 
     /**
      * Baixa samp.json (lista da pasta SAMP/) e acrescenta a mUpdateFiles o que falta/esta diferente. Erro ou arquivo
-     * ausente no servidor NAO aborta: mSampList fica null e a SAMP/ segue pelo files.json como antes.
+     * ausente no servidor NAO aborta: mSampList fica null e a SAMP/ segue pelo files_testes.json como antes.
      */
     private void loadSamp(final int session, final Runnable next) {
         final Runnable fallback = new Runnable() {
             @Override
             public void run() {
-                Log.w(TAG, "samp.json indisponivel -> SAMP/ pelo files.json");
+                Log.w(TAG, "samp.json indisponivel -> SAMP/ pelo files_testes.json");
                 mSampList = null;
                 next.run();
             }
@@ -496,11 +474,9 @@ public class UpdateService extends Service {
                 mSampList = list;
                 int madeDirs = list.ensureDirs(base); // pastas vazias (ex.: SAMP/skins/fallback_tex)
                 if (madeDirs > 0) Log.d(TAG, "SAMP: " + madeDirs + " pasta(s) vazia(s) criada(s)");
-                // verificacao profunda (SHA-256) so quando a instalacao ainda nao foi verificada por pacotes
-                boolean deep = InstalledState.read(base) == null;
                 int pending = 0;
                 for (SampList.Entry e : list.files) {
-                    String why = SampList.whyNeeded(base, e, deep);
+                    String why = SampList.whyNeeded(base, e, false);
                     if (why == null) continue;
                     Log.d(TAG, "SAMP pendente: " + e.path + " (" + why + ")");
                     mUpdateFiles.add(e.path);
@@ -521,8 +497,9 @@ public class UpdateService extends Service {
         mQueue.add(newRequest(url, session, new Response.Listener<String>() {
             @Override
             public void onResponse(String body) {
+                ArrayList<HashJob> toHash;
                 try {
-                    parseFilesInfo(body);
+                    toHash = parseFilesInfo(body);
                 } catch (JSONException e) {
                     Log.e(TAG, "files list parse error", e);
                     failCheck("File list is invalid (" + e.getMessage() + ")");
@@ -531,60 +508,54 @@ public class UpdateService extends Service {
                     failCheck(e.getMessage());
                     return;
                 }
-                onSuccess.run();
+                verifyHashes(toHash, session, onSuccess);
             }
         }, "file list"));
     }
 
-    /** Le "version"/"packs" do client_config. Invalido ou ausente => fluxo antigo (arquivo a arquivo), nunca quebra a verificacao. */
-    private void parsePackConfig(String response) {
-        mPackConfig = null;
-        mPackSelection = null;
-        try {
-            PackConfig pc = PackConfig.parse(response);
-            if (pc.packs.isEmpty()) return;
-            List<PackSpec> sel = pc.selectFor(mGpuType);
-            if (sel == null) {
-                Log.w(TAG, "client_config tem packs, mas nenhum serve a GPU " + mGpuType + " -> fluxo antigo");
-                return;
-            }
-            mPackConfig = pc;
-            mPackSelection = sel;
-        } catch (PackException e) {
-            Log.w(TAG, "client_config: packs ignorados (" + e.getMessage() + ") -> fluxo antigo");
-        }
+    /** Arquivo que tem o tamanho certo: so o SHA-256 diz se esta integro. */
+    private static final class HashJob {
+        final String path, name, sha;
+        final long size;
+        HashJob(String path, String name, long size, String sha) { this.path = path; this.name = name; this.size = size; this.sha = sha; }
     }
 
-    private void parseFilesInfo(String body) throws JSONException {
+    /**
+     * Arquivos da lista que o JOGADOR regrava no aparelho (voz e /skin7 save): o tamanho e conferido, o SHA-256 nao;
+     * senao a configuracao dele seria baixada de novo a cada abertura.
+     */
+    private static final java.util.Set<String> SHA_NOT_CHECKED = new java.util.HashSet<>(java.util.Arrays.asList(
+            "samp/sampvoice/svconfig.ini", "samp/skins/autoexec.txt"));
+
+    private void addPending(String path, String name, long size, String sha) {
+        mUpdateFiles.add(path);
+        mUpdateFilesName.add(name);
+        mUpdateFilesSize.add(size);
+        mUpdateFilesSha.add(sha);
+        mUpdateGameDataSize = mUpdateGameDataSize + size;
+    }
+
+    /**
+     * Passo 1 (rapido): ausente ou de tamanho diferente do servidor = pendente. Os de tamanho certo que tem sha256 na
+     * lista voltam para a conferencia de SHA-256 (verifyHashes). Nada e gravado em disco.
+     */
+    private ArrayList<HashJob> parseFilesInfo(String body) throws JSONException {
         File base = getExternalFilesDir(null);
         if (base == null) throw new IllegalStateException("Storage is not available");
         JSONArray jsonArray = new JSONObject(body).getJSONArray("files");
         Log.d("x1y2z", "Length: " + jsonArray.length());
-        int considered = 0;
-        // SHA-256 registrado no installed.json: permite detectar arquivo ALTERADO no servidor com o mesmo tamanho (atualizacao).
-        java.util.HashMap<String, String> installedSha = new java.util.HashMap<>();
-        java.util.HashMap<String, InstalledState.Entry> installedEntry = new java.util.HashMap<>();
-        java.util.ArrayList<InstalledState.Entry> refreshed = new java.util.ArrayList<>();
-        int suspects = 0, corrupt = 0;
-        InstalledState prev = InstalledState.read(base);
-        if (prev != null && prev.gpu == mGpuType) {
-            for (InstalledState.Entry ie : prev.files) {
-                installedEntry.put(ie.path, ie);
-                if (!ie.sha256.isEmpty()) installedSha.put(ie.path, ie.sha256);
-            }
-        }
+        ArrayList<HashJob> toHash = new ArrayList<>();
         for(int i = 0; i<jsonArray.length(); i++) {
             JSONObject o = jsonArray.getJSONObject(i);
             FilesData fileData = new FilesData(o.getString("name"), o.getLong("size"), o.getString("path"), o.optString("url", ""));
             String name = fileData.getName();
             String path = fileData.getPath();
             // Arquivos que o jogo/launcher RECRIA no aparelho (cinfo.sig, MINFO.BIN, settings.ini, favorites.json,
-            // svlog.txt, gta_sa.set...): nunca baixar nem sobrescrever, senao seriam pedidos de novo a cada atualizacao.
-            // NAO estao nessa lista (sao baixados): diag.ini, SAMP/col_index.txt e SAMP/sampvoice/svconfig.ini.
+            // svlog.txt, gta_sa.set...): nunca baixar nem sobrescrever, senao seriam pedidos de novo a cada abertura.
             if (GameFilePolicy.isInternal(path) || GameFilePolicy.isJunk(path) || GameFilePolicy.isGenerated(path)) {
                 continue;
             }
-            // A pasta SAMP/ vem do samp.json (nada dela e ignorado); o files.json so e usado para ela se nao houver samp.json.
+            // A pasta SAMP/ vem do samp.json (nada dela e ignorado); o files_testes.json so e usado para ela se nao houver samp.json.
             if (mSampList != null && SampList.isSampPath(path)) {
                 continue;
             }
@@ -596,94 +567,89 @@ public class UpdateService extends Service {
             if (mSkipSkins && GameFilePolicy.isSkin(path)) {
                 continue;
             }
-            considered++;
             File file = new File(base, path);
-            String serverSha = o.optString("sha256", "").trim().toLowerCase(java.util.Locale.ROOT);
-            boolean changed = false;
-            if (file.exists() && file.length() == fileData.getSize() && serverSha.length() == 64) {
-                String have = installedSha.get(path);
-                if (have != null && !have.equals(serverSha)) {
-                    changed = true;
-                    Log.d(TAG, "atualizacao: " + path + " mudou no servidor (mesmo tamanho, sha diferente)");
-                }
-            }
-            // Verificacao rapida: o arquivo tem o tamanho certo, mas a data de modificacao difere da registrada na hora em
-            // que foi instalado e conferido -> alguem/algo o alterou (ou a gravacao foi interrompida). So ESSES arquivos
-            // tem o SHA-256 recalculado (nao ha hash de todo o cliente a cada abertura).
-            if (!changed && file.isFile() && file.length() == fileData.getSize() && serverSha.length() == 64) {
-                InstalledState.Entry ie = installedEntry.get(path);
-                if (ie != null && ie.mtime > 0 && file.lastModified() != ie.mtime) {
-                    suspects++;
-                    if (verifyDownloaded(file, fileData.getSize(), serverSha) == null) {
-                        refreshed.add(new InstalledState.Entry(path, fileData.getSize(), serverSha, file.lastModified()));
-                    } else {
-                        changed = true;
-                        corrupt++;
-                        Log.w(TAG, "verificacao rapida: " + path + " alterado/corrompido (mesmo tamanho, sha diferente)");
-                        clLog("arquivo corrompido detectado: " + path);
-                    }
-                }
-            }
-            if (!file.exists() || file.length() != fileData.getSize() || changed) {
-                mUpdateFiles.add(path);
-                mUpdateFilesName.add(name);
-                mUpdateFilesSize.add(fileData.getSize());
-                mUpdateFilesSha.add(o.optString("sha256", "").trim().toLowerCase(java.util.Locale.ROOT));
-                mUpdateGameDataSize = mUpdateGameDataSize + fileData.getSize();
+            String sha = o.optString("sha256", "").trim().toLowerCase(java.util.Locale.ROOT);
+            if (!file.exists() || file.length() != fileData.getSize()) {
+                addPending(path, name, fileData.getSize(), sha);
+            } else if (sha.length() == 64 && fileData.getSize() > 0
+                    && !SHA_NOT_CHECKED.contains(path.toLowerCase(java.util.Locale.ROOT))) {
+                toHash.add(new HashJob(path, name, fileData.getSize(), sha));
             }
         }
-        mListTotalFiles = considered;
-        if (!refreshed.isEmpty()) InstalledState.record(base, refreshed); // sha conferiu: so atualiza o mtime
-        if (suspects > 0) Log.d(TAG, "verificacao rapida: " + suspects + " suspeitos, " + corrupt + " corrompidos");
-        decidePackMode(base);
-        Log.d("x1y2z", "Data size: " + mUpdateGameDataSize + " files: " + mUpdateFiles.size() + " usePacks=" + mUsePacks);
+        Log.d("x1y2z", "faltando/tamanho errado: " + mUpdateFiles.size() + " arquivos; SHA-256 a conferir: " + toHash.size());
+        return toHash;
     }
 
     /**
-     * Pacotes ZIP (verificados por SHA-256) sao usados em TODA instalacao que ainda nao foi verificada:
-     * existem packs validos para a GPU e NAO ha installed.json valido para esta GPU (primeira instalacao,
-     * instalacao antiga/quebrada pelo fluxo arquivo-a-arquivo, ou troca de GPU). Nesse caso tudo e baixado
-     * e conferido de novo, MESMO que os arquivos ja existam com o tamanho certo (copias corrompidas com o
-     * mesmo tamanho nao sao detectaveis por size). Depois de uma instalacao por pacotes, atualizacoes e a
-     * verificacao seguem pelo fluxo antigo (PRDownloader, arquivo a arquivo).
+     * Passo 2 (a cada abertura): SHA-256 de todo arquivo com tamanho certo, numa thread propria. Divergente = pendente,
+     * e o PRDownloader baixa de novo (o arquivo velho e apagado antes). Informa o andamento a Splash (MSG_VERIFY_PROGRESS).
      */
-    private void decidePackMode(File base) {
-        mUsePacks = false;
-        if (mPackConfig == null || mPackSelection == null) return;
-        InstalledState st = InstalledState.read(base);
-        boolean verified = st != null && st.gpu == mGpuType && !st.files.isEmpty();
-        if (verified) return;
-        mUsePacks = true;
-        // Marcador unico: a Activity so pede a instalacao (msg 1) se houver algo "pendente".
-        long total = 0;
-        for (PackSpec p : mPackSelection) total += p.size;
-        // Mantem so as entradas da pasta SAMP/ (baixadas depois, pelo PRDownloader); o resto vira o marcador dos pacotes.
-        ArrayList<String> sf = new ArrayList<>(), sn = new ArrayList<>(), sh = new ArrayList<>();
-        ArrayList<Long> sz = new ArrayList<>();
-        long sampBytes = 0;
-        {   // pasta SAMP/ (samp.json OU files.json): baixada depois dos pacotes, arquivo a arquivo
-            for (int i = 0; i < mUpdateFiles.size(); i++) {
-                if (SampList.isSampPath(mUpdateFiles.get(i))) {
-                    sf.add(mUpdateFiles.get(i)); sn.add(mUpdateFilesName.get(i));
-                    sz.add(mUpdateFilesSize.get(i)); sh.add(mUpdateFilesSha.get(i));
-                    sampBytes += mUpdateFilesSize.get(i);
-                }
-            }
+    private void verifyHashes(final ArrayList<HashJob> jobs, final int session, final Runnable onSuccess) {
+        if (jobs.isEmpty()) {
+            onSuccess.run();
+            return;
         }
-        mUpdateFiles.clear();
-        mUpdateFilesName.clear();
-        mUpdateFilesSize.clear();
-        mUpdateFilesSha.clear();
-        mUpdateFiles.add(PACKS_MARKER);
-        mUpdateFilesName.add(PACKS_MARKER);
-        mUpdateFilesSize.add(total);
-        mUpdateFilesSha.add("");
-        mUpdateFiles.addAll(sf);
-        mUpdateFilesName.addAll(sn);
-        mUpdateFilesSize.addAll(sz);
-        mUpdateFilesSha.addAll(sh);
-        mUpdateGameDataSize = total + sampBytes;
-        Log.d(TAG, "instalacao por pacotes: " + mPackSelection.size() + " pacotes, " + total + " bytes");
+        final File base = getExternalFilesDir(null);
+        stopVerifyWorker();
+        ExecutorService worker = Executors.newSingleThreadExecutor(new ThreadFactory() {
+            @Override
+            public Thread newThread(Runnable r) {
+                Thread t = new Thread(r, "sha-verify");
+                t.setDaemon(true);
+                return t;
+            }
+        });
+        mVerifyWorker = worker;
+        worker.execute(new Runnable() {
+            @Override
+            public void run() {
+                final ArrayList<HashJob> bad = new ArrayList<>();
+                final int total = jobs.size();
+                long lastReport = 0;
+                for (int i = 0; i < total; i++) {
+                    if (session != mSession) return;   // verificacao cancelada/substituida
+                    HashJob j = jobs.get(i);
+                    String why = verifyDownloaded(new File(base, j.path), j.size, j.sha);
+                    if (why != null) {
+                        Log.w(TAG, "verificacao: " + j.path + " -> " + why);
+                        bad.add(j);
+                    }
+                    long now = System.currentTimeMillis();
+                    if (now - lastReport >= 200) {
+                        lastReport = now;
+                        final int done = i + 1;
+                        postToService(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (session != mSession) return;
+                                Message obtain = Message.obtain(mInHandler, MSG_VERIFY_PROGRESS);
+                                obtain.getData().putLong("currentfile", done);
+                                obtain.getData().putLong("totalfiles", total);
+                                sendToActivity(obtain);
+                            }
+                        });
+                    }
+                }
+                postToService(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (session != mSession) return;
+                        mVerifyWorker = null;
+                        for (HashJob j : bad) addPending(j.path, j.name, j.size, j.sha);
+                        Log.d("x1y2z", "SHA-256 conferido: " + total + " arquivos, " + bad.size() + " divergentes");
+                        if (!bad.isEmpty()) clLog("verificacao SHA-256: " + bad.size() + " arquivo(s) divergente(s)");
+                        onSuccess.run();
+                    }
+                });
+            }
+        });
+    }
+
+    private void stopVerifyWorker() {
+        if (mVerifyWorker != null) {
+            mVerifyWorker.shutdownNow();
+            mVerifyWorker = null;
+        }
     }
 
     private String mInstalledShaPath = "";
@@ -717,7 +683,7 @@ public class UpdateService extends Service {
     }
 
     /**
-     * Ha APK novo quando o versionCode do client_config e DIFERENTE do instalado OU (com launcher_sha256 no client_config)
+     * Ha APK novo quando o versionCode do maximo_config.json e DIFERENTE do instalado OU (com launcher_sha256 no maximo_config.json)
      * quando o APK instalado nao e byte a byte o publicado no servidor - assim trocar o launcher.apk sem mexer no
      * version_code tambem forca a atualizacao. Se o hash do instalado nao puder ser lido, vale so o versionCode.
      */
@@ -748,8 +714,8 @@ public class UpdateService extends Service {
         cancelDownloads();
         final int session = ++mSession;
         if (mUpdateGameURL.isEmpty()) {
-            // Servico recriado (a Activity anterior desligou antes da nova ligar): recarrega so o client_config.
-            loadClientConfig(false, session, new Runnable() {
+            // Servico recriado (a Activity anterior desligou antes da nova ligar): recarrega so o maximo_config.json.
+            loadMaximoConfig(false, session, new Runnable() {
                 @Override
                 public void run() {
                     updateGameChecked(session);
@@ -832,7 +798,7 @@ public class UpdateService extends Service {
                         if (session != mSession) return;
                         setDownloading(false);
                         mDownloadId = -1;
-                        // APK novo: confere tamanho/SHA-256 do client_config ANTES de oferecer a instalacao.
+                        // APK novo: confere tamanho/SHA-256 do maximo_config.json ANTES de oferecer a instalacao.
                         if (!mUpdateGameSha.isEmpty() || mUpdateGameSize > 0) {
                             String why = verifyDownloaded(file, mUpdateGameSize > 0 ? mUpdateGameSize : file.length(), mUpdateGameSha);
                             if (why != null) {
@@ -931,7 +897,6 @@ public class UpdateService extends Service {
         mDlShas = new ArrayList<>(mUpdateFilesSha);
         mDlFailed = new ArrayList<>();
         mDlAutoRounds = 0;
-        mDlOk = new ArrayList<>();
         mUpdateFiles.clear();
         mUpdateFilesName.clear();
         mUpdateFilesSize.clear();
@@ -939,10 +904,6 @@ public class UpdateService extends Service {
         mDlIndex = 0;
         mDlDoneBytes = 0;
         mDlConsecutiveFailures = 0;
-        if (mUsePacks && mPackSelection != null && mPackConfig != null) {
-            startPackInstall(session);
-            return;
-        }
         String noSpace = checkFreeSpace();
         if (noSpace != null) {
             restorePending(mDlFiles);
@@ -962,7 +923,6 @@ public class UpdateService extends Service {
         if (base == null) return null;
         long need = FREE_SPACE_MARGIN;
         for (int i = 0; i < mDlFiles.size(); i++) {
-            if (PACKS_MARKER.equals(mDlFiles.get(i))) continue; // pacotes: PackInstaller tem a propria conferencia
             need += i < mDlSizes.size() ? mDlSizes.get(i) : 0L;
         }
         try {
@@ -985,10 +945,6 @@ public class UpdateService extends Service {
         } catch (Throwable ignored) { }
     }
 
-    // ------------------------------------------------------------------------------------
-    // Primeira instalacao: pacotes ZIP verificados + extracao atomica (ver pacote pack/)
-    // ------------------------------------------------------------------------------------
-
     /** Devolve a lista de pendentes (com tamanho e sha, mantendo as listas paralelas coerentes) para uma nova tentativa. */
     private void restorePending(List<String> paths) {
         for (String p : paths) {
@@ -998,165 +954,6 @@ public class UpdateService extends Service {
             mUpdateFilesSize.add(i >= 0 && i < mDlSizes.size() ? mDlSizes.get(i) : 0L);
             mUpdateFilesSha.add(i >= 0 && i < mDlShas.size() ? mDlShas.get(i) : "");
         }
-    }
-
-    /** Apaga .downloads (zips/.part) e qualquer sobra do instalador; so chamado depois de extrair e confirmar. */
-    private void deletePackDownloads() {
-        File base = getExternalFilesDir(null);
-        if (base == null) return;
-        try {
-            AtomicInstaller.deleteTree(new File(base, GameFilePolicy.DIR_DOWNLOADS));
-            AtomicInstaller.deleteTree(new File(base, GameFilePolicy.DIR_STAGING));
-            AtomicInstaller.deleteTree(new File(base, GameFilePolicy.DIR_BACKUP));
-        } catch (RuntimeException e) {
-            Log.w(TAG, "cleanup after packs failed: " + e);
-        }
-    }
-
-    /** Depois dos pacotes: baixa a pasta SAMP/ (PRDownloader, arquivo a arquivo) ou conclui. */
-    private void afterPacks(int session) {
-        // tira o marcador dos pacotes, sobram so as entradas da SAMP/
-        if (!mDlFiles.isEmpty() && PACKS_MARKER.equals(mDlFiles.get(0))) {
-            mDlFiles.remove(0);
-            mDlSizes.remove(0);
-            mDlShas.remove(0);
-        }
-        mUsePacks = false;
-        mPackHasSampStep = false;
-        if (mDlFiles.isEmpty()) {
-            notifyGameDataDone();
-            return;
-        }
-        mSampStep = true;
-        long total = 0;
-        for (Long l : mDlSizes) total += l;
-        mUpdateGameDataSize = total;
-        mDlFailed = new ArrayList<>();
-        mDlAutoRounds = 0;
-        mDlIndex = 0;
-        mDlDoneBytes = 0;
-        mDlConsecutiveFailures = 0;
-        downloadNextFile(session, 1);
-    }
-
-    private void stopPackWorker() {
-        if (mPackCancel != null) mPackCancel.cancel();
-        if (mPackWorker != null) {
-            mPackWorker.shutdownNow(); // interrompe E-S bloqueante; o instalador confere o CancelToken
-            mPackWorker = null;
-        }
-        mPackCancel = null;
-    }
-
-    private void startPackInstall(final int session) {
-        stopPackWorker();
-        final File base = getExternalFilesDir(null);
-        if (base == null || !base.isDirectory()) {
-            restorePending(mDlFiles);
-            reportError("Storage is not available", false);
-            return;
-        }
-        mPackPendingFiles = new ArrayList<>(mDlFiles);
-        mPackHasSampStep = mDlFiles.size() > 1; // alem do marcador "(packs)" ha arquivos da SAMP/
-        mSampStep = false;
-        GameFilePolicy.setProtectGenerated(!mPackConfig.includeAll);
-        GameFilePolicy.setSkipSkins(mSkipSkins); // o zip da GPU e baixado inteiro, mas as skins nao sao extraidas
-        final PackInstaller.Config cfg = new PackInstaller.Config();
-        cfg.filesDir = base;
-        cfg.version = mPackConfig.version;
-        cfg.gpu = mGpuType;
-        cfg.packs = mPackSelection;
-        cfg.urls = new PackInstaller.UrlResolver() {
-            @Override
-            public String resolve(PackSpec spec) {
-                return AppEndpoints.packUrl(UpdateService.this, spec.url);
-            }
-        };
-        cfg.transfer = new PrDownloaderTransfer(); // PRDownloader (retoma de onde parou) em vez do HttpURLConnection
-        cfg.freeSpace = new PackInstaller.FreeSpace() {
-            @Override
-            public long freeBytes() {
-                return new StatFs(base.getAbsolutePath()).getAvailableBytes();
-            }
-        };
-        final CancelToken cancel = new CancelToken();
-        cfg.cancel = cancel;
-        mPackCancel = cancel;
-        final long[] last = { 0 };
-        // A UI mostra o tamanho REAL do download (soma dos .zip); a extracao aparece depois, com seu proprio total.
-        cfg.detail = new PackInstaller.Detail() {
-            @Override
-            public void onDetail(final String stage, final String packName, final int packIndex, final int packCount,
-                                 final long dlDone, final long dlTotal, final long exDone, final long exTotal) {
-                long now = System.currentTimeMillis();
-                boolean finished = dlDone >= dlTotal && exDone >= exTotal;
-                if (now - last[0] < 100 && !finished) return;
-                last[0] = now;
-                postToService(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (session != mSession) return;
-                        boolean downloading = dlDone < dlTotal;
-                        Message obtain = Message.obtain(mInHandler, 4);
-                        obtain.getData().putString("status", UpdateActivity.UpdateStatus.DownloadGameData.name());
-                        obtain.getData().putBoolean("withProgress", true);
-                        obtain.getData().putLong("current", downloading ? dlDone : exDone);
-                        obtain.getData().putLong("total", downloading ? dlTotal : exTotal);
-                        obtain.getData().putString("filename", downloading ? packName + ".zip" : packName + " (extracting)");
-                        obtain.getData().putLong("totalfiles", packCount);
-                        obtain.getData().putLong("currentfile", packIndex + 1);
-                        obtain.getData().putInt("phase", mPackHasSampStep ? 1 : 0); // 1 = ainda vem a etapa SAMP
-                        sendToActivity(obtain);
-                    }
-                });
-            }
-        };
-        setDownloading(true);
-        ExecutorService worker = Executors.newSingleThreadExecutor(new ThreadFactory() {
-            @Override
-            public Thread newThread(Runnable r) {
-                Thread t = new Thread(r, "pack-install");
-                t.setDaemon(true);
-                return t;
-            }
-        });
-        mPackWorker = worker;
-        worker.execute(new Runnable() {
-            @Override
-            public void run() {
-                PackException failure = null;
-                try {
-                    PackInstaller.install(cfg);
-                } catch (PackException e) {
-                    failure = e;
-                } catch (RuntimeException e) {
-                    failure = new PackException("unexpected: " + e, e);
-                }
-                GameFilePolicy.setProtectGenerated(true); // o fluxo antigo (atualizacao) NUNCA sobrescreve arquivos gerados pelo jogo
-                GameFilePolicy.setSkipSkins(false);
-                final PackException fail = failure;
-                if (cancel.isCancelled()) return;
-                postToService(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (session != mSession) return;
-                        setDownloading(false);
-                        if (fail == null) {
-                            Log.d(TAG, "pack install done");
-                            mPackPendingFiles.clear();
-                            deletePackDownloads(); // pacotes ja extraidos e conferidos: nao ficam no armazenamento do aparelho
-                            afterPacks(session);
-                        } else {
-                            Log.e(TAG, "pack install failed: " + fail.getMessage(), fail);
-                            clLog("pacotes: " + fail.getMessage());
-                            restorePending(mPackPendingFiles); // continua pendente: a proxima verificacao tenta de novo
-                            mPackPendingFiles.clear();
-                            reportError("Game data install failed: " + fail.getMessage(), false);
-                        }
-                    }
-                });
-            }
-        });
     }
 
     private void downloadNextFile(final int session, final int attempt) {
@@ -1224,7 +1021,6 @@ public class UpdateService extends Service {
                             obtain.getData().putString("filename", fileName);
                             obtain.getData().putLong("totalfiles", mDlFiles.size());
                             obtain.getData().putLong("currentfile", mDlIndex);
-                            obtain.getData().putInt("phase", mSampStep ? 2 : 0); // 2 = etapa final (pasta SAMP)
                             sendToActivity(obtain);
                         }
                     });
@@ -1259,7 +1055,6 @@ public class UpdateService extends Service {
                             }
                             return;
                         }
-                        mDlOk.add(new InstalledState.Entry(rel, mDlSizes.get(mDlIndex), mDlShas.get(mDlIndex), done.lastModified()));
                         mDlDoneBytes += mDlSizes.get(mDlIndex);
                         mDlConsecutiveFailures = 0;
                         mDlIndex++;
@@ -1316,7 +1111,7 @@ public class UpdateService extends Service {
                 java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
                 java.io.FileInputStream in = new java.io.FileInputStream(f);
                 try {
-                    byte[] buf = new byte[256 * 1024];
+                    byte[] buf = new byte[1024 * 1024];
                     int n;
                     while ((n = in.read(buf)) > 0) md.update(buf, 0, n);
                 } finally {
@@ -1352,7 +1147,6 @@ public class UpdateService extends Service {
 
     private void finishDataUpdating(final int session) {
         setDownloading(false);
-        recordUpdated();
         if (!mDlFailed.isEmpty() && mDlAutoRounds < MAX_AUTO_ROUNDS) {
             // Tenta de novo SOZINHO os arquivos que falharam (5 s, 10 s, 15 s...), sem mostrar mensagem ao jogador.
             mDlAutoRounds++;
@@ -1395,22 +1189,10 @@ public class UpdateService extends Service {
         notifyGameDataDone();
     }
 
-    /** Grava no installed.json (se existir) o sha dos arquivos que acabaram de ser baixados e conferidos. */
-    private void recordUpdated() {
-        File base = getExternalFilesDir(null);
-        if (base == null || mDlOk.isEmpty()) return;
-        try {
-            InstalledState.record(base, mDlOk);
-        } catch (RuntimeException e) {
-            Log.w(TAG, "installed.json nao atualizado: " + e);
-        }
-        mDlOk = new ArrayList<>();
-    }
-
     /** Cancela qualquer download em andamento e invalida callbacks pendentes. */
     private void cancelDownloads() {
         mSession++; // callbacks e retries atrasados conferem a sessao e se descartam
-        stopPackWorker();
+        stopVerifyWorker();
         if (mQueue != null) mQueue.cancelAll(REQUEST_TAG);
         try {
             if (mDownloadId != -1) PRDownloader.cancel(mDownloadId);

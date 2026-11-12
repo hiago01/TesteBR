@@ -20,12 +20,11 @@ public final class GameFilePolicy {
 
     /** Caminhos exatos (relativos a files/), comparados sem diferenciar caixa para PROTEGER mais. */
     private static final Set<String> PROTECTED_PATHS = new HashSet<>(Arrays.asList(
-            "lista.txt", "files.json",
+            "lista.txt", "files_testes.json",
             "cinfo.bin", "models/minfo.bin",
             "samp/cinfo.sig", "samp/favorites.json", "samp/svlog.txt",
             "settings.ini", "samp/settings.ini",
-            "samp_log.txt", "gta_sa.set", "gtasatelem.set",
-            "installed.json"));
+            "samp_log.txt", "gta_sa.set", "gtasatelem.set"));
 
     /**
      * Arquivos que o JOGO recria sozinho (indices em cache): CINFO.BIN, MINFO.BIN e CINFO.SIG, em qualquer pasta.
@@ -41,7 +40,7 @@ public final class GameFilePolicy {
 
     /**
      * true (padrao) = arquivos gerados pelo jogo NUNCA sao extraidos/sobrescritos.
-     * false = o client_config diz "include_all": true -> o pacote traz TUDO e tudo e extraido
+     * false = o maximo_config.json diz "include_all": true -> o pacote traz TUDO e tudo e extraido
      * (so os arquivos internos do instalador continuam de fora). Ajustado pelo UpdateService
      * antes de cada instalacao.
      */
@@ -52,7 +51,6 @@ public final class GameFilePolicy {
     public static boolean isInternal(String relPath) {
         if (relPath == null) return true;
         String l = relPath.toLowerCase(Locale.ROOT);
-        if (l.equals("installed.json")) return true;
         return l.startsWith(DIR_STAGING + "/") || l.startsWith(DIR_BACKUP + "/") || l.startsWith(DIR_DOWNLOADS + "/");
     }
 

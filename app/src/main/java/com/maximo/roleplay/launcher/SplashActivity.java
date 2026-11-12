@@ -105,7 +105,7 @@ public class SplashActivity extends AppCompatActivity {
         @Override
         public void run() {
             if (isFinishing() || isDestroyed()) return;
-            showRetryDialog("The launcher could not finish checking for updates.\nCheck your connection and try again.\n\nServer: " + com.maximo.roleplay.launcher.config.AppEndpoints.clientConfigUrl(SplashActivity.this),
+            showRetryDialog("The launcher could not finish checking for updates.\nCheck your connection and try again.\n\nServer: " + com.maximo.roleplay.launcher.config.AppEndpoints.maximoConfigUrl(SplashActivity.this),
                     "Retry", new Runnable() { @Override public void run() { restartStartup(); } },
                     "Continue", new Runnable() { @Override public void run() { openMain(); } });
         }
@@ -270,6 +270,14 @@ public class SplashActivity extends AppCompatActivity {
                     } catch (RemoteException e6) {
                         e6.printStackTrace();
                     }
+                }
+            } else if (msg.what == UpdateService.MSG_VERIFY_PROGRESS) {
+                // Conferencia de SHA-256 em andamento: o servico esta vivo, entao reinicia o prazo e mostra o andamento.
+                mUiHandler.removeCallbacks(mLoadTimeout);
+                mUiHandler.postDelayed(mLoadTimeout, LOAD_TIMEOUT_MS);
+                TextView status = findViewById(R.id.textView2);
+                if (status != null) {
+                    status.setText("Verificando arquivos " + msg.getData().getLong("currentfile") + "/" + msg.getData().getLong("totalfiles"));
                 }
             } else if (msg.what == 5) {
                 mUiHandler.removeCallbacks(mLoadTimeout);

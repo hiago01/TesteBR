@@ -5,8 +5,7 @@ import java.io.File;
 /**
  * Motor de transferencia de UM arquivo grande (pacote .zip). A verificacao (tamanho + SHA-256), as tentativas e o
  * progresso total ficam em {@link PackDownloader}; aqui so se baixa.
- * No app a implementacao e o PRDownloader (com.maximo.roleplay.launcher.PrDownloaderTransfer, retoma de onde parou);
- * {@link HttpTransfer} e a implementacao em JVM puro usada nos testes.
+ * {@link HttpTransfer} e a implementacao (JVM puro, HttpURLConnection) usada na aba Reparar e nos testes.
  */
 public interface FileTransfer {
     /** Bytes ja gravados deste arquivo (cumulativo, inclusive o que foi retomado). Pode diminuir se o download recomecar do zero. */

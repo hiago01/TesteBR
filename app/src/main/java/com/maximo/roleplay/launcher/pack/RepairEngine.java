@@ -18,7 +18,7 @@ import java.util.Set;
 
 /**
  * Motor da engrenagem de correcoes (JVM puro, sem Android). Escopo: files/SAMP e files/texdb.
- *  - verify:  confere cada arquivo da lista (samp.json + files.json) por tamanho e SHA-256 (quando a lista traz).
+ *  - verify:  confere cada arquivo da lista (samp.json + files_testes.json) por tamanho e SHA-256 (quando a lista traz).
  *  - repair:  rebaixa so os arquivos escolhidos, um a um, para .downloads/repair e troca o arquivo SO depois de conferir
  *             (o arquivo antigo nunca e apagado antes do novo estar verificado).
  *  - report:  texto para o jogador mandar ao suporte.
@@ -89,7 +89,7 @@ public final class RepairEngine {
         return out;
     }
 
-    /** files.json: {"files":[{"name","size","path","sha256"?}]}. Mesmas exclusoes do UpdateService. */
+    /** files_testes.json: {"files":[{"name","size","path","sha256"?}]}. Mesmas exclusoes do UpdateService. */
     public static List<Entry> fromFilesJson(String body, List<String> warnings) throws PackException {
         Map<String, Object> m = MiniJson.asMap(MiniJson.parse(body));
         List<Object> arr = m == null ? null : MiniJson.asList(m.get("files"));
@@ -98,15 +98,15 @@ public final class RepairEngine {
         Map<String, String> lower = new HashMap<>();
         for (Object o : arr) {
             Map<String, Object> f = MiniJson.asMap(o);
-            if (f == null) throw new PackException("item de files.json invalido");
+            if (f == null) throw new PackException("item de files_testes.json invalido");
             String path = MiniJson.str(f, "path");
-            if (path == null) throw new PackException("item de files.json sem path");
+            if (path == null) throw new PackException("item de files_testes.json sem path");
             PathSafety.validateRelative(path);
             if (!inScope(path) || GameFilePolicy.isInternal(path)) continue;
             String name = path.substring(path.lastIndexOf('/') + 1);
             if (NEVER.contains(name.toLowerCase(Locale.ROOT))) continue;
             long size = MiniJson.lng(f, "size", -1);
-            if (size < 0) throw new PackException("files.json: tamanho invalido: " + path);
+            if (size < 0) throw new PackException("files_testes.json: tamanho invalido: " + path);
             String sha = MiniJson.str(f, "sha256");
             if (sha != null && !sha.isEmpty() && !Hex.isSha256(sha)) sha = ""; // hash malformado: so tamanho
             String lc = path.toLowerCase(Locale.ROOT);
@@ -118,7 +118,7 @@ public final class RepairEngine {
         return out;
     }
 
-    /** samp.json manda na pasta SAMP/; files.json completa o resto. Sem repetidos. */
+    /** samp.json manda na pasta SAMP/; files_testes.json completa o resto. Sem repetidos. */
     public static List<Entry> merge(List<Entry> samp, List<Entry> files) {
         List<Entry> out = new ArrayList<>();
         Set<String> seen = new HashSet<>();

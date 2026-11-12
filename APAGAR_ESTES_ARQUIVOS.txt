@@ -1,0 +1,7 @@
+Apague estes arquivos do projeto (o unzip nao remove arquivos):
+app/src/main/java/com/maximo/roleplay/launcher/PrDownloaderTransfer.java
+app/src/main/java/com/maximo/roleplay/launcher/pack/DiskSpace.java
+app/src/main/java/com/maximo/roleplay/launcher/pack/InstalledState.java
+app/src/main/java/com/maximo/roleplay/launcher/pack/PackConfig.java
+app/src/main/java/com/maximo/roleplay/launcher/pack/PackInstaller.java
+app/src/main/java/com/maximo/roleplay/launcher/pack/PackSpec.java

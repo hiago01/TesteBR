@@ -8,7 +8,7 @@ import java.util.Set;
 
 /**
  * Limpeza dos arquivos de clientes ANTIGOS antes de instalar os novos (roda 1x por APK novo, ver SplashActivity).
- * Apaga tudo dentro de files/ (jogo, caches, installed.json, .downloads/.staging/.backup) EXCETO o que e do jogador/teste:
+ * Apaga tudo dentro de files/ (jogo, caches, .downloads/.staging/.backup) EXCETO o que e do jogador/teste:
  * configuracoes, favoritos e log (o diag.ini NAO e mantido: vem do servidor). Depois disso o fluxo normal do launcher ve "sem instalacao" e baixa tudo de novo
  * (PRDownloader). Java puro (sem Android) para ser testado na JVM.
  */
