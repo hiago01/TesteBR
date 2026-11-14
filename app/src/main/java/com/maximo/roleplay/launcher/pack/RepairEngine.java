@@ -8,7 +8,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -17,37 +16,29 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Motor da engrenagem de correcoes (JVM puro, sem Android). Escopo: files/SAMP e files/texdb.
- *  - verify:  confere cada arquivo da lista (samp.json + files_testes.json) por tamanho e SHA-256 (quando a lista traz).
- *  - repair:  rebaixa so os arquivos escolhidos, um a um, para .downloads/repair e troca o arquivo SO depois de conferir
- *             (o arquivo antigo nunca e apagado antes do novo estar verificado).
+ * Motor da aba CORRECOES (JVM puro, sem Android). Trabalha sobre a MESMA lista de arquivos do launcher ({@link FileList}).
+ *  - verify:  confere cada arquivo da lista por tamanho e SHA-256 (quando a lista traz e o arquivo e "verify").
+ *  - repair:  rebaixa so os arquivos escolhidos, um a um, para uma pasta temporaria e troca o arquivo SO depois de conferir
+ *             (o arquivo antigo nunca e apagado antes do novo estar verificado). O download e feito pelo {@link FileTransfer}
+ *             recebido (no aplicativo: PRDownloader).
  *  - report:  texto para o jogador mandar ao suporte.
- * Arquivos que o jogo/launcher regrava no celular (settings.ini, favoritos, CINFO...) so sao repostos se FALTAREM.
- * Nada aqui apaga arquivo do jogo; arquivos fora da lista apenas sao listados.
+ * Arquivos com "verify": false so sao repostos se FALTAREM. Nada aqui apaga arquivo do jogo; arquivos fora da lista apenas
+ * sao listados.
  */
 public final class RepairEngine {
     private RepairEngine() {}
 
-    public static final String[] SCOPE = {"samp/", "texdb/"};
-    public static final String REPAIR_TMP = GameFilePolicy.DIR_DOWNLOADS + "/repair";
+    /** Pastas varridas so para listar arquivos que estao no aparelho e nao estao na lista (informativo). */
+    private static final String[] EXTRAS_SCOPE = {"samp/", "texdb/"};
+    /** Pasta temporaria do reparo, dentro de files/. */
+    public static final String REPAIR_TMP = ".repair";
 
-    /** Nomes que o UpdateService nunca baixa, em qualquer pasta. */
-    private static final Set<String> NEVER = new HashSet<>(Arrays.asList(
-            "samp_log.txt", "svlog.txt", "gtasatelem.set", "gtasamp10.b", ".htaccess", "gta_sa.set", "settings.ini"));
-
-    public static final class Entry {
-        public final String path;
-        public final long size;
-        public final String sha256; // "" = lista sem hash
-        Entry(String path, long size, String sha256) { this.path = path; this.size = size; this.sha256 = sha256 == null ? "" : sha256.toLowerCase(Locale.ROOT); }
-        /** Arquivo regravado pelo jogo: so repor se faltar. */
-        public boolean isVolatile() { return SampList.isVolatile(path) || GameFilePolicy.isGenerated(path); }
-    }
+    public interface Sleeper { void sleep(long ms) throws InterruptedException; }
 
     public static final class Problem {
-        public final Entry entry;
+        public final FileList.Entry entry;
         public final String why;
-        Problem(Entry e, String why) { this.entry = e; this.why = why; }
+        Problem(FileList.Entry e, String why) { this.entry = e; this.why = why; }
     }
 
     public static final class VerifyResult {
@@ -75,72 +66,16 @@ public final class RepairEngine {
     public interface UrlResolver { String urlFor(String relPath); }
     public interface FreeSpace { long freeBytes(); }
 
-    public static boolean inScope(String path) {
-        if (path == null) return false;
-        String l = path.toLowerCase(Locale.ROOT);
-        for (String s : SCOPE) if (l.startsWith(s)) return true;
-        return false;
-    }
-
-    // ------------------------------------------------------------------ listas
-    public static List<Entry> fromSampJson(String body) throws PackException {
-        List<Entry> out = new ArrayList<>();
-        for (SampList.Entry e : SampList.parse(body).files) if (inScope(e.path)) out.add(new Entry(e.path, e.size, e.sha256));
-        return out;
-    }
-
-    /** files_testes.json: {"files":[{"name","size","path","sha256"?}]}. Mesmas exclusoes do UpdateService. */
-    public static List<Entry> fromFilesJson(String body, List<String> warnings) throws PackException {
-        Map<String, Object> m = MiniJson.asMap(MiniJson.parse(body));
-        List<Object> arr = m == null ? null : MiniJson.asList(m.get("files"));
-        if (arr == null) throw new PackException("lista de arquivos sem \"files\"");
-        List<Entry> out = new ArrayList<>();
-        Map<String, String> lower = new HashMap<>();
-        for (Object o : arr) {
-            Map<String, Object> f = MiniJson.asMap(o);
-            if (f == null) throw new PackException("item de files_testes.json invalido");
-            String path = MiniJson.str(f, "path");
-            if (path == null) throw new PackException("item de files_testes.json sem path");
-            PathSafety.validateRelative(path);
-            if (!inScope(path) || GameFilePolicy.isInternal(path)) continue;
-            String name = path.substring(path.lastIndexOf('/') + 1);
-            if (NEVER.contains(name.toLowerCase(Locale.ROOT))) continue;
-            long size = MiniJson.lng(f, "size", -1);
-            if (size < 0) throw new PackException("files_testes.json: tamanho invalido: " + path);
-            String sha = MiniJson.str(f, "sha256");
-            if (sha != null && !sha.isEmpty() && !Hex.isSha256(sha)) sha = ""; // hash malformado: so tamanho
-            String lc = path.toLowerCase(Locale.ROOT);
-            String prev = lower.put(lc, path);
-            if (prev != null && warnings != null)
-                warnings.add("servidor: dois caminhos so diferem pela caixa (Android diferencia): " + prev + " | " + path);
-            out.add(new Entry(path, size, sha));
-        }
-        return out;
-    }
-
-    /** samp.json manda na pasta SAMP/; files_testes.json completa o resto. Sem repetidos. */
-    public static List<Entry> merge(List<Entry> samp, List<Entry> files) {
-        List<Entry> out = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
-        if (samp != null) for (Entry e : samp) if (seen.add(e.path.toLowerCase(Locale.ROOT))) out.add(e);
-        boolean haveSamp = samp != null && !samp.isEmpty();
-        if (files != null) for (Entry e : files) {
-            if (haveSamp && SampList.isSampPath(e.path)) continue;
-            if (seen.add(e.path.toLowerCase(Locale.ROOT))) out.add(e);
-        }
-        return out;
-    }
-
     // ------------------------------------------------------------------ GPU
     /**
      * Mantem so o que o aparelho usa (MESMA regra do fluxo antigo: GameFilePolicy.wantedForDevice).
      * gpu 1=dxt 2=etc 3=pvr. gpu desconhecida (0): so os arquivos sem marca de GPU + os de GPU que JA existem no aparelho
      * (nunca marca como "ausente" nem baixa textura de outra GPU).
      */
-    public static List<Entry> forGpu(File base, List<Entry> entries, int gpu, List<String> warnings) throws PackException {
-        List<Entry> out = new ArrayList<>();
+    public static List<FileList.Entry> forGpu(File base, List<FileList.Entry> entries, int gpu, List<String> warnings) throws PackException {
+        List<FileList.Entry> out = new ArrayList<>();
         int skipped = 0;
-        for (Entry e : entries) {
+        for (FileList.Entry e : entries) {
             int g = GameFilePolicy.gpuOf(e.path);
             boolean keep;
             if (g == 0) keep = true;
@@ -156,32 +91,31 @@ public final class RepairEngine {
     }
 
     // ------------------------------------------------------------------ verificar
-    public static VerifyResult verify(File base, List<Entry> entries, Progress progress, CancelToken cancel) throws PackException {
+    public static VerifyResult verify(File base, List<FileList.Entry> entries, Progress progress, CancelToken cancel) throws PackException {
         VerifyResult r = new VerifyResult();
         Set<String> known = new HashSet<>();
         int i = 0;
-        for (Entry e : entries) {
+        for (FileList.Entry e : entries) {
             cancel.check();
             known.add(e.path.toLowerCase(Locale.ROOT));
             r.total++;
             if (progress != null) progress.onStep(e.path, ++i, entries.size());
             File f = PathSafety.resolveInside(base, e.path);
-            if (!f.isFile() && GameFilePolicy.isGenerated(e.path)) { r.ok++; continue; }   // CINFO.BIN, MINFO.BIN...: o jogo recria; falta nao e erro
             if (!f.isFile()) {
                 String alt = caseVariant(f);
                 r.bad.add(new Problem(e, alt == null ? "ausente" : "ausente (existe com outra caixa: " + alt + ")"));
                 continue;
             }
-            if (e.isVolatile()) { r.ok++; continue; }
+            if (!e.verify) { r.ok++; continue; }          // o jogo regrava: so conta se faltar
             if (f.length() != e.size) { r.bad.add(new Problem(e, "tamanho " + f.length() + " != " + e.size)); continue; }
-            if (e.sha256.isEmpty()) { r.ok++; r.sizeOnly++; continue; }
+            if (!e.hasSha()) { r.ok++; r.sizeOnly++; continue; }
             String h = sha256(f, cancel);
             r.checkedBytes += f.length();
             if (h == null) r.bad.add(new Problem(e, "nao foi possivel ler o arquivo (I/O)"));
             else if (!h.equals(e.sha256)) r.bad.add(new Problem(e, "sha256 diferente (conteudo corrompido)"));
             else r.ok++;
         }
-        for (String s : SCOPE) listExtras(new File(base, s.substring(0, s.length() - 1)), base, known, r.extras);
+        for (String s : EXTRAS_SCOPE) listExtras(new File(base, s.substring(0, s.length() - 1)), base, known, r.extras);
         // pastas com caixa diferente (ex.: "SAMP" x "samp") sao um problema classico entre Windows e Android
         File[] top = base.listFiles();
         if (top != null) {
@@ -210,62 +144,44 @@ public final class RepairEngine {
             if (k.isDirectory()) { listExtras(k, base, known, out); continue; }
             String rel = base.toURI().relativize(k.toURI()).getPath();
             String lc = rel.toLowerCase(Locale.ROOT);
-            if (known.contains(lc) || GameFilePolicy.isGenerated(rel)) continue;
+            if (known.contains(lc)) continue;
             out.add(rel + (isStray(k.getName()) ? "  [temporario/incompleto]" : ""));
         }
     }
 
     private static boolean isStray(String name) {
         String l = name.toLowerCase(Locale.ROOT);
-        return l.endsWith(".part") || l.endsWith(".tmp") || l.endsWith(".download") || l.endsWith(".crdownload");
-    }
-
-    /** Apaga SO temporarios de download dentro de SAMP/ e texdb/ (*.part, *.tmp...). Retorna quantos. */
-    public static int cleanStrayTemp(File base) {
-        int n = 0;
-        for (String s : SCOPE) n += cleanStray(new File(base, s.substring(0, s.length() - 1)));
-        return n;
-    }
-
-    private static int cleanStray(File dir) {
-        File[] kids = dir.listFiles();
-        if (kids == null) return 0;
-        int n = 0;
-        for (File k : kids) {
-            if (k.isDirectory()) n += cleanStray(k);
-            else if (isStray(k.getName()) && k.delete()) n++;
-        }
-        return n;
+        return l.endsWith(".temp") || l.endsWith(".part") || l.endsWith(".tmp") || l.endsWith(".download") || l.endsWith(".crdownload");
     }
 
     // ------------------------------------------------------------------ reparar
-    /** Alvos de "reparar do zero": tudo da lista, exceto arquivos regravados pelo jogo que ja existem. */
-    public static List<Entry> allTargets(File base, List<Entry> entries) throws PackException {
-        List<Entry> t = new ArrayList<>();
-        for (Entry e : entries) {
-            if (e.isVolatile() && PathSafety.resolveInside(base, e.path).isFile()) continue;
+    /** Alvos de "reparar do zero": tudo da lista, exceto arquivos "verify": false que ja existem. */
+    public static List<FileList.Entry> allTargets(File base, List<FileList.Entry> entries) throws PackException {
+        List<FileList.Entry> t = new ArrayList<>();
+        for (FileList.Entry e : entries) {
+            if (!e.verify && PathSafety.resolveInside(base, e.path).isFile()) continue;
             t.add(e);
         }
         return t;
     }
 
-    public static List<Entry> targetsOf(VerifyResult v) {
-        List<Entry> t = new ArrayList<>();
+    public static List<FileList.Entry> targetsOf(VerifyResult v) {
+        List<FileList.Entry> t = new ArrayList<>();
         for (Problem p : v.bad) t.add(p.entry);
         return t;
     }
 
-    public static RepairResult repair(File base, List<Entry> targets, UrlResolver urls, int maxAttempts, PackDownloader.Sleeper sleeper,
-                                      FreeSpace free, Progress progress, CancelToken cancel) throws PackException {
-        return repair(base, targets, urls, maxAttempts, sleeper, free, progress, null, cancel);
-    }
-
-    public static RepairResult repair(File base, List<Entry> targets, UrlResolver urls, int maxAttempts, PackDownloader.Sleeper sleeper,
-                                      FreeSpace free, Progress progress, final ByteProgress bytes, CancelToken cancel) throws PackException {
+    /**
+     * Rebaixa os alvos, um por vez. Cada arquivo vai para {@link #REPAIR_TMP}, e conferido (tamanho + SHA-256) e so entao
+     * substitui o do jogo; falhou = o arquivo antigo continua la.
+     */
+    public static RepairResult repair(File base, List<FileList.Entry> targets, UrlResolver urls, FileTransfer transfer, int maxAttempts,
+                                      Sleeper sleeper, FreeSpace free, final ByteProgress bytes, CancelToken cancel) throws PackException {
         final RepairResult res = new RepairResult();
         if (targets.isEmpty()) return res;
-        long maxFile = 0;
-        for (Entry e : targets) maxFile = Math.max(maxFile, e.size);
+        long maxFile = 0, allTotal0 = 0;
+        for (FileList.Entry e : targets) { maxFile = Math.max(maxFile, e.size); allTotal0 += e.size; }
+        final long allTotal = allTotal0;
         if (free != null) {
             long need = maxFile + 100L * 1024 * 1024; // um arquivo por vez (o antigo e liberado ao trocar) + margem
             long have = free.freeBytes();
@@ -273,17 +189,15 @@ public final class RepairEngine {
                 throw new PackException("espaco insuficiente: livre " + (have >> 20) + " MB, necessario " + (need >> 20) + " MB");
         }
         File tmpDir = new File(base, REPAIR_TMP);
-        long allTotal0 = 0;
-        for (Entry e : targets) allTotal0 += e.size;
-        final long allTotal = allTotal0;
         final long[] doneBefore = {0}; // soma dos arquivos ja concluidos
         int i = 0;
         try {
-            for (Entry e : targets) {
+            for (FileList.Entry e : targets) {
                 cancel.check();
-                if (progress != null) progress.onStep(e.path, ++i, targets.size());
+                i++;
                 File dest = PathSafety.resolveInside(base, e.path);
-                File tmp = new File(tmpDir, i + ".tmp");
+                final String tmpName = i + ".tmp";
+                final File tmp = new File(tmpDir, tmpName);
                 final long[] fileDone = {0};
                 final int idx = i, cnt = targets.size();
                 final String fpath = e.path;
@@ -292,12 +206,12 @@ public final class RepairEngine {
                 try {
                     if (dest.isDirectory()) throw new PackException("o destino e uma pasta");
                     if (bytes != null) bytes.onBytes(idx, cnt, fpath, 0, fsize, doneBefore[0], allTotal);
-                    FileDownloader.downloadVerified(urls.urlFor(e.path), tmp, e.size, e.sha256, maxAttempts, sleeper,
-                            new FileDownloader.Bytes() {
-                                @Override public void add(long d) {
-                                    res.downloadedBytes += d;
-                                    fileDone[0] += d;
-                                    if (bytes != null) bytes.onBytes(idx, cnt, fpath, fileDone[0], fsize, doneBefore[0] + fileDone[0], allTotal);
+                    fetchVerified(transfer, e.url.isEmpty() ? urls.urlFor(e.path) : e.url, tmpDir, tmpName, e, maxAttempts, sleeper,
+                            new FileTransfer.Progress() {
+                                @Override public void at(long fileBytes) {
+                                    res.downloadedBytes += fileBytes - fileDone[0];
+                                    fileDone[0] = fileBytes;
+                                    if (bytes != null) bytes.onBytes(idx, cnt, fpath, fileBytes, fsize, doneBefore[0] + fileBytes, allTotal);
                                 }
                             }, cancel);
                     File parent = dest.getParentFile();
@@ -313,13 +227,57 @@ public final class RepairEngine {
                 } catch (PackException | IOException ex) {
                     res.failed.add(e.path + " (" + (e.size >> 10) + " KB, apos " + ((System.currentTimeMillis() - t0) / 1000) + " s): " + ex.getMessage());
                     doneBefore[0] += e.size;
-                    tmp.delete();
+                    transfer.discard(tmpDir, tmpName);
                 }
             }
         } finally {
-            AtomicInstaller.deleteTree(tmpDir);
+            tmpDir.delete(); // so some se estiver vazia
         }
         return res;
+    }
+
+    /** Baixa para dir/name e confere tamanho + SHA-256 (se o arquivo tem); ate maxAttempts vezes. Falhando, nada fica em dir. */
+    private static void fetchVerified(FileTransfer transfer, String url, File dir, String name, FileList.Entry e, int maxAttempts,
+                                      Sleeper sleeper, FileTransfer.Progress progress, CancelToken cancel) throws PackException {
+        if (e.size == 0) {   // o PRDownloader nao conclui download sem conteudo: o arquivo vazio e criado aqui
+            try {
+                if (!dir.isDirectory() && !dir.mkdirs() && !dir.isDirectory()) throw new IOException("nao foi possivel criar " + dir);
+                File f = new File(dir, name);
+                if (!f.createNewFile() && !f.isFile()) throw new IOException("createNewFile falhou");
+                return;
+            } catch (IOException ex) {
+                throw new PackException("nao foi possivel criar o arquivo vazio: " + ex.getMessage(), ex);
+            }
+        }
+        String last = "?";
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            cancel.check();
+            try {
+                transfer.fetch(url, dir, name, e.size, progress, cancel);
+                File f = new File(dir, name);
+                if (f.length() != e.size) {
+                    last = "tamanho " + f.length() + " != " + e.size;
+                } else if (!e.hasSha() || e.sha256.equals(sha256(f, cancel))) {
+                    return;
+                } else {
+                    last = "SHA-256 nao confere";
+                }
+                transfer.discard(dir, name);   // conteudo errado: nao pode ser retomado
+            } catch (PackException ex) {
+                if (ex instanceof CancelToken.Cancelled) throw ex;
+                last = ex.getMessage() == null ? ex.toString() : ex.getMessage();
+            }
+            if (attempt < maxAttempts) {
+                try {
+                    sleeper.sleep(1500L * attempt);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new CancelToken.Cancelled();
+                }
+            }
+        }
+        transfer.discard(dir, name);
+        throw new PackException("falhou apos " + maxAttempts + " tentativas (" + last + ")");
     }
 
     private static void replace(File from, File to) throws IOException {

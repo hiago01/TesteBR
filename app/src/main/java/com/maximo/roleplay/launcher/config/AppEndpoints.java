@@ -35,27 +35,16 @@ public final class AppEndpoints {
         return base(c) + c.getString(R.string.endpoint_maximo_config_path).trim();
     }
 
-    /** files_testes.json: lista (name/size/path/sha256) dos arquivos do jogo. Fallback de url_cache_files do maximo_config.json. */
+    /** Lista (name/path/url/size...) dos arquivos do jogo. Fallback de url_cache_files do maximo_config.json. */
     public static String filesListUrl(Context c) {
         return base(c) + c.getString(R.string.endpoint_files_list_path).trim();
     }
 
-    /** URL completa de um arquivo do jogo, a partir do "path" relativo de files_testes.json. */
+    /** URL de um arquivo da lista que veio sem "url": <base><prefixo>/<path>. */
     public static String fileUrl(Context c, String relativePath) {
         String p = c.getString(R.string.endpoint_files_path).trim();
         if (!p.endsWith("/")) p = p + "/";
         String rel = relativePath.startsWith("/") ? relativePath.substring(1) : relativePath;
         return base(c) + p + rel;
-    }
-
-    /** samp.json: lista (path/size/sha256) da pasta SAMP/. */
-    public static String sampJsonUrl(Context c) {
-        return base(c) + c.getString(R.string.endpoint_samp_json_path).trim();
-    }
-
-    /** URL de um arquivo da pasta SAMP/; relativePath e o "path" do samp.json (comeca com "SAMP/"), ja codificado. */
-    public static String sampFileUrl(Context c, String relativePath) {
-        String rel = relativePath.startsWith("/") ? relativePath.substring(1) : relativePath;
-        return base(c) + "/" + rel;
     }
 }

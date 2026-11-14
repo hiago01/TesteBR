@@ -3,9 +3,9 @@ package com.maximo.roleplay.launcher.pack;
 import java.io.File;
 
 /**
- * Motor de transferencia de UM arquivo grande (pacote .zip). A verificacao (tamanho + SHA-256), as tentativas e o
- * progresso total ficam em {@link PackDownloader}; aqui so se baixa.
- * {@link HttpTransfer} e a implementacao (JVM puro, HttpURLConnection) usada na aba Reparar e nos testes.
+ * Motor de transferencia de UM arquivo. A verificacao (tamanho + SHA-256), as tentativas e o progresso total ficam em
+ * {@link RepairEngine}; aqui so se baixa. No aplicativo a implementacao e o PrDownloaderTransfer (PRDownloader); nos
+ * testes da JVM, uma versao falsa.
  */
 public interface FileTransfer {
     /** Bytes ja gravados deste arquivo (cumulativo, inclusive o que foi retomado). Pode diminuir se o download recomecar do zero. */

@@ -26,7 +26,6 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
-import com.maximo.roleplay.launcher.util.DownloadMode;
 import com.maximo.roleplay.launcher.util.UiSounds;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.constraintlayout.widget.ConstraintLayout;
@@ -299,48 +298,14 @@ public class SplashActivity extends AppCompatActivity {
                         final AlertDialog alert = new AlertDialog.Builder(SplashActivity.this)
                                 .setView(v).setCancelable(false).create();
                         alert.setCanceledOnTouchOutside(false);
-                        // Dois cartoes selecionaveis (SEGURO / COMPLETO) + botao CONFIRMAR. Toque = som. Nada inicia sem confirmar.
                         UiSounds.init(SplashActivity.this);
-                        final View cardSafe = v.findViewById(R.id.mx_upd_card_safe);
-                        final View cardFull = v.findViewById(R.id.mx_upd_card_full);
-                        final View checkSafe = v.findViewById(R.id.mx_upd_check_safe);
-                        final View checkFull = v.findViewById(R.id.mx_upd_check_full);
-                        final android.widget.Button confirm = v.findViewById(R.id.mx_upd_confirm_btn);
-                        final String[] choice = { null };
-                        confirm.setEnabled(false);
-                        View.OnClickListener pick = new View.OnClickListener() {
+                        v.findViewById(R.id.mx_upd_confirm_btn).setOnClickListener(new View.OnClickListener() {
                             @Override
                             public void onClick(View view) {
-                                boolean safe = (view == cardSafe);
-                                String c = safe ? DownloadMode.SAFE : DownloadMode.FULL;
-                                if (c.equals(choice[0])) return;
-                                choice[0] = c;
-                                cardSafe.setSelected(safe);
-                                cardFull.setSelected(!safe);
-                                checkSafe.setVisibility(safe ? View.VISIBLE : View.INVISIBLE);
-                                checkFull.setVisibility(safe ? View.INVISIBLE : View.VISIBLE);
-                                confirm.setEnabled(true);
-                                confirm.setText(safe ? R.string.mx_upd_confirm_safe : R.string.mx_upd_confirm_full);
-                                UiSounds.play(UiSounds.CLICK);
-                            }
-                        };
-                        cardSafe.setOnClickListener(pick);
-                        cardFull.setOnClickListener(pick);
-                        confirm.setOnClickListener(new View.OnClickListener() {
-                            @Override
-                            public void onClick(View view) {
-                                if (choice[0] == null) return;
                                 UiSounds.play(UiSounds.CONFIRM);
-                                if (DownloadMode.SAFE.equals(choice[0])) {
-                                    // SEGURO: nao apaga nada; baixa so o jogo (sem skins), arquivo a arquivo.
-                                    DownloadMode.set(SplashActivity.this, DownloadMode.SAFE);
-                                    mDialogShowing = false;
-                                    startGameDataUpdate();
-                                    alert.dismiss();
-                                } else {
-                                    // COMPLETO: confirma, apaga o jogo e baixa tudo pelos pacotes (packs).
-                                    confirmFullDownload(alert);
-                                }
+                                mDialogShowing = false;
+                                startGameDataUpdate();
+                                alert.dismiss();
                             }
                         });
                         alert.setOnDismissListener(new android.content.DialogInterface.OnDismissListener() {
@@ -452,23 +417,6 @@ public class SplashActivity extends AppCompatActivity {
         }
     }
 
-    // ---- APK novo: apaga os arquivos dos clientes antigos e deixa o fluxo normal baixar tudo de novo (PRDownloader) ----
-    private static final String PREF_WIPED_VC = "wiped_for_version_code";
-    private boolean mWipeDone = false;
-
-    private int currentVersionCode() {
-        try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionCode; } catch (Throwable t) { return -1; }
-    }
-
-    /** true = esta e a 1a abertura deste versionCode e o recurso wipe_files_on_new_apk esta ligado (endpoints.xml). */
-    private boolean needsWipe() {
-        try {
-            if (!getResources().getBoolean(R.bool.wipe_files_on_new_apk)) return false;
-            final int vc = currentVersionCode();
-            return vc > 0 && getSharedPreferences("com.maximo.roleplay", MODE_PRIVATE).getInt(PREF_WIPED_VC, -1) != vc;
-        } catch (Throwable t) { return false; }
-    }
-
     private void startGameDataUpdate() {
         Intent intent = new Intent(SplashActivity.this, UpdateActivity.class);
         intent.putExtra("mode", UpdateActivity.UpdateMode.GameDataUpdate.name());
@@ -476,91 +424,7 @@ public class SplashActivity extends AppCompatActivity {
         finish();
     }
 
-    /** DOWNLOAD COMPLETO: confirma, apaga os arquivos do jogo (ClientWipe mantem configuracoes/favoritos) e baixa tudo de novo. */
-    private void confirmFullDownload(final AlertDialog parent) {
-        if (isFinishing() || isDestroyed()) return;
-        new AlertDialog.Builder(SplashActivity.this)
-                .setTitle(R.string.mx_upd_full_title)
-                .setMessage(R.string.mx_upd_full_msg)
-                .setCancelable(false)
-                .setNegativeButton(R.string.mx_upd_full_no, null)
-                .setPositiveButton(R.string.mx_upd_full_yes, new android.content.DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(android.content.DialogInterface d, int which) {
-                        runFullDownload(parent);
-                    }
-                }).show();
-    }
-
-    private void runFullDownload(final AlertDialog parent) {
-        final java.io.File dir = getExternalFilesDir(null);
-        final android.widget.Button b1 = parent.findViewById(R.id.mx_upd_confirm_btn);
-        if (b1 != null) b1.setEnabled(false);
-        new Thread(new Runnable() {
-            @Override public void run() {
-                int failed = 0;
-                try {
-                    com.maximo.roleplay.launcher.pack.ClientWipe.Result r = com.maximo.roleplay.launcher.pack.ClientWipe.wipe(dir);
-                    failed = r.failed;
-                    Log.i(TAG, "DOWNLOAD COMPLETO: " + r);
-                } catch (Throwable t) {
-                    Log.e(TAG, "DOWNLOAD COMPLETO: wipe falhou", t);
-                    failed = 1;
-                }
-                final int f = failed;
-                runOnUiThread(new Runnable() { @Override public void run() {
-                    if (isFinishing() || isDestroyed()) return;
-                    if (f > 0) {
-                        // nao baixa por cima de uma limpeza incompleta: o jogador pode tentar de novo ou usar o SEGURO
-                        if (b1 != null) b1.setEnabled(true);
-                        Toast.makeText(SplashActivity.this, getString(R.string.mx_upd_full_fail, f), Toast.LENGTH_LONG).show();
-                        return;
-                    }
-                    mDialogShowing = false;
-                    DownloadMode.set(SplashActivity.this, DownloadMode.FULL); // so grava depois da limpeza ter dado certo
-                    com.maximo.roleplay.launcher.config.Config.clientUpToDate = false;
-                    startGameDataUpdate();
-                    parent.dismiss();
-                } });
-            }
-        }, "full-download-wipe").start();
-    }
-
-    private void wipeThenStart() {
-        // Aviso na tela (nao so um Toast): o jogador precisa saber que o app vai fechar e abrir sozinho.
-        final com.maximo.roleplay.launcher.util.NoticeDialog notice = com.maximo.roleplay.launcher.util.NoticeDialog.show(
-                this, getString(R.string.mx_wipe_title), getString(R.string.mx_wipe_msg), true, null, null);
-        final java.io.File dir = getExternalFilesDir(null);
-        final int vc = currentVersionCode();
-        new Thread(new Runnable() {
-            @Override public void run() {
-                String res = "";
-                try { res = com.maximo.roleplay.launcher.pack.ClientWipe.wipe(dir).toString(); }
-                catch (Throwable t) { Log.e(TAG, "ClientWipe falhou", t); res = "erro " + t; }
-                Log.i(TAG, "ClientWipe (versionCode " + vc + "): " + res);
-                // marca ANTES de reabrir: na proxima abertura nao apaga de novo (sem laco)
-                try { getSharedPreferences("com.maximo.roleplay", MODE_PRIVATE).edit().putInt(PREF_WIPED_VC, vc).commit(); } catch (Throwable ignored) {}
-                runOnUiThread(new Runnable() { @Override public void run() {
-                    mWipeDone = true;
-                    if (isFinishing() || isDestroyed()) return;
-                    notice.update(getString(R.string.mx_wipe_done_title), getString(R.string.mx_wipe_done_msg), true, null, null);
-                    mUiHandler.postDelayed(new Runnable() { @Override public void run() {
-                        if (isFinishing() || isDestroyed()) return;
-                        try {
-                            RestartActivity.restart(SplashActivity.this);   // fecha e abre de novo
-                        } catch (Throwable t) {
-                            Log.e(TAG, "reabrir falhou, seguindo sem reiniciar", t);
-                            notice.dismiss();
-                            startUpdateService();
-                        }
-                    } }, 2500);
-                } });
-            }
-        }, "client-wipe").start();
-    }
-
     private void startUpdateService() {
-        if (!isSkipChecksEnabled() && !mWipeDone && needsWipe()) { wipeThenStart(); return; }
         if (isSkipChecksEnabled()) {
             // modo sem verificacao: nao conecta ao UpdateService (sem checar dados nem APK). Pequena espera para o gesto de desligar.
             Config.clientUpToDate = false;

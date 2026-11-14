@@ -22,14 +22,13 @@ import androidx.fragment.app.Fragment;
 
 import com.maximo.roleplay.R;
 import com.maximo.roleplay.launcher.config.AppEndpoints;
-import com.maximo.roleplay.launcher.pack.AtomicInstaller;
-import com.maximo.roleplay.launcher.pack.ClientWipe;
+import com.maximo.roleplay.launcher.PrDownloaderTransfer;
 import com.maximo.roleplay.launcher.pack.CancelToken;
-import com.maximo.roleplay.launcher.pack.FileDownloader;
+import com.maximo.roleplay.launcher.pack.FileList;
 import com.maximo.roleplay.launcher.pack.MiniJson;
-import com.maximo.roleplay.launcher.pack.PackDownloader;
 import com.maximo.roleplay.launcher.pack.PackException;
 import com.maximo.roleplay.launcher.pack.RepairEngine;
+import com.maximo.roleplay.launcher.pack.TextFetcher;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -43,9 +42,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Engrenagem de correcoes (menu lateral "CORRECOES"). Fluxo SEPARADO do UpdateService: nao altera o atualizador nem os
- * pacotes ZIP. Toda a logica de arquivo/rede fica em pack/RepairEngine (testada em JVM); aqui so ha tela e Android.
- * Escopo: files/SAMP e files/texdb. Rede e disco sempre em thread de fundo.
+ * Aba CORRECOES (menu lateral). Le a MESMA lista de arquivos do launcher e baixa pelo PRDownloader. Nada aqui apaga arquivo
+ * do jogo: um arquivo so e trocado depois de o novo ser baixado e conferido. Toda a logica fica em pack/RepairEngine
+ * (testada em JVM); aqui so ha tela e Android. Rede e disco sempre em thread de fundo.
  */
 public class RepairFragment extends Fragment {
     private static final AtomicBoolean BUSY = new AtomicBoolean(false);
@@ -57,13 +56,12 @@ public class RepairFragment extends Fragment {
 
     private TextView status, detail, cancelBtn;
     private ProgressBar bar;
-    private View bVerify, bFull, bExport, bClean, bReinstall;
+    private View bVerify, bFull, bExport;
 
     // estado da ultima execucao (so lido/escrito na thread de fundo ou depois de postar na UI)
-    private volatile List<RepairEngine.Entry> lastEntries;
+    private volatile List<FileList.Entry> lastEntries;
     private volatile RepairEngine.VerifyResult lastVerify;
     private volatile RepairEngine.RepairResult lastRepair;
-    private volatile boolean haveSampJson;
     private volatile int gpuType;                 // 1=dxt 2=etc 3=pvr, 0=desconhecida
     private volatile List<String> listWarnings = new ArrayList<>();
     private volatile long lastByteMs;             // ultimo instante em que chegaram bytes (detector de travamento)
@@ -82,14 +80,10 @@ public class RepairFragment extends Fragment {
         bVerify = v.findViewById(R.id.repair_btn_verify);
         bFull = v.findViewById(R.id.repair_btn_full);
         bExport = v.findViewById(R.id.repair_btn_export);
-        bClean = v.findViewById(R.id.repair_btn_clean);
-        bReinstall = v.findViewById(R.id.repair_btn_reinstall);
 
         bVerify.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View x) { startVerify(); } });
         bFull.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View x) { confirmFull(); } });
-        bReinstall.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View x) { confirmReinstall(); } });
         bExport.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View x) { startExport(); } });
-        bClean.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View x) { startClean(); } });
         cancelBtn.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View x) { cancel.cancel(); setStatus("Cancelando..."); } });
         setBusyUi(BUSY.get());
         return v;
@@ -117,7 +111,7 @@ public class RepairFragment extends Fragment {
         cancel.cancel();
         status = detail = cancelBtn = null;
         bar = null;
-        bVerify = bFull = bExport = bClean = bReinstall = null;
+        bVerify = bFull = bExport = null;
         super.onDestroyView();
     }
 
@@ -132,7 +126,7 @@ public class RepairFragment extends Fragment {
     private void startVerify() {
         run(new Job() {
             @Override public void run(File base) throws PackException {
-                List<RepairEngine.Entry> entries = loadEntries(base);
+                List<FileList.Entry> entries = loadEntries(base);
                 RepairEngine.VerifyResult v = RepairEngine.verify(base, entries, stepProgress("Verificando"), cancel);
                 lastVerify = v;
                 lastRepair = null;
@@ -181,63 +175,26 @@ public class RepairFragment extends Fragment {
                 }).show();
     }
 
-    private void confirmReinstall() {
-        if (BUSY.get()) return;
-        Activity a = getActivity();
-        if (a == null || a.isFinishing()) return;
-        new AlertDialog.Builder(a)
-                .setTitle(R.string.mx_repair_reinstall_title)
-                .setMessage(R.string.mx_repair_reinstall_msg)
-                .setNegativeButton(R.string.mx_repair_no, null)
-                .setPositiveButton(R.string.mx_repair_yes, new android.content.DialogInterface.OnClickListener() {
-                    @Override public void onClick(android.content.DialogInterface d, int w) { startReinstall(); }
-                }).show();
-    }
-
-    /**
-     * Apaga o jogo instalado (ClientWipe: mantem so configuracoes/favoritos/logs; downloads parciais saem)
-     * e reabre o launcher pela Splash, que ao nao achar instalacao baixa tudo de novo do /filestestes/ (mesmo fluxo da 1a vez).
-     */
-    private void startReinstall() {
-        run(new Job() {
-            @Override public void run(File base) throws PackException {
-                post("Apagando o jogo instalado...", "");
-                ClientWipe.Result res = ClientWipe.wipe(base);
-                if (res.failed > 0) throw new PackException("não foi possível apagar " + res.failed + " arquivo(s). Nada foi reinstalado; tente de novo.");
-                post("Reiniciando o launcher...", "Removidos: " + res.deleted + " arquivo(s). A instalação nova começa em seguida.");
-                ui.postDelayed(new Runnable() { @Override public void run() {
-                    Activity a = getActivity();
-                    if (a == null || a.isFinishing()) return;
-                    com.maximo.roleplay.launcher.config.Config.clientUpToDate = false;
-                    Intent i = new Intent(a, com.maximo.roleplay.launcher.SplashActivity.class);
-                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-                    a.startActivity(i);
-                    a.finish();
-                } }, 800);
-            }
-        });
-    }
-
     private void startFull() {
         run(new Job() {
             @Override public void run(File base) throws PackException {
-                List<RepairEngine.Entry> entries = loadEntries(base);
+                List<FileList.Entry> entries = loadEntries(base);
                 doRepair(base, RepairEngine.allTargets(base, entries), entries);
             }
         });
     }
 
     /** Baixa os alvos (verificados), confere de novo e mostra o resultado. */
-    private void doRepair(File base, List<RepairEngine.Entry> targets, List<RepairEngine.Entry> entries) throws PackException {
+    private void doRepair(File base, List<FileList.Entry> targets, List<FileList.Entry> entries) throws PackException {
         final File fb = base;
         lastByteMs = System.currentTimeMillis();
         downloading = true;
         ui.post(new Runnable() { @Override public void run() { ui.removeCallbacks(stallTicker); ui.postDelayed(stallTicker, 1000); } });
         RepairEngine.RepairResult rr;
         try {
-            rr = RepairEngine.repair(base, targets, urlResolver(), ATTEMPTS, SLEEP,
+            rr = RepairEngine.repair(base, targets, urlResolver(), new PrDownloaderTransfer(getActivity()), ATTEMPTS, SLEEP,
                 new RepairEngine.FreeSpace() { @Override public long freeBytes() { return new StatFs(fb.getAbsolutePath()).getAvailableBytes(); } },
-                null, byteProgress(), cancel);
+                byteProgress(), cancel);
         } finally {
             downloading = false;
         }
@@ -262,20 +219,10 @@ public class RepairFragment extends Fragment {
         });
     }
 
-    private void startClean() {
-        run(new Job() {
-            @Override public void run(File base) {
-                AtomicInstaller.recoverOnStartup(base);   // restaura o que faltar do .backup; apaga .staging/.backup/.downloads
-                int stray = RepairEngine.cleanStrayTemp(base);
-                post("Limpeza concluída", "Arquivos temporários removidos em texdb/SAMP: " + stray);
-            }
-        });
-    }
-
     // ------------------------------------------------------------------ infraestrutura
     private interface Job { void run(File base) throws PackException; }
 
-    private static final PackDownloader.Sleeper SLEEP = new PackDownloader.Sleeper() {
+    private static final RepairEngine.Sleeper SLEEP = new RepairEngine.Sleeper() {
         @Override public void sleep(long ms) throws InterruptedException { Thread.sleep(ms); }
     };
 
@@ -308,14 +255,17 @@ public class RepairFragment extends Fragment {
         }
     }
 
-    /** maximo_config.json -> url_cache_files; samp.json (opcional, como no UpdateService); files_testes.json. */
-    private List<RepairEngine.Entry> loadEntries(File base) throws PackException {
+    /** maximo_config.json -> url_cache_files; lista de arquivos (mesmo formato e mesmas regras do UpdateService). */
+    private List<FileList.Entry> loadEntries(File base) throws PackException {
         Activity a = getActivity();
         if (a == null) throw new PackException("tela fechada");
         post("Baixando listas do servidor...", "");
-        String cfgText = FileDownloader.fetchText(AppEndpoints.maximoConfigUrl(a), 2 << 20, ATTEMPTS, SLEEP, cancel);
+        String cfgText = TextFetcher.fetch(AppEndpoints.maximoConfigUrl(a), 2 << 20, ATTEMPTS, SLEEP, cancel);
         Map<String, Object> cfg = MiniJson.asMap(MiniJson.parse(cfgText));
         if (cfg == null) throw new PackException("maximo_config.json nao e um objeto JSON");
+        // aceita os campos na raiz ou dentro de "client_config" (formato do maximo_config.json do site)
+        Map<String, Object> inner = MiniJson.asMap(cfg.get("client_config"));
+        if (inner != null) cfg = inner;
         // url_cache_files ausente => <base>/files_testes.json; presente e que nao seja http(s) => erro.
         String filesUrl = MiniJson.str(cfg, "url_cache_files");
         if (filesUrl == null || filesUrl.trim().isEmpty()) {
@@ -325,32 +275,12 @@ public class RepairFragment extends Fragment {
             if (!(filesUrl.startsWith("http://") || filesUrl.startsWith("https://")))
                 throw new PackException("maximo_config.json: url_cache_files invalido");
         }
-
-        List<RepairEngine.Entry> samp = null;
-        try {
-            String sj = FileDownloader.fetchText(AppEndpoints.sampJsonUrl(a), 8 << 20, ATTEMPTS, SLEEP, cancel);
-            samp = RepairEngine.fromSampJson(sj);
-        } catch (CancelToken.Cancelled c) {
-            throw c;
-        } catch (PackException e) {
-            samp = null; // sem samp.json a SAMP/ vem do files_testes.json (igual ao UpdateService)
-        }
-        haveSampJson = samp != null;
-        List<String> warns = new ArrayList<>();
-        String fj = FileDownloader.fetchText(filesUrl, 32 << 20, ATTEMPTS, SLEEP, cancel);
-        List<RepairEngine.Entry> files = RepairEngine.fromFilesJson(fj, warns);
-        List<RepairEngine.Entry> merged = RepairEngine.merge(samp, files);
-        // Skins fora ("download_skins": false no JSON ou DOWNLOAD SEGURO): nao entram na verificacao/reparo.
-        Object ds = cfg.get("download_skins");
-        if (com.maximo.roleplay.launcher.pack.GameFilePolicy.shouldSkipSkins(ds, com.maximo.roleplay.launcher.util.DownloadMode.SAFE.equals(com.maximo.roleplay.launcher.util.DownloadMode.get(a)))) {
-            List<RepairEngine.Entry> noSkins = new ArrayList<>();
-            for (RepairEngine.Entry en : merged) if (!com.maximo.roleplay.launcher.pack.GameFilePolicy.isSkin(en.path)) noSkins.add(en);
-            merged = noSkins;
-        }
+        FileList.Parsed parsed = FileList.parse(TextFetcher.fetch(filesUrl, 32 << 20, ATTEMPTS, SLEEP, cancel));
+        List<String> warns = new ArrayList<>(parsed.warnings);
         gpuType = detectGpu(a);
-        List<RepairEngine.Entry> all = RepairEngine.forGpu(base, merged, gpuType, warns);
+        List<FileList.Entry> all = RepairEngine.forGpu(base, parsed.files, gpuType, warns);
         listWarnings = warns;
-        if (all.isEmpty()) throw new PackException("as listas do servidor não têm arquivos de texdb/SAMP");
+        if (all.isEmpty()) throw new PackException("a lista do servidor não tem arquivos");
         lastEntries = all;
         return all;
     }
@@ -364,14 +294,12 @@ public class RepairFragment extends Fragment {
         return 0;
     }
 
+    /** Arquivo sem "url" na lista: <base>/<prefixo de arquivos>/<path>. */
     private RepairEngine.UrlResolver urlResolver() {
         final Activity a = getActivity();
-        final boolean samp = haveSampJson;
         return new RepairEngine.UrlResolver() {
             @Override public String urlFor(String rel) {
-                String enc = Uri.encode(rel, "/");
-                if (samp && rel.regionMatches(true, 0, "SAMP/", 0, 5)) return AppEndpoints.sampFileUrl(a, enc);
-                return AppEndpoints.fileUrl(a, enc);
+                return AppEndpoints.fileUrl(a, Uri.encode(rel, "/"));
             }
         };
     }
@@ -447,7 +375,7 @@ public class RepairFragment extends Fragment {
 
     private void setBusyUi(boolean busy) {
         if (bVerify == null) return;
-        for (View v : new View[]{bVerify, bFull, bExport, bClean, bReinstall}) { v.setEnabled(!busy); v.setAlpha(busy ? 0.5f : 1f); }
+        for (View v : new View[]{bVerify, bFull, bExport}) { v.setEnabled(!busy); v.setAlpha(busy ? 0.5f : 1f); }
         cancelBtn.setVisibility(busy ? View.VISIBLE : View.GONE);
         bar.setVisibility(busy ? View.VISIBLE : View.GONE);
         if (!busy) bar.setProgress(0);
@@ -472,7 +400,6 @@ public class RepairFragment extends Fragment {
             Activity ka = getActivity();
             if (ka != null) b.append("\n[Teclado]\n").append(com.maximo.roleplay.launcher.util.KeyboardGuard.check(ka));
         } catch (RuntimeException ignored) { }
-        b.append("\nsamp.json: ").append(haveSampJson ? "usado" : "indisponível (SAMP/ pelo files_testes.json)");
         return b.toString();
     }
 

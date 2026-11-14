@@ -83,24 +83,10 @@
             </LinearLayout>
 
             <LinearLayout
-                android:id="@+id/repair_btn_reinstall"
-                style="@style/MxRepairAction">
-                <TextView style="@style/MxRepairActionTitle" android:text="@string/mx_repair_reinstall" />
-                <TextView style="@style/MxRepairActionHint" android:text="@string/mx_repair_reinstall_hint" />
-            </LinearLayout>
-
-            <LinearLayout
                 android:id="@+id/repair_btn_export"
                 style="@style/MxRepairAction">
                 <TextView style="@style/MxRepairActionTitle" android:text="@string/mx_repair_export" />
                 <TextView style="@style/MxRepairActionHint" android:text="@string/mx_repair_export_hint" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/repair_btn_clean"
-                style="@style/MxRepairAction">
-                <TextView style="@style/MxRepairActionTitle" android:text="@string/mx_repair_clean" />
-                <TextView style="@style/MxRepairActionHint" android:text="@string/mx_repair_clean_hint" />
             </LinearLayout>
 
             <ProgressBar

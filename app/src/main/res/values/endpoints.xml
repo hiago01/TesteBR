@@ -12,18 +12,13 @@
     <!-- JSON das noticias (aba Noticias). Formato em LEIA-ME_NOTICIAS_JSON.md. -->
     <string name="endpoint_news_path" translatable="false">/noticias.json</string>
     <string name="endpoint_servers_path" translatable="false">/servidores.json</string>
-    <!-- JSON do atualizador (campos na raiz): version_code, url_launcher, launcher_sha256, launcher_size, download_skins, url_cache_files. -->
+    <!-- JSON do atualizador (campos na raiz): version_code, url_launcher, launcher_sha256, launcher_size, url_cache_files. -->
     <string name="endpoint_maximo_config_path" translatable="false">/maximo_config.json</string>
-    <!-- Lista de arquivos do jogo. So e usada se o maximo_config.json vier sem url_cache_files. -->
+    <!-- Lista de arquivos do jogo (gerada pelo painel do servidor; formato igual ao samp-mobile.shop/files.json).
+         So e usada se o maximo_config.json vier sem url_cache_files. -->
     <string name="endpoint_files_list_path" translatable="false">/files_testes.json</string>
-    <!-- Prefixo de download dos arquivos do jogo; recebe o "path" de cada item de url_cache_files. -->
+    <!-- Prefixo de download dos arquivos que vem SEM "url" na lista; recebe o "path" de cada item. -->
     <string name="endpoint_files_path" translatable="false">/filestestes/</string>
-    <!-- JSON da pasta SAMP/ (gerado por gerar_samp_json.py a partir de C:\cache-server\SAMP). Os arquivos dela sao baixados em
-         <base>/<path>, ex.: https://maximoroleplay.com.br/SAMP/dff/x.dff (a pasta cache-server/SAMP fica na raiz do servidor). -->
-    <string name="endpoint_samp_json_path" translatable="false">/samp.json</string>
-    <!-- true = na 1a abertura de cada APK novo (versionCode diferente) o launcher APAGA os arquivos dos clientes antigos em files/
-         (menos configuracoes/favoritos/log/diag.ini) e instala tudo de novo pelo PRDownloader. false = nao apaga nada. -->
-    <bool name="wipe_files_on_new_apk">true</bool>
     <!-- true = gesto secreto da Splash: 4 toques ATIVAM o modo sem verificacao, 3 toques DESLIGAM (so vale na abertura atual; nunca fica gravado). false = desativado. -->
     <bool name="secret_gesture_enabled">true</bool>
 </resources>

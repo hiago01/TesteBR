@@ -30,18 +30,14 @@ import com.downloader.Error;
 import com.downloader.OnDownloadListener;
 import com.downloader.OnProgressListener;
 import com.downloader.PRDownloader;
-import com.downloader.PRDownloaderConfig;
 import com.downloader.Progress;
 import com.joom.paranoid.Obfuscate;
 import com.maximo.roleplay.launcher.config.AppEndpoints;
-import com.maximo.roleplay.launcher.data.FilesData;
-import com.maximo.roleplay.launcher.pack.AtomicInstaller;
+import com.maximo.roleplay.launcher.pack.FileList;
 import com.maximo.roleplay.launcher.pack.GameFilePolicy;
 import com.maximo.roleplay.launcher.pack.PackException;
-import com.maximo.roleplay.launcher.pack.SampList;
 import com.maximo.roleplay.launcher.util.NotificationHelper;
 
-import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -99,8 +95,10 @@ public class UpdateService extends Service {
     public ArrayList<String> mUpdateFiles = new ArrayList<>();
     public ArrayList<String> mUpdateFilesName = new ArrayList<>();
     public ArrayList<Long> mUpdateFilesSize = new ArrayList<>();
-    /** SHA-256 esperado de cada arquivo (de files_testes.json; "" = lista sem hash, so confere o tamanho). */
+    /** SHA-256 esperado de cada arquivo (da lista de arquivos; "" = sem hash, so confere o tamanho). */
     public ArrayList<String> mUpdateFilesSha = new ArrayList<>();
+    /** Link de cada arquivo ("" = AppEndpoints.fileUrl(path)). */
+    public ArrayList<String> mUpdateFilesUrl = new ArrayList<>();
 
     public int mGpuType = 0;
 
@@ -111,17 +109,12 @@ public class UpdateService extends Service {
     private ArrayList<String> mDlFiles = new ArrayList<>();
     private ArrayList<Long> mDlSizes = new ArrayList<>();
     private ArrayList<String> mDlShas = new ArrayList<>();
+    private ArrayList<String> mDlUrls = new ArrayList<>();
     private ArrayList<String> mDlFailed = new ArrayList<>();
     private int mDlIndex = 0;
     private int mDlConsecutiveFailures = 0;
     private long mDlDoneBytes = 0;
 
-    /** DownloadMode.* lido do maximo_config a cada verificacao (LEGACY / SAFE / FULL). */
-    private String mDlMode = com.maximo.roleplay.launcher.util.DownloadMode.LEGACY;
-    /** true = skins (texdb/skins, SAMP/skins) fora do download: "download_skins": false no JSON ou DOWNLOAD SEGURO. */
-    private boolean mSkipSkins = false;
-    /** Lista da pasta SAMP/ (samp.json). null = servidor sem samp.json -> a SAMP/ segue pelo files_testes.json. */
-    private SampList mSampList = null;
     /** Conferencia de SHA-256 a cada abertura: roda fora da HandlerThread para o servico continuar respondendo. */
     private ExecutorService mVerifyWorker;
 
@@ -131,27 +124,13 @@ public class UpdateService extends Service {
         mHandlerThread = new HandlerThread("ServiceStartArguments", 10);
         mHandlerThread.start();
         try {
-            PRDownloader.initialize(getApplicationContext(), PRDownloaderConfig.newBuilder().setDatabaseEnabled(true).setReadTimeout(30000).setConnectTimeout(30000).build());
+            DownloaderInit.ensure(this);
         } catch (RuntimeException e) {
             Log.e(TAG, "PRDownloader init failed: " + e);
         }
         mQueue = Volley.newRequestQueue(getApplicationContext());
         mInHandler = new IncomingHandler(mHandlerThread.getLooper());
         mMessenger = new Messenger(mInHandler);
-        // Recuperacao no inicio: apaga .staging/.downloads incompletos e restaura .backup (na HandlerThread, nao na principal).
-        mInHandler.post(new Runnable() {
-            @Override
-            public void run() {
-                File base = getExternalFilesDir(null);
-                if (base != null && base.isDirectory()) {
-                    try {
-                        AtomicInstaller.recoverOnStartup(base);
-                    } catch (RuntimeException e) {
-                        Log.w(TAG, "recoverOnStartup failed: " + e);
-                    }
-                }
-            }
-        });
     }
 
     @Override
@@ -377,7 +356,7 @@ public class UpdateService extends Service {
         mUpdateFilesName = new ArrayList<>();
         mUpdateFilesSize = new ArrayList<>();
         mUpdateFilesSha = new ArrayList<>();
-        mSampList = null;
+        mUpdateFilesUrl = new ArrayList<>();
         mUpdateGameDataSize = 0;          // original acumulava entre verificacoes
         mUpdateGameDataSizeUpdated = 0;
         mGameStatus = UpdateActivity.GameStatus.Unknown;
@@ -407,20 +386,14 @@ public class UpdateService extends Service {
             public void onResponse(String response) {
                 try {
                     JSONObject jSONObject = new JSONObject(response);
+                    // aceita os campos na raiz ou dentro de "client_config" (formato do maximo_config.json do site)
+                    if (jSONObject.optJSONObject("client_config") != null) jSONObject = jSONObject.getJSONObject("client_config");
                     mUpdateVersion = jSONObject.getInt("version_code");
                     mUpdateGameURL = jSONObject.getString("url_launcher");
                     mUpdateGameSha = jSONObject.optString("launcher_sha256", "").trim().toLowerCase(java.util.Locale.ROOT);
                     if (mUpdateGameSha.length() != 64) mUpdateGameSha = "";
                     mUpdateGameSize = jSONObject.optLong("launcher_size", 0);
                     if (withFiles) {
-                        // samp.json DESATIVADO: a pasta SAMP/ vem de files_testes.json (url_cache_files) em <base>/filestestes/<path>.
-                        // Download SEMPRE arquivo a arquivo (PRDownloader).
-                        mDlMode = com.maximo.roleplay.launcher.util.DownloadMode.get(UpdateService.this);
-                        // maximo_config.json -> "download_skins": true = skins SEMPRE (ate no SEGURO); false = nunca;
-                        // "auto"/ausente = escolha do jogador (SEGURO sem skins, COMPLETO com skins).
-                        Object skinsCfg = jSONObject.opt("download_skins");
-                        mSkipSkins = GameFilePolicy.shouldSkipSkins(skinsCfg, com.maximo.roleplay.launcher.util.DownloadMode.SAFE.equals(mDlMode));
-                        Log.d(TAG, "download_skins=" + skinsCfg + " modo=" + mDlMode + " -> pular skins=" + mSkipSkins);
                         // url_cache_files ausente => <base>/files_testes.json; presente e que nao seja http(s) => erro.
                         final String filesUrl;
                         if (jSONObject.isNull("url_cache_files")) {
@@ -432,7 +405,6 @@ public class UpdateService extends Service {
                                 return;
                             }
                         }
-                        mSampList = null;
                         getFilesInfo(filesUrl, session, onSuccess);
                     } else {
                         onSuccess.run();
@@ -445,53 +417,6 @@ public class UpdateService extends Service {
         }, "maximo_config"));
     }
 
-    /**
-     * Baixa samp.json (lista da pasta SAMP/) e acrescenta a mUpdateFiles o que falta/esta diferente. Erro ou arquivo
-     * ausente no servidor NAO aborta: mSampList fica null e a SAMP/ segue pelo files_testes.json como antes.
-     */
-    private void loadSamp(final int session, final Runnable next) {
-        final Runnable fallback = new Runnable() {
-            @Override
-            public void run() {
-                Log.w(TAG, "samp.json indisponivel -> SAMP/ pelo files_testes.json");
-                mSampList = null;
-                next.run();
-            }
-        };
-        mQueue.add(newRequest(AppEndpoints.sampJsonUrl(this), session, new Response.Listener<String>() {
-            @Override
-            public void onResponse(String body) {
-                File base = getExternalFilesDir(null);
-                if (base == null) { fallback.run(); return; }
-                SampList list;
-                try {
-                    list = SampList.parse(body);
-                } catch (PackException e) {
-                    Log.e(TAG, "samp.json invalido: " + e.getMessage());
-                    fallback.run();
-                    return;
-                }
-                mSampList = list;
-                int madeDirs = list.ensureDirs(base); // pastas vazias (ex.: SAMP/skins/fallback_tex)
-                if (madeDirs > 0) Log.d(TAG, "SAMP: " + madeDirs + " pasta(s) vazia(s) criada(s)");
-                int pending = 0;
-                for (SampList.Entry e : list.files) {
-                    String why = SampList.whyNeeded(base, e, false);
-                    if (why == null) continue;
-                    Log.d(TAG, "SAMP pendente: " + e.path + " (" + why + ")");
-                    mUpdateFiles.add(e.path);
-                    mUpdateFilesName.add(e.path.substring(e.path.lastIndexOf('/') + 1));
-                    mUpdateFilesSize.add(e.size);
-                    mUpdateFilesSha.add(e.sha256);
-                    mUpdateGameDataSize += e.size;
-                    pending++;
-                }
-                Log.d(TAG, "SAMP: " + list.files.size() + " arquivos na lista, " + pending + " pendentes");
-                next.run();
-            }
-        }, "samp.json", fallback));
-    }
-
     /** Baixa e interpreta a lista de arquivos; sem espera ativa, sem variaveis globais compartilhadas. */
     public void getFilesInfo(String url, final int session, final Runnable onSuccess) {
         mQueue.add(newRequest(url, session, new Response.Listener<String>() {
@@ -500,7 +425,7 @@ public class UpdateService extends Service {
                 ArrayList<HashJob> toHash;
                 try {
                     toHash = parseFilesInfo(body);
-                } catch (JSONException e) {
+                } catch (PackException e) {
                     Log.e(TAG, "files list parse error", e);
                     failCheck("File list is invalid (" + e.getMessage() + ")");
                     return;
@@ -515,65 +440,41 @@ public class UpdateService extends Service {
 
     /** Arquivo que tem o tamanho certo: so o SHA-256 diz se esta integro. */
     private static final class HashJob {
-        final String path, name, sha;
-        final long size;
-        HashJob(String path, String name, long size, String sha) { this.path = path; this.name = name; this.size = size; this.sha = sha; }
+        final FileList.Entry entry;
+        HashJob(FileList.Entry entry) { this.entry = entry; }
+    }
+
+    private void addPending(FileList.Entry e) {
+        mUpdateFiles.add(e.path);
+        mUpdateFilesName.add(e.name);
+        mUpdateFilesSize.add(e.size);
+        mUpdateFilesSha.add(e.hasSha() ? e.sha256 : "");
+        mUpdateFilesUrl.add(e.url);
+        mUpdateGameDataSize = mUpdateGameDataSize + e.size;
     }
 
     /**
-     * Arquivos da lista que o JOGADOR regrava no aparelho (voz e /skin7 save): o tamanho e conferido, o SHA-256 nao;
-     * senao a configuracao dele seria baixada de novo a cada abertura.
+     * Passo 1 (rapido): ausente ou (arquivo conferido) de tamanho diferente do servidor = pendente. Arquivo com
+     * "verify": false so entra se faltar. Os de tamanho certo que tem sha256 voltam para a conferencia de SHA-256
+     * (verifyHashes). Nada e gravado em disco, exceto as pastas vazias da lista.
      */
-    private static final java.util.Set<String> SHA_NOT_CHECKED = new java.util.HashSet<>(java.util.Arrays.asList(
-            "samp/sampvoice/svconfig.ini", "samp/skins/autoexec.txt"));
-
-    private void addPending(String path, String name, long size, String sha) {
-        mUpdateFiles.add(path);
-        mUpdateFilesName.add(name);
-        mUpdateFilesSize.add(size);
-        mUpdateFilesSha.add(sha);
-        mUpdateGameDataSize = mUpdateGameDataSize + size;
-    }
-
-    /**
-     * Passo 1 (rapido): ausente ou de tamanho diferente do servidor = pendente. Os de tamanho certo que tem sha256 na
-     * lista voltam para a conferencia de SHA-256 (verifyHashes). Nada e gravado em disco.
-     */
-    private ArrayList<HashJob> parseFilesInfo(String body) throws JSONException {
+    private ArrayList<HashJob> parseFilesInfo(String body) throws PackException {
         File base = getExternalFilesDir(null);
         if (base == null) throw new IllegalStateException("Storage is not available");
-        JSONArray jsonArray = new JSONObject(body).getJSONArray("files");
-        Log.d("x1y2z", "Length: " + jsonArray.length());
+        FileList.Parsed list = FileList.parse(body);
+        Log.d("x1y2z", "Length: " + list.files.size());
+        for (String w : list.warnings) Log.w(TAG, w);
+        FileList.ensureDirs(base, list.dirs);
         ArrayList<HashJob> toHash = new ArrayList<>();
-        for(int i = 0; i<jsonArray.length(); i++) {
-            JSONObject o = jsonArray.getJSONObject(i);
-            FilesData fileData = new FilesData(o.getString("name"), o.getLong("size"), o.getString("path"), o.optString("url", ""));
-            String name = fileData.getName();
-            String path = fileData.getPath();
-            // Arquivos que o jogo/launcher RECRIA no aparelho (cinfo.sig, MINFO.BIN, settings.ini, favorites.json,
-            // svlog.txt, gta_sa.set...): nunca baixar nem sobrescrever, senao seriam pedidos de novo a cada abertura.
-            if (GameFilePolicy.isInternal(path) || GameFilePolicy.isJunk(path) || GameFilePolicy.isGenerated(path)) {
-                continue;
-            }
-            // A pasta SAMP/ vem do samp.json (nada dela e ignorado); o files_testes.json so e usado para ela se nao houver samp.json.
-            if (mSampList != null && SampList.isSampPath(path)) {
-                continue;
-            }
-            // Filtro por GPU SEM diferenciar caixa (o original usava contains("samp") e falhava com "SAMP/").
-            if (!GameFilePolicy.wantedForDevice(path, mGpuType)) {
-                continue;
-            }
-            // Skins (texdb/skins e SAMP/skins) fora (DOWNLOAD SEGURO ou "download_skins": false): nao contam como "faltando".
-            if (mSkipSkins && GameFilePolicy.isSkin(path)) {
-                continue;
-            }
-            File file = new File(base, path);
-            String sha = o.optString("sha256", "").trim().toLowerCase(java.util.Locale.ROOT);
-            if (!file.exists() || file.length() != fileData.getSize()) {
-                addPending(path, name, fileData.getSize(), sha);
-            } else if (sha.length() == 64 && fileData.getSize() > 0
-                    && !SHA_NOT_CHECKED.contains(path.toLowerCase(java.util.Locale.ROOT))) {
-                toHash.add(new HashJob(path, name, fileData.getSize(), sha));
+        for (FileList.Entry e : list.files) {
+            // Texturas de outra GPU nao sao usadas neste aparelho.
+            if (!GameFilePolicy.wantedForDevice(e.path, mGpuType)) continue;
+            String why = FileList.whyNeeded(base, e);
+            if (why != null) {
+                Log.d("x1y2z", "pendente: " + e.path + " (" + why + ")");
+                addPending(e);
+            } else if (e.hasSha() && e.size > 0) {
+                toHash.add(new HashJob(e));
             }
         }
         Log.d("x1y2z", "faltando/tamanho errado: " + mUpdateFiles.size() + " arquivos; SHA-256 a conferir: " + toHash.size());
@@ -609,9 +510,9 @@ public class UpdateService extends Service {
                 for (int i = 0; i < total; i++) {
                     if (session != mSession) return;   // verificacao cancelada/substituida
                     HashJob j = jobs.get(i);
-                    String why = verifyDownloaded(new File(base, j.path), j.size, j.sha);
+                    String why = verifyDownloaded(new File(base, j.entry.path), j.entry.size, j.entry.sha256);
                     if (why != null) {
-                        Log.w(TAG, "verificacao: " + j.path + " -> " + why);
+                        Log.w(TAG, "verificacao: " + j.entry.path + " -> " + why);
                         bad.add(j);
                     }
                     long now = System.currentTimeMillis();
@@ -635,7 +536,7 @@ public class UpdateService extends Service {
                     public void run() {
                         if (session != mSession) return;
                         mVerifyWorker = null;
-                        for (HashJob j : bad) addPending(j.path, j.name, j.size, j.sha);
+                        for (HashJob j : bad) addPending(j.entry);
                         Log.d("x1y2z", "SHA-256 conferido: " + total + " arquivos, " + bad.size() + " divergentes");
                         if (!bad.isEmpty()) clLog("verificacao SHA-256: " + bad.size() + " arquivo(s) divergente(s)");
                         onSuccess.run();
@@ -895,12 +796,14 @@ public class UpdateService extends Service {
         mDlFiles = new ArrayList<>(mUpdateFiles);
         mDlSizes = new ArrayList<>(mUpdateFilesSize);
         mDlShas = new ArrayList<>(mUpdateFilesSha);
+        mDlUrls = new ArrayList<>(mUpdateFilesUrl);
         mDlFailed = new ArrayList<>();
         mDlAutoRounds = 0;
         mUpdateFiles.clear();
         mUpdateFilesName.clear();
         mUpdateFilesSize.clear();
         mUpdateFilesSha.clear();
+        mUpdateFilesUrl.clear();
         mDlIndex = 0;
         mDlDoneBytes = 0;
         mDlConsecutiveFailures = 0;
@@ -953,6 +856,7 @@ public class UpdateService extends Service {
             mUpdateFilesName.add(p.substring(p.lastIndexOf('/') + 1));
             mUpdateFilesSize.add(i >= 0 && i < mDlSizes.size() ? mDlSizes.get(i) : 0L);
             mUpdateFilesSha.add(i >= 0 && i < mDlShas.size() ? mDlShas.get(i) : "");
+            mUpdateFilesUrl.add(i >= 0 && i < mDlUrls.size() ? mDlUrls.get(i) : "");
         }
     }
 
@@ -1004,7 +908,7 @@ public class UpdateService extends Service {
         setDownloading(true);
         final String fileName = target.getName();
         final long[] last = { System.currentTimeMillis() };
-        mDownloadId = PRDownloader.download(urlFor(rel), parent.getAbsolutePath(), fileName).build().setOnStartOrResumeListener(null).setOnPauseListener(null).setOnCancelListener(null).setOnProgressListener(new OnProgressListener() {
+        mDownloadId = PRDownloader.download(urlFor(rel, mDlUrls.get(mDlIndex)), parent.getAbsolutePath(), fileName).build().setOnStartOrResumeListener(null).setOnPauseListener(null).setOnCancelListener(null).setOnProgressListener(new OnProgressListener() {
             @Override
             public void onProgress(final Progress progress) {
                 if(System.currentTimeMillis() - last[0] > 100) {
@@ -1089,11 +993,10 @@ public class UpdateService extends Service {
         });
     }
 
-    /** SAMP/ (quando ha samp.json) vem de <base>/SAMP/...; o resto de <base>/files/... */
-    private String urlFor(String rel) {
-        String enc = Uri.encode(rel, "/");
-        if (mSampList != null && SampList.isSampPath(rel)) return AppEndpoints.sampFileUrl(this, enc);
-        return AppEndpoints.fileUrl(this, enc);
+    /** Link da propria lista ("url"); sem ele, <base>/<prefixo de arquivos>/<path>. */
+    private String urlFor(String rel, String listed) {
+        if (isHttpUrl(listed)) return listed;
+        return AppEndpoints.fileUrl(this, Uri.encode(rel, "/"));
     }
 
     private File parentOf(String rel) {
@@ -1153,18 +1056,21 @@ public class UpdateService extends Service {
             ArrayList<String> files = new ArrayList<>();
             ArrayList<Long> sizes = new ArrayList<>();
             ArrayList<String> shas = new ArrayList<>();
+            ArrayList<String> urls = new ArrayList<>();
             for (String p : mDlFailed) {
                 int i = mDlFiles.indexOf(p);
                 if (i < 0) continue;
                 files.add(p);
                 sizes.add(i < mDlSizes.size() ? mDlSizes.get(i) : 0L);
                 shas.add(i < mDlShas.size() ? mDlShas.get(i) : "");
+                urls.add(i < mDlUrls.size() ? mDlUrls.get(i) : "");
             }
             if (!files.isEmpty()) {
                 Log.w(TAG, "nova tentativa automatica " + mDlAutoRounds + "/" + MAX_AUTO_ROUNDS + ": " + files.size() + " arquivo(s)");
                 mDlFiles = files;
                 mDlSizes = sizes;
                 mDlShas = shas;
+                mDlUrls = urls;
                 mDlFailed = new ArrayList<>();
                 mDlIndex = 0;
                 mDlConsecutiveFailures = 0;

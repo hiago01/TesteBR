@@ -14,13 +14,16 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * {@link FileTransfer} sobre o PRDownloader. Bloqueia a thread que chama (a thread "pack-install", NUNCA a principal)
+ * {@link FileTransfer} sobre o PRDownloader. Bloqueia a thread que chama (a thread de fundo da aba CORRECOES, NUNCA a principal)
  * ate o download terminar, falhar ou ser cancelado. O PRDownloader grava em <arquivo>.temp e so renomeia para o nome
- * final quando completa; com o banco ligado (PRDownloaderConfig.setDatabaseEnabled(true)) um .temp deixado por falha
- * de rede ou pelo app fechado e RETOMADO com "Range" (o Caddy atende Range). O tamanho/SHA-256 sao conferidos depois,
- * por PackDownloader.
+ * final quando completa; com o banco ligado (ver DownloaderInit) um .temp deixado por falha de rede ou pelo app fechado
+ * e RETOMADO com "Range" (o Caddy atende Range). O tamanho/SHA-256 sao conferidos por quem chama (RepairEngine).
  */
 public final class PrDownloaderTransfer implements FileTransfer {
+
+    public PrDownloaderTransfer(android.content.Context c) {
+        DownloaderInit.ensure(c);
+    }
 
     @Override
     public void fetch(String url, File dir, String fileName, long expectedSize, final FileTransfer.Progress progress, CancelToken cancel) throws PackException {
