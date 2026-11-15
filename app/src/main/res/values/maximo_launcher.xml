@@ -85,6 +85,22 @@
     <string name="mx_nick_err_short">O nick precisa ter pelo menos 3 caracteres.</string>
     <string name="mx_nick_err_chars">Use letras, números, espaço e _ [ ] ( ) $ @ . =, até 20 caracteres.</string>
     <string name="mx_nick_wire">No servidor seu nome será: %1$s</string>
+    <!-- Criar conta -->
+    <string name="mx_acc_btn">CRIAR CONTA</string>
+    <string name="mx_acc_title">Criar conta</string>
+    <string name="mx_acc_msg">A conta é criada aqui, no launcher. Dentro do jogo você só digita a senha para entrar (não existe registro no servidor).</string>
+    <string name="mx_acc_nick_hint">Nick (o mesmo que usa no jogo)</string>
+    <string name="mx_acc_pass_hint">Senha (6 a 32 caracteres)</string>
+    <string name="mx_acc_pass2_hint">Repita a senha</string>
+    <string name="mx_acc_ok">CRIAR</string>
+    <string name="mx_acc_creating">Criando conta…</string>
+    <string name="mx_acc_done">Conta criada! Entre no servidor com o nick %1$s e digite a sua senha na tela de login.</string>
+    <string name="mx_acc_err_pass_len">A senha precisa ter de 6 a 32 caracteres.</string>
+    <string name="mx_acc_err_pass_chars">Use só letras, números e símbolos (sem espaço e sem acentos).</string>
+    <string name="mx_acc_err_pass_match">As senhas não conferem.</string>
+    <string name="mx_acc_err_net">Não foi possível falar com o servidor de contas. Verifique a internet e tente de novo.</string>
+    <string name="mx_acc_err_generic">Não foi possível criar a conta agora. Tente novamente mais tarde.</string>
+    <string name="mx_acc_err_many">Muitas tentativas. Aguarde alguns minutos e tente de novo.</string>
     <string name="mx_nick_chip">Nick: %1$s</string>
     <string name="mx_nick_chip_empty">Escolher Nick</string>
     <string name="mx_upd_req_title">Atualização obrigatória</string>

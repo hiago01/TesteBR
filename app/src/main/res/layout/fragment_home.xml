@@ -65,8 +65,29 @@
         android:text="@string/mx_home_go_servers"
         android:textColor="@color/mx_text"
         android:textSize="11sp"
-        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintBottom_toTopOf="@+id/mx_home_create_account"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/mx_home_text" />
+
+    <TextView
+        android:id="@+id/mx_home_create_account"
+        android:layout_width="wrap_content"
+        android:layout_height="34dp"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/mx_btn_secondary"
+        android:clickable="true"
+        android:focusable="true"
+        android:fontFamily="@font/montserrat_bold"
+        android:gravity="center"
+        android:minWidth="140dp"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:text="@string/mx_acc_btn"
+        android:textColor="@color/mx_text"
+        android:textSize="11sp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/mx_home_go_servers" />
 </androidx.constraintlayout.widget.ConstraintLayout>

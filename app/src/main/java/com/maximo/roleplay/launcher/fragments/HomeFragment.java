@@ -11,6 +11,7 @@ import androidx.fragment.app.Fragment;
 import com.joom.paranoid.Obfuscate;
 import com.maximo.roleplay.R;
 import com.maximo.roleplay.launcher.MainActivity;
+import com.maximo.roleplay.launcher.util.AccountDialog;
 
 /** Pagina "Inicio". Os links sociais agora vivem na pagina Comunidade e no rodape (maximo_links.xml). */
 @Obfuscate
@@ -28,6 +29,12 @@ public class HomeFragment extends Fragment {
                 if (getActivity() instanceof MainActivity) {
                     ((MainActivity) getActivity()).openPage(MainActivity.PAGE_SERVERS);
                 }
+            }
+        });
+        view.findViewById(R.id.mx_home_create_account).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                AccountDialog.show(getActivity());
             }
         });
         return view;

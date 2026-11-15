@@ -19,6 +19,8 @@
     <string name="endpoint_files_list_path" translatable="false">/files_testes.json</string>
     <!-- Prefixo de download dos arquivos que vem SEM "url" na lista; recebe o "path" de cada item. -->
     <string name="endpoint_files_path" translatable="false">/filestestes/</string>
+    <!-- Criacao de conta (tela "Criar conta"): POST JSON {nick,senha}. O site precisa repassar este caminho (HTTPS) para o contas-service do servidor (porta 8790, rota /v1/conta). -->
+    <string name="endpoint_conta_path" translatable="false">/api/conta</string>
     <!-- true = gesto secreto da Splash: 4 toques ATIVAM o modo sem verificacao, 3 toques DESLIGAM (so vale na abertura atual; nunca fica gravado). false = desativado. -->
     <bool name="secret_gesture_enabled">true</bool>
 </resources>

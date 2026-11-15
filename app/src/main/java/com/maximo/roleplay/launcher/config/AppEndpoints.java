@@ -35,6 +35,11 @@ public final class AppEndpoints {
         return base(c) + c.getString(R.string.endpoint_maximo_config_path).trim();
     }
 
+    /** Criacao de conta (POST JSON {nick,senha}); o site repassa para o contas-service do servidor. */
+    public static String contaUrl(Context c) {
+        return base(c) + c.getString(R.string.endpoint_conta_path).trim();
+    }
+
     /** Lista (name/path/url/size...) dos arquivos do jogo. Fallback de url_cache_files do maximo_config.json. */
     public static String filesListUrl(Context c) {
         return base(c) + c.getString(R.string.endpoint_files_list_path).trim();
