@@ -106,19 +106,22 @@ public:
     }
 };
 
-// Posicao/orientacao do carregado a partir da matriz do carregador (R,F,U,P). Rotaciona 180 graus em torno do eixo
-// direito (carregado de cabeca para baixo sobre o ombro) e desloca em coordenadas do carregador.
+// Posicao/orientacao do carregado a partir da matriz do carregador (R,F,U,P). Estilo "bombeiro" do video de referencia:
+// de cabeca para baixo sobre o ombro, com os pes inclinados para a FRENTE do carregador e a cabeca/bracos caindo para tras.
+// Rotacao em torno do eixo direito: up' = -cos(t)*U - sin(t)*F ; fwd' = up' x R = -cos(t)*F + sin(t)*U (right x fwd = up, det +1).
 struct Placement { float right[3], fwd[3], up[3], pos[3]; };
-constexpr float kOffX = 0.18f;   // para o lado do ombro (+ = direita do carregador)
-constexpr float kOffY = -0.12f;  // para tras
-constexpr float kOffZ = 0.55f;   // para cima (a origem do ped fica na altura da cintura)
+constexpr float kOffX = 0.15f;   // para o lado do ombro (+ = direita do carregador)
+constexpr float kOffY = -0.05f;  // para tras
+constexpr float kOffZ = 0.50f;   // para cima (a origem do ped fica na altura da cintura)
+constexpr float kTiltDeg = 25.0f; // inclinacao: 0 = vertical perfeito; > 0 = pes para a frente
 
 inline Placement Place(const float R[3], const float F[3], const float U[3], const float P[3]) {
     Placement o;
+    const float t = kTiltDeg * 3.14159265f / 180.0f, c = std::cos(t), sn = std::sin(t);
     for (int i = 0; i < 3; i++) {
         o.right[i] = R[i];
-        o.fwd[i]   = -F[i];
-        o.up[i]    = -U[i];
+        o.up[i]    = -c * U[i] - sn * F[i];
+        o.fwd[i]   = -c * F[i] + sn * U[i];
         o.pos[i]   = P[i] + R[i] * kOffX + F[i] * kOffY + U[i] * kOffZ;
     }
     return o;

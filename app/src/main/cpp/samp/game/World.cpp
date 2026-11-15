@@ -7,6 +7,7 @@
 #include "main.h"
 #include "game/game.h"
 #include "net/netgame.h"
+#include "PlayerCarry.h"
 
 //CRepeatSector CWorld::ms_aRepeatSectors[MAX_REPEAT_SECTORS_Y][MAX_REPEAT_SECTORS_X];
 //CPtrListDoubleLink CWorld::ms_listMovingEntityPtrs;
@@ -58,6 +59,7 @@ void CWorld::ProcessPedsAfterPreRender() {
 
     if (pNetGame)
     {
+        PlayerCarry::ProcessAfterPreRender();   // /carregar: antes dos attaches (que leem a pose dos peds)
         CPlayerPool* pPlayerPool = pNetGame->GetPlayerPool();
         if (pPlayerPool)
         {

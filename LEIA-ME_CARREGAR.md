@@ -34,3 +34,8 @@ Roteiro em jogo (precisa de 2–4 aparelhos): carregar/soltar, andar e girar, so
 - `SAMP/anims/carregar.ifp` (copie para a pasta SAMP/anims do celular, junto do poses.ifp): bloco `carregar`, anims `carregador` e `carregado` (so ossos dos bracos, overlay CA_PARTIAL|CA_HOLD_LAST por cima das anims nativas CARRY/PED). Carrega sozinho na 1a vez que um transporte comeca; se faltar o arquivo o log mostra `[Carry] ... NAO carregou` e segue com as nativas.
 - Gerador: `python3 tools/make_carregar_ifp.py poses.ifp carregar.ifp`. Os quaternions dos bracos partem das poses do seu poses.ifp; AJUSTE os graus em PLAN/HEAD_DELTA e regere. NAO foi visto em jogo: a pose pode precisar de ajuste.
 - Teste rapido sem servidor: `/ifp carregar carregar.ifp carregar` e `/ifp tocar carregador hold parcial`.
+
+## Correcao (video de teste 17:40): carregado voando/girando
+Causa provavel: o posicionamento era feito em CPlayerPool::Process (tick de rede), ANTES do ProcessControl/PreRender do jogo, que reconstroi a matriz do ped a partir do heading (perde o giro de 180 graus) e deixa o carregado defasado do carregador. Agora o posicionamento que vale roda em `CWorld::ProcessPedsAfterPreRender` (`PlayerCarry::ProcessAfterPreRender`), depois do PreRender e antes dos attaches, e recalcula os ossos (`UpdateRpHAnim`).
+Postura conforme o video MTA de referencia (estilo bombeiro): de cabeca para baixo no ombro, pes inclinados para a frente (`kTiltDeg` 25), offsets `kOffX/Y/Z` = 0.15/-0.05/0.50 em `PlayerCarryCore.h`. Ajuste esses 4 numeros em jogo se precisar.
+Arquivos alterados: PlayerCarry.cpp/.h, PlayerCarryCore.h, World.cpp. NAO compilado nem testado no aparelho.

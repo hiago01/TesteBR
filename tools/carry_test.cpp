@@ -64,7 +64,9 @@ int main() {
     float R[3] = {1,0,0}, F[3] = {0,1,0}, U[3] = {0,0,1}, P[3] = {100,200,10};
     Placement p = Place(R, F, U, P);
     CHECK(fabsf(p.pos[0] - (100 + kOffX)) < 1e-5f && fabsf(p.pos[1] - (200 + kOffY)) < 1e-5f && fabsf(p.pos[2] - (10 + kOffZ)) < 1e-5f);
-    CHECK(p.up[2] == -1.f && p.fwd[1] == -1.f && p.right[0] == 1.f);                         // de cabeca para baixo
+    CHECK(p.up[2] < -0.85f && p.right[0] == 1.f);                                             // de cabeca para baixo
+    CHECK(p.up[1] < 0.f && p.fwd[1] < 0.f && p.fwd[2] > 0.f);                                // cabeca para tras, pes para a frente (tilt)
+    CHECK(fabsf(p.up[0]*p.up[0]+p.up[1]*p.up[1]+p.up[2]*p.up[2]-1.f) < 1e-5f && fabsf(p.fwd[0]*p.fwd[0]+p.fwd[1]*p.fwd[1]+p.fwd[2]*p.fwd[2]-1.f) < 1e-5f);
     // a rotacao e propria (det = +1): right x fwd = up
     auto cross = [](const float* a, const float* b, float* o) { o[0] = a[1]*b[2]-a[2]*b[1]; o[1] = a[2]*b[0]-a[0]*b[2]; o[2] = a[0]*b[1]-a[1]*b[0]; };
     float c[3]; cross(p.right, p.fwd, c); CHECK(fabsf(c[0]-p.up[0]) < 1e-5f && fabsf(c[1]-p.up[1]) < 1e-5f && fabsf(c[2]-p.up[2]) < 1e-5f);

@@ -104,6 +104,21 @@ bool EnsureIfp() {
     return ok;
 }
 
+// calcula e aplica a matriz do carregado a partir da matriz ATUAL do carregador
+void PlaceCarried(CPedGTA* carrier, CPedGTA* carried) {
+    CMatrix& cm = carrier->GetMatrix();
+    const float R[3] = { cm.GetRight().x, cm.GetRight().y, cm.GetRight().z };
+    const float F[3] = { cm.GetForward().x, cm.GetForward().y, cm.GetForward().z };
+    const float U[3] = { cm.GetUp().x, cm.GetUp().y, cm.GetUp().z };
+    const float P[3] = { cm.GetPosition().x, cm.GetPosition().y, cm.GetPosition().z };
+    const Placement p = Place(R, F, U, P);
+    CMatrix m(CVector(p.pos[0], p.pos[1], p.pos[2]), CVector(p.right[0], p.right[1], p.right[2]),
+              CVector(p.fwd[0], p.fwd[1], p.fwd[2]), CVector(p.up[0], p.up[1], p.up[2]));
+    carried->SetMatrix(m);
+    carried->m_vecMoveSpeed = CVector(0.f, 0.f, 0.f);
+    carried->UpdateRW();
+}
+
 void PlayAnims(CPlayerPed* carrier, uint16_t carriedId, CPedGTA* carriedPed, Phase phase) {
     char nCarrier[] = "CRRY_PRTIAL";
     char nCarried[] = "KO_SHOT_STOM";
@@ -173,20 +188,27 @@ void Process() {
         }
         if (l.phase != PH_ACTIVE) continue;                                       // na preparacao o carregado ainda fica onde esta
 
-        CMatrix& cm = carrier->m_pPed->GetMatrix();
-        const float R[3] = { cm.GetRight().x, cm.GetRight().y, cm.GetRight().z };
-        const float F[3] = { cm.GetForward().x, cm.GetForward().y, cm.GetForward().z };
-        const float U[3] = { cm.GetUp().x, cm.GetUp().y, cm.GetUp().z };
-        const float P[3] = { cm.GetPosition().x, cm.GetPosition().y, cm.GetPosition().z };
-        const Placement p = Place(R, F, U, P);
-
-        CMatrix m(CVector(p.pos[0], p.pos[1], p.pos[2]), CVector(p.right[0], p.right[1], p.right[2]),
-                  CVector(p.fwd[0], p.fwd[1], p.fwd[2]), CVector(p.up[0], p.up[1], p.up[2]));
-        carried->SetMatrix(m);
-        carried->m_vecMoveSpeed = CVector(0.f, 0.f, 0.f);
-        carried->UpdateRW();
+        PlaceCarried(carrier->m_pPed, carried);
 
         if ((s_frame % 90) == 0) PlayAnims(carrier, l.carried, carried, l.phase);            // a cada ~1,5 s garante que as animacoes seguem
+    }
+}
+
+// Roda DEPOIS do PreRender de todos os peds. O ProcessControl do jogo reconstroi a matriz do ped a partir do heading (perde o
+// giro de 180 graus) e o carregador pode andar entre o Process de rede e o desenho; por isso o posicionamento que vale e este.
+void ProcessAfterPreRender() {
+    if (s_state.count <= 0) return;
+    int seen = 0;
+    for (int c = 0; c < MAX_PLAYERS && seen < s_state.count; c++) {
+        const Link& l = s_state.link[c];
+        if (!l.used) continue;
+        seen++;
+        if (l.phase != PH_ACTIVE) continue;
+        CPlayerPed* carrier = GetPed(l.carrier);
+        CPedGTA* carried = GetGtaPed(l.carried);
+        if (!carrier || !carried || carrier->IsInVehicle() || s_prepared[l.carried] != carried) continue;
+        PlaceCarried(carrier->m_pPed, carried);
+        carried->UpdateRpHAnim();                                  // recalcula os ossos para a nova matriz (como o ProcessAttach faz)
     }
 }
 
