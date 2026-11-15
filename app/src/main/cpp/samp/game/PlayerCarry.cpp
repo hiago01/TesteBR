@@ -104,18 +104,39 @@ bool EnsureIfp() {
     return ok;
 }
 
-// calcula e aplica a matriz do carregado a partir da matriz ATUAL do carregador
-void PlaceCarried(CPedGTA* carrier, CPedGTA* carried) {
+// calcula e aplica a matriz do carregado a partir da matriz ATUAL do carregador.
+// anchorBone: depois de aplicar, le a posicao REAL do osso da pelve do carregado (GetBonePosition do jogo) e desloca o ped
+// para que a pelve fique no ponto do ombro. Isso cancela o deslocamento de raiz da animacao (KO_SHOT_STOM move o osso raiz) e
+// qualquer defasagem; sem isso o corpo aparecia a ~1-2 m do ombro, girando.
+void PlaceCarried(CPedGTA* carrier, CPedGTA* carried, bool anchorBone) {
     CMatrix& cm = carrier->GetMatrix();
     const float R[3] = { cm.GetRight().x, cm.GetRight().y, cm.GetRight().z };
     const float F[3] = { cm.GetForward().x, cm.GetForward().y, cm.GetForward().z };
     const float U[3] = { cm.GetUp().x, cm.GetUp().y, cm.GetUp().z };
     const float P[3] = { cm.GetPosition().x, cm.GetPosition().y, cm.GetPosition().z };
+    for (int i = 0; i < 3; i++) if (!std::isfinite(R[i]) || !std::isfinite(F[i]) || !std::isfinite(U[i]) || !std::isfinite(P[i])) return;
     const Placement p = Place(R, F, U, P);
     CMatrix m(CVector(p.pos[0], p.pos[1], p.pos[2]), CVector(p.right[0], p.right[1], p.right[2]),
               CVector(p.fwd[0], p.fwd[1], p.fwd[2]), CVector(p.up[0], p.up[1], p.up[2]));
     carried->SetMatrix(m);
     carried->m_vecMoveSpeed = CVector(0.f, 0.f, 0.f);
+    carried->UpdateRW();
+    if (!anchorBone) return;
+
+    carried->UpdateRpHAnim();
+    CVector bp(0.f, 0.f, 0.f);
+    carried->GetBonePosition(&bp, 1 /*BONE_PELVIS*/, false);
+    float dx = p.pos[0] - bp.x, dy = p.pos[1] - bp.y, dz = p.pos[2] - bp.z;
+    const bool valid = std::isfinite(bp.x) && std::isfinite(bp.y) && std::isfinite(bp.z) && (std::fabs(bp.x) + std::fabs(bp.y) + std::fabs(bp.z) > 0.01f);
+    const float d2 = dx * dx + dy * dy + dz * dz;
+    static uint32_t s_log = 0;
+    if ((s_log++ % 120) == 0)
+        FLog("[CARRY-PLACE] carrier=(%.2f,%.2f,%.2f) F=(%.2f,%.2f,%.2f) U=(%.2f,%.2f,%.2f) alvo=(%.2f,%.2f,%.2f) pelve=(%.2f,%.2f,%.2f)%s corr=%.2f m",
+             P[0], P[1], P[2], F[0], F[1], F[2], U[0], U[1], U[2], p.pos[0], p.pos[1], p.pos[2], bp.x, bp.y, bp.z, valid ? "" : " [osso invalido]", std::sqrt(d2));
+    if (!valid || d2 > 2.25f * 2.25f || d2 < 1e-6f) return;                     // sem osso valido / correcao absurda: deixa como esta
+    CMatrix m2(CVector(p.pos[0] + dx, p.pos[1] + dy, p.pos[2] + dz), CVector(p.right[0], p.right[1], p.right[2]),
+               CVector(p.fwd[0], p.fwd[1], p.fwd[2]), CVector(p.up[0], p.up[1], p.up[2]));
+    carried->SetMatrix(m2);
     carried->UpdateRW();
 }
 
@@ -188,7 +209,7 @@ void Process() {
         }
         if (l.phase != PH_ACTIVE) continue;                                       // na preparacao o carregado ainda fica onde esta
 
-        PlaceCarried(carrier->m_pPed, carried);
+        PlaceCarried(carrier->m_pPed, carried, false);
 
         if ((s_frame % 90) == 0) PlayAnims(carrier, l.carried, carried, l.phase);            // a cada ~1,5 s garante que as animacoes seguem
     }
@@ -207,8 +228,8 @@ void ProcessAfterPreRender() {
         CPlayerPed* carrier = GetPed(l.carrier);
         CPedGTA* carried = GetGtaPed(l.carried);
         if (!carrier || !carried || carrier->IsInVehicle() || s_prepared[l.carried] != carried) continue;
-        PlaceCarried(carrier->m_pPed, carried);
-        carried->UpdateRpHAnim();                                  // recalcula os ossos para a nova matriz (como o ProcessAttach faz)
+        PlaceCarried(carrier->m_pPed, carried, true);              // ancora a pelve no ombro e recalcula os ossos
+        carried->UpdateRpHAnim();
     }
 }
 

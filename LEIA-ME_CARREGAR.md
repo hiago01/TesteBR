@@ -39,3 +39,8 @@ Roteiro em jogo (precisa de 2–4 aparelhos): carregar/soltar, andar e girar, so
 Causa provavel: o posicionamento era feito em CPlayerPool::Process (tick de rede), ANTES do ProcessControl/PreRender do jogo, que reconstroi a matriz do ped a partir do heading (perde o giro de 180 graus) e deixa o carregado defasado do carregador. Agora o posicionamento que vale roda em `CWorld::ProcessPedsAfterPreRender` (`PlayerCarry::ProcessAfterPreRender`), depois do PreRender e antes dos attaches, e recalcula os ossos (`UpdateRpHAnim`).
 Postura conforme o video MTA de referencia (estilo bombeiro): de cabeca para baixo no ombro, pes inclinados para a frente (`kTiltDeg` 25), offsets `kOffX/Y/Z` = 0.15/-0.05/0.50 em `PlayerCarryCore.h`. Ajuste esses 4 numeros em jogo se precisar.
 Arquivos alterados: PlayerCarry.cpp/.h, PlayerCarryCore.h, World.cpp. NAO compilado nem testado no aparelho.
+
+## Correcao 2 (video 17:51: carregado ainda orbitando o carregador)
+O carregado agora e ANCORADO pelo osso: depois de aplicar a matriz, le a posicao real da pelve (`GetBonePosition`, osso 1) e desloca o ped para a pelve ficar no ponto do ombro. Isso cancela o deslocamento de raiz da animacao KO_SHOT_STOM e qualquer defasagem. Limite de correcao: 2,25 m (acima disso ignora).
+DIAGNOSTICO: a cada ~120 frames o log tem `[CARRY-PLACE] carrier=... F=... U=... alvo=... pelve=... corr=X m`. Se o corpo continuar fora do lugar, mande essas linhas: elas dizem se o problema e a matriz do carregador (F/U estranhos), o osso (`[osso invalido]`) ou a correcao.
+Se nao aparecer nenhuma linha `[CARRY-PLACE]`, o passo pos-PreRender nao esta rodando (build antigo ou vinculo nao ativo).
