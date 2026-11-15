@@ -22,7 +22,12 @@ constexpr float kBase[kBones][4] = {
     { -0.808027f, -0.083431f, 0.044158f, 0.581534f },     // L Hand
 };
 
-struct Deltas { float deg[kBones][3] = {}; };                                      // x,y,z por osso
+// Pose padrao dos bracos (graus x,y,z sobre kBase), calculada por IK: maos seguram coxa/quadril do carregado.
+inline const float (&DefaultDeg())[kBones][3] {
+    static const float d[kBones][3] = {{4.9f,29.3f,33.1f},{0.f,0.2f,-1.6f},{0.f,0.f,0.f},{2.5f,39.8f,-17.8f},{31.9f,0.9f,89.1f},{0.f,0.f,0.f}};
+    return d;
+}
+struct Deltas { float deg[kBones][3]; Deltas() { for (int i = 0; i < kBones; i++) for (int k = 0; k < 3; k++) deg[i][k] = DefaultDeg()[i][k]; } };                                      // x,y,z por osso
 inline Deltas& Arms() { static Deltas d; return d; }
 
 inline void QMul(const float* a, const float* b, float* o) {                      // (x,y,z,w) a*b

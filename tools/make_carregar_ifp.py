@@ -49,8 +49,8 @@ def spine(ax, sg):   # delta de dobra da coluna no eixo ax (0=X,1=Y,2=Z)
     return [(2, IDENT, tuple(d)), (3, IDENT, tuple(d))]
 PLAN = {
  'carregador': [  # bracos cruzados (mao no ombro/peito) + braco esquerdo a frente
-    (22, ('bracos_cruzados', 22), (0, 0, 0)), (23, ('bracos_cruzados', 23), (0, 0, 0)), (24, ('bracos_cruzados', 24), (0, 0, 0)),
-    (32, ('bracos_cruzados', 32), (0, 0, 0)), (33, ('bracos_cruzados', 33), (0, 0, 0)), (34, ('bracos_cruzados', 34), (0, 0, 0)),
+    (22, ('bracos_cruzados', 22), (4.9, 29.3, 33.1)), (23, ('bracos_cruzados', 23), (0, 0.2, -1.6)), (24, ('bracos_cruzados', 24), (0, 0, 0)),
+    (32, ('bracos_cruzados', 32), (2.5, 39.8, -17.8)), (33, ('bracos_cruzados', 33), (31.9, 0.9, 89.1)), (34, ('bracos_cruzados', 34), (0, 0, 0)),
  ],
  'carregado': spine(2, SIGN) + ARMS_CARREGADO,   # corpo dobrado na cintura sobre o ombro + bracos soltos
 }

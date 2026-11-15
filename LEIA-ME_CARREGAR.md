@@ -88,3 +88,6 @@ Arquivos: CarryTuner.h/.cpp, hooks.cpp (include + 1 chamada).
 - **Aba CARREGADOR** no /carregarhud (abas CARREGADO | CARREGADOR no topo): escolha o osso em < > (Braco D ombro/cotovelo/mao, Braco E idem) e gire X/Y/Z em graus. Vale ao vivo: `CustomAnim::SetBoneRotation` reescreve os keyframes da anim `carregar/carregador` em memoria. SALVAR grava `arm0..arm5=x,y,z` no ini e no log ([CARRY-TUNE] armN(...)=...). PADRAO na aba zera so os bracos.
 - Arquivos novos: game/CarryArms.h. Editados: CarryTuner.cpp/.h, CustomAnim.cpp/.h (SetBoneRotation), PlayerCarry.cpp/.h, PlayerCarryCore.h, tools/*, SAMP/anims/carregar.ifp (regerado).
 - Eixos dos ossos do braco NAO verificados sem ver o jogo: use a aba para achar a pose e me mande as linhas [CARRY-TUNE] arm0..arm5 que eu fixo como padrao.
+
+## Correcao 9 - bracos do carregador
+Pose padrao dos bracos calculada por cinematica inversa no esqueleto da skin (maos na coxa/quadril do carregado), gravada em CarryArms.h (DefaultDeg) e no carregar.ifp. O botao PADRAO volta para ela. O carry_tuning.ini antigo (sem ver=2) tem os bracos ignorados; ajustes do corpo continuam valendo. Nada foi compilado/testado no jogo.

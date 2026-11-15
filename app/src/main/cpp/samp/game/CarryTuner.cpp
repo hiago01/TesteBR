@@ -51,6 +51,7 @@ void Save() {
     std::string path = IniPath();
     FILE* f = path.empty() ? nullptr : fopen(path.c_str(), "w");
     if (!f) { snprintf(s_status, sizeof s_status, "NAO salvou (sem pasta). Valores no samp.log"); return; }
+    fprintf(f, "ver=2\n");
     fprintf(f, "offx=%.3f\noffy=%.3f\noffz=%.3f\ntilt=%.1f\nroll=%.1f\nyaw=%.1f\nbend=%d\n", t.offX, t.offY, t.offZ, t.tilt, t.roll, t.yaw, t.bend);
     for (int i = 0; i < carryarms::kBones; i++)
         fprintf(f, "arm%d=%.1f,%.1f,%.1f\n", i, carryarms::Arms().deg[i][0], carryarms::Arms().deg[i][1], carryarms::Arms().deg[i][2]);
@@ -143,12 +144,14 @@ void LoadSaved() {
     if (!f) return;
     carrycore::Tuning& t = carrycore::Tune();
     char line[128];
+    bool armsOk = false;   // ini sem ver=2 tem bracos antigos (ajustes errados) -> ignora
     while (fgets(line, sizeof line, f)) {
+        if (!strncmp(line, "ver=", 4)) { armsOk = atoi(line + 4) >= 2; continue; }
         char* eq = strchr(line, '='); if (!eq) continue; *eq = 0; const char* val = eq + 1; const float v = (float)atof(val);
         if (!strcmp(line, "offx")) t.offX = v; else if (!strcmp(line, "offy")) t.offY = v; else if (!strcmp(line, "offz")) t.offZ = v;
         else if (!strcmp(line, "tilt")) t.tilt = v; else if (!strcmp(line, "roll")) t.roll = v; else if (!strcmp(line, "yaw")) t.yaw = v;
         else if (!strcmp(line, "bend")) t.bend = (int)v;
-        else if (!strncmp(line, "arm", 3) && line[3] >= '0' && line[3] < '0' + carryarms::kBones && !line[4]) {
+        else if (!strncmp(line, "arm", 3) && line[3] >= '0' && line[3] < '0' + carryarms::kBones && !line[4] && armsOk) {
             float* d = carryarms::Arms().deg[line[3] - '0'];
             sscanf(val, "%f,%f,%f", &d[0], &d[1], &d[2]);
         }

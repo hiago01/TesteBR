@@ -84,7 +84,7 @@ int main() {
       float c2[3]; cross(b.right, b.fwd, c2); CHECK(fabsf(c2[0]-b.up[0]) < 1e-5f && fabsf(c2[1]-b.up[1]) < 1e-5f && fabsf(c2[2]-b.up[2]) < 1e-5f);
       Tuning& t = Tune(); t.offX = kOffX; t.offY = kOffY; t.offZ = kOffZ; t.tilt = kTiltDeg; t.roll = 0; t.yaw = 0; }
     // bracos: delta 0 = base normalizada; delta 90 gira de verdade e continua unitario
-    { carryarms::Arms() = carryarms::Deltas(); float q[4]; bool same = true;
+    { for (auto& r : carryarms::Arms().deg) r[0] = r[1] = r[2] = 0.f; float q[4]; bool same = true;
       for (int i = 0; i < carryarms::kBones; i++) { carryarms::Compute(i, q); const float n = sqrtf(q[0]*q[0]+q[1]*q[1]+q[2]*q[2]+q[3]*q[3]);
         float bn = sqrtf(carryarms::kBase[i][0]*carryarms::kBase[i][0]+carryarms::kBase[i][1]*carryarms::kBase[i][1]+carryarms::kBase[i][2]*carryarms::kBase[i][2]+carryarms::kBase[i][3]*carryarms::kBase[i][3]);
         for (int k = 0; k < 4; k++) if (fabsf(q[k] - carryarms::kBase[i][k] / bn) > 1e-4f) same = false;
