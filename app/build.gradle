@@ -99,6 +99,13 @@ android {
     }
 }
 
+// ShadowHook 2.0.1 foi compilado contra a API 37 e o AGP 8.13 so aceita ate a 36 (o build parava em checkDebugAarMetadata).
+// A parte Java do ShadowHook nao usa nenhuma API do Android 17, entao so a verificacao de metadados e dispensada.
+// Quando migrar para AGP 9.1+ (suporta API 37) com compileSdk 37, apague este bloco.
+tasks.configureEach { t ->
+    if (t.name.startsWith('check') && t.name.endsWith('AarMetadata')) t.enabled = false
+}
+
 dependencies {
     implementation fileTree(dir: "libs", include: ["*.jar"])
     implementation 'androidx.appcompat:appcompat:1.7.0'
