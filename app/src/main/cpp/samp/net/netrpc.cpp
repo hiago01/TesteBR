@@ -7,6 +7,7 @@
 #include "../settings.h"
 #include "../game/CustomAnimSync.h"
 #include "../game/CorpTex.h"
+#include "../vendor/inih/cpp/INIReader.h"
 
 extern UI* pUI;
 extern CGame *pGame;
@@ -25,6 +26,34 @@ int g_iLagCompensationMode = 0;
 #define REJECT_REASON_BAD_NICKNAME  2
 #define REJECT_REASON_BAD_MOD		3
 #define REJECT_REASON_BAD_PLAYERID	4
+
+// Entrada pelo launcher: manda o token de uso unico ([maximo] token em SAMP/settings.ini) para o servidor
+// (RPC proprio 250: uint8 tamanho + caracteres). Enviado uma vez por execucao, ANTES da selecao de classe.
+static void SendLauncherToken()
+{
+	static bool s_sent = false;
+	if (s_sent || !pNetGame || !pNetGame->GetRakClient()) return;
+	s_sent = true;
+
+	char path[0x100];
+	snprintf(path, sizeof(path), "%sSAMP/settings.ini", g_pszStorage);
+	INIReader reader(path);
+	if (reader.ParseError() < 0) return;
+
+	std::string token = reader.Get("maximo", "token", "");
+	if (token.size() < 16 || token.size() > 32) return;
+	for (char c : token) {
+		if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) return;
+	}
+
+	int rpcId = 250;
+	uint8_t len = (uint8_t)token.size();
+	RakNet::BitStream bsToken;
+	bsToken.Write(len);
+	bsToken.Write(token.c_str(), len);
+	pNetGame->GetRakClient()->RPC(&rpcId, &bsToken, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
+	FLog("[Launcher] token de entrada enviado (%d chars)", (int)len);
+}
 
 void ProcessIncommingEvent(PLAYERID playerID, int iEventType,
 	uint32_t dwParam1, uint32_t dwParam2, uint32_t dwParam3);
@@ -156,6 +185,8 @@ void InitGame(RPCParameters* rpcParams)
 //	if (pUI) pUI->chat()->addDebugMessage("Conectado a {B9C9BF}%.64s", Encoding::cp2utf(pNetGame->m_szHostName).c_str());
 
 	pNetGame->SetGameState(GAMESTATE_CONNECTED);
+
+	SendLauncherToken();
 
 	pPlayerPool->GetLocalPlayer()->HandleClassSelection();
 

@@ -143,8 +143,8 @@ public class ServerInformationFragment extends Dialog {
      * e abre a SAMP activity. Usado pelo dialogo de detalhes e pelo botao CONECTAR do painel.
      */
     public static void launchGame(final Activity activity, final SAMPServerInfo info) {
-        // Primeira vez: tela "Escolha seu Nick" (obrigatoria) antes de entrar no servidor.
-        com.maximo.roleplay.launcher.util.NickManager.ensureNick(activity, new Runnable() {
+        // Login obrigatorio: pede o token de entrada (o jogador nao digita a senha no jogo) e abre o jogo.
+        com.maximo.roleplay.launcher.util.AccountSession.prepareLaunch(activity, new Runnable() {
             @Override public void run() { launchGameNow(activity, info); }
         });
     }

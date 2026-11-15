@@ -95,10 +95,10 @@ public class ServersFragment extends Fragment implements MainActivity.ServerStat
             view.findViewById(R.id.mx_nick_chip).setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    // Tela de Nick (antes ficava em Configuracoes). Aqui pode cancelar; na 1a conexao e obrigatoria.
-                    NickManager.showDialog(main, !NickManager.hasNick(main), new NickManager.Callback() {
-                        @Override public void onNick(String nick) { updateNickChip(); }
-                    });
+                    // O nick e o da conta logada: nao se troca aqui (sair da conta no Inicio para usar outro).
+                    String conta = com.maximo.roleplay.launcher.util.AccountSession.getNick(main);
+                    android.widget.Toast.makeText(main, getString(R.string.mx_login_nick_locked, conta == null ? "" : conta),
+                            android.widget.Toast.LENGTH_SHORT).show();
                 }
             });
             updateNickChip(view);

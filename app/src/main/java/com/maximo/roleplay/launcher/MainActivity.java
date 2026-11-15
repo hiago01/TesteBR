@@ -142,6 +142,12 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Login obrigatorio: sem conta salva, abre a tela de entrada e nao monta o launcher.
+        if (!com.maximo.roleplay.launcher.util.AccountSession.isLoggedIn(this)) {
+            startActivity(new android.content.Intent(this, LoginActivity.class));
+            finish();
+            return;
+        }
         LauncherUi.prepareWindow(this);
         setContentView(R.layout.activity_main);
         LauncherUi.applyImmersive(this);

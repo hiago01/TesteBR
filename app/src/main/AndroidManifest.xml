@@ -74,6 +74,12 @@
             android:exported="true" />
 
         <activity
+            android:name=".launcher.LoginActivity"
+            android:screenOrientation="sensorLandscape"
+            android:theme="@style/Theme.AppCompat.NoActionBar"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".launcher.MainActivity"
             android:screenOrientation="sensorLandscape"
             android:theme="@style/Theme.AppCompat.NoActionBar"

@@ -11,7 +11,8 @@ import androidx.fragment.app.Fragment;
 import com.joom.paranoid.Obfuscate;
 import com.maximo.roleplay.R;
 import com.maximo.roleplay.launcher.MainActivity;
-import com.maximo.roleplay.launcher.util.AccountDialog;
+import com.maximo.roleplay.launcher.LoginActivity;
+import com.maximo.roleplay.launcher.util.AccountSession;
 
 /** Pagina "Inicio". Os links sociais agora vivem na pagina Comunidade e no rodape (maximo_links.xml). */
 @Obfuscate
@@ -31,10 +32,16 @@ public class HomeFragment extends Fragment {
                 }
             }
         });
-        view.findViewById(R.id.mx_home_create_account).setOnClickListener(new View.OnClickListener() {
+        LoginActivity.showAvatar((android.widget.ImageView) view.findViewById(R.id.mx_home_avatar));
+        android.widget.TextView logout = view.findViewById(R.id.mx_home_create_account);
+        logout.setText(R.string.mx_login_logout);
+        logout.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                AccountDialog.show(getActivity());
+                android.app.Activity a = getActivity();
+                if (a == null) return;
+                AccountSession.logout(a);
+                AccountSession.forceLogin(a);
             }
         });
         return view;

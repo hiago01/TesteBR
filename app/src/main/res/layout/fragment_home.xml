@@ -6,6 +6,16 @@
     android:background="@drawable/mx_bg_panel">
 
     <ImageView
+        android:id="@+id/mx_home_avatar"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_margin="12dp"
+        android:contentDescription="@string/mx_login_avatar_desc"
+        android:scaleType="centerCrop"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <ImageView
         android:id="@+id/imageView"
         android:layout_width="150dp"
         android:layout_height="wrap_content"

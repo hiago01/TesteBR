@@ -135,4 +135,18 @@
     <string name="mx_notif_download_done_title">Atualização concluída</string>
     <string name="mx_notif_download_done_text">O Máximo RP está pronto para jogar.</string>
     <string name="mx_notif_default_title">Máximo RP</string>
+    <!-- Login obrigatorio do launcher -->
+    <string name="mx_login_welcome">Máximo RP</string>
+    <string name="mx_login_sub">Entre na sua conta para jogar.\nSua senha não é pedida de novo dentro do jogo.</string>
+    <string name="mx_login_avatar_desc">Foto de perfil</string>
+    <string name="mx_login_tab_in">ENTRAR</string>
+    <string name="mx_login_tab_up">CRIAR CONTA</string>
+    <string name="mx_login_btn_in">ENTRAR</string>
+    <string name="mx_login_btn_up">CRIAR CONTA</string>
+    <string name="mx_login_email_hint">E-mail</string>
+    <string name="mx_login_entering">Entrando…</string>
+    <string name="mx_login_err_fields">Preencha nick e senha.</string>
+    <string name="mx_login_err_email">Digite um e-mail válido.</string>
+    <string name="mx_login_logout">SAIR DA CONTA</string>
+    <string name="mx_login_nick_locked">O nick é o da sua conta (%1$s). Saia da conta para usar outro.</string>
 </resources>

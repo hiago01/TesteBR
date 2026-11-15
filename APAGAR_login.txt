@@ -1,0 +1,3 @@
+APAGAR do projeto (nao existem mais):
+app/src/main/java/com/maximo/roleplay/launcher/util/AccountDialog.java
+app/src/main/res/layout/mx_dialog_account.xml
