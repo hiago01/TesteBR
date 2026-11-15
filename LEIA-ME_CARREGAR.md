@@ -49,3 +49,15 @@ Se nao aparecer nenhuma linha `[CARRY-PLACE]`, o passo pos-PreRender nao esta ro
 Havia 4 fontes de animacao ao mesmo tempo: (1) o servidor aplicava CARRY/liftup, CARRY/crry_prtial e PED/KO_SHOT_STOM (RPC de ApplyAnimation); (2) o cliente reaplicava CRRY_PRTIAL/KO_SHOT_STOM a cada ~1,5 s; (3) `ProcessSpecialAction` com SPECIAL_ACTION_CARRY; (4) o overlay novo carregar.ifp.
 Agora: o servidor nao aplica mais nenhuma anim no transporte; o cliente toca SO carregar.ifp (as nativas so entram se o arquivo nao carregar); os RPCs ApplyAnimation (jogador e actor) de quem esta em transporte sao ignorados e logados (`[CARRY] ApplyAnimation ... ignorada`); ao soltar, o overlay e parado (`CustomAnim::StopAll`).
 Arquivos: PlayerCarry.cpp/.h, scriptrpc.cpp (cliente) e maximo_carregar.inc (servidor).
+
+## Correcao 4: corpo dobrado (carregado reto demais) + actor
+- O Actor funcionou no teste (ID 1004) e fica preso ao carregador. Jogador real e Actor usam o MESMO codigo: o carregado de qualquer tipo recebe o mesmo overlay `carregado` e a mesma posicao.
+- `carregar.ifp` agora tem o `carregado` com Spine+Spine1 dobrados (BEND=40 graus cada, eixo Y) alem dos bracos soltos. Bases: a coluna do ped fica ~identidade em pe (confirmado no seu scooter.ifp); os eixos locais dos ossos eu NAO consegui verificar sem ver o jogo.
+- 6 anims de TESTE so de coluna: `dobra_xp dobra_xn dobra_yp dobra_yn dobra_zp dobra_zn`. No jogo: `/ifp carregar carregar.ifp carregar` e depois `/ifp tocar dobra_yp hold parcial` (idem os outros). Veja qual dobra a BARRIGA para a frente e me diga (ou mude `spine(1, SIGN)` em tools/make_carregar_ifp.py para o eixo/sinal certo e regere).
+- Os valores BEND e SIGN ficam no topo do gerador.
+
+## Correcao 5 (prints 18:10): carregado funcionando, mas o corpo dobrava de LADO
+Nos prints o carregado ja fica preso, de cabeca para baixo, com a coluna dobrada, mas o tronco saia para o lado do carregador e as pernas cobriam o rosto dele.
+- Dobra: o eixo Y da coluna dobra de lado (confirmado pelos prints), entao o eixo de dobrar para frente/tras e o Z. O `carregado` agora usa `spine(2, SIGN)`. Se o tronco for para o lado errado (para a frente do carregador em vez de cair nas costas), troque SIGN para -1 em tools/make_carregar_ifp.py e regere (ou teste `dobra_zp` / `dobra_zn` com `/ifp tocar`).
+- Posicao: tilt 25 -> 10 graus, offsets 0.22 / -0.10 / 0.50 (kOffX/Y/Z): as pernas sobem ao lado da cabeca do carregador, nao na frente do rosto.
+Arquivos: PlayerCarryCore.h, make_carregar_ifp.py, SAMP/anims/carregar.ifp.

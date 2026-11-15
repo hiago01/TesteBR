@@ -35,26 +35,37 @@ def read_poses(path):
     return out
 
 # (anim, osso) -> (nome do osso, id, (pose-base, id), delta graus)
-BONES = {22: 'R UpperArm', 23: 'R ForeArm', 24: 'R Hand', 32: 'L UpperArm', 33: 'L ForeArm', 34: 'L Hand',
+BONES = {2: 'Spine', 3: 'Spine1', 22: 'R UpperArm', 23: 'R ForeArm', 24: 'R Hand', 32: 'L UpperArm', 33: 'L ForeArm', 34: 'L Hand',
          3: 'Spine1', 4: 'Neck', 5: 'Head'}
+IDENT = ('ident', 0)   # base = rotacao identidade (os ossos Spine/Spine1 do ped ficam ~identidade em pe, ver scooter.ifp)
+BEND = 40.0            # graus por osso de coluna (Spine e Spine1) -> ~80 graus no total
+SIGN = +1              # se o corpo dobrar para o lado ERRADO (costas em vez de barriga), troque para -1 e regere
+ARMS_CARREGADO = [
+    (22, ('apontar_dir', 22), (0, 0, 15)), (23, ('apontar_dir', 23), (0, 0, 0)), (24, ('apontar_dir', 24), (0, 0, 0)),
+    (32, ('apontar_esq', 32), (0, 0, -15)), (33, ('apontar_esq', 33), (0, 0, 0)), (34, ('apontar_esq', 34), (0, 0, 0)),
+]
+def spine(ax, sg):   # delta de dobra da coluna no eixo ax (0=X,1=Y,2=Z)
+    d = [0.0, 0.0, 0.0]; d[ax] = BEND * sg
+    return [(2, IDENT, tuple(d)), (3, IDENT, tuple(d))]
 PLAN = {
- 'carregador': [  # bracos cruzados (mao no ombro/peito) + braco esquerdo a frente, tronco levemente inclinado
+ 'carregador': [  # bracos cruzados (mao no ombro/peito) + braco esquerdo a frente
     (22, ('bracos_cruzados', 22), (0, 0, 0)), (23, ('bracos_cruzados', 23), (0, 0, 0)), (24, ('bracos_cruzados', 24), (0, 0, 0)),
     (32, ('foto_frontal', 32), (0, 0, 0)), (33, ('foto_frontal', 33), (0, 0, 0)), (34, ('foto_frontal', 34), (0, 0, 0)),
  ],
- 'carregado': [   # bracos esticados soltos (apontar_*), com cabeca caida
-    (22, ('apontar_dir', 22), (0, 0, 15)), (23, ('apontar_dir', 23), (0, 0, 0)), (24, ('apontar_dir', 24), (0, 0, 0)),
-    (32, ('apontar_esq', 32), (0, 0, -15)), (33, ('apontar_esq', 33), (0, 0, 0)), (34, ('apontar_esq', 34), (0, 0, 0)),
- ],
+ 'carregado': spine(2, SIGN) + ARMS_CARREGADO,   # corpo dobrado na cintura sobre o ombro + bracos soltos
 }
-HEAD_DELTA = {'carregado': {4: (0, 0, 25), 5: (0, 0, 20)}}   # neck/head: sem base; so se houver pose conhecida
+# anims de TESTE (so coluna, eixo/sinal diferentes): /ifp tocar dobra_yp hold parcial  -> veja qual dobra a barriga para a frente
+for _ax, _n in ((0, 'x'), (1, 'y'), (2, 'z')):
+    PLAN['dobra_%sp' % _n] = spine(_ax, +1)
+    PLAN['dobra_%sn' % _n] = spine(_ax, -1)
 
 def build(poses):
     anims = []
     for name, rows in PLAN.items():
         seqs = []
         for bone, src, dl in rows:
-            q = norm(qmul(poses[src], qeul(*dl)))
+            base = (0.0, 0.0, 0.0, 1.0) if src[0] == 'ident' else poses[src]
+            q = norm(qmul(base, qeul(*dl)))
             seqs.append((BONES[bone], bone, q))
         body = b''
         for sn, bone, q in seqs:

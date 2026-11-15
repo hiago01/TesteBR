@@ -110,10 +110,10 @@ public:
 // de cabeca para baixo sobre o ombro, com os pes inclinados para a FRENTE do carregador e a cabeca/bracos caindo para tras.
 // Rotacao em torno do eixo direito: up' = -cos(t)*U - sin(t)*F ; fwd' = up' x R = -cos(t)*F + sin(t)*U (right x fwd = up, det +1).
 struct Placement { float right[3], fwd[3], up[3], pos[3]; };
-constexpr float kOffX = 0.15f;   // para o lado do ombro (+ = direita do carregador)
-constexpr float kOffY = -0.05f;  // para tras
+constexpr float kOffX = 0.22f;   // para o lado do ombro (+ = direita do carregador)
+constexpr float kOffY = -0.10f;  // para tras
 constexpr float kOffZ = 0.50f;   // para cima (a origem do ped fica na altura da cintura)
-constexpr float kTiltDeg = 25.0f; // inclinacao: 0 = vertical perfeito; > 0 = pes para a frente
+constexpr float kTiltDeg = 10.0f; // inclinacao: 0 = vertical perfeito; > 0 = pes para a frente
 
 inline Placement Place(const float R[3], const float F[3], const float U[3], const float P[3]) {
     Placement o;
