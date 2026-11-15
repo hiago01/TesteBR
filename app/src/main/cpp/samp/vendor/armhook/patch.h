@@ -42,7 +42,9 @@ public:
 
     static uintptr_t mmap_start, mmap_end, memlib_start, memlib_end;
 
-    static void UnFuck(uintptr_t ptr, size_t len = PAGE_SIZE);
+    // Libera escrita na memoria [ptr, ptr+len). Devolve false (e registra no log) se o endereco for invalido (0/pagina nula)
+    // ou se o mprotect falhar; quem escreve DEVE conferir o retorno (escrever mesmo assim derruba o app dentro do memcpy).
+    static bool UnFuck(uintptr_t ptr, size_t len = PAGE_SIZE);
 
     static uintptr_t GetAddrBaseXDL(uintptr_t addr)
     {
@@ -69,7 +71,11 @@ public:
 
         int bytesCount = 4 * count;
         uintptr_t endAddr = addr + bytesCount;
-        UnFuck(addr, bytesCount);
+        if (!UnFuck(addr, bytesCount))
+        {
+            FLog("[CHook] NOP ignorado em 0x%lx", (unsigned long)addr);
+            return;
+        }
         for (uintptr_t p = addr; p != endAddr; p += 4)
         {
             (*(char*)(p + 0)) = 0x1F;
@@ -82,12 +88,18 @@ public:
 
     static void RET(const char* sym)
     {
-        auto addr = getSym(sym);
+        auto addr = getSymSoft(sym);
+        if (addr == 0) return;   // simbolo ausente: nao aplica o patch (ja registrado no log) em vez de escrever no endereco 0
         RET(addr);
     }
 
     static void RET(uintptr addr)
     {
+        if (addr == 0)
+        {
+            FLog("[CHook] RET recusado: endereco 0");
+            return;
+        }
 
         WriteMemory(addr, (uintptr_t)"\xC0\x03\x5F\xD6", 4);
 
@@ -96,7 +108,16 @@ public:
     template <typename Src>
     static void WriteMemory(uintptr_t dest, Src src, size_t size)
     {
-        UnFuck(dest, size);
+        if (dest == 0 || (uintptr_t)src == 0 || size == 0)
+        {
+            FLog("[CHook] WriteMemory recusado: dest=0x%lx src=0x%lx size=%lu", (unsigned long)dest, (unsigned long)(uintptr_t)src, (unsigned long)size);
+            return;
+        }
+        if (!UnFuck(dest, size))
+        {
+            FLog("[CHook] WriteMemory ignorado (sem permissao de escrita) em 0x%lx", (unsigned long)dest);
+            return;   // o log acima de UnFuck traz o errno
+        }
         memcpy((void*)dest, (void*)src, size);
 
         cacheflush(dest, dest + size, 0);
@@ -113,8 +134,9 @@ public:
     template <typename Src>
     static Src Write(const char* sym, Src src, size_t size = 0)
     {
-        auto addr = (uintptr_t)dlsym(lib, sym);
+        auto addr = getSymSoft(sym);
         size = sizeof(Src);
+        if (addr == 0) return src;   // simbolo ausente: nao escreve
         CHook::WriteMemory(addr, &src, size);
         return src;
     }
@@ -132,6 +154,14 @@ public:
             return 0;
         }
        // Log("getsym = %x", sym - g_libGTASA);
+        return res;
+    }
+
+    // Igual ao getSym, mas NAO encerra o app: devolve 0 e registra. Usado por RET/Redirect/Write, que apenas pulam o patch.
+    static uintptr_t getSymSoft(const char* sym)
+    {
+        auto res = (uintptr_t)dlsym(lib, sym);
+        if (res == 0) FLog("[CHook] simbolo nao encontrado: %s - patch ignorado", sym);
         return res;
     }
 
@@ -159,7 +189,11 @@ public:
     template <typename Addr, typename Func, typename Orig>
     static void InstallPLT(Addr addr, Func hook_func, Orig* orig_func)
     {
-        UnFuck(addr);
+        if ((uintptr_t)addr == 0 || !UnFuck(addr))
+        {
+            FLog("[CHook] InstallPLT ignorado em 0x%lx", (unsigned long)(uintptr_t)addr);
+            return;   // hook nao instalado: o jogo usa a funcao original e o ponteiro orig nunca e chamado
+        }
 
         *orig_func = reinterpret_cast<Orig>(*(uintptr_t*)addr);
 
@@ -169,7 +203,11 @@ public:
     template <typename Addr, typename Func>
     static void InstallPLT(Addr addr, Func hook_func)
     {
-        UnFuck(addr);
+        if ((uintptr_t)addr == 0 || !UnFuck(addr))
+        {
+            FLog("[CHook] InstallPLT ignorado em 0x%lx", (unsigned long)(uintptr_t)addr);
+            return;
+        }
         *(uintptr_t*)addr = reinterpret_cast<uintptr_t>(hook_func);
     }
 
@@ -210,7 +248,8 @@ public:
     template <typename Func>
     static void Redirect(const char* sym, Func func)
     {
-        auto addr = getSym(sym);
+        auto addr = getSymSoft(sym);
+        if (addr == 0) return;   // simbolo ausente: sem redirecionamento (ja registrado no log)
 
 #ifdef __32BIT
         uint32_t hook[2] = {0xE51FF004, reinterpret_cast<uintptr_t>(func)};
@@ -224,7 +263,11 @@ public:
         }
         WriteMemory(DETHUMB(addr), reinterpret_cast<uintptr_t>(hook), sizeof(hook));
 #elif defined __64BIT
-        UnFuck(addr, 16);
+        if (!UnFuck(addr, 16))
+        {
+            FLog("[CHook] Redirect ignorado: %s", sym);
+            return;
+        }
         uint64_t hook[2] = {0xD61F022058000051, reinterpret_cast<uintptr_t>(func)};
         WriteMemory(addr, reinterpret_cast<uintptr_t>(hook), sizeof(hook));
 #endif

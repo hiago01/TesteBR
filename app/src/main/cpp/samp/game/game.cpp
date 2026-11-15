@@ -330,8 +330,8 @@ void CGame::SetGravity(float fGravity)
     uintptr_t gravityAddr = g_libGTASA + 0x75044C;
 
     // ปลดล็อคหรือแก้ไข memory protection ก่อนเขียนค่า
-    CHook::UnFuck(gravityAddr, sizeof(float));
-
+    //CHook::UnFuck(gravityAddr, sizeof(float));
+    if (!CHook::UnFuck(gravityAddr, sizeof(float))) return;
     // เขียนค่าความโน้มถ่วงที่ปรับแล้วลงใน memory address นั้น
     *reinterpret_cast<float*>(gravityAddr) = adjustedGravity;
 }
