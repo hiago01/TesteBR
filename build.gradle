@@ -19,11 +19,15 @@ buildscript {
 
 allprojects {
     repositories {
-        mavenCentral()
-        maven { url 'https://jitpack.io' }
-        maven { url 'https://mint.splunk.com/gradle/'}
-        maven { url "https://oss.sonatype.org/content/repositories/snapshots/" }
+        // Google primeiro: androidx/material/firebase so existem la. Um repositorio fora do ar (o antigo
+        // mint.splunk.com, descontinuado) derruba a resolucao inteira de dependencias quando a versao nao esta no cache.
         google()
+        mavenCentral()
+        // JitPack so para o PRDownloader (nao consultado para mais nada)
+        maven {
+            url 'https://jitpack.io'
+            content { includeGroup 'com.github.amitshekhariitbhu' }
+        }
     }
 }
 
