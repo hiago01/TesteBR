@@ -44,3 +44,8 @@ Arquivos alterados: PlayerCarry.cpp/.h, PlayerCarryCore.h, World.cpp. NAO compil
 O carregado agora e ANCORADO pelo osso: depois de aplicar a matriz, le a posicao real da pelve (`GetBonePosition`, osso 1) e desloca o ped para a pelve ficar no ponto do ombro. Isso cancela o deslocamento de raiz da animacao KO_SHOT_STOM e qualquer defasagem. Limite de correcao: 2,25 m (acima disso ignora).
 DIAGNOSTICO: a cada ~120 frames o log tem `[CARRY-PLACE] carrier=... F=... U=... alvo=... pelve=... corr=X m`. Se o corpo continuar fora do lugar, mande essas linhas: elas dizem se o problema e a matriz do carregador (F/U estranhos), o osso (`[osso invalido]`) ou a correcao.
 Se nao aparecer nenhuma linha `[CARRY-PLACE]`, o passo pos-PreRender nao esta rodando (build antigo ou vinculo nao ativo).
+
+## Correcao 3: animacao antiga alternando com a nova
+Havia 4 fontes de animacao ao mesmo tempo: (1) o servidor aplicava CARRY/liftup, CARRY/crry_prtial e PED/KO_SHOT_STOM (RPC de ApplyAnimation); (2) o cliente reaplicava CRRY_PRTIAL/KO_SHOT_STOM a cada ~1,5 s; (3) `ProcessSpecialAction` com SPECIAL_ACTION_CARRY; (4) o overlay novo carregar.ifp.
+Agora: o servidor nao aplica mais nenhuma anim no transporte; o cliente toca SO carregar.ifp (as nativas so entram se o arquivo nao carregar); os RPCs ApplyAnimation (jogador e actor) de quem esta em transporte sao ignorados e logados (`[CARRY] ApplyAnimation ... ignorada`); ao soltar, o overlay e parado (`CustomAnim::StopAll`).
+Arquivos: PlayerCarry.cpp/.h, scriptrpc.cpp (cliente) e maximo_carregar.inc (servidor).

@@ -58,6 +58,7 @@ void RestorePed(uint16_t id, bool place, float x, float y, float z, float a) {
     if (id < kMaxIds) s_prepared[id] = nullptr;
     CPedGTA* ped = GetGtaPed(id);
     if (!ped) return;
+    CustomAnim::StopAll(ped, 4.0f);                                    // fim do overlay do carregar.ifp
     ped->m_bUsesCollision = true;
     ped->m_vecMoveSpeed = CVector(0.f, 0.f, 0.f);
     if (!place) return;
@@ -140,23 +141,26 @@ void PlaceCarried(CPedGTA* carrier, CPedGTA* carried, bool anchorBone) {
     carried->UpdateRW();
 }
 
+// UMA fonte de animacao: o IFP novo (carregar.ifp). As anims nativas (CARRY/PED) so entram se o arquivo nao carregou.
+// O servidor NAO aplica mais anims no transporte e o cliente ignora as que chegarem (IsInvolved), senao as duas ficam alternando.
 void PlayAnims(CPlayerPed* carrier, uint16_t carriedId, CPedGTA* carriedPed, Phase phase) {
+    if (EnsureIfp()) {
+        const uint16_t fl = CustomAnim::CA_HOLD_LAST | CustomAnim::CA_PARTIAL;
+        if (phase == PH_ACTIVE && carrier->m_pPed) CustomAnim::Play(carrier->m_pPed, "carregar", "carregador", fl, 4.0f);
+        if (carriedPed) CustomAnim::Play(carriedPed, "carregar", "carregado", fl, 4.0f);
+        return;
+    }
     char nCarrier[] = "CRRY_PRTIAL";
     char nCarried[] = "KO_SHOT_STOM";
     if (phase == PH_ACTIVE && !carrier->IsAnimationPlaying(nCarrier))
-        carrier->ApplyAnimation("CRRY_PRTIAL", "CARRY", 4.1f, 0, 0, 0, 1, 1);                 // mesma chamada do ProcessSpecialActions
-    if (IsActorId(carriedId)) {                                                               // dummy do servidor (Actor)
+        carrier->ApplyAnimation("CRRY_PRTIAL", "CARRY", 4.1f, 0, 0, 0, 1, 1);
+    if (IsActorId(carriedId)) {
         CActorPool* ap = pNetGame ? pNetGame->GetActorPool() : nullptr;
         CActor* act = ap ? ap->GetAt((PLAYERID)(carriedId - kActorBase)) : nullptr;
         if (act) act->ApplyAnimation("KO_SHOT_STOM", "PED", 4.1f, 0, 0, 0, 1, 0);
     } else {
         CPlayerPed* cp = GetPed((PLAYERID)carriedId);
         if (cp && !cp->IsAnimationPlaying(nCarried)) cp->ApplyAnimation("KO_SHOT_STOM", "PED", 4.1f, 0, 0, 0, 1, 0);
-    }
-    if (EnsureIfp()) {                                                                         // overlay so de bracos/cabeca por cima das nativas
-        const uint16_t fl = CustomAnim::CA_HOLD_LAST | CustomAnim::CA_PARTIAL;
-        if (phase == PH_ACTIVE && carrier->m_pPed) CustomAnim::Play(carrier->m_pPed, "carregar", "carregador", fl, 4.0f);
-        if (carriedPed) CustomAnim::Play(carriedPed, "carregar", "carregado", fl, 4.0f);
     }
 }
 
@@ -173,6 +177,9 @@ void ClearAll() {
     for (auto& r : s_release) r = Release();
     s_state.Clear();
 }
+
+bool IsInvolved(PLAYERID id) { return id < kMaxPlayers && s_state.Find(id) != nullptr; }
+bool IsActorInvolved(PLAYERID actorId) { return actorId < kMaxActors && s_state.carriedBy[kActorBase + actorId] != kNone; }
 
 void OnPlayerLeft(PLAYERID id) {
     if (id >= MAX_PLAYERS) return;

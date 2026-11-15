@@ -17,6 +17,8 @@ void Unregister(RakClientInterface* rak);  // UnregisterScriptRPCs()
 void ClearAll();                           // nova conexao / desconexao: descarta vinculos (restaura os peds que ainda existem)
 void Process();                            // fim de CPlayerPool::Process(): posiciona os carregados
 void ProcessAfterPreRender();               // CWorld::ProcessPedsAfterPreRender(): reposiciona o carregado DEPOIS do PreRender (pose final), antes de desenhar
+bool IsInvolved(PLAYERID id);                // jogador participa de um transporte (anims do servidor sao ignoradas)
+bool IsActorInvolved(PLAYERID actorId);    // idem para um Actor carregado
 void OnPlayerLeft(PLAYERID id);            // CPlayerPool::Delete(): jogador saiu do servidor
 
 } // namespace PlayerCarry

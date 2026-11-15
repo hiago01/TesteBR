@@ -614,7 +614,10 @@ void ScrApplyPlayerAnimation(RPCParameters* rpcParams)
 			}
 		}
 
-		if (pPlayerPed) {
+		if (pPlayerPed && PlayerCarry::IsInvolved(PlayerID)) {
+			FLog("[CARRY] ApplyAnimation %s:%s ignorada (jogador %d em transporte)", szAnimLib, szAnimName, (int)PlayerID);   // so o carregar.ifp manda
+		}
+		else if (pPlayerPed) {
 			FLog("ApplyAnimation: %s:%s", szAnimLib, szAnimName);
 			pPlayerPed->ApplyAnimation(szAnimName, szAnimLib, fDelta, bLoop, bLockX, bLockY, bFreeze, dwTime);
 		}
@@ -1794,7 +1797,10 @@ void ScrApplyActorAnimation(RPCParameters* rpcParams)
 	szAnimName[byteAnimNameLen] = '\0';
 
 	CActor* pActor = pActorPool->GetAt(ActorID);
-	if (pActor) {
+	if (pActor && PlayerCarry::IsActorInvolved(ActorID)) {
+		FLog("[CARRY] ApplyActorAnimation %s:%s ignorada (actor %d em transporte)", szAnimLib, szAnimName, (int)ActorID);
+	}
+	else if (pActor) {
 		pActor->ApplyAnimation(szAnimName, szAnimLib, fDelta, bLoop, bLockX, bLockY, bFreeze, iTime);
 	}
 }
