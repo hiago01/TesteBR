@@ -1,0 +1,152 @@
+// PlayerCarry.cpp - ver PlayerCarry.h
+#include "../main.h"
+#include "game/game.h"
+#include "net/netgame.h"
+#include "PlayerCarry.h"
+#include "PlayerCarryCore.h"
+#include "../vendor/raknet/SAMP/SAMPRPC.h"
+
+#include <cmath>
+#include <cstring>
+
+extern CNetGame* pNetGame;
+
+namespace PlayerCarry {
+
+int RPC_Carry = 233;
+
+namespace {
+
+using namespace carrycore;
+
+State    s_state;                                  // vinculos (RPC e Process rodam na thread de rede/jogo do NetGame)
+CPedGTA* s_prepared[MAX_PLAYERS];                  // ped do carregado ja preparado (colisao/anim); mudou o ponteiro = ped recriado
+uint32_t s_frame = 0;
+
+struct Release { bool used = false; uint16_t id = kNone; float x = 0, y = 0, z = 0, a = 0; };
+Release s_release[8];                              // soltaturas pendentes (aplicadas no Process)
+
+CPlayerPed* GetPed(PLAYERID id) {
+    CPlayerPool* pool = pNetGame ? pNetGame->GetPlayerPool() : nullptr;
+    if (!pool || id >= MAX_PLAYERS) return nullptr;
+    CPlayerPed* ped = nullptr;
+    if (id == pool->GetLocalPlayerID()) ped = pool->GetLocalPlayer() ? pool->GetLocalPlayer()->GetPlayerPed() : nullptr;
+    else if (pool->GetSlotState(id)) { CRemotePlayer* rp = pool->GetAt(id); ped = rp ? rp->GetPlayerPed() : nullptr; }
+    if (!ped || !ped->m_pPed || !IsValidGamePed(ped->m_pPed)) return nullptr;
+    return ped;
+}
+
+// devolve ao ped o comportamento normal e (se x,y,z validos) coloca-o em pe no ponto seguro
+void RestorePed(uint16_t id, bool place, float x, float y, float z, float a) {
+    if (id < MAX_PLAYERS) s_prepared[id] = nullptr;
+    CPlayerPed* ped = GetPed(id);
+    if (!ped) return;
+    ped->m_pPed->m_bUsesCollision = true;
+    ped->m_pPed->m_vecMoveSpeed = CVector(0.f, 0.f, 0.f);
+    if (!place) return;
+    const float h = a * 3.14159265f / 180.0f;                          // SA-MP: angulo em graus, frente = (-sin, cos)
+    CVector right(std::cos(h), std::sin(h), 0.f), fwd(-std::sin(h), std::cos(h), 0.f), up(0.f, 0.f, 1.f);
+    CMatrix m(CVector(x, y, z + 0.3f), right, fwd, up);
+    ped->m_pPed->SetMatrix(m);
+    ped->m_pPed->UpdateRW();
+}
+
+void QueueRelease(uint16_t id, float x, float y, float z, float a) {
+    for (auto& r : s_release) if (!r.used) { r.used = true; r.id = id; r.x = x; r.y = y; r.z = z; r.a = a; return; }
+    RestorePed(id, true, x, y, z, a);                                  // fila cheia: aplica na hora
+}
+
+void ScrCarry(RPCParameters* rpcParams) {
+    RakNet::BitStream bs((unsigned char*)rpcParams->input, (rpcParams->numberOfBitsOfData / 8) + 1, false);
+    Msg m;
+    if (!bs.Read(m.ver) || !bs.Read(m.op) || !bs.Read(m.carrier) || !bs.Read(m.carried) || !bs.Read(m.gen)
+        || !bs.Read(m.x) || !bs.Read(m.y) || !bs.Read(m.z) || !bs.Read(m.a)) return;      // pacote incompleto
+    if (!Validate(m)) { FLog("[CARRY] RPC %d ignorado (invalido): op=%d c=%d t=%d", RPC_Carry, (int)m.op, (int)m.carrier, (int)m.carried); return; }
+
+    Link stopped;
+    switch (s_state.Apply(m, &stopped)) {
+        case R_STARTED:   FLog("[CARRY] %d carrega %d (gen %d, op %d)", (int)m.carrier, (int)m.carried, (int)m.gen, (int)m.op); break;
+        case R_STOPPED:
+            FLog("[CARRY] %d soltou %d", (int)stopped.carrier, (int)stopped.carried);
+            QueueRelease(stopped.carried, m.x, m.y, m.z, m.a);
+            break;
+        default: break;
+    }
+}
+
+void PlayAnims(CPlayerPed* carrier, CPlayerPed* carried, Phase phase) {
+    char nCarrier[] = "CRRY_PRTIAL";
+    char nCarried[] = "KO_SHOT_STOM";
+    if (phase == PH_ACTIVE && !carrier->IsAnimationPlaying(nCarrier))
+        carrier->ApplyAnimation("CRRY_PRTIAL", "CARRY", 4.1f, 0, 0, 0, 1, 1);                 // mesma chamada do ProcessSpecialActions
+    if (!carried->IsAnimationPlaying(nCarried))
+        carried->ApplyAnimation("KO_SHOT_STOM", "PED", 4.1f, 0, 0, 0, 1, 0);
+}
+
+} // namespace
+
+void Register(RakClientInterface* rak)   { rak->RegisterAsRemoteProcedureCall(&RPC_Carry, ScrCarry); }
+void Unregister(RakClientInterface* rak) { rak->UnregisterAsRemoteProcedureCall(&RPC_Carry); ClearAll(); }
+
+void ClearAll() {
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        if (s_prepared[i]) RestorePed((uint16_t)i, false, 0, 0, 0, 0);
+        s_prepared[i] = nullptr;
+    }
+    for (auto& r : s_release) r = Release();
+    s_state.Clear();
+}
+
+void OnPlayerLeft(PLAYERID id) {
+    if (id >= MAX_PLAYERS) return;
+    const Link* l = s_state.Find(id);
+    if (l) {
+        uint16_t carrier = l->carrier, carried = l->carried;
+        s_state.Remove(carrier);
+        if (carried != id) RestorePed(carried, false, 0, 0, 0, 0);     // o outro participante volta ao normal (o servidor tambem manda o op 3)
+    }
+    s_prepared[id] = nullptr;
+}
+
+void Process() {
+    // soltaturas pendentes
+    for (auto& r : s_release) if (r.used) { RestorePed(r.id, true, r.x, r.y, r.z, r.a); r = Release(); }
+    if (s_state.count <= 0) return;
+    s_frame++;
+
+    int seen = 0;
+    for (int c = 0; c < MAX_PLAYERS && seen < s_state.count; c++) {
+        const Link& l = s_state.link[c];
+        if (!l.used) continue;
+        seen++;
+
+        CPlayerPed* carrier = GetPed(l.carrier);
+        CPlayerPed* carried = GetPed(l.carried);
+        if (!carrier || !carried) { s_prepared[l.carried] = nullptr; continue; }   // fora do stream: o vinculo continua guardado
+        if (carrier->IsInVehicle() || carried->IsInVehicle()) continue;            // o servidor encerra; aqui so nao posiciona
+
+        if (s_prepared[l.carried] != carried->m_pPed) {                           // 1a vez (ou ped recriado): reaplica
+            s_prepared[l.carried] = carried->m_pPed;
+            carried->m_pPed->m_bUsesCollision = false;                            // sem empurrao entre os dois corpos
+            PlayAnims(carrier, carried, l.phase);
+        }
+        if (l.phase != PH_ACTIVE) continue;                                       // na preparacao o carregado ainda fica onde esta
+
+        CMatrix& cm = carrier->m_pPed->GetMatrix();
+        const float R[3] = { cm.GetRight().x, cm.GetRight().y, cm.GetRight().z };
+        const float F[3] = { cm.GetForward().x, cm.GetForward().y, cm.GetForward().z };
+        const float U[3] = { cm.GetUp().x, cm.GetUp().y, cm.GetUp().z };
+        const float P[3] = { cm.GetPosition().x, cm.GetPosition().y, cm.GetPosition().z };
+        const Placement p = Place(R, F, U, P);
+
+        CMatrix m(CVector(p.pos[0], p.pos[1], p.pos[2]), CVector(p.right[0], p.right[1], p.right[2]),
+                  CVector(p.fwd[0], p.fwd[1], p.fwd[2]), CVector(p.up[0], p.up[1], p.up[2]));
+        carried->m_pPed->SetMatrix(m);
+        carried->m_pPed->m_vecMoveSpeed = CVector(0.f, 0.f, 0.f);
+        carried->m_pPed->UpdateRW();
+
+        if ((s_frame % 90) == 0) PlayAnims(carrier, carried, l.phase);            // a cada ~1,5 s garante que as animacoes seguem
+    }
+}
+
+} // namespace PlayerCarry

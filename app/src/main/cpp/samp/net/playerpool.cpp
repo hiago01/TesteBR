@@ -4,6 +4,7 @@
 #include "playerpool.h"
 #include "../game/ClothesSync.h"
 #include "../game/IdCard3D.h"
+#include "../game/PlayerCarry.h"
 
 CPlayerPool::CPlayerPool()
 {
@@ -42,6 +43,8 @@ void CPlayerPool::Process()
 	if (m_pLocalPlayer) {
 		m_pLocalPlayer->Process();
 	}
+
+	PlayerCarry::Process();   // /carregar: por ULTIMO, depois da sincronizacao normal, posiciona os carregados
 }
 // 0.3.7
 bool CPlayerPool::New(PLAYERID playerId, const char* szPlayerName, bool bIsNPC)
@@ -93,6 +96,7 @@ bool CPlayerPool::Delete(PLAYERID playerId, uint8_t byteReason)
 	if (m_pLocalPlayer && m_pLocalPlayer->IsSpectating() && m_pLocalPlayer->m_SpectateID == playerId) {
 		m_pLocalPlayer->ToggleSpectating(false);
 	}
+	PlayerCarry::OnPlayerLeft(playerId);  // /carregar: libera o outro participante
 	m_bPlayerSlotState[playerId] = false;
 	CClothesSync::ClearPlayer(playerId); // CJ real: descarta roupas do slot
 	IdCard3D_ClearPlayer(playerId);      // cartao de identidade 3D do jogador que saiu

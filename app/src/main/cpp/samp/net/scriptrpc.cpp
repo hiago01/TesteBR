@@ -18,6 +18,7 @@
 #include "../gui/samp_widgets/worldmap.h"
 #include "../gui/samp_widgets/phone.h"
 #include "../game/CustomAnimSync.h"
+#include "../game/PlayerCarry.h"
 #include "../game/CorpTex.h"
 #include "../game/CustomAnimTest.h"
 
@@ -2202,6 +2203,8 @@ void RegisterScriptRPCs(RakClientInterface *pRakClient)
 	InventoryUI::Reset();  // nova conexão: inventário fechado e vazio
 	if (Diag::On("anim")) CustomAnimSync::Register(pRakClient);   // RPC 230: anim customizada (servidor -> cliente)
 	CustomAnimSync::ClearAll();             // nova conexão: descarta estado da sessão anterior
+	PlayerCarry::Register(pRakClient);      // RPC 233: /carregar (servidor -> cliente)
+	PlayerCarry::ClearAll();                // nova conexão: descarta vínculos da sessão anterior
 	if (Diag::On("corptex")) CorpTex::Register(pRakClient);          // RPC 231: textura por corporação (servidor -> cliente)
 	CorpTex::ClearAll();                    // nova conexão: descarta corps da sessão anterior
 	if (Diag::On("anim")) CustomAnimTest::AutoLoad();                // carrega SAMP/anims/poses.ifp (cruzar bracos / apontar) se existir
@@ -2276,6 +2279,7 @@ void UnregisterScriptRPCs(RakClientInterface *pRakClient)
 	InventoryUI::Reset();
 	IdCard3D_Reset();      // saiu do servidor: limpa cartões
 	CustomAnimSync::Unregister(pRakClient);
+	PlayerCarry::Unregister(pRakClient);
 	CorpTex::Unregister(pRakClient);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetMapIcon);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrDisableMapIcon);
