@@ -22,6 +22,7 @@
 #include <string>
 #include "../../game/camerazoom.h"
 #include "../../game/CustomAnimTest.h"
+#include "../../game/CarryTuner.h"
 #include "../../game/CustomDiag.h"
 #include "../../game/movemode.h"
 #include "controlmode.h"
@@ -408,6 +409,12 @@ if (input == "/dp" || input.rfind("/dp ", 0) == 0)
             std::string reply = DpDiag::Command(args);
             addDebugMessage("%s", reply.c_str());
 
+            return;
+        }
+if (input == "/carregarhud")
+        {
+            CarryTuner::Toggle();
+            addDebugMessage(CarryTuner::IsOpen() ? "[CARREGAR] painel de ajuste aberto (/carregarhud fecha)" : "[CARREGAR] painel fechado");
             return;
         }
 if (input == "/ifp" || input.rfind("/ifp ", 0) == 0)

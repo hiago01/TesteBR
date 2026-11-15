@@ -54,6 +54,11 @@ PLAN = {
  ],
  'carregado': spine(2, SIGN) + ARMS_CARREGADO,   # corpo dobrado na cintura sobre o ombro + bracos soltos
 }
+# variantes escolhidas no painel /carregarhud (dobra Z da coluna em graus por osso: -60..+60)
+for _b in (-60, -40, -20, 0, 20, 40, 60):
+    _n = ('m%d' % -_b) if _b < 0 else ('p%d' % _b if _b else '0')
+    _d = (0.0, 0.0, float(_b))
+    PLAN['carregado_' + _n] = [(2, IDENT, _d), (3, IDENT, _d)] + ARMS_CARREGADO
 # anims de TESTE (so coluna, eixo/sinal diferentes): /ifp tocar dobra_yp hold parcial  -> veja qual dobra a barriga para a frente
 for _ax, _n in ((0, 'x'), (1, 'y'), (2, 'z')):
     PLAN['dobra_%sp' % _n] = spine(_ax, +1)

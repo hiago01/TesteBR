@@ -7,6 +7,7 @@
 #include "PlayerCarry.h"
 #include "PlayerCarryCore.h"
 #include "CustomAnim.h"
+#include "CarryTuner.h"
 #include "IfpLoader.h"
 #include <string>
 #include "../vendor/raknet/SAMP/SAMPRPC.h"
@@ -143,11 +144,18 @@ void PlaceCarried(CPedGTA* carrier, CPedGTA* carried, bool anchorBone) {
 
 // UMA fonte de animacao: o IFP novo (carregar.ifp). As anims nativas (CARRY/PED) so entram se o arquivo nao carregou.
 // O servidor NAO aplica mais anims no transporte e o cliente ignora as que chegarem (IsInvolved), senao as duas ficam alternando.
+// "carregado_<x>": x = m60 m40 m20 0 p20 p40 p60 (dobra da coluna; escolhida no painel /carregarhud)
+const char* CarriedAnimName() {
+    static const char* n[7] = { "carregado_m60", "carregado_m40", "carregado_m20", "carregado_0", "carregado_p20", "carregado_p40", "carregado_p60" };
+    int b = Tune().bend; if (b < -3) b = -3; if (b > 3) b = 3;
+    return n[b + 3];
+}
+
 void PlayAnims(CPlayerPed* carrier, uint16_t carriedId, CPedGTA* carriedPed, Phase phase) {
     if (EnsureIfp()) {
         const uint16_t fl = CustomAnim::CA_HOLD_LAST | CustomAnim::CA_PARTIAL;
         if (phase == PH_ACTIVE && carrier->m_pPed) CustomAnim::Play(carrier->m_pPed, "carregar", "carregador", fl, 4.0f);
-        if (carriedPed) CustomAnim::Play(carriedPed, "carregar", "carregado", fl, 4.0f);
+        if (carriedPed) CustomAnim::Play(carriedPed, "carregar", CarriedAnimName(), fl, 4.0f);
         return;
     }
     char nCarrier[] = "CRRY_PRTIAL";
@@ -193,6 +201,7 @@ void OnPlayerLeft(PLAYERID id) {
 }
 
 void Process() {
+    CarryTuner::LoadSaved();                      // valores salvos pelo painel /carregarhud (1x)
     // soltaturas pendentes
     for (auto& r : s_release) if (r.used) { RestorePed(r.id, true, r.x, r.y, r.z, r.a); r = Release(); }
     if (s_state.count <= 0) return;
@@ -212,6 +221,7 @@ void Process() {
         if (s_prepared[l.carried] != carried) {                                   // 1a vez (ou ped recriado): reaplica
             s_prepared[l.carried] = carried;
             carried->m_bUsesCollision = false;                                    // sem empurrao entre os dois corpos
+            CustomAnim::StopAll(carried, 2.0f);                                   // troca de variante (painel): tira a anterior
             PlayAnims(carrier, l.carried, carried, l.phase);
         }
         if (l.phase != PH_ACTIVE) continue;                                       // na preparacao o carregado ainda fica onde esta
@@ -224,6 +234,10 @@ void Process() {
 
 // Roda DEPOIS do PreRender de todos os peds. O ProcessControl do jogo reconstroi a matriz do ped a partir do heading (perde o
 // giro de 180 graus) e o carregador pode andar entre o Process de rede e o desenho; por isso o posicionamento que vale e este.
+void ReapplyAnims() {            // painel: trocou a dobra -> reaplica nos carregados ja ativos
+    for (auto& p : s_prepared) p = nullptr;
+}
+
 void ProcessAfterPreRender() {
     if (s_state.count <= 0) return;
     int seen = 0;

@@ -61,3 +61,11 @@ Nos prints o carregado ja fica preso, de cabeca para baixo, com a coluna dobrada
 - Dobra: o eixo Y da coluna dobra de lado (confirmado pelos prints), entao o eixo de dobrar para frente/tras e o Z. O `carregado` agora usa `spine(2, SIGN)`. Se o tronco for para o lado errado (para a frente do carregador em vez de cair nas costas), troque SIGN para -1 em tools/make_carregar_ifp.py e regere (ou teste `dobra_zp` / `dobra_zn` com `/ifp tocar`).
 - Posicao: tilt 25 -> 10 graus, offsets 0.22 / -0.10 / 0.50 (kOffX/Y/Z): as pernas sobem ao lado da cabeca do carregador, nao na frente do rosto.
 Arquivos: PlayerCarryCore.h, make_carregar_ifp.py, SAMP/anims/carregar.ifp.
+
+## Painel visual de ajuste: /carregarhud
+Digite `/carregarhud` no chat (cliente, nao vai ao servidor). Abre um painel ImGui com botoes grandes (- / slider / +):
+- Lado (X), Frente/tras (Y), Altura (Z) do carregado em relacao ao carregador; Inclinacao (pes para a frente); Giro para o lado (roll);
+- Dobra do corpo (< >): escolhe a variante `carregado_m60 ... p60` do carregar.ifp (coluna -60 a +60 graus por osso).
+Tudo vale em tempo real no transporte em andamento. SALVAR grava `SAMP/carry_tuning.ini` (carrega sozinho depois) e escreve `[CARRY-TUNE] offX=... tilt=... bend=...` no samp.log: mande essa linha e eu fixo como padrao. PADRAO volta aos valores de fabrica; "Mover painel" troca de lado; FECHAR (ou /carregarhud de novo).
+Arquivos novos: game/CarryTuner.h/.cpp (CMake pega sozinho). Editados: PlayerCarryCore.h (Tune()), PlayerCarry.cpp/.h, gui/imguiwrapper.cpp (Draw antes do EndFrame), gui/samp_widgets/chat.cpp (comando). carregar.ifp REGERADO (tem as variantes): copie de novo para SAMP/anims.
+Aviso: arrastar o slider tambem pode mexer a camera do jogo (o toque chega aos dois). Se atrapalhar, use os botoes - e +.

@@ -115,14 +115,23 @@ constexpr float kOffY = -0.10f;  // para tras
 constexpr float kOffZ = 0.50f;   // para cima (a origem do ped fica na altura da cintura)
 constexpr float kTiltDeg = 10.0f; // inclinacao: 0 = vertical perfeito; > 0 = pes para a frente
 
+// Valores AJUSTAVEIS em jogo (painel /carregarhud, CarryTuner.cpp). Comecam nos padroes acima; sao lidos por Place().
+struct Tuning { float offX = kOffX, offY = kOffY, offZ = kOffZ, tilt = kTiltDeg, roll = 0.0f; int bend = 2; /* -3..3 -> carregado_<x> */ };
+inline Tuning& Tune() { static Tuning t; return t; }
+
 inline Placement Place(const float R[3], const float F[3], const float U[3], const float P[3]) {
     Placement o;
-    const float t = kTiltDeg * 3.14159265f / 180.0f, c = std::cos(t), sn = std::sin(t);
+    const Tuning& tu = Tune();
+    const float t = tu.tilt * 3.14159265f / 180.0f, c = std::cos(t), sn = std::sin(t);
+    // (right, up', fwd') ja rotacionados em torno do eixo direito (tilt); depois roll em torno de fwd' (inclina para o lado)
+    float up0[3], fw0[3];
+    for (int i = 0; i < 3; i++) { up0[i] = -c * U[i] - sn * F[i]; fw0[i] = -c * F[i] + sn * U[i]; }
+    const float r = tu.roll * 3.14159265f / 180.0f, cr = std::cos(r), sr = std::sin(r);
     for (int i = 0; i < 3; i++) {
-        o.right[i] = R[i];
-        o.up[i]    = -c * U[i] - sn * F[i];
-        o.fwd[i]   = -c * F[i] + sn * U[i];
-        o.pos[i]   = P[i] + R[i] * kOffX + F[i] * kOffY + U[i] * kOffZ;
+        o.fwd[i]   = fw0[i];
+        o.right[i] = cr * R[i] + sr * up0[i];          // rotacao em torno de fwd': right' = cos*R + sin*up ; up'' = cos*up - sin*R
+        o.up[i]    = cr * up0[i] - sr * R[i];
+        o.pos[i]   = P[i] + R[i] * tu.offX + F[i] * tu.offY + U[i] * tu.offZ;
     }
     return o;
 }

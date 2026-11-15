@@ -1,3 +1,4 @@
+#include "../game/CarryTuner.h"
 #include "../main.h"
 #include "imguiwrapper.h"
 #include "uisettings.h"
@@ -134,6 +135,7 @@ void ImGuiWrapper::render()
 	}
 
 	drawList();
+	CarryTuner::Draw();     // painel /carregarhud (ajuste do carregar em jogo)
 	ImGui::EndFrame();
 	ImGui::Render();
 	renderDrawData(ImGui::GetDrawData());
