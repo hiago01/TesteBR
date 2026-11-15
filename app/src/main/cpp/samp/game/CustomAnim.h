@@ -22,6 +22,9 @@ void RegisterCustomBlock(int animBlockIndex);        // usado pelo loader
 bool IsCustomBlockName(const char* name);
 
 CAnimBlendAssociation* Play(CPedGTA* ped, const char* block, const char* anim, uint16_t flags, float blendDelta);
+// Reescreve (em memoria) a rotacao de TODOS os keyframes do osso `boneId` da anim de um bloco customizado. As associations
+// ja tocando usam os mesmos dados: a mudanca aparece na hora. Retorna quantos keyframes mudou (0 = anim/osso nao achado).
+int SetBoneRotation(const char* block, const char* anim, int boneId, float x, float y, float z, float w);
 bool Stop(CPedGTA* ped, const char* block, const char* anim, float blendOut = 4.0f);
 void StopAll(CPedGTA* ped, float blendOut = 4.0f);   // para todas as anims de blocos customizados deste ped
 

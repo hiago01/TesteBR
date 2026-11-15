@@ -16,6 +16,7 @@ void Register(RakClientInterface* rak);    // RegisterScriptRPCs()
 void Unregister(RakClientInterface* rak);  // UnregisterScriptRPCs()
 void ClearAll();                           // nova conexao / desconexao: descarta vinculos (restaura os peds que ainda existem)
 void Process();                            // fim de CPlayerPool::Process(): posiciona os carregados
+void ApplyCarrierArms();                   // escreve a pose dos bracos do carregador (CarryArms.h) dentro da anim carregar/carregador
 void ReapplyAnims();                       // painel /carregarhud: reaplica as anims (trocou a dobra)
 void ProcessAfterPreRender();               // CWorld::ProcessPedsAfterPreRender(): reposiciona o carregado DEPOIS do PreRender (pose final), antes de desenhar
 bool IsInvolved(PLAYERID id);                // jogador participa de um transporte (anims do servidor sao ignoradas)

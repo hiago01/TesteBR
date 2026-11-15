@@ -81,3 +81,10 @@ Arquivos: CarryTuner.h/.cpp, hooks.cpp (include + 1 chamada).
 - Nova linha **Virar (yaw)** -180..180 (passo 5): gira o carregado em torno do eixo vertical do carregador. 180 = troca cabeca/pes de lado (frente <-> costas); 90 = para o lado. Segurar - / + repete.
 - Ordem das rotacoes: tilt (em torno do eixo direito) -> roll -> yaw. O painel salva `yaw=` no carry_tuning.ini e na linha [CARRY-TUNE].
 - Painel com 7 linhas (cabe na tela). Para o corpo "de cabeca para baixo com a cabeca nas costas": tilt 90 e use yaw 180 se a cabeca estiver para o lado errado.
+
+## Correcao 8 (prints 18:54): padrao do usuario + bracos + aba CARREGADOR
+- **Padrao do carregado** agora = o ajuste do print: Lado .21, Frente .21, Altura .59, Tilt 144, Roll -16, Yaw -5, Dobra -40 (`Tuning` em PlayerCarryCore.h). Se ja existe SAMP/carry_tuning.ini no aparelho, ele manda; PADRAO no painel volta a estes valores.
+- **Maos do carregador**: antes o braco D vinha do bracos_cruzados e o E do foto_frontal (mao no rosto). Agora os DOIS vem do bracos_cruzados (maos abracando o corpo carregado, na altura do peito). `tools/make_carregar_ifp.py` e `game/CarryArms.h` usam a mesma base.
+- **Aba CARREGADOR** no /carregarhud (abas CARREGADO | CARREGADOR no topo): escolha o osso em < > (Braco D ombro/cotovelo/mao, Braco E idem) e gire X/Y/Z em graus. Vale ao vivo: `CustomAnim::SetBoneRotation` reescreve os keyframes da anim `carregar/carregador` em memoria. SALVAR grava `arm0..arm5=x,y,z` no ini e no log ([CARRY-TUNE] armN(...)=...). PADRAO na aba zera so os bracos.
+- Arquivos novos: game/CarryArms.h. Editados: CarryTuner.cpp/.h, CustomAnim.cpp/.h (SetBoneRotation), PlayerCarry.cpp/.h, PlayerCarryCore.h, tools/*, SAMP/anims/carregar.ifp (regerado).
+- Eixos dos ossos do braco NAO verificados sem ver o jogo: use a aba para achar a pose e me mande as linhas [CARRY-TUNE] arm0..arm5 que eu fixo como padrao.

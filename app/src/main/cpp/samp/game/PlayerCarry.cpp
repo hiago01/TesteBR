@@ -8,6 +8,7 @@
 #include "PlayerCarryCore.h"
 #include "CustomAnim.h"
 #include "CarryTuner.h"
+#include "CarryArms.h"
 #include "IfpLoader.h"
 #include <string>
 #include "../vendor/raknet/SAMP/SAMPRPC.h"
@@ -21,6 +22,7 @@ extern char* g_pszStorage;
 namespace PlayerCarry {
 
 int RPC_Carry = 233;
+void ApplyCarrierArms();
 
 namespace {
 
@@ -103,6 +105,7 @@ bool EnsureIfp() {
     f += "SAMP/anims/carregar.ifp";
     bool ok = CustomAnim::Init(f.c_str(), "carregar");
     FLog("[Carry] %s %s", f.c_str(), ok ? "carregado" : "NAO carregou (usando anims nativas)");
+    if (ok) ApplyCarrierArms();
     return ok;
 }
 
@@ -202,6 +205,7 @@ void OnPlayerLeft(PLAYERID id) {
 
 void Process() {
     CarryTuner::LoadSaved();                      // valores salvos pelo painel /carregarhud (1x)
+    CarryTuner::ApplyPending();
     // soltaturas pendentes
     for (auto& r : s_release) if (r.used) { RestorePed(r.id, true, r.x, r.y, r.z, r.a); r = Release(); }
     if (s_state.count <= 0) return;
@@ -234,6 +238,14 @@ void Process() {
 
 // Roda DEPOIS do PreRender de todos os peds. O ProcessControl do jogo reconstroi a matriz do ped a partir do heading (perde o
 // giro de 180 graus) e o carregador pode andar entre o Process de rede e o desenho; por isso o posicionamento que vale e este.
+void ApplyCarrierArms() {
+    if (!CustomIfp::GetAnimNames("carregar")) return;
+    for (int i = 0; i < carryarms::kBones; i++) {
+        float q[4]; carryarms::Compute(i, q);
+        CustomAnim::SetBoneRotation("carregar", "carregador", carryarms::kBoneId[i], q[0], q[1], q[2], q[3]);
+    }
+}
+
 void ReapplyAnims() {            // painel: trocou a dobra -> reaplica nos carregados ja ativos
     for (auto& p : s_prepared) p = nullptr;
 }

@@ -1,5 +1,6 @@
 // CustomAnim.cpp
 #include <cassert>
+#include <cstring>
 #include "common.h"      // int32/uint8... (precisa vir antes dos headers de Animation/*, como no AnimManager.cpp)
 #include "CustomAnim.h"
 #include "IfpLoader.h"
@@ -85,6 +86,23 @@ bool Init(const char* ifpPath, const char* blockOverride) {
     if (!r.ok) { FLog("[CustomAnim] falha ao carregar %s: %s", ifpPath, r.error.c_str()); return false; }
     FLog("[CustomAnim] bloco '%s' carregado (%d animacoes)", r.block, r.numAnims);
     return true;
+}
+
+int SetBoneRotation(const char* block, const char* anim, int boneId, float x, float y, float z, float w) {
+    CAnimBlendHierarchy* h = FindHier(block, anim);
+    if (!h) return 0;
+    int n = 0; const float q[4] = { x, y, z, w };
+    for (int i = 0; i < (int)h->m_nSeqCount; ++i) {
+        CAnimBlendSequence* seq = &h->m_pSequences[i];
+        if (!seq->m_hasBoneIdSet || (int)seq->m_boneId != boneId || seq->m_isCompressed) continue;
+        for (int f = 0; f < (int)seq->m_nFrameCount; ++f) {
+            KeyFrameTrans* kf = seq->GetUncompressedFrame(f);
+            if (!kf) continue;
+            memcpy(&kf->rotation, q, 4 * sizeof(float));         // x,y,z,w crus (mesma ordem do loader)
+            ++n;
+        }
+    }
+    return n;
 }
 
 CAnimBlendAssociation* Play(CPedGTA* ped, const char* block, const char* anim, uint16_t flags, float blendDelta) {

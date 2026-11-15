@@ -116,7 +116,8 @@ constexpr float kOffZ = 0.50f;   // para cima (a origem do ped fica na altura da
 constexpr float kTiltDeg = 10.0f; // inclinacao: 0 = vertical perfeito; > 0 = pes para a frente
 
 // Valores AJUSTAVEIS em jogo (painel /carregarhud, CarryTuner.cpp). Comecam nos padroes acima; sao lidos por Place().
-struct Tuning { float offX = kOffX, offY = kOffY, offZ = kOffZ, tilt = kTiltDeg, roll = 0.0f, yaw = 0.0f; int bend = 2; /* -3..3 -> carregado_<x> */ };
+// Padrao = o ajuste que o usuario escolheu em jogo (print 18:54): lado .21, frente .21, altura .59, tilt 144, roll -16, yaw -5, dobra -40.
+struct Tuning { float offX = 0.21f, offY = 0.21f, offZ = 0.59f, tilt = 144.0f, roll = -16.0f, yaw = -5.0f; int bend = -2; /* -3..3 -> carregado_<x> */ };
 inline Tuning& Tune() { static Tuning t; return t; }
 
 inline Placement Place(const float R[3], const float F[3], const float U[3], const float P[3]) {

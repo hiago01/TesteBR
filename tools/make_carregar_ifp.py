@@ -50,7 +50,7 @@ def spine(ax, sg):   # delta de dobra da coluna no eixo ax (0=X,1=Y,2=Z)
 PLAN = {
  'carregador': [  # bracos cruzados (mao no ombro/peito) + braco esquerdo a frente
     (22, ('bracos_cruzados', 22), (0, 0, 0)), (23, ('bracos_cruzados', 23), (0, 0, 0)), (24, ('bracos_cruzados', 24), (0, 0, 0)),
-    (32, ('foto_frontal', 32), (0, 0, 0)), (33, ('foto_frontal', 33), (0, 0, 0)), (34, ('foto_frontal', 34), (0, 0, 0)),
+    (32, ('bracos_cruzados', 32), (0, 0, 0)), (33, ('bracos_cruzados', 33), (0, 0, 0)), (34, ('bracos_cruzados', 34), (0, 0, 0)),
  ],
  'carregado': spine(2, SIGN) + ARMS_CARREGADO,   # corpo dobrado na cintura sobre o ombro + bracos soltos
 }

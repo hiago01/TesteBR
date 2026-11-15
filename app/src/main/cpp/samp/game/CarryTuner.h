@@ -7,6 +7,7 @@ namespace CarryTuner {
 void Toggle();
 bool IsOpen();
 void LoadSaved();                                          // le SAMP/carry_tuning.ini uma unica vez (PlayerCarry::Process)
+void ApplyPending();                                       // reaplica os bracos do carregador se mudaram (PlayerCarry::Process)
 void Draw();                                               // dentro do frame do ImGui (ImGuiWrapper::render), antes do EndFrame
 bool HandleRawTouch(int type, int num, int x, int y);      // hooks.cpp (type: 2 push, 3 move, 1 pop). true = consumido
 }

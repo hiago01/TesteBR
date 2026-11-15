@@ -1,5 +1,6 @@
 // g++ -std=c++17 -I app/src/main/cpp/samp/game tools/carry_test.cpp -o /tmp/carry_test && /tmp/carry_test
 #include "PlayerCarryCore.h"
+#include "CarryArms.h"
 #include <cstdio>
 #include <cmath>
 using namespace carrycore;
@@ -60,6 +61,8 @@ int main() {
       CHECK(a.Apply(M(1, 4, 1004, 2), &st) == R_STARTED && !a.link[3].used && a.carriedBy[1004] == 4);   // outro jogador pega o boneco
       CHECK(a.Apply(M(3, 4, 1004, 2, 1, 2, 3, 4), &st) == R_STOPPED && a.carriedBy[1004] == kNone && a.count == 0);
       CHECK(a.Apply(M(3, 4, 1004, 2, 1, 2, 3, 4), &st) == R_IGNORED); }
+    // padroes legados usados nos testes de posicao (o padrao real vem do ajuste em jogo)
+    { Tuning& t = Tune(); t.offX = kOffX; t.offY = kOffY; t.offZ = kOffZ; t.tilt = kTiltDeg; t.roll = 0; t.yaw = 0; }
     // posicao: carregador olhando para +Y (R=+X, F=+Y, U=+Z)
     float R[3] = {1,0,0}, F[3] = {0,1,0}, U[3] = {0,0,1}, P[3] = {100,200,10};
     Placement p = Place(R, F, U, P);
@@ -75,11 +78,23 @@ int main() {
     Placement q = Place(R2, F2, U, P);
     CHECK(fabsf(q.pos[0] - (100 - kOffY)) < 1e-5f && fabsf(q.pos[1] - (200 + kOffX)) < 1e-5f);
     // yaw 180 inverte cabeca/pes no plano horizontal; yaw 0 nao muda nada
-    { Tune() = Tuning(); Tune().tilt = 90.f; Placement a = Place(R, F, U, P); Tune().yaw = 180.f; Placement b = Place(R, F, U, P);
+    { { Tuning& t0 = Tune(); t0.offX = kOffX; t0.offY = kOffY; t0.offZ = kOffZ; t0.roll = 0; t0.yaw = 0; } Tune().tilt = 90.f; Placement a = Place(R, F, U, P); Tune().yaw = 180.f; Placement b = Place(R, F, U, P);
       CHECK(fabsf(a.up[1] + 1.f) < 1e-5f && fabsf(b.up[1] - 1.f) < 1e-5f);   // tilt 90: cabeca para tras (-F); +yaw 180: para frente
       CHECK(fabsf(b.right[0] + 1.f) < 1e-5f);
       float c2[3]; cross(b.right, b.fwd, c2); CHECK(fabsf(c2[0]-b.up[0]) < 1e-5f && fabsf(c2[1]-b.up[1]) < 1e-5f && fabsf(c2[2]-b.up[2]) < 1e-5f);
-      Tune() = Tuning(); }
+      Tuning& t = Tune(); t.offX = kOffX; t.offY = kOffY; t.offZ = kOffZ; t.tilt = kTiltDeg; t.roll = 0; t.yaw = 0; }
+    // bracos: delta 0 = base normalizada; delta 90 gira de verdade e continua unitario
+    { carryarms::Arms() = carryarms::Deltas(); float q[4]; bool same = true;
+      for (int i = 0; i < carryarms::kBones; i++) { carryarms::Compute(i, q); const float n = sqrtf(q[0]*q[0]+q[1]*q[1]+q[2]*q[2]+q[3]*q[3]);
+        float bn = sqrtf(carryarms::kBase[i][0]*carryarms::kBase[i][0]+carryarms::kBase[i][1]*carryarms::kBase[i][1]+carryarms::kBase[i][2]*carryarms::kBase[i][2]+carryarms::kBase[i][3]*carryarms::kBase[i][3]);
+        for (int k = 0; k < 4; k++) if (fabsf(q[k] - carryarms::kBase[i][k] / bn) > 1e-4f) same = false;
+        CHECK(fabsf(n - 1.f) < 1e-4f); }
+      CHECK(same);
+      carryarms::Arms().deg[0][1] = 90.f; carryarms::Compute(0, q);
+      CHECK(fabsf(q[0] - carryarms::kBase[0][0]) > 0.05f && fabsf(sqrtf(q[0]*q[0]+q[1]*q[1]+q[2]*q[2]+q[3]*q[3]) - 1.f) < 1e-4f);
+      carryarms::Arms() = carryarms::Deltas(); }
+    // padrao do usuario
+    { Tuning d; CHECK(d.offX == 0.21f && d.offY == 0.21f && d.offZ == 0.59f && d.tilt == 144.f && d.roll == -16.f && d.yaw == -5.f && d.bend == -2); }
     printf("%d ok, %d falha(s)\n", ok, bad);
     return bad ? 1 : 0;
 }
