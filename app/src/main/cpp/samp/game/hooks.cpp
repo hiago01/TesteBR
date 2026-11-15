@@ -1,3 +1,4 @@
+#include "CarryTuner.h"
 #include <cmath>
 #include "Diag.h"
 #include <GLES2/gl2.h>
@@ -1106,6 +1107,9 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 			AND_TouchEvent(1, i, 0, 0);
 	}
 	if (MaximoOSWidget::HandleRawTouch(type, num, posX, posY))
+		return;
+	// Painel /carregarhud (ajuste do carregar): so captura o dedo que COMECA dentro do painel.
+	if (CarryTuner::HandleRawTouch(type, num, posX, posY))
 		return;
 	// Painel /celofs (ajuste do celular na mao): so captura o dedo que COMECA dentro do painel (esquerda, acima do joystick).
 	if (CelOfsPanel::HandleRawTouch(type, num, posX, posY))

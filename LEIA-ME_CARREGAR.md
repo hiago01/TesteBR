@@ -69,3 +69,9 @@ Digite `/carregarhud` no chat (cliente, nao vai ao servidor). Abre um painel ImG
 Tudo vale em tempo real no transporte em andamento. SALVAR grava `SAMP/carry_tuning.ini` (carrega sozinho depois) e escreve `[CARRY-TUNE] offX=... tilt=... bend=...` no samp.log: mande essa linha e eu fixo como padrao. PADRAO volta aos valores de fabrica; "Mover painel" troca de lado; FECHAR (ou /carregarhud de novo).
 Arquivos novos: game/CarryTuner.h/.cpp (CMake pega sozinho). Editados: PlayerCarryCore.h (Tune()), PlayerCarry.cpp/.h, gui/imguiwrapper.cpp (Draw antes do EndFrame), gui/samp_widgets/chat.cpp (comando). carregar.ifp REGERADO (tem as variantes): copie de novo para SAMP/anims.
 Aviso: arrastar o slider tambem pode mexer a camera do jogo (o toque chega aos dois). Se atrapalhar, use os botoes - e +.
+
+## Correcao 6: painel /carregarhud nao funcionava (video 18:25)
+Problemas: (1) fonte grande demais (cortava SALVAR/FECHAR); (2) o ImGui deste projeto NAO recebe toque (UI::OnTouchEvent esta comentado no hook), entao os botoes nao respondiam e o toque caia no inventario.
+Agora: painel desenhado com o draw list do ImGui (texto menor, tudo cabe) e toque proprio no mesmo esquema do /celofs: `CarryTuner::HandleRawTouch` em game/hooks.cpp (antes do CelOfsPanel), so captura o dedo que COMECA dentro do painel; joystick/camera seguem para o jogo. Segurar - / + repete. Botao `<>` no topo troca o lado.
+Linhas: Lado X, Frente/tras Y, Altura Z, Inclinacao, Giro (roll), Dobra do corpo (-3..+3 = -60..+60 graus por osso). SALVAR / PADRAO / FECHAR.
+Arquivos: CarryTuner.h/.cpp, hooks.cpp (include + 1 chamada).
