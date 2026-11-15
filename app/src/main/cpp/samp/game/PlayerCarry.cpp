@@ -189,6 +189,11 @@ void ClearAll() {
     s_state.Clear();
 }
 
+bool LocalIsCarrying() {
+    if (!pNetGame || !pNetGame->GetPlayerPool()) return false;
+    const PLAYERID me = pNetGame->GetPlayerPool()->GetLocalPlayerID();
+    return me < kMaxPlayers && s_state.link[me].used;
+}
 bool IsInvolved(PLAYERID id) { return id < kMaxPlayers && s_state.Find(id) != nullptr; }
 bool IsActorInvolved(PLAYERID actorId) { return actorId < kMaxActors && s_state.carriedBy[kActorBase + actorId] != kNone; }
 

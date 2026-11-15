@@ -19,6 +19,7 @@ void Process();                            // fim de CPlayerPool::Process(): pos
 void ApplyCarrierArms();                   // escreve a pose dos bracos do carregador (CarryArms.h) dentro da anim carregar/carregador
 void ReapplyAnims();                       // painel /carregarhud: reaplica as anims (trocou a dobra)
 void ProcessAfterPreRender();               // CWorld::ProcessPedsAfterPreRender(): reposiciona o carregado DEPOIS do PreRender (pose final), antes de desenhar
+bool LocalIsCarrying();                    // o jogador local esta carregando alguem (HUD esconde os botoes de acao)
 bool IsInvolved(PLAYERID id);                // jogador participa de um transporte (anims do servidor sao ignoradas)
 bool IsActorInvolved(PLAYERID actorId);    // idem para um Actor carregado
 void OnPlayerLeft(PLAYERID id);            // CPlayerPool::Delete(): jogador saiu do servidor

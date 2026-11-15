@@ -94,3 +94,6 @@ Pose padrao dos bracos calculada por cinematica inversa no esqueleto da skin (ma
 
 ## Correcao 10 - braco esquerdo normal
 A animacao `carregador` agora so tem o braco DIREITO (ossos 22/23/24). O braco esquerdo nao e mais tocado: segue a animacao normal (parado, andar, correr...). A aba CARREGADOR do HUD edita so o braco direito (3 ossos). Valores de bracos de ini antigo (sem ver=2) continuam ignorados; no ini novo use arm0..arm2.
+
+## Correcao 11 - HUD enquanto carrega
+Enquanto o jogador local CARREGA alguem (`PlayerCarry::LocalIsCarrying()`), o HUD moderno esconde e desativa o toque de CORRER, PULO, AGACHAR, ATAQUE, LOCK de corrida, MIRAR e P1/P2 (via disabledMask em moderncontrols.cpp). Ficam MICROFONE, INVENTARIO e SLOTS; joystick e camera normais. Ao soltar (/soltar) os botoes voltam. Nao compilado/testado no jogo.

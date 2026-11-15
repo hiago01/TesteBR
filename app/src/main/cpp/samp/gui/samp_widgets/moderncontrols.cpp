@@ -15,6 +15,7 @@
 #include "passengerbutton_logic.h"
 #include "phone.h"
 #include "jobs.h"
+#include "../../game/PlayerCarry.h"
 
 #include <atomic>
 #include <chrono>
@@ -458,6 +459,13 @@ void ModernControls::draw(ImGuiRenderer* r)
 		}
 		if (!editing) { if (!g_ctl.cfg.showInv) g_ctl.disabledMask |= (1u << B_INV); if (!g_ctl.cfg.showSlots) g_ctl.disabledMask |= (1u << B_SLOTS); }   // desligados nos ajustes (no editor continuam visiveis)
 		// pulando/na parede: bloqueia TODOS os botoes, menos o PULO (que vale uma vez so); o joystick segue livre
+		// CARREGANDO alguem (/carregar): somem (nao desenham nem recebem toque) todos os botoes de acao; ficam so MIC, INVENTARIO e SLOTS.
+		// Joystick e camera seguem normais. O LOCK de corrida e a mira sao soltos para nada ficar ligado escondido.
+		if (!editing && !micVeh && PlayerCarry::LocalIsCarrying())
+		{
+			g_ctl.disabledMask |= ((1u << B_COUNT) - 1u) & ~((1u << B_MIC) | (1u << B_INV) | (1u << B_SLOTS));
+			g_runLock.store(false); g_aimLock.store(false);
+		}
 		g_ctl.blockedMask = 0u;
 		if (!editing && g_busy.load())
 		{
