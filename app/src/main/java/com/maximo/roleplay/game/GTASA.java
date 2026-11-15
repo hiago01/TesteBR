@@ -29,9 +29,8 @@ public class GTASA extends WarMedia {
         try {
             vmVersion = System.getProperty("java.vm.version");
             System.out.println("vmVersion " + vmVersion);
-            System.loadLibrary("ImmEmulatorJ");
         }
-        catch (ExceptionInInitializerError | UnsatisfiedLinkError ignored) {
+        catch (RuntimeException ignored) {
         }
         System.loadLibrary("GTASA");
         System.loadLibrary("bass");
