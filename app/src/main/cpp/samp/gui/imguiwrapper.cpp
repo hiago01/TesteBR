@@ -1,4 +1,5 @@
 #include "../game/CarryTuner.h"
+#include "../game/TargetMenu.h"
 #include "../main.h"
 #include "imguiwrapper.h"
 #include "uisettings.h"
@@ -135,6 +136,7 @@ void ImGuiWrapper::render()
 	}
 
 	drawList();
+	TargetMenu::Draw();     // menu ao tocar em jogador/actor
 	CarryTuner::Draw();     // painel /carregarhud (ajuste do carregar em jogo)
 	ImGui::EndFrame();
 	ImGui::Render();

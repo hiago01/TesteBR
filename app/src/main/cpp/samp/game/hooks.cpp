@@ -1,4 +1,5 @@
 #include "CarryTuner.h"
+#include "TargetMenu.h"
 #include <cmath>
 #include "Diag.h"
 #include <GLES2/gl2.h>
@@ -1111,6 +1112,9 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 	// Painel /carregarhud (ajuste do carregar): so captura o dedo que COMECA dentro do painel.
 	if (CarryTuner::HandleRawTouch(type, num, posX, posY))
 		return;
+	// Menu de acoes ao tocar em jogador/actor (Carregar...): captura so o dedo que COMECA dentro do menu aberto.
+	if (TargetMenu::HandleRawTouch(type, num, posX, posY))
+		return;
 	// Painel /celofs (ajuste do celular na mao): so captura o dedo que COMECA dentro do painel (esquerda, acima do joystick).
 	if (CelOfsPanel::HandleRawTouch(type, num, posX, posY))
 		return;
@@ -1165,6 +1169,7 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 		if (pUI->jumpbutton() && pUI->jumpbutton()->onRawTouch(type, num, posX, posY))
 			return;
 
+		TargetMenu::ObserveTouch(type, num, posX, posY);       // toque curto em jogador/actor -> menu (nao consome)
 		JobsUI::ObserveWorldTouch(type, num, posX, posY);     // toque curto na recepcionista (actor) -> RPC 246; nao consome
 		switch (type)
 		{

@@ -97,3 +97,6 @@ A animacao `carregador` agora so tem o braco DIREITO (ossos 22/23/24). O braco e
 
 ## Correcao 11 - HUD enquanto carrega
 Enquanto o jogador local CARREGA alguem (`PlayerCarry::LocalIsCarrying()`), o HUD moderno esconde e desativa o toque de CORRER, PULO, AGACHAR, ATAQUE, LOCK de corrida, MIRAR e P1/P2 (via disabledMask em moderncontrols.cpp). Ficam MICROFONE, INVENTARIO e SLOTS; joystick e camera normais. Ao soltar (/soltar) os botoes voltam. Nao compilado/testado no jogo.
+
+## Correcao 12 - menu ao tocar em jogador/actor (novo: game/TargetMenu.cpp/.h)
+Toque curto (<450 ms, sem arrastar) num jogador ou Actor a ate 6 m abre um menu ao lado do toque; 1a opcao "Carregar" -> envia `/carregar <id>` (jogador) ou `/carregar <1004+id do actor>` (actor). Carregando, a unica opcao e "Soltar" (/soltar). Toque fora do menu fecha (e segue pro jogo); fecha sozinho em 10 s; nao abre dentro de veiculo. Novas opcoes: BuildOptions() em TargetMenu.cpp. Servidor inalterado. IMPORTANTE: arquivo .cpp novo -> sincronize/reconfigure o CMake (GLOB_RECURSE). Logs: `[TARGETMENU]`. Nao compilado/testado no jogo.
