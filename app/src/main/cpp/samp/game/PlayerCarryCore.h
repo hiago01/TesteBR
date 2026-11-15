@@ -7,6 +7,10 @@
 namespace carrycore {
 
 constexpr int      kMaxPlayers = 1004;     // = MAX_PLAYERS de net/netgame.h
+constexpr int      kMaxActors  = 1000;     // = MAX_ACTORS
+constexpr int      kActorBase  = kMaxPlayers; // id de protocolo do actor A = kActorBase + A (so pode ser CARREGADO)
+constexpr int      kMaxIds     = kMaxPlayers + kMaxActors;
+inline bool IsActorId(uint16_t id) { return id >= kActorBase && id < kMaxIds; }
 constexpr uint16_t kNone       = 0xFFFF;
 constexpr uint8_t  kVersion    = 1;
 
@@ -21,7 +25,7 @@ inline bool Finite(float v) { return std::isfinite(v); }
 inline bool Validate(const Msg& m) {
     if (m.ver != kVersion) return false;
     if (m.op < OP_START || m.op > OP_REPLAY) return false;
-    if (m.carrier >= kMaxPlayers || m.carried >= kMaxPlayers || m.carrier == m.carried) return false;
+    if (m.carrier >= kMaxPlayers || m.carried >= kMaxIds || m.carrier == m.carried) return false;
     if (m.op == OP_STOP) {
         if (!Finite(m.x) || !Finite(m.y) || !Finite(m.z) || !Finite(m.a)) return false;
         if (std::fabs(m.x) > 20000.f || std::fabs(m.y) > 20000.f || m.z < -1000.f || m.z > 20000.f) return false;
@@ -40,7 +44,7 @@ class State {
 public:
     // indexado pelo carregador; carriedBy[x] = carregador de x (kNone se nao e carregado)
     Link link[kMaxPlayers];
-    uint16_t carriedBy[kMaxPlayers];
+    uint16_t carriedBy[kMaxIds];
     int count = 0;
 
     State() { Clear(); }
@@ -60,7 +64,7 @@ public:
             if (m.op == OP_REPLAY && carriedBy[m.carried] != kNone && carriedBy[m.carried] != m.carrier) return R_IGNORED;   // replay nao despeja outro
             if (cur.used) Remove(m.carrier);                                                // transporte novo do mesmo carregador
             if (carriedBy[m.carried] != kNone) Remove(carriedBy[m.carried]);                // o carregado so tem um carregador
-            if (link[m.carried].used) Remove(m.carried);                                    // quem carrega nao pode ser carregado
+            if (m.carried < kMaxPlayers && link[m.carried].used) Remove(m.carried);                                 // quem carrega nao pode ser carregado
             if (carriedBy[m.carrier] != kNone) Remove(carriedBy[m.carrier]);                // quem e carregado nao pode carregar
             cur.used = true; cur.carrier = m.carrier; cur.carried = m.carried; cur.gen = m.gen;
             cur.phase = (m.op == OP_START) ? PH_PREP : PH_ACTIVE;
@@ -89,14 +93,14 @@ public:
     void Remove(uint16_t carrier) {
         if (carrier >= kMaxPlayers || !link[carrier].used) return;
         uint16_t c = link[carrier].carried;
-        if (c < kMaxPlayers) carriedBy[c] = kNone;
+        if (c < kMaxIds) carriedBy[c] = kNone;
         link[carrier] = Link();
         if (count > 0) count--;
     }
     // vinculo em que `id` participa (como carregador ou carregado); nullptr se nenhum
     const Link* Find(uint16_t id) const {
-        if (id >= kMaxPlayers) return nullptr;
-        if (link[id].used) return &link[id];
+        if (id >= kMaxIds) return nullptr;
+        if (id < kMaxPlayers && link[id].used) return &link[id];
         if (carriedBy[id] != kNone && link[carriedBy[id]].used) return &link[carriedBy[id]];
         return nullptr;
     }

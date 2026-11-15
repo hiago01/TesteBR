@@ -2,14 +2,20 @@
 #include "../main.h"
 #include "game/game.h"
 #include "net/netgame.h"
+#include "net/actorpool.h"
+#include "actor.h"
 #include "PlayerCarry.h"
 #include "PlayerCarryCore.h"
+#include "CustomAnim.h"
+#include "IfpLoader.h"
+#include <string>
 #include "../vendor/raknet/SAMP/SAMPRPC.h"
 
 #include <cmath>
 #include <cstring>
 
 extern CNetGame* pNetGame;
+extern char* g_pszStorage;
 
 namespace PlayerCarry {
 
@@ -20,7 +26,7 @@ namespace {
 using namespace carrycore;
 
 State    s_state;                                  // vinculos (RPC e Process rodam na thread de rede/jogo do NetGame)
-CPedGTA* s_prepared[MAX_PLAYERS];                  // ped do carregado ja preparado (colisao/anim); mudou o ponteiro = ped recriado
+CPedGTA* s_prepared[kMaxIds];                  // ped do carregado ja preparado (colisao/anim); mudou o ponteiro = ped recriado
 uint32_t s_frame = 0;
 
 struct Release { bool used = false; uint16_t id = kNone; float x = 0, y = 0, z = 0, a = 0; };
@@ -36,19 +42,30 @@ CPlayerPed* GetPed(PLAYERID id) {
     return ped;
 }
 
+// ped GTA de um participante: jogador (local/remoto) ou, para ids >= kActorBase, um Actor do servidor
+CPedGTA* GetGtaPed(uint16_t id) {
+    if (IsActorId(id)) {
+        CActorPool* ap = pNetGame ? pNetGame->GetActorPool() : nullptr;
+        CActor* a = ap ? ap->GetAt((PLAYERID)(id - kActorBase)) : nullptr;
+        return (a && a->m_pPed && IsValidGamePed(a->m_pPed)) ? a->m_pPed : nullptr;
+    }
+    CPlayerPed* p = GetPed((PLAYERID)id);
+    return p ? p->m_pPed : nullptr;
+}
+
 // devolve ao ped o comportamento normal e (se x,y,z validos) coloca-o em pe no ponto seguro
 void RestorePed(uint16_t id, bool place, float x, float y, float z, float a) {
-    if (id < MAX_PLAYERS) s_prepared[id] = nullptr;
-    CPlayerPed* ped = GetPed(id);
+    if (id < kMaxIds) s_prepared[id] = nullptr;
+    CPedGTA* ped = GetGtaPed(id);
     if (!ped) return;
-    ped->m_pPed->m_bUsesCollision = true;
-    ped->m_pPed->m_vecMoveSpeed = CVector(0.f, 0.f, 0.f);
+    ped->m_bUsesCollision = true;
+    ped->m_vecMoveSpeed = CVector(0.f, 0.f, 0.f);
     if (!place) return;
     const float h = a * 3.14159265f / 180.0f;                          // SA-MP: angulo em graus, frente = (-sin, cos)
     CVector right(std::cos(h), std::sin(h), 0.f), fwd(-std::sin(h), std::cos(h), 0.f), up(0.f, 0.f, 1.f);
     CMatrix m(CVector(x, y, z + 0.3f), right, fwd, up);
-    ped->m_pPed->SetMatrix(m);
-    ped->m_pPed->UpdateRW();
+    ped->SetMatrix(m);
+    ped->UpdateRW();
 }
 
 void QueueRelease(uint16_t id, float x, float y, float z, float a) {
@@ -74,13 +91,37 @@ void ScrCarry(RPCParameters* rpcParams) {
     }
 }
 
-void PlayAnims(CPlayerPed* carrier, CPlayerPed* carried, Phase phase) {
+// Bloco customizado SAMP/anims/carregar.ifp (gerado por tools/make_carregar_ifp.py): anims "carregador" e "carregado".
+// Se o arquivo nao existir/for invalido, tenta so uma vez e segue com as anims nativas.
+bool EnsureIfp() {
+    static int s_tried = 0;
+    if (CustomIfp::GetAnimNames("carregar")) return true;
+    if (s_tried++ > 0 || !g_pszStorage || !g_pszStorage[0]) return false;
+    std::string f(g_pszStorage); if (f.back() != '/') f.push_back('/');
+    f += "SAMP/anims/carregar.ifp";
+    bool ok = CustomAnim::Init(f.c_str(), "carregar");
+    FLog("[Carry] %s %s", f.c_str(), ok ? "carregado" : "NAO carregou (usando anims nativas)");
+    return ok;
+}
+
+void PlayAnims(CPlayerPed* carrier, uint16_t carriedId, CPedGTA* carriedPed, Phase phase) {
     char nCarrier[] = "CRRY_PRTIAL";
     char nCarried[] = "KO_SHOT_STOM";
     if (phase == PH_ACTIVE && !carrier->IsAnimationPlaying(nCarrier))
         carrier->ApplyAnimation("CRRY_PRTIAL", "CARRY", 4.1f, 0, 0, 0, 1, 1);                 // mesma chamada do ProcessSpecialActions
-    if (!carried->IsAnimationPlaying(nCarried))
-        carried->ApplyAnimation("KO_SHOT_STOM", "PED", 4.1f, 0, 0, 0, 1, 0);
+    if (IsActorId(carriedId)) {                                                               // dummy do servidor (Actor)
+        CActorPool* ap = pNetGame ? pNetGame->GetActorPool() : nullptr;
+        CActor* act = ap ? ap->GetAt((PLAYERID)(carriedId - kActorBase)) : nullptr;
+        if (act) act->ApplyAnimation("KO_SHOT_STOM", "PED", 4.1f, 0, 0, 0, 1, 0);
+    } else {
+        CPlayerPed* cp = GetPed((PLAYERID)carriedId);
+        if (cp && !cp->IsAnimationPlaying(nCarried)) cp->ApplyAnimation("KO_SHOT_STOM", "PED", 4.1f, 0, 0, 0, 1, 0);
+    }
+    if (EnsureIfp()) {                                                                         // overlay so de bracos/cabeca por cima das nativas
+        const uint16_t fl = CustomAnim::CA_HOLD_LAST | CustomAnim::CA_PARTIAL;
+        if (phase == PH_ACTIVE && carrier->m_pPed) CustomAnim::Play(carrier->m_pPed, "carregar", "carregador", fl, 4.0f);
+        if (carriedPed) CustomAnim::Play(carriedPed, "carregar", "carregado", fl, 4.0f);
+    }
 }
 
 } // namespace
@@ -89,7 +130,7 @@ void Register(RakClientInterface* rak)   { rak->RegisterAsRemoteProcedureCall(&R
 void Unregister(RakClientInterface* rak) { rak->UnregisterAsRemoteProcedureCall(&RPC_Carry); ClearAll(); }
 
 void ClearAll() {
-    for (int i = 0; i < MAX_PLAYERS; i++) {
+    for (int i = 0; i < kMaxIds; i++) {
         if (s_prepared[i]) RestorePed((uint16_t)i, false, 0, 0, 0, 0);
         s_prepared[i] = nullptr;
     }
@@ -121,14 +162,14 @@ void Process() {
         seen++;
 
         CPlayerPed* carrier = GetPed(l.carrier);
-        CPlayerPed* carried = GetPed(l.carried);
-        if (!carrier || !carried) { s_prepared[l.carried] = nullptr; continue; }   // fora do stream: o vinculo continua guardado
-        if (carrier->IsInVehicle() || carried->IsInVehicle()) continue;            // o servidor encerra; aqui so nao posiciona
+        CPedGTA* carried = GetGtaPed(l.carried);
+        if (!carrier || !carried) { if (l.carried < kMaxIds) s_prepared[l.carried] = nullptr; continue; }   // fora do stream: o vinculo continua guardado
+        if (carrier->IsInVehicle()) continue;                                      // o servidor encerra; aqui so nao posiciona
 
-        if (s_prepared[l.carried] != carried->m_pPed) {                           // 1a vez (ou ped recriado): reaplica
-            s_prepared[l.carried] = carried->m_pPed;
-            carried->m_pPed->m_bUsesCollision = false;                            // sem empurrao entre os dois corpos
-            PlayAnims(carrier, carried, l.phase);
+        if (s_prepared[l.carried] != carried) {                                   // 1a vez (ou ped recriado): reaplica
+            s_prepared[l.carried] = carried;
+            carried->m_bUsesCollision = false;                                    // sem empurrao entre os dois corpos
+            PlayAnims(carrier, l.carried, carried, l.phase);
         }
         if (l.phase != PH_ACTIVE) continue;                                       // na preparacao o carregado ainda fica onde esta
 
@@ -141,11 +182,11 @@ void Process() {
 
         CMatrix m(CVector(p.pos[0], p.pos[1], p.pos[2]), CVector(p.right[0], p.right[1], p.right[2]),
                   CVector(p.fwd[0], p.fwd[1], p.fwd[2]), CVector(p.up[0], p.up[1], p.up[2]));
-        carried->m_pPed->SetMatrix(m);
-        carried->m_pPed->m_vecMoveSpeed = CVector(0.f, 0.f, 0.f);
-        carried->m_pPed->UpdateRW();
+        carried->SetMatrix(m);
+        carried->m_vecMoveSpeed = CVector(0.f, 0.f, 0.f);
+        carried->UpdateRW();
 
-        if ((s_frame % 90) == 0) PlayAnims(carrier, carried, l.phase);            // a cada ~1,5 s garante que as animacoes seguem
+        if ((s_frame % 90) == 0) PlayAnims(carrier, l.carried, carried, l.phase);            // a cada ~1,5 s garante que as animacoes seguem
     }
 }
 

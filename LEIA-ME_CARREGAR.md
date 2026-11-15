@@ -28,3 +28,9 @@ Cliente: `PlayerCarry::Register/ClearAll` em `RegisterScriptRPCs`, `Unregister` 
 ## Testes
 `g++ -std=c++17 -I app/src/main/cpp/samp/game tools/carry_test.cpp -o /tmp/carry_test && /tmp/carry_test` (33 verificações: validação do pacote, geração/ordem/idempotência, wrap, stream-in, matemática da posição).
 Roteiro em jogo (precisa de 2–4 aparelhos): carregar/soltar, andar e girar, soltar pelo carregado, 3º jogador vendo, 4º entrando depois, desconectar cada um, morrer, entrar em veículo, carregar quem já carrega/é carregado, respawn/reconexão, FPS com vários jogadores.
+
+## Atualizacao: boneco (Actor) + IFP novo
+- O boneco de teste agora e um **Actor** do servidor (o NPC do open.mp nao aparecia). `/npccarregar` (admin) cria na sua frente, `/carregar npc` ou `/carregar <id mostrado>` carrega, `/soltar` solta, `/npcremover` apaga. Id de protocolo do actor = 1004 + actorid (so pode ser carregado).
+- `SAMP/anims/carregar.ifp` (copie para a pasta SAMP/anims do celular, junto do poses.ifp): bloco `carregar`, anims `carregador` e `carregado` (so ossos dos bracos, overlay CA_PARTIAL|CA_HOLD_LAST por cima das anims nativas CARRY/PED). Carrega sozinho na 1a vez que um transporte comeca; se faltar o arquivo o log mostra `[Carry] ... NAO carregou` e segue com as nativas.
+- Gerador: `python3 tools/make_carregar_ifp.py poses.ifp carregar.ifp`. Os quaternions dos bracos partem das poses do seu poses.ifp; AJUSTE os graus em PLAN/HEAD_DELTA e regere. NAO foi visto em jogo: a pose pode precisar de ajuste.
+- Teste rapido sem servidor: `/ifp carregar carregar.ifp carregar` e `/ifp tocar carregador hold parcial`.

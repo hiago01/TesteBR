@@ -13,7 +13,9 @@ int main() {
     CHECK(Validate(M(1, 1, 2, 5)));
     { Msg m = M(1, 1, 2, 5); m.ver = 2; CHECK(!Validate(m)); }
     CHECK(!Validate(M(0, 1, 2, 5)) && !Validate(M(5, 1, 2, 5)));
-    CHECK(!Validate(M(1, 1004, 2, 5)) && !Validate(M(1, 1, 1004, 5)) && !Validate(M(1, 3, 3, 5)));
+    CHECK(!Validate(M(1, 1004, 2, 5)) && !Validate(M(1, 1, 2004, 5)) && !Validate(M(1, 3, 3, 5)));
+    CHECK(Validate(M(1, 1, 1004, 5)) && Validate(M(1, 1, 2003, 5)));   // actor 0 e actor 999 como carregado
+    CHECK(!Validate(M(1, 1004, 2, 5)));                               // actor nao carrega
     CHECK(!Validate(M(3, 1, 2, 5, NAN, 0, 0, 0)) && !Validate(M(3, 1, 2, 5, 99999.f, 0, 0, 0)) && !Validate(M(3, 1, 2, 5, 0, 0, -5000.f, 0)));
     CHECK(Validate(M(3, 1, 2, 5, 100.f, -200.f, 13.5f, 90.f)));
     CHECK(Validate(M(1, 1, 2, 5, NAN, 0, 0, 0)));      // x,y,z so contam no STOP
@@ -52,6 +54,12 @@ int main() {
     State x; x.Apply(M(1, 1, 2, 1), &st); x.Remove(1); CHECK(x.count == 0 && !x.Find(2)); x.Remove(1); CHECK(x.count == 0);
     x.Apply(M(1, 1, 2, 1), &st); x.Clear(); CHECK(x.count == 0 && !x.Find(1));
 
+    // actor como carregado
+    { State a; CHECK(a.Apply(M(1, 3, 1004, 1), &st) == R_STARTED && a.carriedBy[1004] == 3 && a.Find(1004) && a.Find(3));
+      CHECK(a.Apply(M(2, 3, 1004, 1), &st) == R_CONFIRMED);
+      CHECK(a.Apply(M(1, 4, 1004, 2), &st) == R_STARTED && !a.link[3].used && a.carriedBy[1004] == 4);   // outro jogador pega o boneco
+      CHECK(a.Apply(M(3, 4, 1004, 2, 1, 2, 3, 4), &st) == R_STOPPED && a.carriedBy[1004] == kNone && a.count == 0);
+      CHECK(a.Apply(M(3, 4, 1004, 2, 1, 2, 3, 4), &st) == R_IGNORED); }
     // posicao: carregador olhando para +Y (R=+X, F=+Y, U=+Z)
     float R[3] = {1,0,0}, F[3] = {0,1,0}, U[3] = {0,0,1}, P[3] = {100,200,10};
     Placement p = Place(R, F, U, P);
