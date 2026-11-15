@@ -6,10 +6,10 @@
 
 namespace carryarms {
 
-constexpr int kBones = 6;
-constexpr int kBoneId[kBones] = { 22, 23, 24, 32, 33, 34 };                      // R UpperArm, R ForeArm, R Hand, L UpperArm, L ForeArm, L Hand
+constexpr int kBones = 3;   // so o braco DIREITO e controlado; o esquerdo fica com a animacao normal (correr/parado/etc)
+constexpr int kBoneId[kBones] = { 22, 23, 24 };                      // R UpperArm, R ForeArm, R Hand, L UpperArm, L ForeArm, L Hand
 inline const char* BoneName(int i) {
-    static const char* n[kBones] = { "Braco D (ombro)", "Braco D (cotovelo)", "Mao D", "Braco E (ombro)", "Braco E (cotovelo)", "Mao E" };
+    static const char* n[kBones] = { "Braco D (ombro)", "Braco D (cotovelo)", "Mao D" };
     return n[(i < 0 || i >= kBones) ? 0 : i];
 }
 // x,y,z,w  (poses.ifp: bracos_cruzados para os dois bracos)
@@ -17,14 +17,11 @@ constexpr float kBase[kBones][4] = {
     { 0.162381f, -0.320239f, -0.508925f, 0.782352f },     // R UpperArm
     { -0.068706f, -0.432008f, -0.593446f, 0.675626f },    // R ForeArm
     { 0.797800f, -0.003581f, 0.067776f, 0.599090f },      // R Hand
-    { -0.176814f, 0.309550f, -0.506787f, 0.784909f },     // L UpperArm
-    { 0.130042f, 0.514342f, -0.592379f, 0.606323f },      // L ForeArm
-    { -0.808027f, -0.083431f, 0.044158f, 0.581534f },     // L Hand
 };
 
 // Pose padrao dos bracos (graus x,y,z sobre kBase), calculada por IK: maos seguram coxa/quadril do carregado.
 inline const float (&DefaultDeg())[kBones][3] {
-    static const float d[kBones][3] = {{4.9f,29.3f,33.1f},{0.f,0.2f,-1.6f},{0.f,0.f,0.f},{2.5f,39.8f,-17.8f},{31.9f,0.9f,89.1f},{0.f,0.f,0.f}};
+    static const float d[kBones][3] = {{4.9f,29.3f,33.1f},{0.f,0.2f,-1.6f},{0.f,0.f,0.f}};
     return d;
 }
 struct Deltas { float deg[kBones][3]; Deltas() { for (int i = 0; i < kBones; i++) for (int k = 0; k < 3; k++) deg[i][k] = DefaultDeg()[i][k]; } };                                      // x,y,z por osso

@@ -91,3 +91,6 @@ Arquivos: CarryTuner.h/.cpp, hooks.cpp (include + 1 chamada).
 
 ## Correcao 9 - bracos do carregador
 Pose padrao dos bracos calculada por cinematica inversa no esqueleto da skin (maos na coxa/quadril do carregado), gravada em CarryArms.h (DefaultDeg) e no carregar.ifp. O botao PADRAO volta para ela. O carry_tuning.ini antigo (sem ver=2) tem os bracos ignorados; ajustes do corpo continuam valendo. Nada foi compilado/testado no jogo.
+
+## Correcao 10 - braco esquerdo normal
+A animacao `carregador` agora so tem o braco DIREITO (ossos 22/23/24). O braco esquerdo nao e mais tocado: segue a animacao normal (parado, andar, correr...). A aba CARREGADOR do HUD edita so o braco direito (3 ossos). Valores de bracos de ini antigo (sem ver=2) continuam ignorados; no ini novo use arm0..arm2.
