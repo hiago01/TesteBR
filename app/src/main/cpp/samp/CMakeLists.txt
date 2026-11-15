@@ -34,6 +34,8 @@ include_directories(
 
 add_library(samp SHARED ${SOURCES})
 target_link_libraries(samp log EGL GLESv3 opus shadowhook::shadowhook ${CMAKE_CURRENT_SOURCE_DIR}/vendor/bass/libs/${ANDROID_ABI}/libbass.so)
+# Android 15/16: aparelhos com paginas de 16 KB exigem libs ELF alinhadas em 16 KB. O NDK r26 alinha em 4 KB por padrao.
+target_link_options(samp PRIVATE -Wl,-z,max-page-size=16384)
 
 # Set compilation flags
 #
