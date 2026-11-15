@@ -1,8 +1,6 @@
 package com.maximo.roleplay.launcher;
 
 import android.content.Intent;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.os.Bundle;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
@@ -12,8 +10,6 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.graphics.drawable.RoundedBitmapDrawable;
-import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory;
 
 import com.maximo.roleplay.R;
 import com.maximo.roleplay.launcher.util.AccountApi;
@@ -74,14 +70,10 @@ public class LoginActivity extends AppCompatActivity {
         setMode(false);
     }
 
-    /** Foto de perfil oficial (mesma para todos os jogadores), recortada em circulo. */
+    /** Moldura/foto de perfil oficial (a mesma para todos os jogadores). Ja e redonda e transparente: sem recorte extra. */
     public static void showAvatar(ImageView iv) {
-        Bitmap bmp = BitmapFactory.decodeResource(iv.getResources(), R.drawable.mx_avatar_default);
-        if (bmp == null) return;
-        RoundedBitmapDrawable d = RoundedBitmapDrawableFactory.create(iv.getResources(), bmp);
-        d.setCircular(true);
-        d.setAntiAlias(true);
-        iv.setImageDrawable(d);
+        iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        iv.setImageResource(R.drawable.mx_avatar_default);
     }
 
     private void setMode(boolean create) {

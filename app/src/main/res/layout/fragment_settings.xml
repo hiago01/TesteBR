@@ -104,6 +104,7 @@
                 android:textSize="10sp" />
         </LinearLayout>
         <LinearLayout
+            android:id="@+id/settings_row_version"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="8dp"
@@ -155,6 +156,7 @@
                 android:layout_height="wrap_content" />
         </LinearLayout>
         <LinearLayout
+            android:id="@+id/settings_row_voice"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="8dp"
@@ -240,6 +242,7 @@
                 android:textSize="10sp" />
         </LinearLayout>
         <LinearLayout
+            android:id="@+id/settings_row_messages"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="8dp"

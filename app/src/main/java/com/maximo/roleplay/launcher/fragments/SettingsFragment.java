@@ -129,6 +129,10 @@ public class SettingsFragment extends Fragment {
         if (mFPSSwitch.getParent() instanceof View) ((View) mFPSSwitch.getParent()).setVisibility(View.GONE);
         if (mMonetSwitch.getParent() instanceof View) ((View) mMonetSwitch.getParent()).setVisibility(View.GONE);
 
+        // Linhas escondidas (valores mantidos): versao (sempre a ultima), Voice chat (sempre ligado), mensagens do chat.
+        int[] hide = { R.id.settings_row_version, R.id.settings_row_voice, R.id.settings_row_messages };
+        for (int id : hide) { View row = view.findViewById(id); if (row != null) row.setVisibility(View.GONE); }
+
         // Nick agora e escolhido na tela Servidores (NickManager); o campo foi removido das Configuracoes.
         View nickCard = view.findViewById(R.id.settings_nick_card);
         if (nickCard != null) nickCard.setVisibility(View.GONE);

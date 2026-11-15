@@ -33,7 +33,7 @@
                     android:layout_width="140dp"
                     android:layout_height="140dp"
                     android:contentDescription="@string/mx_login_avatar_desc"
-                    android:scaleType="centerCrop"
+                    android:scaleType="fitCenter"
                     android:src="@drawable/mx_avatar_default" />
 
                 <TextView
