@@ -74,6 +74,12 @@ int main() {
     float R2[3] = {0,1,0}, F2[3] = {-1,0,0};
     Placement q = Place(R2, F2, U, P);
     CHECK(fabsf(q.pos[0] - (100 - kOffY)) < 1e-5f && fabsf(q.pos[1] - (200 + kOffX)) < 1e-5f);
+    // yaw 180 inverte cabeca/pes no plano horizontal; yaw 0 nao muda nada
+    { Tune() = Tuning(); Tune().tilt = 90.f; Placement a = Place(R, F, U, P); Tune().yaw = 180.f; Placement b = Place(R, F, U, P);
+      CHECK(fabsf(a.up[1] + 1.f) < 1e-5f && fabsf(b.up[1] - 1.f) < 1e-5f);   // tilt 90: cabeca para tras (-F); +yaw 180: para frente
+      CHECK(fabsf(b.right[0] + 1.f) < 1e-5f);
+      float c2[3]; cross(b.right, b.fwd, c2); CHECK(fabsf(c2[0]-b.up[0]) < 1e-5f && fabsf(c2[1]-b.up[1]) < 1e-5f && fabsf(c2[2]-b.up[2]) < 1e-5f);
+      Tune() = Tuning(); }
     printf("%d ok, %d falha(s)\n", ok, bad);
     return bad ? 1 : 0;
 }

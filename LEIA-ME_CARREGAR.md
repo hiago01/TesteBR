@@ -75,3 +75,9 @@ Problemas: (1) fonte grande demais (cortava SALVAR/FECHAR); (2) o ImGui deste pr
 Agora: painel desenhado com o draw list do ImGui (texto menor, tudo cabe) e toque proprio no mesmo esquema do /celofs: `CarryTuner::HandleRawTouch` em game/hooks.cpp (antes do CelOfsPanel), so captura o dedo que COMECA dentro do painel; joystick/camera seguem para o jogo. Segurar - / + repete. Botao `<>` no topo troca o lado.
 Linhas: Lado X, Frente/tras Y, Altura Z, Inclinacao, Giro (roll), Dobra do corpo (-3..+3 = -60..+60 graus por osso). SALVAR / PADRAO / FECHAR.
 Arquivos: CarryTuner.h/.cpp, hooks.cpp (include + 1 chamada).
+
+## Correcao 7 (video 18:35): tilt no maximo (90) e cabeca do lado errado
+- Tilt e roll agora vao de -180 a +180 (passo 2).
+- Nova linha **Virar (yaw)** -180..180 (passo 5): gira o carregado em torno do eixo vertical do carregador. 180 = troca cabeca/pes de lado (frente <-> costas); 90 = para o lado. Segurar - / + repete.
+- Ordem das rotacoes: tilt (em torno do eixo direito) -> roll -> yaw. O painel salva `yaw=` no carry_tuning.ini e na linha [CARRY-TUNE].
+- Painel com 7 linhas (cabe na tela). Para o corpo "de cabeca para baixo com a cabeca nas costas": tilt 90 e use yaw 180 se a cabeca estiver para o lado errado.

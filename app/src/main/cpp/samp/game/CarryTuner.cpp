@@ -23,7 +23,7 @@ enum Act { A_NONE = 0, A_DEC, A_INC, A_SAVE, A_RESET, A_CLOSE, A_SIDE };
 struct Row { const char* label; float* v; float lo, hi, step; const char* fmt; };   // v == nullptr -> linha da dobra (int)
 
 struct Rect { float x = 0, y = 0, w = 0, h = 0; bool has(float px, float py) const { return px >= x && px <= x + w && py >= y && py <= y + h; } };
-struct Layout { float u; Rect panel, title, side, rowR[6], dec[6], inc[6], val[6], bSave, bReset, bClose; };
+struct Layout { float u; Rect panel, title, side, rowR[7], dec[7], inc[7], val[7], bSave, bReset, bClose; };
 
 std::atomic<int> s_finger{-1};
 std::atomic<int> s_holdAct{A_NONE}, s_holdRow{-1};
@@ -41,24 +41,24 @@ std::string IniPath() {
 
 void Save() {
     carrycore::Tuning& t = carrycore::Tune();
-    FLog("[CARRY-TUNE] offX=%.3f offY=%.3f offZ=%.3f tilt=%.1f roll=%.1f bend=%d", t.offX, t.offY, t.offZ, t.tilt, t.roll, t.bend);
+    FLog("[CARRY-TUNE] offX=%.3f offY=%.3f offZ=%.3f tilt=%.1f roll=%.1f yaw=%.1f bend=%d", t.offX, t.offY, t.offZ, t.tilt, t.roll, t.yaw, t.bend);
     std::string path = IniPath();
     FILE* f = path.empty() ? nullptr : fopen(path.c_str(), "w");
     if (!f) { snprintf(s_status, sizeof s_status, "NAO salvou (sem pasta). Valores no samp.log"); return; }
-    fprintf(f, "offx=%.3f\noffy=%.3f\noffz=%.3f\ntilt=%.1f\nroll=%.1f\nbend=%d\n", t.offX, t.offY, t.offZ, t.tilt, t.roll, t.bend);
+    fprintf(f, "offx=%.3f\noffy=%.3f\noffz=%.3f\ntilt=%.1f\nroll=%.1f\nyaw=%.1f\nbend=%d\n", t.offX, t.offY, t.offZ, t.tilt, t.roll, t.yaw, t.bend);
     fclose(f);
     snprintf(s_status, sizeof s_status, "Salvo: SAMP/carry_tuning.ini");
 }
 
 Layout Compute(float W, float H) {
     Layout L; const float u = H / 100.0f; L.u = u;
-    const float pw = 74 * u, ph = 90 * u;
+    const float pw = 74 * u, ph = 92 * u;
     L.panel = { s_right ? W - pw - 2 * u : 2 * u, 5 * u, pw, ph };
     const float x0 = L.panel.x + 2 * u, y0 = L.panel.y + 2 * u, iw = pw - 4 * u;
     L.title = { x0, y0, iw - 14 * u, 7 * u };
     L.side  = { x0 + iw - 12 * u, y0, 12 * u, 7 * u };
-    const float rh = 9.5f * u, gap = 1.2f * u; float y = y0 + 9 * u;
-    for (int i = 0; i < 6; i++) {
+    const float rh = 8.4f * u, gap = 1.0f * u; float y = y0 + 9 * u;
+    for (int i = 0; i < 7; i++) {
         L.rowR[i] = { x0, y, iw, rh };
         const float bw = 10 * u, vw = 15 * u;
         L.inc[i] = { x0 + iw - bw, y, bw, rh };
@@ -77,14 +77,15 @@ Row Rows(int i) {
     case 0: return { "Lado X (+direita)", &t.offX, -0.8f, 0.8f, 0.01f, "%.2f" };
     case 1: return { "Frente/tras Y",     &t.offY, -0.8f, 0.8f, 0.01f, "%.2f" };
     case 2: return { "Altura Z",          &t.offZ, -0.2f, 1.4f, 0.01f, "%.2f" };
-    case 3: return { "Inclinacao",        &t.tilt, -90.f, 90.f, 1.0f,  "%.0f" };
-    case 4: return { "Giro (roll)",       &t.roll, -90.f, 90.f, 1.0f,  "%.0f" };
+    case 3: return { "Inclinacao (tilt)", &t.tilt, -180.f, 180.f, 2.0f, "%.0f" };
+    case 4: return { "Giro lado (roll)",  &t.roll, -180.f, 180.f, 2.0f, "%.0f" };
+    case 5: return { "Virar (yaw) 180=troca", &t.yaw, -180.f, 180.f, 5.0f, "%.0f" };
     default: return { "Dobra do corpo",   nullptr, -3, 3, 1, "%+d" };
     }
 }
 
 void Nudge(int row, int dir) {
-    if (row < 0 || row > 5) return;
+    if (row < 0 || row > 6) return;
     Row r = Rows(row);
     if (!r.v) {
         carrycore::Tuning& t = carrycore::Tune();
@@ -115,12 +116,12 @@ void LoadSaved() {
     while (fgets(line, sizeof line, f)) {
         char* eq = strchr(line, '='); if (!eq) continue; *eq = 0; const float v = (float)atof(eq + 1);
         if (!strcmp(line, "offx")) t.offX = v; else if (!strcmp(line, "offy")) t.offY = v; else if (!strcmp(line, "offz")) t.offZ = v;
-        else if (!strcmp(line, "tilt")) t.tilt = v; else if (!strcmp(line, "roll")) t.roll = v; else if (!strcmp(line, "bend")) t.bend = (int)v;
+        else if (!strcmp(line, "tilt")) t.tilt = v; else if (!strcmp(line, "roll")) t.roll = v; else if (!strcmp(line, "yaw")) t.yaw = v; else if (!strcmp(line, "bend")) t.bend = (int)v;
     }
     fclose(f);
     if (t.bend < -3) t.bend = -3;
     if (t.bend > 3) t.bend = 3;
-    FLog("[CARRY-TUNE] carregado de %s: offX=%.3f offY=%.3f offZ=%.3f tilt=%.1f roll=%.1f bend=%d", path.c_str(), t.offX, t.offY, t.offZ, t.tilt, t.roll, t.bend);
+    FLog("[CARRY-TUNE] carregado de %s: offX=%.3f offY=%.3f offZ=%.3f tilt=%.1f roll=%.1f yaw=%.1f bend=%d", path.c_str(), t.offX, t.offY, t.offZ, t.tilt, t.roll, t.yaw, t.bend);
 }
 
 // resolve o que esta em (x,y): act + linha
@@ -132,7 +133,7 @@ static void HitTest(const Layout& L, float x, float y, int& act, int& row) {
     if (L.bSave.has(x, y)) { act = A_SAVE; return; }
     if (L.bReset.has(x, y)) { act = A_RESET; return; }
     if (L.bClose.has(x, y)) { act = A_CLOSE; return; }
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 7; i++) {
         if (L.dec[i].has(x, y)) { act = A_DEC; row = i; return; }
         if (L.inc[i].has(x, y)) { act = A_INC; row = i; return; }
     }
@@ -195,7 +196,7 @@ void Draw() {
     Txt(dl, L.title, "Ajuste do carregar (/carregarhud)", fs * 0.95f, IM_COL32(255, 255, 255, 255), false);
     Btn(dl, L.side, "<>", fs);
 
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 7; i++) {
         const Row r = Rows(i);
         char val[24];
         if (r.v) snprintf(val, sizeof val, r.fmt, *r.v); else snprintf(val, sizeof val, r.fmt, carrycore::Tune().bend * 20);

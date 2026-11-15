@@ -116,7 +116,7 @@ constexpr float kOffZ = 0.50f;   // para cima (a origem do ped fica na altura da
 constexpr float kTiltDeg = 10.0f; // inclinacao: 0 = vertical perfeito; > 0 = pes para a frente
 
 // Valores AJUSTAVEIS em jogo (painel /carregarhud, CarryTuner.cpp). Comecam nos padroes acima; sao lidos por Place().
-struct Tuning { float offX = kOffX, offY = kOffY, offZ = kOffZ, tilt = kTiltDeg, roll = 0.0f; int bend = 2; /* -3..3 -> carregado_<x> */ };
+struct Tuning { float offX = kOffX, offY = kOffY, offZ = kOffZ, tilt = kTiltDeg, roll = 0.0f, yaw = 0.0f; int bend = 2; /* -3..3 -> carregado_<x> */ };
 inline Tuning& Tune() { static Tuning t; return t; }
 
 inline Placement Place(const float R[3], const float F[3], const float U[3], const float P[3]) {
@@ -127,12 +127,20 @@ inline Placement Place(const float R[3], const float F[3], const float U[3], con
     float up0[3], fw0[3];
     for (int i = 0; i < 3; i++) { up0[i] = -c * U[i] - sn * F[i]; fw0[i] = -c * F[i] + sn * U[i]; }
     const float r = tu.roll * 3.14159265f / 180.0f, cr = std::cos(r), sr = std::sin(r);
+    float rt[3], up1[3];
     for (int i = 0; i < 3; i++) {
-        o.fwd[i]   = fw0[i];
-        o.right[i] = cr * R[i] + sr * up0[i];          // rotacao em torno de fwd': right' = cos*R + sin*up ; up'' = cos*up - sin*R
-        o.up[i]    = cr * up0[i] - sr * R[i];
-        o.pos[i]   = P[i] + R[i] * tu.offX + F[i] * tu.offY + U[i] * tu.offZ;
+        rt[i]  = cr * R[i] + sr * up0[i];              // roll em torno de fwd': right' = cos*R + sin*up ; up'' = cos*up - sin*R
+        up1[i] = cr * up0[i] - sr * R[i];
     }
+    // yaw: gira os tres eixos em torno do eixo UP do carregador (vira o carregado de lado / de frente para tras). 180 = inverte cabeca/pes
+    const float y = tu.yaw * 3.14159265f / 180.0f, cy = std::cos(y), sy = std::sin(y);
+    auto rotU = [&](const float* v, float* out) {
+        const float d = U[0] * v[0] + U[1] * v[1] + U[2] * v[2];
+        const float cx[3] = { U[1] * v[2] - U[2] * v[1], U[2] * v[0] - U[0] * v[2], U[0] * v[1] - U[1] * v[0] };
+        for (int i = 0; i < 3; i++) out[i] = v[i] * cy + cx[i] * sy + U[i] * d * (1.0f - cy);
+    };
+    rotU(rt, o.right); rotU(fw0, o.fwd); rotU(up1, o.up);
+    for (int i = 0; i < 3; i++) o.pos[i] = P[i] + R[i] * tu.offX + F[i] * tu.offY + U[i] * tu.offZ;
     return o;
 }
 
