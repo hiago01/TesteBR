@@ -20,15 +20,15 @@ android {
         }
     }
 
-    compileSdk 36
+    compileSdk = 37
     namespace 'com.maximo.roleplay'
 
     defaultConfig {
         applicationId "com.maximo.roleplay"
-        minSdk 26
-        targetSdk 36
-        versionCode 22
-        versionName "22.0.0.0"
+        minSdk = 26
+        targetSdk = 36
+        versionCode = 22
+        versionName = "22.0.0.0"
 
         multiDexEnabled true
 
@@ -99,20 +99,13 @@ android {
     }
 }
 
-// ShadowHook 2.0.1 foi compilado contra a API 37 e o AGP 8.13 so aceita ate a 36 (o build parava em checkDebugAarMetadata).
-// A parte Java do ShadowHook nao usa nenhuma API do Android 17, entao so a verificacao de metadados e dispensada.
-// Quando migrar para AGP 9.1+ (suporta API 37) com compileSdk 37, apague este bloco.
-tasks.configureEach { t ->
-    if (t.name.startsWith('check') && t.name.endsWith('AarMetadata')) t.enabled = false
-}
-
 dependencies {
     implementation fileTree(dir: "libs", include: ["*.jar"])
-    implementation 'androidx.appcompat:appcompat:1.7.0'
-    implementation "com.google.android.material:material:1.12.0"
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-    implementation 'androidx.navigation:navigation-fragment:2.8.5'
-    implementation 'androidx.navigation:navigation-ui:2.8.5'
+    implementation 'androidx.appcompat:appcompat:1.8.0'
+    implementation "com.google.android.material:material:1.14.0"
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.2'
+    implementation 'androidx.navigation:navigation-fragment:2.10.2'
+    implementation 'androidx.navigation:navigation-ui:2.10.2'
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
@@ -121,16 +114,16 @@ dependencies {
     implementation 'com.android.volley:volley:1.2.1'
     implementation 'com.intuit.sdp:sdp-android:1.1.0'
 
-    implementation platform('com.google.firebase:firebase-bom:33.7.0')
+    implementation platform('com.google.firebase:firebase-bom:35.2.0')
     implementation 'com.google.firebase:firebase-analytics'
     implementation 'com.google.firebase:firebase-crashlytics-ndk'
     implementation 'com.google.firebase:firebase-messaging'
 
     implementation 'org.ini4j:ini4j:0.5.4'
 
-    implementation 'com.github.bumptech.glide:glide:4.16.0'
+    implementation 'com.github.bumptech.glide:glide:5.0.5'
 
-    implementation("androidx.lifecycle:lifecycle-process:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-process:2.11.0")
 
     implementation "com.joom.paranoid:paranoid-gradle-plugin:0.3.14"
     implementation 'com.bytedance.android:shadowhook:2.0.1'

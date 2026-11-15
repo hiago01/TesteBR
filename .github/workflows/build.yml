@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      ANDROID_PLATFORM: android-36
+      ANDROID_PLATFORM: android-37.0
       ANDROID_BUILD_TOOLS: 36.0.0
       ANDROID_NDK_VERSION: 26.2.11394342
       ANDROID_CMAKE_VERSION: 3.22.1
@@ -153,7 +153,7 @@ jobs:
           echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}"
 
           sdkmanager --list_installed 2>/dev/null | grep -E \
-            "platforms;android-36|build-tools;36.0.0|ndk;26.2.11394342|cmake;3.22.1" \
+            "platforms;android-37.0|build-tools;36.0.0|ndk;26.2.11394342|cmake;3.22.1" \
             || true
 
           echo ""
