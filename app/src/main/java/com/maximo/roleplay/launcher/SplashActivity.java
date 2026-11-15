@@ -26,6 +26,7 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
+import com.maximo.roleplay.launcher.util.LauncherUi;
 import com.maximo.roleplay.launcher.util.UiSounds;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.constraintlayout.widget.ConstraintLayout;
@@ -147,9 +148,17 @@ public class SplashActivity extends AppCompatActivity {
     private boolean mIsBind;
 
     @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) LauncherUi.applyImmersive(this);
+    }
+
+    @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        LauncherUi.prepareWindow(this);
         setContentView(R.layout.activity_splash);
+        LauncherUi.applyImmersive(this);
 
         if(!SignatureChecker.isSignatureValid(this, getPackageName()))
         {

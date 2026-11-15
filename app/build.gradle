@@ -20,15 +20,15 @@ android {
         }
     }
 
-    compileSdk 35
+    compileSdk 36
     namespace 'com.maximo.roleplay'
 
     defaultConfig {
         applicationId "com.maximo.roleplay"
         minSdk 26
-        targetSdk 34
-        versionCode 21
-        versionName "21.0.0.0"
+        targetSdk 36
+        versionCode 22
+        versionName "22.0.0.0"
 
         multiDexEnabled true
 

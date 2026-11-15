@@ -193,6 +193,18 @@ public class UpdateService extends Service {
         return START_NOT_STICKY;
     }
 
+    /**
+     * Android 15+: o tipo dataSync tem limite de ~6 h por dia. Ao estourar, o sistema chama aqui e exige que o servico
+     * saia do primeiro plano em poucos segundos (senao derruba o app). O download segue enquanto a tela estiver aberta
+     * e, se ainda estiver baixando, o primeiro plano e pedido de novo por applyForeground().
+     */
+    @Override
+    public void onTimeout(int startId, int fgsType) {
+        Log.w(TAG, "dataSync atingiu o limite do Android; saindo do primeiro plano");
+        mMainH.removeCallbacks(mStopFg);
+        mStopFg.run();
+    }
+
     @Override
     public void onDestroy() {
         // Ninguem esta mais ligado: cancela rede/downloads e encerra a thread (sem threads vazadas).

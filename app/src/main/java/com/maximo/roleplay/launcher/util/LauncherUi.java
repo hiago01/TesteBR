@@ -6,17 +6,24 @@ import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 
+import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
-import androidx.core.view.DisplayCutoutCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
-/** Tela cheia imersiva em landscape e margens seguras para notch/recortes. */
+/**
+ * Tela cheia imersiva em landscape e margens seguras para notch/recortes.
+ * Android 15/16 (targetSdk 35+): a janela e sempre borda a borda; as barras do sistema ficam ocultas (deslizar mostra
+ * por instantes) e o conteudo respeita so o recorte (notch) da tela.
+ */
 public final class LauncherUi {
     private LauncherUi() {}
 
     /** Chamar ANTES de setContentView. */
     public static void prepareWindow(Activity activity) {
         Window w = activity.getWindow();
+        WindowCompat.setDecorFitsSystemWindows(w, false);
         if (Build.VERSION.SDK_INT >= 28) {
             WindowManager.LayoutParams lp = w.getAttributes();
             lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
@@ -24,31 +31,19 @@ public final class LauncherUi {
         }
     }
 
-    @SuppressWarnings("deprecation")
     public static void applyImmersive(Activity activity) {
-        activity.getWindow().getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        Window w = activity.getWindow();
+        View decor = w.getDecorView();
+        WindowInsetsControllerCompat c = WindowCompat.getInsetsController(w, decor);
+        c.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        c.hide(WindowInsetsCompat.Type.systemBars());
     }
 
     /** Aplica como padding do container as maiores margens entre barras de sistema e recorte. */
-    @SuppressWarnings("deprecation")
     public static void applySafePadding(final View container) {
         ViewCompat.setOnApplyWindowInsetsListener(container, (v, insets) -> {
-            int l = insets.getSystemWindowInsetLeft();
-            int t = insets.getSystemWindowInsetTop();
-            int r = insets.getSystemWindowInsetRight();
-            DisplayCutoutCompat cut = insets.getDisplayCutout();
-            if (cut != null) {
-                l = Math.max(l, cut.getSafeInsetLeft());
-                t = Math.max(t, cut.getSafeInsetTop());
-                r = Math.max(r, cut.getSafeInsetRight());
-            }
-            v.setPadding(l, t, r, 0); // rodape encosta embaixo (barra de navegacao fica oculta)
+            Insets i = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            v.setPadding(i.left, i.top, i.right, 0); // rodape encosta embaixo (barra de navegacao fica oculta)
             return insets;
         });
         ViewCompat.requestApplyInsets(container);
