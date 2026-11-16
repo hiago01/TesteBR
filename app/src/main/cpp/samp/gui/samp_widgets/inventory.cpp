@@ -8,6 +8,7 @@
 #include "inventory_atlas.h"
 #include "../../util/CUtil.h"
 #include "../../game/IconTexDb.h"
+#include "../../game/WeaponIconDb.h"
 #include "controlmode.h"
 #include "controlsselector.h"
 
@@ -212,6 +213,8 @@ namespace
 		e.tries++; e.next = s_f + 240;
 		char name[48];
 		snprintf(name, sizeof(name), "%sicon", m);
+		if (RwTexture* nf = WeaponIconDb::Texture(name))   // versao SEM a moldura preta (texdb/armas); ausente = original do jogo
+		{ e.tex = nf; return e.tex; }
 		static const char* const kDbs[] = { "gta3", "txd", "gta_int", "samp", "player", "mobile" };
 		for (const char* db : kDbs)
 		{

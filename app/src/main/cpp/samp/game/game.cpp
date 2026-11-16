@@ -28,6 +28,7 @@
 #include "CustomSkinStream.h"
 #include "SkinTexDb.h"
 #include "IconTexDb.h"
+#include "WeaponIconDb.h"
 #include "SafeTexDb.h"
 #include <sys/stat.h>
 #include <strings.h>
@@ -330,8 +331,8 @@ void CGame::SetGravity(float fGravity)
     uintptr_t gravityAddr = g_libGTASA + 0x75044C;
 
     // ปลดล็อคหรือแก้ไข memory protection ก่อนเขียนค่า
-    //CHook::UnFuck(gravityAddr, sizeof(float));
-    if (!CHook::UnFuck(gravityAddr, sizeof(float))) return;
+    if (!CHook::UnFuck(gravityAddr, sizeof(float))) return;   // sem permissao de escrita: nao grava (evita crash)
+
     // เขียนค่าความโน้มถ่วงที่ปรับแล้วลงใน memory address นั้น
     *reinterpret_cast<float*>(gravityAddr) = adjustedGravity;
 }
@@ -758,6 +759,8 @@ bool CGame::InitialiseRenderWare() {
     // banco de texturas das roupas/skins (texdb/skins/). So personagens; independe de CustomImg::kCustomContent.
     SkinTexDb::Load();
     IconTexDb::Load();                                  // banco de icones do inventario (texdb/icones/; opcional)
+    WeaponIconDb::Load();                               // icones nativos das armas SEM moldura (texdb/armas/; opcional)
+    FLog("[ARMASDB] %s", WeaponIconDb::Status().c_str());
     FLog("[ICONTEXDB] %s", IconTexDb::Status().c_str());
     FLog("[SKINTEXDB] %s", SkinTexDb::Status().c_str());
     FLog("[SKINTEXDB] %s", SkinTexDb::Files().c_str());
