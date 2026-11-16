@@ -7,6 +7,7 @@
 #include "../settings.h"
 #include "../game/CustomAnimSync.h"
 #include "../game/CorpTex.h"
+#include "../game/SkinMap.h"
 #include "../vendor/inih/cpp/INIReader.h"
 
 extern UI* pUI;
@@ -380,6 +381,7 @@ void RequestClass(RPCParameters *rpcParams)
 
 	bsData.Read(byteRequestOutcome);
 	bsData.Read((char*)&SpawnInfo, sizeof(PLAYER_SPAWN_INFO));
+	SpawnInfo.iSkin = SkinMap::Resolve(SpawnInfo.iSkin);   // skin 20001+ do gamemode -> id local
 
 	Log::addParameter("byteRequestOutcome", byteRequestOutcome);
 	Log::addParameter("SpawnInfo.byteTeam", SpawnInfo.byteTeam);
@@ -631,6 +633,7 @@ void WorldPlayerAdd(RPCParameters *rpcParams)
 	bsData.Read(playerId);
 	bsData.Read(byteTeam);
 	bsData.Read(iSkin);
+	iSkin = SkinMap::Resolve(iSkin);                       // skin 20001+ do gamemode -> id local
 	bsData.Read(vecPos.x);
 	bsData.Read(vecPos.y);
 	bsData.Read(vecPos.z);
@@ -1408,6 +1411,7 @@ void ShowActor(RPCParameters* rpcParams)
 	NEW_ACTOR newActor;
 	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
 	bsData.Read((char*)& newActor, sizeof(NEW_ACTOR));
+	newActor.iSkin = SkinMap::Resolve(newActor.iSkin);
 
 	if (IsValidPedModel(newActor.iSkin))
 	{

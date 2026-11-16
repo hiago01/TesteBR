@@ -7,6 +7,7 @@
 #include "netgame.h"
 #include "../audiostream.h"
 #include "../game/ClothesSync.h"
+#include "../game/SkinMap.h"
 #include "../gui/samp_widgets/hudstate.h"
 #include "../gui/samp_widgets/vehhud.h"
 #include "../game/Hose.h"
@@ -141,6 +142,7 @@ void ScrSetSpawnInfo(RPCParameters *rpcParams)
 	PLAYER_SPAWN_INFO spawnInfo;
 	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
 	bsData.Read((char*)&spawnInfo, sizeof(PLAYER_SPAWN_INFO));
+	spawnInfo.iSkin = SkinMap::Resolve(spawnInfo.iSkin);   // skin 20001+ do gamemode -> id local
 
 	pNetGame->GetPlayerPool()->GetLocalPlayer()->SetSpawnInfo(&spawnInfo);
 
@@ -481,6 +483,7 @@ void ScrSetPlayerSkin(RPCParameters* rpcParams)
 	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
 	bsData.Read(iPlayerID);
 	bsData.Read(iModel);
+	iModel = SkinMap::Resolve(iModel);                     // skin 20001+ do gamemode -> id local
 
 	if (IsValidPedModel(iModel))
 	{
