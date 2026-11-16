@@ -490,13 +490,31 @@ void ModernControls::draw(ImGuiRenderer* r)
 		if (!editing && g_editing.load() == false) g_ctl.editing = false;
 	}
 	g_active.store(show && !editing);
+	// ---- regra dos slots rapidos: sem item = oculto; com item = so a seta azul; tocar na seta sobe a barra (animada) e em 30 s ela desce sozinha ----
+	static bool s_slOpen = false; static int64_t s_slT = 0; static float s_slAnim = 0.0f; static int64_t s_slMs = 0;
+	bool slHas = false;
+	for (int k = 0; k < kHotbarN && !slHas; k++) { int ic = 0, qy = 0; slHas = InventoryUI::HotbarGet(k, ic, qy); }
+	const int64_t slNow = NowMs();
 	if (!editing)   // inventario / slots rapidos: as acoes saem na thread de desenho (nao na de toque)
 	{
 		if (g_invReq.exchange(false)) InventoryUI::RequestOpen();
 		const int sr = g_slotReq.exchange(-1);
-		if (sr >= 0 && show) InventoryUI::HotbarUse(sr);
+		if (sr == -2) { if (slHas && show) { s_slOpen = true; s_slT = slNow; } }                       // toque na seta: puxa a barra
+		else if (sr >= 0 && show) { InventoryUI::HotbarUse(sr); if (s_slOpen) s_slT = slNow; }          // usar um slot renova os 30 s
 	}
 	else { g_invReq.store(false); g_slotReq.store(-1); }
+	if (!slHas || editing) s_slOpen = false;                                                           // ficou sem item (ou editor): recolhe
+	else if (s_slOpen && slNow - s_slT >= (int64_t)(kSlotsAutoCloseSec * 1000.0f)) s_slOpen = false;   // 30 s: desce sozinha, a seta volta
+	{
+		float dt = s_slMs ? (float)(slNow - s_slMs) / 1000.0f : 0.0f; s_slMs = slNow; dt = std::clamp(dt, 0.0f, 0.1f);
+		const float tgt = (slHas && s_slOpen) ? 1.0f : 0.0f;
+		s_slAnim = tgt > s_slAnim ? std::min(tgt, s_slAnim + dt / 0.22f) : std::max(tgt, s_slAnim - dt / 0.22f);
+		if (editing) s_slAnim = 1.0f;       // no editor de HUD a barra aparece sempre
+		std::lock_guard<std::mutex> l(g_mu);
+		g_ctl.slotsMode = editing ? 2 : !slHas ? 0 : s_slOpen ? 2 : 1;
+	}
+	const float slotsVis = s_slAnim;                                       // 0 = recolhida, 1 = aberta (anima y + opacidade)
+	const bool  slotsArrow = !editing && slHas;                            // a seta aparece enquanto a barra nao esta aberta
 	g_micVeh.store(micVeh);
 	if (!show && !micVeh)
 	{
@@ -566,11 +584,26 @@ void ModernControls::draw(ImGuiRenderer* r)
 		const bool down = (i == B_RUNLOCK) ? g_runLock.load() : (i == B_AIM) ? g_aimLock.load() : snap.BtnDown(i);   // LOCK/MIRAR ficam acesos enquanto ligados
 		const CtlCircle& b = L.btn[i];
 		const int A = alphaOf(i);
-		const float bk = (((snap.blockedMask >> i) & 1u) != 0) ? 0.3f : 1.0f;      // bloqueado (pulando/na parede): esmaecido
+		const float bk = ((((snap.blockedMask >> i) & 1u) != 0) ? 0.3f : 1.0f) * (i == B_SLOTS ? slotsVis : 1.0f);      // bloqueado (pulando/na parede): esmaecido; slots: some/aparece com a animacao
 		auto Cb = [&](int R, int G, int B2, int A2) { return ImColor(R, G, B2, (int)std::lround((float)A2 * fm * bk)); };
+		if (i == B_SLOTS && slotsArrow && slotsVis < 0.99f)      // seta azul minimalista (some conforme a barra sobe): so quando ha item equipado nos slots
+		{
+			const float u = b.r, ay = SlotsArrowCy(b), topY = ay - 0.65f * u, aa = (1.0f - slotsVis) * fm;
+			const ImColor blue(37, 99, 219, (int)std::lround(225.0f * aa));
+			ImVec2 head[3] = { ImVec2(b.cx, topY), ImVec2(b.cx - 0.5f * u, topY + 0.5f * u), ImVec2(b.cx + 0.5f * u, topY + 0.5f * u) };
+			r->drawConvexPolyFilled(head, 3, blue);
+			r->drawRoundedRect(ImVec2(b.cx - 0.17f * u, topY + 0.46f * u), ImVec2(b.cx + 0.17f * u, topY + 0.88f * u), blue, 0.05f * u, true);
+			static const float kTail[3] = { 0.62f, 0.42f, 0.24f };      // risquinhos de rastro (mais claros para longe da ponta), como na referencia
+			for (int t = 0; t < 3; t++)
+			{
+				const float y0 = topY + 0.98f * u + (float)t * 0.16f * u;
+				r->drawRoundedRect(ImVec2(b.cx - 0.17f * u, y0), ImVec2(b.cx + 0.17f * u, y0 + 0.09f * u), ImColor(37, 99, 219, (int)std::lround(225.0f * aa * kTail[t])), 0.03f * u, true);
+			}
+		}
+		if (i == B_SLOTS && slotsVis <= 0.01f) continue;       // recolhida: nada da barra (nem a moldura/numeros)
 		if (i == B_SLOTS)       // barra de slots rapidos: MESMO visual do inventario aberto (casa quadrada translucida, moldura fina, selo numerado na borda direita), deitada
 		{
-			const float side = HotbarSide(b), pitch = HotbarPitch(b), left = HotbarLeft(b), top = b.cy - b.r;
+			const float side = HotbarSide(b), pitch = HotbarPitch(b), left = HotbarLeft(b), top = b.cy - b.r + (1.0f - slotsVis) * side * 1.2f;   // desce ao recolher
 			const float lw = std::max(1.0f, side * 0.02f);
 			const float rnd = side * 0.06f;                                  // so a moldura de edicao (o slot em si e quadrado)
 			uint32_t hs[5]; InventoryUI::HotStyle(hs);                       // cores do painel (padrao = visual atual do inventario)

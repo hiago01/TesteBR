@@ -196,6 +196,13 @@ namespace CtlLogic
 		int i = (int)std::floor((x - HotbarLeft(c)) / HotbarPitch(c));
 		return i < 0 ? 0 : (i >= kHotbarN ? kHotbarN - 1 : i);
 	}
+	// ---- regra dos slots rapidos: sem item = oculto e sem toque (modo 0); com item = so a seta azul (modo 1); barra puxada = modo 2 ----
+	constexpr float kSlotsAutoCloseSec = 30.0f;                                         // a barra desce sozinha depois disso e a seta volta
+	inline float SlotsArrowCy(const CtlCircle& c) { return c.cy + c.r * 0.25f; }         // centro da seta (r = metade do lado de uma casa)
+	inline bool  SlotsArrowHit(const CtlCircle& c, float x, float y)                     // area de toque da seta (generosa, so em volta dela)
+	{
+		return std::fabs(x - c.cx) <= c.r * 1.25f && std::fabs(y - SlotsArrowCy(c)) <= c.r * 1.25f;
+	}
 	// Acerto de um controle: circulo, exceto a barra de slots (retangulo da barra inteira).
 	inline bool BtnHit(const ModernLayout& L, int i, float x, float y, float padK = 1.2f)
 	{
@@ -318,6 +325,7 @@ namespace CtlLogic
 		float insX = 0.0f, insY = 0.0f;   // Safe Zone (px por borda); ignorada no editor de HUD
 		bool editing = false;
 		uint32_t disabledMask = 0;      // bit i = botao i ausente (ex.: CORRER com o LOCK ligado): nao desenha nem recebe toque
+		int slotsMode = 2;              // 0 = slots ocultos (sem item): sem toque | 1 = so a seta (toque = -2 em slotPressed) | 2 = barra aberta
 		int slotPressed = -1;           // ultima casa da barra de slots tocada (0..kHotbarN-1), lida junto com a borda de B_SLOTS
 		uint32_t blockedMask = 0;       // bit i = botao i BLOQUEADO (pulando/na parede): continua desenhado (esmaecido), mas nao recebe toque novo
 
@@ -439,11 +447,11 @@ namespace CtlLogic
 			int best = -1; float bestD = 1e30f;
 			for (int i = 0; i < B_COUNT; i++)
 			{
-				if (btnFinger[i] >= 0 || (disabledMask & (1u << i)) || (blockedMask & (1u << i)) || !BtnHit(lay, i, x, y)) continue;
+				if (btnFinger[i] >= 0 || (disabledMask & (1u << i)) || (blockedMask & (1u << i)) || !(i == B_SLOTS && slotsMode != 2 ? (slotsMode == 1 && SlotsArrowHit(lay.btn[B_SLOTS], x, y)) : BtnHit(lay, i, x, y))) continue;
 				const float dx = x - lay.btn[i].cx, dy = y - lay.btn[i].cy, d = dx * dx + dy * dy;
 				if (d < bestD) { bestD = d; best = i; }
 			}
-			if (best >= 0) { if (best == B_SLOTS) slotPressed = HotbarIndexAt(lay.btn[B_SLOTS], x); btnFinger[best] = num; pendingPressed |= (1u << best); return true; }
+			if (best >= 0) { if (best == B_SLOTS) slotPressed = (slotsMode == 1) ? -2 : HotbarIndexAt(lay.btn[B_SLOTS], x); btnFinger[best] = num; pendingPressed |= (1u << best); return true; }
 			// 2) joystick
 			if (stickFinger < 0)
 			{
