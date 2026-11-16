@@ -11,6 +11,7 @@
 #include "../../game/WeaponIconDb.h"
 #include "controlmode.h"
 #include "controlsselector.h"
+#include "weapondura_logic.h"
 
 #include <algorithm>
 #include <chrono>
@@ -19,6 +20,7 @@
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 extern UI*       pUI;
@@ -50,6 +52,7 @@ namespace
 		std::vector<Item> items;
 		std::vector<Drop> ground;
 		Trade trade;
+		std::unordered_map<int, int> dura;   // item (arma exclusiva) -> durabilidade 0..100 (0 = enferrujada); RPC 203 op 10
 	};
 
 	// ---- aparencia (RPC 203 op 9): cores editaveis pelo painel + nomes das texturas de icone (id 128+i). Mutex proprio. ----
@@ -222,6 +225,18 @@ namespace
 			if (t && t->raster) { e.tex = t; break; }
 		}
 		return e.tex;
+	}
+
+	// barra de durabilidade da arma exclusiva no rodape da casa: verde (100%) -> vermelho (0% = enferrujada). pct < 0 = item sem durabilidade (nao desenha).
+	void DrawDuraBar(ImGuiRenderer* r, const ImVec2& a, const ImVec2& b, int pct, float u, int alpha = 255)
+	{
+		if (pct < 0) return;
+		const float w = b.x - a.x, inset = std::max(3.0f, w * 0.09f), h = std::max(3.0f, 4.0f * u);
+		const ImVec2 t0(a.x + inset, b.y - inset - h), t1(b.x - inset, b.y - inset);
+		r->drawRect(ImVec2(t0.x - 1.0f, t0.y - 1.0f), ImVec2(t1.x + 1.0f, t1.y + 1.0f), ImColor(0, 0, 0, (int)(alpha * 0.55f)), true);   // fundo
+		int cr = 0, cg = 0, cb = 0; WeaponDura::Color(pct, cr, cg, cb);
+		const float fill = WeaponDura::Fill(pct);
+		r->drawRect(t0, ImVec2(t0.x + (t1.x - t0.x) * fill, t1.y), ImColor(cr, cg, cb, alpha), true);
 	}
 
 	void DrawIcon(ImGuiRenderer* r, int icon, const ImVec2& a, const ImVec2& b, int alpha = 255)
@@ -426,6 +441,20 @@ void InventoryUI::OnServerPacket(const unsigned char* data, int bytes)
 		}
 		std::lock_guard<std::mutex> l(g_dm);
 		for (int i = 0; i < 5; i++) g_hot[i] = tmp[i];
+	}
+	else if (op == 10)   // DURABILIDADE das armas exclusivas: u8 n | n x { u16 item, u8 pct }
+	{
+		uint8_t n = 0;
+		if (!bs.Read(n) || n > 80) return;
+		std::unordered_map<int, int> m;
+		for (int i = 0; i < n; i++)
+		{
+			uint16_t id = 0; uint8_t p = 0;
+			if (!bs.Read(id) || !bs.Read(p)) return;
+			m[id] = WeaponDura::Clamp((int)p);
+		}
+		std::lock_guard<std::mutex> l(g_dm);
+		g_state.dura.swap(m);
 	}
 	else if (op == 9)   // THEME: cores + nomes das texturas dos icones (valida tudo antes de aplicar)
 	{
@@ -731,7 +760,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 	{
 		if (g_t.kind == 5)
 		{
-			if (g_t.src >= 0 && g_t.src < 5 && hot[g_t.src].id && !(hot[g_t.src].flags & 5)) g_t.dragging = true;   // arma equipada (na mao ou no corpo): travada, nao arrasta
+			if (g_t.src >= 0 && g_t.src < 5 && hot[g_t.src].id) g_t.dragging = true;   // qualquer slot (inclusive arma equipada, no corpo ou na mao) pode ser arrastado: soltar na mochila/fora = o servidor GUARDA a arma (com a municao)
 		}
 		else
 		{
@@ -808,8 +837,11 @@ void InventoryUI::draw(ImGuiRenderer* r)
 				else if (t.dragging)
 				{
 					const int dh = hotAt(e.x, e.y);
-					if (dh < 0 && (hot[t.src].flags & 8) && In(e.x, e.y, vpLA, vpLB)) Send("/invx unload %d %d", t.src, g_allQty ? 9999 : 1);   // arma de fogo solta na mochila = retira a municao
-						else if (dh < 0 || dh == t.src) { if (dh < 0) Send("/invx barclear %d", t.src); }   // soltou fora = limpa o slot
+					const bool equipped = (hot[t.src].flags & 1) != 0;
+					if (dh < 0 && equipped && In(e.x, e.y, vpLA, vpLB)) Send("/invx hotstow %d", t.src);   // arma equipada solta na mochila = guarda (corpo ou mao), a municao fica dentro dela
+					else if (dh < 0 && (hot[t.src].flags & 8) && In(e.x, e.y, vpLA, vpLB)) Send("/invx unload %d %d", t.src, g_allQty ? 9999 : 1);   // arma de fogo solta na mochila = retira a municao
+						else if (dh < 0 || dh == t.src) { if (dh < 0) Send("/invx barclear %d", t.src); }   // soltou fora = limpa o slot (se equipada, o servidor guarda antes)
+					else if (equipped) Send("/invx hotmove %d %d", t.src, dh);                              // arma equipada: so troca o atalho de lugar
 					else { const int sl = [&]{ for (const Item& it : S.items) if (it.id == hot[t.src].id) return it.slot; return -1; }();
 					       if (sl >= 0) { Send("/invx bar %d %d", dh, sl); } else Send("/invx barclear %d", t.src); }
 				}
@@ -894,6 +926,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 			const bool ghost = g_t.dragging && g_t.panel == P_INV && g_t.src == i;
 			const float m = 8.0f * u;
 			DrawIcon(r, it->icon, ImVec2(a.x + m, a.y + m + 3.0f * u), ImVec2(b.x - m, b.y - m + 3.0f * u), ghost ? 70 : 255);
+			{ const auto dz = S.dura.find(it->id); if (dz != S.dura.end()) DrawDuraBar(r, a, b, dz->second, u, ghost ? 70 : 255); }   // arma exclusiva: barra de durabilidade
 			drawQty(a, it->qty);
 		}
 	}
@@ -902,7 +935,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 
 	// ---- info do item selecionado ----
 	{
-		std::string info = "Arraste a munição sobre a arma no slot para carregar. Arraste a arma (guardada) para a mochila para retirar.";
+		std::string info = "Arraste a munição sobre a arma no slot para carregar. Arraste a arma do slot para a mochila para guardá-la (a munição fica dentro).";
 		if (g_sel.panel == P_INV && g_sel.idx >= 0 && g_sel.idx < S.slots && bySlot[g_sel.idx])
 		{
 			const Item* it = bySlot[g_sel.idx];
@@ -1030,6 +1063,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 				const float m = 8.0f * u;
 				const bool ghost = g_t.dragging && g_t.panel == P_HOT && g_t.src == i;
 				DrawIcon(r, h.icon, ImVec2(a.x + m, a.y + m), ImVec2(b.x - m, b.y - m), ghost ? 70 : (miss ? 90 : 255));
+				{ const auto dz = S.dura.find(h.id); if (dz != S.dura.end()) DrawDuraBar(r, a, b, dz->second, u, ghost ? 70 : 255); }
 				if (h.flags & 4)   // arma na mao: travada
 					r->drawText(ImVec2(a.x + 4.0f * u, a.y + 3.0f * u), cHotHold, "NA MÃO", true, 8.5f * u);
 				if (h.qty > 1 || (h.flags & 8) || (eq && h.qty <= 0))   // arma de fogo sempre mostra a municao carregada
@@ -1106,6 +1140,18 @@ void InventoryUI::draw(ImGuiRenderer* r)
 }
 
 // ---- slots rapidos / botao Inventario (HUD moderno) ----
+int InventoryUI::HotbarDura(int slot)
+{
+	if (slot < 0 || slot >= 5) return -1;
+	std::lock_guard<std::mutex> l(g_dm);
+	const HotSlot& h = g_hot[slot];
+	if (!h.id) return -1;
+	const auto it = g_state.dura.find(h.id);
+	return it == g_state.dura.end() ? -1 : it->second;
+}
+
+void InventoryUI::DrawHotbarDura(ImGuiRenderer* r, const ImVec2& a, const ImVec2& b, int pct, float u, int alpha) { DrawDuraBar(r, a, b, pct, u, alpha); }
+
 bool InventoryUI::HotbarGet(int slot, int& icon, int& qty, int* flags)
 {
 	if (slot < 0 || slot >= 5) return false;

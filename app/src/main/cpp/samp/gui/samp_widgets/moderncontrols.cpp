@@ -627,6 +627,7 @@ void ModernControls::draw(ImGuiRenderer* r)
 					const float m = side * 0.14f;
 					const float fade = (qty <= 0 && !(hfl & 1)) ? 0.35f : 1.0f;      // item/municao em falta: apagado
 					InventoryUI::DrawHotbarIcon(r, icon, ImVec2(a0.x + m, a0.y + m), ImVec2(a1.x - m, a1.y - m), (int)std::lround((float)std::min(255, A + 170) * fm * bk * fade));
+					InventoryUI::DrawHotbarDura(r, a0, a1, InventoryUI::HotbarDura(k), side / 44.0f, (int)std::lround((float)std::min(255, A + 170) * fm * bk));   // barra de durabilidade da arma exclusiva
 					if (qty > 1 || ((hfl & 1) && qty <= 0))
 					{
 						char q[12]; snprintf(q, sizeof q, "x%d", qty);

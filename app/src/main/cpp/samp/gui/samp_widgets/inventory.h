@@ -37,6 +37,8 @@ public:
 	static void RequestOpen();                                            // pede ao servidor para abrir o inventario (/inv)
 	static void HotStyle(uint32_t out[5]);                              // cores do slot rapido (painel): 0xRRGGBBAA x {fundo, moldura, selo, numero, "na mao"}
 	static void DrawHotbarIcon(ImGuiRenderer* r, int icon, const ImVec2& a, const ImVec2& b, int alpha);
+	static int  HotbarDura(int slot);                                     // durabilidade 0..100 da arma exclusiva no slot (0 = enferrujada); -1 = sem durabilidade
+	static void DrawHotbarDura(ImGuiRenderer* r, const ImVec2& a, const ImVec2& b, int pct, float u, int alpha);   // barra verde->vermelha
 
 	// RPC 203 (servidor -> cliente). data/bytes = payload completo.
 	static void OnServerPacket(const unsigned char* data, int bytes);
