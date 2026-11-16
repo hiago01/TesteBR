@@ -100,3 +100,9 @@ Enquanto o jogador local CARREGA alguem (`PlayerCarry::LocalIsCarrying()`), o HU
 
 ## Correcao 12 - menu ao tocar em jogador/actor (novo: game/TargetMenu.cpp/.h)
 Toque curto (<450 ms, sem arrastar) num jogador ou Actor a ate 6 m abre um menu ao lado do toque; 1a opcao "Carregar" -> envia `/carregar <id>` (jogador) ou `/carregar <1004+id do actor>` (actor). Carregando, a unica opcao e "Soltar" (/soltar). Toque fora do menu fecha (e segue pro jogo); fecha sozinho em 10 s; nao abre dentro de veiculo. Novas opcoes: BuildOptions() em TargetMenu.cpp. Servidor inalterado. IMPORTANTE: arquivo .cpp novo -> sincronize/reconfigure o CMake (GLOB_RECURSE). Logs: `[TARGETMENU]`. Nao compilado/testado no jogo.
+
+## Correcao 13 - menu so para admin, layout novo, animacao, erro de build
+- Build: TargetMenu.cpp nao compilava (faltavam includes game/game.h, net/actorpool.h, actor.h e o nome `Layout` conflitava) -> corrigido.
+- Menu agora SO abre para ADMIN: o servidor manda RPC 234 (op 1 = flag admin; op 2 = id de conta de cada jogador, so para admins). Funcoes no maximo_carregar.inc: `Tgt_OnLogin(playerid, admin)` (no OnContaLogin) e `Tgt_OnDisconnect(playerid)` (inicio do OnPlayerDisconnect) - ja ligadas no maximorp.pwn. RECOMPILE o gamemode (.pwn -> .amx).
+- Layout (como no video): cabecalho "<conta> [<playerid>]" + "(jogador)"; actor: "NPC [id]" + "(npc)"; linhas com icone: Carregar (1a), Fechar. Linha apertada fica azul; a acao vale ao soltar o dedo na mesma linha.
+- Animacao: abre (cresce 0.82->1 + fade, 170 ms) e fecha (inverso, 130 ms). Nada compilado/testado no jogo.

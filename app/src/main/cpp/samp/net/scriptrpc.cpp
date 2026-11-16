@@ -19,6 +19,7 @@
 #include "../gui/samp_widgets/phone.h"
 #include "../game/CustomAnimSync.h"
 #include "../game/PlayerCarry.h"
+#include "../game/TargetMenu.h"
 #include "../game/CorpTex.h"
 #include "../game/CustomAnimTest.h"
 
@@ -2210,6 +2211,7 @@ void RegisterScriptRPCs(RakClientInterface *pRakClient)
 	if (Diag::On("anim")) CustomAnimSync::Register(pRakClient);   // RPC 230: anim customizada (servidor -> cliente)
 	CustomAnimSync::ClearAll();             // nova conexão: descarta estado da sessão anterior
 	PlayerCarry::Register(pRakClient);      // RPC 233: /carregar (servidor -> cliente)
+	TargetMenu::Register(pRakClient);       // RPC 234: menu de toque em jogador/actor (so admin)
 	PlayerCarry::ClearAll();                // nova conexão: descarta vínculos da sessão anterior
 	if (Diag::On("corptex")) CorpTex::Register(pRakClient);          // RPC 231: textura por corporação (servidor -> cliente)
 	CorpTex::ClearAll();                    // nova conexão: descarta corps da sessão anterior
@@ -2286,6 +2288,7 @@ void UnregisterScriptRPCs(RakClientInterface *pRakClient)
 	IdCard3D_Reset();      // saiu do servidor: limpa cartões
 	CustomAnimSync::Unregister(pRakClient);
 	PlayerCarry::Unregister(pRakClient);
+	TargetMenu::Unregister(pRakClient);
 	CorpTex::Unregister(pRakClient);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetMapIcon);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrDisableMapIcon);
