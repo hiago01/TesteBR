@@ -558,6 +558,12 @@ namespace
 
 	struct Btn { int id; ImVec2 a, b; const char* label; bool enabled; };
 
+	// menu da ARMA (dois toques): Equipar Slot / Retirar Municoes / Dropar
+	struct WMenu { bool open = false; int panel = 0; int src = -1; float x = 0, y = 0; } g_menu;
+	int     g_lastTapPanel = -1, g_lastTapSrc = -1; int64_t g_lastTapT = 0;      // detecta o 2o toque na mesma casa
+	int     g_pendHot = -1; int64_t g_pendT = 0;                                  // toque em slot rapido com arma espera o possivel 2o toque
+	constexpr int64_t kDoubleTapMs = 380;
+
 	bool In(float x, float y, const ImVec2& a, const ImVec2& b) { return x >= a.x && x <= b.x && y >= a.y && y <= b.y; }
 
 	void Send(const char* fmt, int a = 0, int b = 0, int c = 0)
@@ -584,6 +590,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 	if (!g_open.load())
 	{
 		g_t = Touch(); g_sel = Sel(); g_scroll[1] = g_scroll[2] = 0.0f;
+		g_menu = WMenu(); g_pendHot = -1; g_lastTapSrc = -1;
 		// avisos do servidor (equipou/guardou/erro de slot rapido) tambem aparecem com o inventario fechado
 		std::string tm; int tt = 0; int64_t tu = 0;
 		{
@@ -728,6 +735,43 @@ void InventoryUI::draw(ImGuiRenderer* r)
 	auto doPick  = [&](int gi) {
 		if (gi >= 0 && gi < (int)S.ground.size()) Send("/invx pickup %d %d", S.ground[gi].id, g_allQty ? S.ground[gi].qty : 1);
 	};
+	// ---- menu da arma (dois toques) ----
+	const char* const kMenuLab[3] = { "Equipar Slot", "Retirar Munições", "Dropar" };
+	auto menuRect = [&](int i, ImVec2& a, ImVec2& b) {
+		const float w = 150.0f * u, rh = 26.0f * u;
+		float x0 = std::min(std::max(g_menu.x, 4.0f), scr.x - w - 4.0f), y0 = std::min(std::max(g_menu.y, 4.0f), scr.y - rh * 3.0f - 4.0f);
+		a = ImVec2(x0, y0 + rh * i); b = ImVec2(x0 + w, y0 + rh * (i + 1));
+	};
+	auto menuRowAt = [&](float x, float y) { if (!g_menu.open) return -1; for (int i = 0; i < 3; i++) { ImVec2 a, b; menuRect(i, a, b); if (In(x, y, a, b)) return i; } return -1; };
+	auto localToast = [&](const char* m) { std::lock_guard<std::mutex> l(g_dm); g_toastMsg = m; g_toastType = 1; g_toastUntil = NowMs() + 2500; };
+	auto hotTapAction = [&](int kk) {                       // toque simples em slot rapido (como antes)
+		if (kk < 0 || kk >= 5 || !hot[kk].id) return;
+		if (hot[kk].flags & 4) Send("/invx hot %d", kk);          // arma na mao: guarda no corpo
+		else if (hot[kk].flags & 1) Send("/invx hotstow %d", kk); // equipada no corpo: devolve ao inventario
+		else Send("/invx hot %d", kk);                            // equipar/usar
+	};
+	auto runMenu = [&](int row) {
+		const int sl = g_menu.src;
+		if (g_menu.panel == P_INV)
+		{
+			if (sl < 0 || sl >= S.slots || !bySlot[sl]) return;
+			if (row == 0) { int fk = -1; for (int h = 0; h < 5; h++) if (!hot[h].id) { fk = h; break; } if (fk < 0) localToast("Slots rápidos cheios"); else Send("/invx bar %d %d", fk, sl); }
+			else if (row == 1) Send("/invx unloadi %d %d", sl, 9999);
+			else Send("/invx drop %d %d", sl, 1);
+		}
+		else if (g_menu.panel == P_HOT)
+		{
+			if (sl < 0 || sl >= 5 || !hot[sl].id) return;
+			if (row == 0) Send("/invx hot %d", sl);
+			else if (row == 1) Send("/invx unload %d %d", sl, 9999);
+			else
+			{
+				int inv = -1; for (const Item& it : S.items) if (it.id == hot[sl].id) { inv = it.slot; break; }
+				if (inv >= 0) Send("/invx drop %d %d", inv, 1);
+				else { Send("/invx barclear %d", sl); localToast("Arma guardada: toque 2x nela e escolha Dropar"); }   // equipada: guarda primeiro
+			}
+		}
+	};
 	auto runButton = [&](int id) {
 		switch (id)
 		{
@@ -770,13 +814,17 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		}
 	}
 
+	if (g_pendHot >= 0 && now - g_pendT >= kDoubleTapMs - 50) { const int pk = g_pendHot; g_pendHot = -1; hotTapAction(pk); }
+
 	for (const TouchEv& e : evs)
 	{
 		if (e.type == 2 && g_t.finger < 0)                                   // push
 		{
 			g_t = Touch();
 			g_t.finger = e.num; g_t.sx = g_t.cx = e.x; g_t.sy = g_t.cy = e.y; g_t.t0 = now;
-			if (const Btn* b = btnAt(e.x, e.y)) { g_t.kind = 3; g_t.btn = b->id; }
+			if (g_menu.open) { const int mr = menuRowAt(e.x, e.y); if (mr >= 0) { g_t.kind = 6; g_t.btn = mr; } else g_menu.open = false; }
+			if (g_t.kind == 6) {}
+			else if (const Btn* b = btnAt(e.x, e.y)) { g_t.kind = 3; g_t.btn = b->id; }
 			else if (hotAt(e.x, e.y) >= 0) { g_t.kind = 5; g_t.panel = P_HOT; g_t.src = hotAt(e.x, e.y); }
 			else if (In(e.x, e.y, vpLA, vpLB)) { g_t.kind = 1; g_t.panel = P_INV;    g_t.src = slotAt(P_INV, e.x, e.y);    g_t.scroll0 = g_scroll[P_INV]; }
 			else if (In(e.x, e.y, vpRA, vpRB)) { g_t.kind = 2; g_t.panel = P_GROUND; g_t.src = tradeMode ? -1 : slotAt(P_GROUND, e.x, e.y); g_t.scroll0 = g_scroll[P_GROUND]; }
@@ -802,7 +850,12 @@ void InventoryUI::draw(ImGuiRenderer* r)
 			g_t = Touch();
 			if (e.cancel || now < g_busyUntil) continue;                      // cancelado / anti-duplo
 
-			if (t.kind == 3)                                                  // botao: solta sobre o mesmo botao
+			if (t.kind == 6)                                                  // linha do menu da arma
+			{
+				const int row = menuRowAt(e.x, e.y);
+				if (row == t.btn) { runMenu(row); g_menu.open = false; }
+			}
+			else if (t.kind == 3)                                                  // botao: solta sobre o mesmo botao
 			{
 				const Btn* b = btnAt(e.x, e.y);
 				if (b && b->id == t.btn && b->enabled) runButton(b->id);
@@ -838,16 +891,18 @@ void InventoryUI::draw(ImGuiRenderer* r)
 				{
 					const int dh = hotAt(e.x, e.y);
 					const bool equipped = (hot[t.src].flags & 1) != 0;
-					if (dh < 0 && equipped && In(e.x, e.y, vpLA, vpLB)) Send("/invx hotstow %d", t.src);   // arma equipada solta na mochila = guarda (corpo ou mao), a municao fica dentro dela
-					else if (dh < 0 && (hot[t.src].flags & 8) && In(e.x, e.y, vpLA, vpLB)) Send("/invx unload %d %d", t.src, g_allQty ? 9999 : 1);   // arma de fogo solta na mochila = retira a municao
+					if (dh < 0 && In(e.x, e.y, vpLA, vpLB)) Send("/invx barclear %d", t.src);   // solta na mochila: tira do slot e a arma volta para a grade (equipada: o servidor guarda antes, no corpo ou na mao). A municao fica DENTRO da arma
 						else if (dh < 0 || dh == t.src) { if (dh < 0) Send("/invx barclear %d", t.src); }   // soltou fora = limpa o slot (se equipada, o servidor guarda antes)
 					else if (equipped) Send("/invx hotmove %d %d", t.src, dh);                              // arma equipada: so troca o atalho de lugar
 					else { const int sl = [&]{ for (const Item& it : S.items) if (it.id == hot[t.src].id) return it.slot; return -1; }();
 					       if (sl >= 0) { Send("/invx bar %d %d", dh, sl); } else Send("/invx barclear %d", t.src); }
 				}
-				else if (hot[t.src].flags & 4) Send("/invx hot %d", t.src);        // arma na mao: so guarda no corpo (nao mexe no slot)
-				else if (hot[t.src].flags & 1) Send("/invx hotstow %d", t.src);   // inventario aberto: toque numa arma equipada = devolve ao inventario
-				else Send("/invx hot %d", t.src);                              // toque = equipar/usar
+				else if (hot[t.src].flags & 2)                                    // arma: espera um possivel 2o toque (menu); sem ele, faz a acao de sempre
+				{
+					if (g_pendHot == t.src && now - g_pendT < kDoubleTapMs) { g_pendHot = -1; g_menu.open = true; g_menu.panel = P_HOT; g_menu.src = t.src; g_menu.x = e.x; g_menu.y = e.y; }
+					else { g_pendHot = t.src; g_pendT = now; }
+				}
+				else hotTapAction(t.src);
 			}
 			else if (t.kind == 2 && tradeMode && !t.scrolling)               // painel de negociacao
 			{
@@ -859,8 +914,15 @@ void InventoryUI::draw(ImGuiRenderer* r)
 				bool ok = false;
 				if (t.panel == P_INV) ok = t.src >= 0 && t.src < S.slots && bySlot[t.src];
 				else                  ok = t.src >= 0 && t.src < (int)S.ground.size();
-				if (ok)
+				const bool wpn = ok && t.panel == P_INV && S.dura.count(bySlot[t.src]->id) > 0;      // arma exclusiva
+				if (wpn && g_lastTapPanel == t.panel && g_lastTapSrc == t.src && now - g_lastTapT < kDoubleTapMs)
 				{
+					g_menu.open = true; g_menu.panel = P_INV; g_menu.src = t.src; g_menu.x = e.x; g_menu.y = e.y;   // dois toques na arma = menu
+					g_sel.panel = t.panel; g_sel.idx = t.src; g_lastTapSrc = -1;
+				}
+				else if (ok)
+				{
+					g_lastTapPanel = t.panel; g_lastTapSrc = t.src; g_lastTapT = now;
 					if (g_sel.panel == t.panel && g_sel.idx == t.src) g_sel = Sel();   // toca de novo = desmarca
 					else { g_sel.panel = t.panel; g_sel.idx = t.src; }
 				}
@@ -935,7 +997,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 
 	// ---- info do item selecionado ----
 	{
-		std::string info = "Arraste a munição sobre a arma no slot para carregar. Arraste a arma do slot para a mochila para guardá-la (a munição fica dentro).";
+		std::string info = "Arraste a munição sobre a arma no slot para carregar. Arraste a arma do slot para a mochila (ou para fora) para guardá-la: a munição fica dentro dela.";
 		if (g_sel.panel == P_INV && g_sel.idx >= 0 && g_sel.idx < S.slots && bySlot[g_sel.idx])
 		{
 			const Item* it = bySlot[g_sel.idx];
@@ -1124,6 +1186,28 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		else if (g_t.panel == P_HOT && g_t.src >= 0 && g_t.src < 5) icon = hot[g_t.src].icon;
 		const float h = slot * 0.5f;
 		DrawIcon(r, icon, ImVec2(g_t.cx - h, g_t.cy - h), ImVec2(g_t.cx + h, g_t.cy + h), 230);
+	}
+
+	// ---- menu da arma ----
+	if (g_menu.open)
+	{
+		const bool valid = (g_menu.panel == P_INV) ? (g_menu.src >= 0 && g_menu.src < S.slots && bySlot[g_menu.src]) : (g_menu.src >= 0 && g_menu.src < 5 && hot[g_menu.src].id);
+		if (!valid) g_menu.open = false;
+		else
+		{
+			ImVec2 a0, b0, a2, b2; menuRect(0, a0, b0); menuRect(2, a2, b2);
+			r->drawRect(ImVec2(a0.x - 2.0f, a0.y - 2.0f), ImVec2(b2.x + 2.0f, b2.y + 2.0f), ImColor(14, 14, 20, 240), true);
+			r->drawRect(ImVec2(a0.x - 2.0f, a0.y - 2.0f), ImVec2(b2.x + 2.0f, b2.y + 2.0f), cPink, false, 1.5f);
+			for (int i = 0; i < 3; i++)
+			{
+				ImVec2 a, b; menuRect(i, a, b);
+				const bool pr = g_t.kind == 6 && g_t.btn == i;
+				if (pr) r->drawRect(a, b, cPinkF, true);
+				if (i > 0) r->drawRect(ImVec2(a.x + 6.0f * u, a.y), ImVec2(b.x - 6.0f * u, a.y + 1.0f), cCellLn, true);
+				const float mfs = 11.5f * u; const ImVec2 ts = r->calculateTextSize(kMenuLab[i], mfs);
+				r->drawText(ImVec2(a.x + 12.0f * u, (a.y + b.y - ts.y) * 0.5f), i == 2 ? cRed : cText, kMenuLab[i], false, mfs);
+			}
+		}
 	}
 
 	// ---- aviso (toast) ----

@@ -9,3 +9,6 @@ O que mudou
 - Arma EQUIPADA (no corpo ou na mão) agora pode ser arrastada para fora do slot rápido (antes o cliente travava o arrasto). Soltar na mochila = `/invx hotstow` (guarda a arma; a munição fica dentro dela). Soltar fora = `/invx barclear` (o servidor guarda e limpa o slot). Soltar em outro slot = `/invx hotmove` (troca o atalho).
 
 NÃO foi compilado aqui (não há NDK neste ambiente): só a lógica da barra foi testada no host. Compile e me envie qualquer erro.
+
+## Menu da arma (dois toques)
+Dois toques rápidos (380 ms) numa arma exclusiva na mochila, ou num slot rápido com arma, abre o menu: **Equipar Slot** (mochila: põe no 1º slot rápido livre; no slot rápido: saca/guarda a arma), **Retirar Munições** (`/invx unloadi <slot> 9999` na mochila, `/invx unload <k> 9999` no slot; se estiver equipada o servidor guarda antes) e **Dropar**. Toque fora do menu fecha. Com arma no slot rápido, o toque simples espera ~330 ms para saber se vem o segundo toque.
