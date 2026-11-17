@@ -257,6 +257,7 @@ namespace SleekMove
 	// ---------------------------------------------------------------------------------------------------
 	struct Pend { bool valid = false, applied = false, shoulder = false; float dt = 0.016f, yaw = 0, pitch = 0, roll = 0, offX = 0, offZ = 0; CPedGTA* ped = nullptr; } g_pend;
 	bool g_zoomOverride = false;
+	struct CamDbg { unsigned process = 0, derived = 0, applied = 0, shoulderFrames = 0; int mode = -1; bool ped = false, onFoot = false; } g_dbg;
 	void (*g_origDerived)(CCamera*, bool, bool) = nullptr;
 
 	void ApplyToCameraMatrix(CCamera* cam)
@@ -312,7 +313,8 @@ namespace SleekMove
 
 	void Derived_hook(CCamera* cam, bool a, bool b)
 	{
-		if (g_pend.valid && !g_pend.applied && cam) { g_pend.applied = true; ApplyToCameraMatrix(cam); }
+		g_dbg.derived++;
+		if (g_pend.valid && !g_pend.applied && cam) { g_pend.applied = true; g_dbg.applied++; ApplyToCameraMatrix(cam); }
 		g_origDerived(cam, a, b);
 	}
 
@@ -324,6 +326,14 @@ namespace SleekMove
 		void* target = sym ? (void*)sym : (void*)(g_libGTASA + 0x4BC93C);
 		CHook::InlineHook(target, &Derived_hook, &g_origDerived);
 		FLog("[SLEEK] hook CCamera::CalculateDerivedValues @%p via %s: %s", target, sym ? "simbolo" : "endereco 0x4BC93C", g_origDerived ? "instalado" : "FALHOU - camera de ombro/tremor inativos");
+	}
+
+	std::string CamStatus()
+	{
+		char b[320];
+		snprintf(b, sizeof(b), "hookDerived=%s process=%u derived=%u aplicado=%u quadrosOmbro=%u modo=%d ped=%d aPe=%d blend=%.2f ligada=%d offX=%.2f lado=%.0f zoomFixo=%d",
+			g_origDerived ? "ok" : "FALHOU", g_dbg.process, g_dbg.derived, g_dbg.applied, g_dbg.shoulderFrames, g_dbg.mode, g_dbg.ped, g_dbg.onFoot, g_cams.blend, g_camc.enabled, g_camc.offsetX, g_cams.side, g_zoomOverride);
+		return b;
 	}
 
 	void CameraProcess(void (*orig)(uintptr_t), uintptr_t thiz)
@@ -350,6 +360,8 @@ namespace SleekMove
 			g_fovDelta = 0.0f; orig(thiz); return;
 		}
 
+		g_dbg.process++;
+		if (g_dbg.process % 600 == 1) FLog("[SLEEK-CAM] %s", CamStatus().c_str());
 		CCamera* cam = reinterpret_cast<CCamera*>(thiz);
 		float savedForce = cam->m_fCamShakeForce;
 		const uint32_t shakeStart = cam->m_uiCamShakeStart;
@@ -375,7 +387,10 @@ namespace SleekMove
 		// ---- estado da camera de ombro (modo da camera do quadro anterior) ----
 		{
 			CCam& ac = CCamera::GetActiveCamera();
-			const bool follow = ped && !aiming && mc.enabled && (ac.m_nMode == MODE_FOLLOWPED || ac.m_nMode == MODE_FOLLOW_PED_WITH_BIND);
+			// a camera de ombro vale a pe e sem mirar, em qualquer modo de camera de seguir (o modo e so registrado para diagnostico)
+			const bool onFoot = ped && !ped->IsInVehicle();
+			const bool follow = onFoot && !aiming && mc.enabled;
+			g_dbg.mode = (int)ac.m_nMode; g_dbg.ped = ped != nullptr; g_dbg.onFoot = onFoot; if (follow) g_dbg.shoulderFrames++;
 			g_cams.blend = Sleek::Approach(g_cams.blend, follow ? 1.0f : 0.0f, follow ? mc.transResp : mc.exitResp, dt);
 			g_pend.shoulder = follow;
 		}
@@ -474,6 +489,7 @@ namespace SleekMove
 			if (t.size() >= 3 && t[1] == "teste") { SetPoseTest((float)atof(t[2].c_str())); return "[SLEEK] teste de pose: tronco inclinado (0 = desliga). Se nada mexer, o hook nao esta pegando seu personagem: use /sleek pose"; }
 			return "[SLEEK-POSE] " + PoseStatus();
 		}
+		if (t[0] == "camera") return "[SLEEK-CAM] " + CamStatus();
 		if (t[0] == "ombro" && t.size() == 1) { g_cams.side = -g_cams.side; return g_cams.side > 0 ? "[SLEEK] ombro DIREITO" : "[SLEEK] ombro ESQUERDO"; }
 		if (t[0] == "zoom" && t.size() >= 2)
 		{
