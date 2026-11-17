@@ -318,6 +318,9 @@ namespace SleekMove
 		g_origDerived(cam, a, b);
 	}
 
+	void (*g_origProcess)(uintptr_t) = nullptr;
+	void Process_hook(uintptr_t thiz);   // definida depois de CameraProcess
+
 	void InstallCameraHook()
 	{
 		LoadIfNeeded();
@@ -326,6 +329,12 @@ namespace SleekMove
 		void* target = sym ? (void*)sym : (void*)(g_libGTASA + 0x4BC93C);
 		CHook::InlineHook(target, &Derived_hook, &g_origDerived);
 		FLog("[SLEEK] hook CCamera::CalculateDerivedValues @%p via %s: %s", target, sym ? "simbolo" : "endereco 0x4BC93C", g_origDerived ? "instalado" : "FALHOU - camera de ombro/tremor inativos");
+		// CCamera::Process: o hook por PLT do projeto (offset 0x6717BC, de 32 bits) NAO existe no libGTASA ARM64 (o slot real e 0x8429D8; 0x6717BC cai em .rodata),
+		// por isso o Process nunca passava pelo Sleek (log: process=0). Hook inline direto na funcao, igual ao CalculateDerivedValues.
+		const uintptr_t psym = CHook::getSymSoft("_ZN7CCamera7ProcessEv");
+		void* ptarget = psym ? (void*)psym : (void*)(g_libGTASA + 0x4BAB78);
+		CHook::InlineHook(ptarget, &Process_hook, &g_origProcess);
+		FLog("[SLEEK] hook CCamera::Process @%p via %s: %s", ptarget, psym ? "simbolo" : "endereco 0x4BAB78", g_origProcess ? "instalado" : "FALHOU");
 	}
 
 	std::string CamStatus()
@@ -407,6 +416,8 @@ namespace SleekMove
 		if (c.shakeRewrite) cam->m_fCamShakeForce = savedForce;
 		g_pend.valid = false;
 	}
+
+	void Process_hook(uintptr_t thiz) { if (g_origProcess) CameraProcess(g_origProcess, thiz); }
 
 	void ApplyStick(int16_t& lr, int16_t& ud)
 	{

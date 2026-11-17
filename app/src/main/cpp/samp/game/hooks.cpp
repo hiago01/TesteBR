@@ -2155,7 +2155,7 @@ void InstallSAMPHooks()
 	CHook::InstallPLT(g_libGTASA + 0x676034, (uintptr_t)CTxdStore__TxdStoreFindCB_hook, (uintptr_t*)&CTxdStore__TxdStoreFindCB);
 
 	// interpolate camera fix
-	CHook::InstallPLT(g_libGTASA + 0x6717BC, (uintptr_t)CCamera__Process_hook, (uintptr_t*)&CCamera__Process);
+	// CCamera::Process agora e hookeada em SleekMove::InstallCameraHook (inline, pelo simbolo). O PLT 0x6717BC era offset de 32 bits e escrevia em .rodata no ARM64.
 
 	// for surfing
 	//CHook::InstallPLT(g_libGTASA + 0x66EAE8, (uintptr_t)CWorld_ProcessAttachedEntities_Hook, (uintptr_t*)&CWorld_ProcessAttachedEntities);
