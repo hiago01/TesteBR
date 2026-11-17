@@ -67,7 +67,7 @@ namespace
 		"[Pitch]\nMovementEnvelopeResponse=3.0\nPitchResponse=7.0\nMaxAccelerationPitchDegrees=10.0\nMaxBrakingPitchDegrees=7.0\n"
 		"[FootIK]\nProbeStartHeight=0.50\nProbeDepth=0.70\nSoleOffset=0.025\nActivationDistance=0.50\nMaxFootOffset=0.50\nMaxStepUpHeight=0.45\nMaxStepDownHeight=0.28\nCorrectionDeadZone=0.006\nContactHeight=0.11\nPlantResponse=22.0\nReleaseResponse=16.0\nPositionResponse=18.0\nNormalResponse=10.0\nInfluence=1.0\nMaxHipCorrectionDegrees=35.0\nMaxKneeCorrectionDegrees=90.0\nMaxFootCorrectionDegrees=28.0\nMinimumGroundNormalZ=0.68\nFullInfluenceGroundNormalZ=0.82\n"
 		"[ModernCamera]\nOffsetX=0.45\nOffsetY=0.15\nShoulderSwapResponse=8.0\nAnchorHeightOffset=0.26\nZoomNearDistance=1.50\nZoomMiddleDistance=2.30\nZoomFarDistance=3.40\nZoomResponse=8.0\nLateralFollowResponse=31.5\nDepthFollowResponse=6.0\nApproachFollowResponse=14.0\nVerticalFollowResponse=14.0\nMaxLateralLag=0.22\nMaxApproachLag=0.12\nMaxRecedeLag=0.45\nMaxVerticalLag=0.35\nTransitionResponse=5.5\nExitTransitionResponse=9.0\nEnableCollision=1\nCollisionRadius=0.18\nCollisionPadding=0.12\nCollisionRecoveryResponse=6.0\nTeleportResetDistance=8.0\n"
-		"[Client]\n; FOV: 1.0 = valores acima; 0.5 = metade do efeito\nFovScale=1.0\nShakeGain=1.0\nShakeDurationSeconds=5.0\n; 1 = tambem gira Front/Up da camera ativa (a mira acompanha o tremor)\nAlsoRotateCamVectors=0\n"
+		"[Client]\n; 0..1 = quanto da inclinacao do tronco e desfeita nos bracos (1 = bracos nao acompanham o tronco)\nArmCounter=0.65\nTorsoPitchMaxDegrees=6.0\n; FOV: 1.0 = valores acima; 0.5 = metade do efeito\nFovScale=1.0\nShakeGain=1.0\nShakeDurationSeconds=5.0\n; 1 = tambem gira Front/Up da camera ativa (a mira acompanha o tremor)\nAlsoRotateCamVectors=0\n"
 		"; -1 inverte o lado da inclinacao do corpo / frente-tras, se ficar ao contrario no aparelho\nLeanSign=1.0\nPitchSign=1.0\n; altura do centro do ped sobre o chao (foot IK)\nPedGroundOffset=1.0\n; altura-base da ancora da camera de ombro (somada a AnchorHeightOffset)\nShoulderAnchorBase=0.55\n";
 
 	float g_anchorBase = 0.55f;
@@ -186,6 +186,7 @@ namespace
 		c.fovScale = F("Client", "FovScale", c.fovScale); c.shakeGain = F("Client", "ShakeGain", c.shakeGain); c.shakeDuration = F("Client", "ShakeDurationSeconds", c.shakeDuration);
 		g_alsoCamVectors = B("Client", "AlsoRotateCamVectors", false);
 		q.leanSign = F("Client", "LeanSign", q.leanSign); q.pitchSign = F("Client", "PitchSign", q.pitchSign); q.pedGroundOffset = F("Client", "PedGroundOffset", q.pedGroundOffset);
+		q.armCounter = Sleek::Clamp(F("Client", "ArmCounter", q.armCounter), 0.0f, 1.0f); q.torsoPitchMax = Sleek::Clamp(F("Client", "TorsoPitchMaxDegrees", q.torsoPitchMax), 0.0f, 20.0f);
 		g_anchorBase = F("Client", "ShoulderAnchorBase", g_anchorBase);
 		FLog("[SLEEK] config carregada (%s)", p.c_str());
 	}
@@ -463,6 +464,11 @@ namespace SleekMove
 			return v ? "[SLEEK] tudo LIGADO" : "[SLEEK] tudo DESLIGADO";
 		}
 		if (t[0] == "fov" && t.size() >= 2) { c.fovScale = Sleek::Clamp((float)atof(t[1].c_str()), 0.0f, 2.0f); snprintf(b, sizeof(b), "[SLEEK] escala do FOV = %.2f", c.fovScale); return b; }
+		if (t[0] == "braco" && t.size() >= 2)
+		{
+			Sleek::PoseConfig& pq = PoseCfg(); pq.armCounter = Sleek::Clamp((float)atof(t[1].c_str()), 0.0f, 1.0f);
+			snprintf(b, sizeof(b), "[SLEEK] bracos: compensacao do tronco = %.2f (0 = acompanham o tronco, 1 = ficam como na animacao)", pq.armCounter); return b;
+		}
 		if (t[0] == "pose")
 		{
 			if (t.size() >= 3 && t[1] == "teste") { SetPoseTest((float)atof(t[2].c_str())); return "[SLEEK] teste de pose: tronco inclinado (0 = desliga). Se nada mexer, o hook nao esta pegando seu personagem: use /sleek pose"; }

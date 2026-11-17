@@ -34,8 +34,8 @@ namespace
 	RwBool (*g_orig)(RpHAnimHierarchy*) = nullptr;
 	bool g_in = false;
 
-	enum { B_PELVIS, B_SPINE, B_SPINE1, B_NECK, B_HEAD, B_LTHIGH, B_LCALF, B_LFOOT, B_RTHIGH, B_RCALF, B_RFOOT, B_COUNT };
-	constexpr int kBoneId[B_COUNT] = { BONE_PELVIS, BONE_SPINE, BONE_SPINE1, BONE_NECK, BONE_HEAD, BONE_L_THIGH, BONE_L_CALF, BONE_L_FOOT, BONE_R_THIGH, BONE_R_CALF, BONE_R_FOOT };
+	enum { B_PELVIS, B_SPINE, B_SPINE1, B_NECK, B_HEAD, B_LTHIGH, B_LCALF, B_LFOOT, B_RTHIGH, B_RCALF, B_RFOOT, B_RCLAV, B_LCLAV, B_COUNT };
+	constexpr int kBoneId[B_COUNT] = { BONE_PELVIS, BONE_SPINE, BONE_SPINE1, BONE_NECK, BONE_HEAD, BONE_L_THIGH, BONE_L_CALF, BONE_L_FOOT, BONE_R_THIGH, BONE_R_CALF, BONE_R_FOOT, BONE_R_CLAVICLE, BONE_L_CLAVICLE };
 
 	struct BoneCache
 	{
@@ -61,6 +61,7 @@ namespace
 	inline V3 ToV(const RwV3d& v) { return { v.x, v.y, v.z }; }
 	inline void SetV(RwV3d& d, const V3& s) { d.x = s.x; d.y = s.y; d.z = s.z; }
 
+	float g_accelF = 0.0f;
 	int  g_parent[128];
 	std::vector<int> g_sub[B_COUNT];
 	bool BuildTree(RpHAnimHierarchy* h);
@@ -183,7 +184,8 @@ namespace
 			if (g_havePrev)
 			{
 				angVel = std::atan2(Cross(g_prevFwd, fwd).z, Clamp(Dot(g_prevFwd, fwd), -1.0f, 1.0f)) / dt;
-				accel = Clamp((fs - g_prevFwdSpeed) / dt * 0.5f, -1.0f, 1.0f);
+				g_accelF = Approach(g_accelF, Clamp((fs - g_prevFwdSpeed) / dt * 0.5f, -1.0f, 1.0f), 6.0f, dt);   // filtra o ruido da velocidade
+				accel = g_accelF;
 			}
 			g_prevFwd = fwd; g_prevFwdSpeed = fs; g_havePrev = true;
 
@@ -208,8 +210,18 @@ namespace
 		{
 			const LeanOut& L = g_leanOut; const HeadOut& H = g_headOut;
 			if (g_testDeg != 0.0f) { RotateBone3(h, B_SPINE, fwd, right, g_testDeg * kDeg2Rad * 0.5f, 0, 0); RotateBone3(h, B_SPINE1, fwd, right, g_testDeg * kDeg2Rad * 0.5f, 0, 0); }
-			RotateBone3(h, B_SPINE,  fwd, right, L.roll * 0.4f, L.pitch * 0.4f + H.torsoPitch * 0.5f, H.torsoYaw * 0.5f);
-			RotateBone3(h, B_SPINE1, fwd, right, L.roll * 0.6f, L.pitch * 0.6f + H.torsoPitch * 0.5f, H.torsoYaw * 0.5f);
+			// pitch total do tronco limitado (acel/freio + olhar) para nao jogar tronco/bracos para tras
+			const float pMax = pc.torsoPitchMax * kDeg2Rad;
+			const float tp = Clamp(L.pitch + H.torsoPitch, -pMax, pMax);
+			const float tr = L.roll, ty = H.torsoYaw;
+			RotateBone3(h, B_SPINE,  fwd, right, tr * 0.4f, tp * 0.4f, ty * 0.5f);
+			RotateBone3(h, B_SPINE1, fwd, right, tr * 0.6f, tp * 0.6f, ty * 0.5f);
+			// bracos: a clavicula e filha da SPINE1, entao o braco (e a arma na mao) acompanhou o tronco; desfaz parte disso em torno do ombro
+			if (pc.armCounter > 0.001f)
+			{
+				const float k = -pc.armCounter;   // roll/pitch somam 0.4+0.6 = 1.0; yaw 0.5+0.5 = 1.0
+				for (int cb : { (int)B_RCLAV, (int)B_LCLAV }) RotateBone3(h, cb, fwd, right, tr * k, tp * k, ty * k);
+			}
 			RotateBone3(h, B_NECK,   fwd, right, 0.0f, H.neckPitch, H.neckYaw);
 			RotateBone3(h, B_HEAD,   fwd, right, pc.headFollow ? -pc.hfLean * L.roll : 0.0f, H.headPitch + (pc.headFollow ? -pc.hfPitch * L.pitch : 0.0f), H.headYaw);
 		}
