@@ -280,8 +280,14 @@ namespace SleekMove
 {
 	void InstallPoseHook()
 	{
-		CHook::InlineHook("RpHAnimHierarchyUpdateMatrices", &Upd_hook, &g_orig);
-		FLog("[SLEEK-POSE] hook RpHAnimHierarchyUpdateMatrices %s", g_orig ? "instalado" : "FALHOU (simbolo nao encontrado) - postura/IK inativos");
+		// NUNCA usar InlineHook("simbolo"): ele chama exit(0) se o simbolo nao existe (foi o crash "Error find RpHAnimHierarchyUpdateMatrices").
+		// 1) tenta o simbolo de forma "suave"; 2) cai no endereco que o proprio projeto ja usa para esta funcao (RW/rphanim.cpp).
+		const uintptr_t sym = CHook::getSymSoft("RpHAnimHierarchyUpdateMatrices");
+		if (sym)
+			CHook::InlineHook((void*)sym, &Upd_hook, &g_orig);
+		else
+			CHook::InlineHook(g_libGTASA, 0x255C20, &Upd_hook, &g_orig);
+		FLog("[SLEEK-POSE] hook RpHAnimHierarchyUpdateMatrices via %s: %s", sym ? "simbolo" : "endereco 0x255C20", g_orig ? "instalado" : "FALHOU - postura/IK inativos");
 	}
 	std::string PoseStatus()
 	{
