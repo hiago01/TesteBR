@@ -53,7 +53,7 @@ namespace
 	// Arquivo criado SO se nao existir (nunca sobrescrito). Chaves ausentes num arquivo antigo usam os padroes do codigo.
 	const char* kDefaultIni =
 		"; Sleek (recriacao do SleekMovement) - mesmos nomes do .ini original. Edite e use /sleek reload.\n"
-		"[Features]\nEnableLean=1\nEnablePitch=1\nEnableHeadFollow=1\nEnableFootIK=1\nEnableFootIKWhileCrouched=1\nEnableModernCamera=1\nEnableCameraShakeRewrite=1\nEnableCameraIdleShake=1\nEnableCameraRunFov=1\nEnableCameraPitchFov=1\nEnableHeadTracking=1\nEnableMomentum=1\nEnableCrouchLocomotion=1\n"
+		"; Postura (Lean/Pitch/HeadTracking/FootIK) so funciona com o arquivo vazio SAMP/sleek_pose.on (instala o hook do esqueleto).\n[Features]\nEnableLean=0\nEnablePitch=0\nEnableHeadFollow=1\nEnableFootIK=0\nEnableFootIKWhileCrouched=1\nEnableModernCamera=0\nEnableCameraShakeRewrite=1\nEnableCameraIdleShake=1\nEnableCameraRunFov=1\nEnableCameraPitchFov=1\nEnableHeadTracking=0\nEnableMomentum=1\nEnableCrouchLocomotion=1\n"
 		"[CameraShake]\nIntensity=1.25\nAmplitude=1.1\nSpeed=17.0\nRotationDegrees=4.0\nRotationSpeed=9.0\n"
 		"[CameraIdleShake]\nIntensity=3.0\nSpeed=0.30\nPitchDegrees=0.40\nYawDegrees=0.50\nRollDegrees=0.25\nSprintScale=1.5\n"
 		"[CameraFov]\nRunIncrease=15.0\nSprintIncrease=30.0\nRiseResponse=3.0\nFallResponse=3.2\nLookUpIncrease=15.0\nLookUpStartPitch=5.0\nLookUpFullPitch=45.0\nLookDownIncrease=0.0\nPitchResponse=4.5\nMaxTotalChange=45.0\nExitResponse=12.0\n"

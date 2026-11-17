@@ -280,6 +280,13 @@ namespace SleekMove
 {
 	void InstallPoseHook()
 	{
+		// OPT-IN: sem o arquivo vazio SAMP/sleek_pose.on o hook NAO e instalado (o jogo roda exatamente como antes).
+		{
+			const std::string mk = g_pszStorage ? std::string(g_pszStorage) + "SAMP/sleek_pose.on" : std::string();
+			FILE* f = mk.empty() ? nullptr : fopen(mk.c_str(), "rb");
+			if (!f) { FLog("[SLEEK-POSE] desativado (crie SAMP/sleek_pose.on para instalar o hook de postura/IK)"); return; }
+			fclose(f);
+		}
 		// NUNCA usar InlineHook("simbolo"): ele chama exit(0) se o simbolo nao existe (foi o crash "Error find RpHAnimHierarchyUpdateMatrices").
 		// 1) tenta o simbolo de forma "suave"; 2) cai no endereco que o proprio projeto ja usa para esta funcao (RW/rphanim.cpp).
 		const uintptr_t sym = CHook::getSymSoft("RpHAnimHierarchyUpdateMatrices");

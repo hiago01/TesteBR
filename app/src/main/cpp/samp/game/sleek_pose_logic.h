@@ -13,7 +13,7 @@ namespace Sleek
 	// --------------------------------------------------------------------------- config
 	struct PoseConfig
 	{
-		bool lean = true, pitch = true, headTracking = true, headFollow = true, footIK = true, footIKCrouched = true;
+		bool lean = false, pitch = false, headTracking = false, headFollow = true, footIK = false, footIKCrouched = true;   // desligados por padrao (opt-in)
 		// [Lean]
 		float maxLean = 10.0f, leanIn = 5.5f, leanOut = 5.0f, inputContribution = 0.30f, turnContribution = 0.40f, angVelContribution = 1.00f;
 		float fullTurnAngle = 42.0f, fullTiltTurnSpeed = 120.0f;
@@ -191,7 +191,7 @@ namespace Sleek
 	// --------------------------------------------------------------------------- camera de ombro
 	struct CamConfig
 	{
-		bool enabled = true;
+		bool enabled = false;               // desligado por padrao (opt-in: /sleek ombro on)
 		float offsetX = 0.45f, offsetY = 0.15f, swapResp = 8.0f, anchorHeight = 0.26f;
 		float zoomNear = 1.50f, zoomMid = 2.30f, zoomFar = 3.40f, zoomResp = 8.0f;
 		float lateralResp = 31.5f, depthResp = 6.0f, approachResp = 14.0f, verticalResp = 14.0f;
