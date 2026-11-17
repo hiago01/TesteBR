@@ -34,7 +34,7 @@ namespace Sleek
 		float plantResp = 22.0f, releaseResp = 16.0f, posResp = 18.0f, normalResp = 10.0f, influence = 1.0f;
 		float maxHipDeg = 35.0f, maxKneeDeg = 90.0f, maxFootDeg = 28.0f, minNormalZ = 0.68f, fullNormalZ = 0.82f;
 		float pedGroundOffset = 1.0f;        // extra: altura do centro do ped sobre o chao (padrao do GTA = 1.0)
-		float armCounter = 0.65f;            // extra: 0..1 - quanto da inclinacao do tronco e DESFEITA nos bracos (clavicula+braco+arma), p/ nao ficarem para tras
+		float armCounter = 0.0f;             // extra: 0..1 - quanto da inclinacao do tronco e DESFEITA nos bracos (clavicula+braco+arma), p/ nao ficarem para tras
 		float torsoPitchMax = 6.0f;          // extra: limite (graus) do pitch total aplicado no tronco
 	};
 

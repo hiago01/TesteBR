@@ -81,16 +81,18 @@ namespace
 		// ossos: procura pelo nodeID direto no vetor (sem depender de funcoes do RW nem de RwFrame)
 		for (int b = 0; b < B_COUNT; b++)
 			for (int i = 0; i < n; i++) if (h->pNodeInfo[i].nodeID == kBoneId[b]) { g_bc.idx[b] = i; break; }
-		// pais pelas flags push/pop do proprio HAnim (0x2 = push, 0x1 = pop)
+		// pais pelas flags push/pop do proprio HAnim. Semantica conferida contra o skin.dff real (32 nos) e o log do aparelho:
+		// o no usa 'cur' como pai; PUSH guarda o PAI do no; depois 'cur' = este no; POP (depois do no) volta 'cur' ao ultimo guardado.
+		// (flags 3 = push+pop no mesmo no, p.ex. mandibula/sobrancelhas: irmaos que voltam ao mesmo pai.)
 		{
 			std::vector<int> st; int cur = -1;
 			for (int i = 0; i < n; i++)
 			{
 				g_parent[i] = cur;
 				const int fl = h->pNodeInfo[i].flags;
-				if (fl & rpHANIMPUSHPARENTMATRIX) st.push_back(i);
+				if (fl & rpHANIMPUSHPARENTMATRIX) st.push_back(cur);
+				cur = i;
 				if (fl & rpHANIMPOPPARENTMATRIX) { cur = st.empty() ? -1 : st.back(); if (!st.empty()) st.pop_back(); }
-				else cur = i;
 			}
 		}
 		g_bc.usable = g_bc.idx[B_SPINE] >= 0 && g_bc.idx[B_HEAD] >= 0;
@@ -123,9 +125,15 @@ namespace
 			if (g_bc.idx[b] < 0) continue;
 			for (int i = g_bc.idx[b]; i < n; i++)
 			{
-				int a = i; bool in = false;
-				for (int guard = 0; a >= 0 && guard < 64; guard++) { if (a == g_bc.idx[b]) { in = true; break; } a = g_parent[a]; }
-				if (in) g_sub[b].push_back(i);
+				int a = i; bool in = false, viaArm = false;
+				for (int guard = 0; a >= 0 && guard < 64; guard++)
+				{
+					if (a == g_bc.idx[b]) { in = true; break; }
+					if (a == g_bc.idx[B_RCLAV] || a == g_bc.idx[B_LCLAV]) viaArm = true;
+					a = g_parent[a];
+				}
+				// no SA as claviculas sao filhas do PESCOCO: girar pescoco/cabeca nao pode arrastar os bracos
+				if (in && !(viaArm && (b == B_NECK || b == B_HEAD))) g_sub[b].push_back(i);
 			}
 		}
 		return true;
