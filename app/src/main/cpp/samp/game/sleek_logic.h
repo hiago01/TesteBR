@@ -36,7 +36,7 @@ namespace Sleek
 		// [Features]
 		bool modernCamera = true;            // (nao portado: camera de ombro - ver README)
 		bool shakeRewrite = true;
-		bool idleShake    = true;
+		bool idleShake    = false;   // padrao: tremor ocioso DESLIGADO
 		bool runFov       = true;
 		bool pitchFov     = true;
 		bool momentum     = true;

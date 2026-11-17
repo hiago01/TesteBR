@@ -54,7 +54,7 @@ namespace
 	// Arquivo criado SO se nao existir (nunca sobrescrito). Chaves ausentes num arquivo antigo usam os padroes do codigo.
 	const char* kDefaultIni =
 		"; Sleek (recriacao do SleekMovement) - mesmos nomes do .ini original. Edite e use /sleek reload.\n"
-		"; Postura (Lean/Pitch/HeadTracking/FootIK) so funciona com o arquivo vazio SAMP/sleek_pose.on (instala o hook do esqueleto).\n[Features]\nEnableLean=1\nEnablePitch=1\nEnableHeadFollow=1\nEnableFootIK=1\nEnableFootIKWhileCrouched=1\nEnableModernCamera=1\nEnableCameraShakeRewrite=1\nEnableCameraIdleShake=1\nEnableCameraRunFov=1\nEnableCameraPitchFov=1\nEnableHeadTracking=1\nEnableMomentum=1\nEnableCrouchLocomotion=1\n"
+		"; Postura (Lean/Pitch/HeadTracking/FootIK) so funciona com o arquivo vazio SAMP/sleek_pose.on (instala o hook do esqueleto).\n[Features]\nEnableLean=1\nEnablePitch=1\nEnableHeadFollow=1\nEnableFootIK=1\nEnableFootIKWhileCrouched=1\nEnableModernCamera=1\nEnableCameraShakeRewrite=1\nEnableCameraIdleShake=0\nEnableCameraRunFov=1\nEnableCameraPitchFov=1\nEnableHeadTracking=1\nEnableMomentum=1\nEnableCrouchLocomotion=1\n"
 		"[CameraShake]\nIntensity=1.25\nAmplitude=1.1\nSpeed=17.0\nRotationDegrees=4.0\nRotationSpeed=9.0\n"
 		"[CameraIdleShake]\nIntensity=3.0\nSpeed=0.30\nPitchDegrees=0.40\nYawDegrees=0.50\nRollDegrees=0.25\nSprintScale=1.5\n"
 		"[CameraFov]\nRunIncrease=15.0\nSprintIncrease=30.0\nRiseResponse=3.0\nFallResponse=3.2\nLookUpIncrease=15.0\nLookUpStartPitch=5.0\nLookUpFullPitch=45.0\nLookDownIncrease=0.0\nPitchResponse=4.5\nMaxTotalChange=45.0\nExitResponse=12.0\n"
@@ -67,7 +67,7 @@ namespace
 		"[Pitch]\nMovementEnvelopeResponse=3.0\nPitchResponse=7.0\nMaxAccelerationPitchDegrees=10.0\nMaxBrakingPitchDegrees=7.0\n"
 		"[FootIK]\nProbeStartHeight=0.50\nProbeDepth=0.70\nSoleOffset=0.025\nActivationDistance=0.50\nMaxFootOffset=0.50\nMaxStepUpHeight=0.45\nMaxStepDownHeight=0.28\nCorrectionDeadZone=0.006\nContactHeight=0.11\nPlantResponse=22.0\nReleaseResponse=16.0\nPositionResponse=18.0\nNormalResponse=10.0\nInfluence=1.0\nMaxHipCorrectionDegrees=35.0\nMaxKneeCorrectionDegrees=90.0\nMaxFootCorrectionDegrees=28.0\nMinimumGroundNormalZ=0.68\nFullInfluenceGroundNormalZ=0.82\n"
 		"[ModernCamera]\nOffsetX=0.45\nOffsetY=0.15\nShoulderSwapResponse=8.0\nAnchorHeightOffset=0.26\nZoomNearDistance=1.50\nZoomMiddleDistance=2.30\nZoomFarDistance=3.40\nZoomResponse=8.0\nLateralFollowResponse=31.5\nDepthFollowResponse=6.0\nApproachFollowResponse=14.0\nVerticalFollowResponse=14.0\nMaxLateralLag=0.22\nMaxApproachLag=0.12\nMaxRecedeLag=0.45\nMaxVerticalLag=0.35\nTransitionResponse=5.5\nExitTransitionResponse=9.0\nEnableCollision=1\nCollisionRadius=0.18\nCollisionPadding=0.12\nCollisionRecoveryResponse=6.0\nTeleportResetDistance=8.0\n"
-		"[Client]\n; 0..1 = quanto da inclinacao do tronco e desfeita nos bracos (1 = bracos nao acompanham o tronco)\nArmCounter=0.0\nTorsoPitchMaxDegrees=6.0\n; FOV: 1.0 = valores acima; 0.5 = metade do efeito\nFovScale=1.0\nShakeGain=1.0\nShakeDurationSeconds=5.0\n; 1 = tambem gira Front/Up da camera ativa (a mira acompanha o tremor)\nAlsoRotateCamVectors=0\n"
+		"[Client]\n; IniRev=2: tremor ocioso (idle) desligado por padrao. Para ligar: EnableCameraIdleShake=1 (ou /sleek ocioso on)\nIniRev=2\n; 0..1 = quanto da inclinacao do tronco e desfeita nos bracos (1 = bracos nao acompanham o tronco)\nArmCounter=0.0\nTorsoPitchMaxDegrees=6.0\n; FOV: 1.0 = valores acima; 0.5 = metade do efeito\nFovScale=1.0\nShakeGain=1.0\nShakeDurationSeconds=5.0\n; 1 = tambem gira Front/Up da camera ativa (a mira acompanha o tremor)\nAlsoRotateCamVectors=0\n"
 		"; -1 inverte o lado da inclinacao do corpo / frente-tras, se ficar ao contrario no aparelho\nLeanSign=1.0\nPitchSign=1.0\n; altura do centro do ped sobre o chao (foot IK)\nPedGroundOffset=1.0\n; altura-base da ancora da camera de ombro (somada a AnchorHeightOffset)\nShoulderAnchorBase=0.55\n";
 
 	float g_anchorBase = 0.55f;
@@ -96,6 +96,8 @@ namespace
 		Sleek::Config& c = g_cfg; Sleek::PoseConfig& q = g_pose; Sleek::CamConfig& m = g_camc;
 		c.shakeRewrite = B("Features", "EnableCameraShakeRewrite", c.shakeRewrite);
 		c.idleShake    = B("Features", "EnableCameraIdleShake", c.idleShake);
+		// INI antigo (sem IniRev>=2) foi gerado com o tremor ocioso ligado: o padrao agora e DESLIGADO
+		if (F("Client", "IniRev", 1.0f) < 2.0f) c.idleShake = false;
 		c.runFov       = B("Features", "EnableCameraRunFov", c.runFov);
 		c.pitchFov     = B("Features", "EnableCameraPitchFov", c.pitchFov);
 		c.momentum     = B("Features", "EnableMomentum", c.momentum);
