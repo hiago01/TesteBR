@@ -4066,6 +4066,7 @@ CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
 
     CHook::InlineHook("_ZN5CDraw6SetFOVEfb", &CDraw__SetFOV_hook, &CDraw__SetFOV);
     SleekMove::InstallPoseHook();   // postura do corpo + foot IK (game/sleek_pose.cpp)
+    SleekMove::InstallCameraHook(); // camera de ombro + tremor (game/sleek.cpp)
 
     CHook::InlineHook("_ZN10CStreaming5Init2Ev", &CStreaming__Init2_hook, &CStreaming__Init2);
 

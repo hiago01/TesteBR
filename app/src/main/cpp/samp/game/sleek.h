@@ -25,6 +25,8 @@ namespace SleekMove
 
 	// Hook de postura/foot IK (RpHAnimHierarchyUpdateMatrices): chamar 1x em InjectHooks.
 	void InstallPoseHook();
+	// Hook de CCamera::CalculateDerivedValues (onde a camera de ombro/tremor sao aplicados): chamar 1x em InjectHooks.
+	void InstallCameraHook();
 
 	// "/sleek ..." -> texto de resposta
 	std::string Command(const std::string& args);

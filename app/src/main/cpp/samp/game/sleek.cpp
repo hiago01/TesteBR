@@ -4,6 +4,7 @@
 #include "sleek.h"
 #include "sleek_logic.h"
 #include "sleek_priv.h"
+#include "../vendor/armhook/patch.h"
 #include "camstick.h"
 #include "pad.h"
 #include "Camera.h"
@@ -53,7 +54,7 @@ namespace
 	// Arquivo criado SO se nao existir (nunca sobrescrito). Chaves ausentes num arquivo antigo usam os padroes do codigo.
 	const char* kDefaultIni =
 		"; Sleek (recriacao do SleekMovement) - mesmos nomes do .ini original. Edite e use /sleek reload.\n"
-		"; Postura (Lean/Pitch/HeadTracking/FootIK) so funciona com o arquivo vazio SAMP/sleek_pose.on (instala o hook do esqueleto).\n[Features]\nEnableLean=1\nEnablePitch=1\nEnableHeadFollow=1\nEnableFootIK=1\nEnableFootIKWhileCrouched=1\nEnableModernCamera=0\nEnableCameraShakeRewrite=1\nEnableCameraIdleShake=1\nEnableCameraRunFov=1\nEnableCameraPitchFov=1\nEnableHeadTracking=1\nEnableMomentum=1\nEnableCrouchLocomotion=1\n"
+		"; Postura (Lean/Pitch/HeadTracking/FootIK) so funciona com o arquivo vazio SAMP/sleek_pose.on (instala o hook do esqueleto).\n[Features]\nEnableLean=1\nEnablePitch=1\nEnableHeadFollow=1\nEnableFootIK=1\nEnableFootIKWhileCrouched=1\nEnableModernCamera=1\nEnableCameraShakeRewrite=1\nEnableCameraIdleShake=1\nEnableCameraRunFov=1\nEnableCameraPitchFov=1\nEnableHeadTracking=1\nEnableMomentum=1\nEnableCrouchLocomotion=1\n"
 		"[CameraShake]\nIntensity=1.25\nAmplitude=1.1\nSpeed=17.0\nRotationDegrees=4.0\nRotationSpeed=9.0\n"
 		"[CameraIdleShake]\nIntensity=3.0\nSpeed=0.30\nPitchDegrees=0.40\nYawDegrees=0.50\nRollDegrees=0.25\nSprintScale=1.5\n"
 		"[CameraFov]\nRunIncrease=15.0\nSprintIncrease=30.0\nRiseResponse=3.0\nFallResponse=3.2\nLookUpIncrease=15.0\nLookUpStartPitch=5.0\nLookUpFullPitch=45.0\nLookDownIncrease=0.0\nPitchResponse=4.5\nMaxTotalChange=45.0\nExitResponse=12.0\n"
@@ -103,7 +104,7 @@ namespace
 		q.lean = B("Features", "EnableLean", pm); q.pitch = B("Features", "EnablePitch", pm);
 		q.headTracking = B("Features", "EnableHeadTracking", pm); q.headFollow = B("Features", "EnableHeadFollow", q.headFollow);
 		q.footIK = B("Features", "EnableFootIK", pm); q.footIKCrouched = B("Features", "EnableFootIKWhileCrouched", q.footIKCrouched);
-		m.enabled = B("Features", "EnableModernCamera", m.enabled);
+		m.enabled = B("Features", "EnableModernCamera", true);
 		c.shakeIntensity = F("CameraShake", "Intensity", c.shakeIntensity);
 		c.shakeAmplitude = F("CameraShake", "Amplitude", c.shakeAmplitude);
 		c.shakeSpeed     = F("CameraShake", "Speed", c.shakeSpeed);
@@ -247,27 +248,116 @@ namespace SleekMove
 
 	float FovDelta() { return g_fovDelta; }
 
+	// ---------------------------------------------------------------------------------------------------
+	// Camera: a CCamera::Process do jogo monta m_mCameraMatrix e DEPOIS chama CalculateDerivedValues (matriz de visao/frustum) e
+	// CopyCameraMatrixToRWCam (envia ao render) - conferido no libGTASA.so ARM64. Editar a matriz depois do Process nao chega ao render.
+	// Por isso: o Process calcula tudo ANTES (estado, FOV, tremores) e a aplicacao na matriz acontece DENTRO do hook de
+	// CalculateDerivedValues (1x por Process), logo antes de a matriz de visao ser derivada.
+	// ---------------------------------------------------------------------------------------------------
+	struct Pend { bool valid = false, applied = false, shoulder = false; float dt = 0.016f, yaw = 0, pitch = 0, roll = 0, offX = 0, offZ = 0; CPedGTA* ped = nullptr; } g_pend;
+	bool g_zoomOverride = false;
+	void (*g_origDerived)(CCamera*, bool, bool) = nullptr;
+
+	void ApplyToCameraMatrix(CCamera* cam)
+	{
+		using namespace Sleek;
+		const CamConfig& mc = g_camc;
+		CMatrix& m = cam->m_mCameraMatrix;
+		V3 r{ m.m_right.x, m.m_right.y, m.m_right.z }, f{ m.m_forward.x, m.m_forward.y, m.m_forward.z }, u{ m.m_up.x, m.m_up.y, m.m_up.z };
+		V3 pos{ m.m_pos.x, m.m_pos.y, m.m_pos.z };
+
+		// ---- camera de ombro: desloca a camera para o lado (e um pouco para cima); o personagem sai do centro da tela ----
+		if (g_pend.shoulder && g_pend.ped && g_cams.blend > 0.003f)
+		{
+			const V3 right = Norm(r, { 1, 0, 0 }), fwd = Norm(f, { 0, 1, 0 }), up = Norm(u, { 0, 0, 1 });
+			const CVector& pp = g_pend.ped->GetPosition();
+			const V3 anchor = { pp.x, pp.y, pp.z + g_anchorBase + mc.anchorHeight };
+			g_cams.sideS = Approach(g_cams.sideS, g_cams.side, mc.swapResp, g_pend.dt);
+			V3 want = pos + right * (mc.offsetX * g_cams.sideS) + up * mc.offsetY;
+			if (g_zoomOverride)   // distancia fixa (perto/medio/longe) so se pedida por /sleek zoom; senao respeita o zoom do projeto
+			{
+				g_cams.dist = Approach(g_cams.dist, g_cams.ZoomTarget(mc), mc.zoomResp, g_pend.dt);
+				want = anchor - fwd * g_cams.dist + right * (mc.offsetX * g_cams.sideS) + up * mc.offsetY;
+			}
+			if (mc.collision)
+			{
+				const V3 dir = want - anchor; const float len = Len(dir);
+				float allowed = len;
+				if (len > 0.05f)
+				{
+					const float pad = mc.colRadius + mc.colPadding;
+					const CVector o(anchor.x, anchor.y, anchor.z), tt(want.x + dir.x / len * pad, want.y + dir.y / len * pad, want.z + dir.z / len * pad);
+					CColPoint col; CEntityGTA* ent = nullptr;
+					if (CWorld::ProcessLineOfSight(&o, &tt, &col, &ent, true, true, false, true, false, false, true, false))
+					{
+						const V3 hit = { col.m_vecPoint.x, col.m_vecPoint.y, col.m_vecPoint.z };
+						allowed = Clamp(Len(hit - anchor) - pad, 0.35f, len);
+					}
+				}
+				g_cams.colDist = allowed < g_cams.colDist ? allowed : Approach(g_cams.colDist, allowed, mc.colRecovery, g_pend.dt);
+				if (g_cams.colDist < len) want = anchor + dir * (g_cams.colDist / len);
+			}
+			pos = pos + (want - pos) * g_cams.blend;
+		}
+
+		// ---- tremores ----
+		if (std::fabs(g_pend.yaw) + std::fabs(g_pend.pitch) + std::fabs(g_pend.roll) > 1e-6f)
+			RotateBasis(r, f, u, g_pend.yaw, g_pend.pitch, g_pend.roll);
+		pos = pos + r * g_pend.offX + u * g_pend.offZ;
+
+		m.m_right = CVector(r.x, r.y, r.z); m.m_forward = CVector(f.x, f.y, f.z); m.m_up = CVector(u.x, u.y, u.z);
+		m.m_pos = CVector(pos.x, pos.y, pos.z);
+	}
+
+	void Derived_hook(CCamera* cam, bool a, bool b)
+	{
+		if (g_pend.valid && !g_pend.applied && cam) { g_pend.applied = true; ApplyToCameraMatrix(cam); }
+		g_origDerived(cam, a, b);
+	}
+
+	void InstallCameraHook()
+	{
+		LoadIfNeeded();
+		// ARM64: simbolo exportado confirmado; fallback = endereco exato SEM +1 (nunca usar o overload lib+addr, que soma o bit thumb).
+		const uintptr_t sym = CHook::getSymSoft("_ZN7CCamera22CalculateDerivedValuesEbb");
+		void* target = sym ? (void*)sym : (void*)(g_libGTASA + 0x4BC93C);
+		CHook::InlineHook(target, &Derived_hook, &g_origDerived);
+		FLog("[SLEEK] hook CCamera::CalculateDerivedValues @%p via %s: %s", target, sym ? "simbolo" : "endereco 0x4BC93C", g_origDerived ? "instalado" : "FALHOU - camera de ombro/tremor inativos");
+	}
+
 	void CameraProcess(void (*orig)(uintptr_t), uintptr_t thiz)
 	{
 		LoadIfNeeded();
 		const Sleek::Config& c = g_cfg;
 		const Sleek::CamConfig& mc = g_camc;
-		if (!c.shakeRewrite && !c.idleShake && !c.runFov && !c.pitchFov && !mc.enabled) { g_fovDelta = 0.0f; orig(thiz); return; }
+		if (!g_origDerived || (!c.shakeRewrite && !c.idleShake && !c.runFov && !c.pitchFov && !mc.enabled))
+		{
+			// sem o hook de CalculateDerivedValues nao ha como aplicar camera/tremor; so o FOV (hook do SetFOV) continua
+			float dummy = 0; (void)dummy;
+			if (!g_origDerived && (c.runFov || c.pitchFov))
+			{
+				CCamera* cam0 = reinterpret_cast<CCamera*>(thiz); (void)cam0;
+				orig(thiz);
+				const float dt0 = StepDt(g_lastCam); CPedGTA* ped0 = BasicPed(); CheckTeleport(ped0);
+				Sleek::FovIn in; in.active = ped0 != nullptr && LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] == 0;
+				const float lr = (float)(int16_t)LocalPlayerKeys.wKeyLR / 128.0f, ud = (float)(int16_t)LocalPlayerKeys.wKeyUD / 128.0f;
+				in.stick = Sleek::Clamp(std::sqrt(lr * lr + ud * ud), 0.0f, 1.0f); in.sprint = LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT] != 0;
+				in.pitchDeg = std::asin(Sleek::Clamp(CCamera::GetActiveCamera().Front.z, -1.0f, 1.0f)) / Sleek::kDeg2Rad;
+				g_fovDelta = g_fov.Update(c, in, dt0);
+				return;
+			}
+			g_fovDelta = 0.0f; orig(thiz); return;
+		}
 
 		CCamera* cam = reinterpret_cast<CCamera*>(thiz);
 		float savedForce = cam->m_fCamShakeForce;
 		const uint32_t shakeStart = cam->m_uiCamShakeStart;
-		if (c.shakeRewrite) cam->m_fCamShakeForce = 0.0f;
-		orig(thiz);
-		if (c.shakeRewrite) cam->m_fCamShakeForce = savedForce;
 
 		const float dt = StepDt(g_lastCam);
 		CPedGTA* ped = BasicPed();
 		CheckTeleport(ped);
 		const bool aiming = LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] != 0;
 		const bool sprint = LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT] != 0;
-		CMatrix& m = cam->m_mCameraMatrix;
-		bool dirty = false;
 
 		// ---- FOV ----
 		{
@@ -281,77 +371,25 @@ namespace SleekMove
 			g_fovDelta = g_fov.Update(c, in, dt);
 		}
 
-		// ---- camera de ombro (so camera de seguir a pe) ----
+		// ---- estado da camera de ombro (modo da camera do quadro anterior) ----
 		{
 			CCam& ac = CCamera::GetActiveCamera();
 			const bool follow = ped && !aiming && mc.enabled && (ac.m_nMode == MODE_FOLLOWPED || ac.m_nMode == MODE_FOLLOW_PED_WITH_BIND);
 			g_cams.blend = Sleek::Approach(g_cams.blend, follow ? 1.0f : 0.0f, follow ? mc.transResp : mc.exitResp, dt);
-			if (!follow) g_cams.haveAnchor = false;
-			if (g_cams.blend > 0.003f && ped)
-			{
-				using namespace Sleek;
-				const V3 right = Norm({ m.m_right.x, m.m_right.y, m.m_right.z }, { 1, 0, 0 });
-				const V3 fwd = Norm({ m.m_forward.x, m.m_forward.y, m.m_forward.z }, { 0, 1, 0 });
-				const V3 up = Norm({ m.m_up.x, m.m_up.y, m.m_up.z }, { 0, 0, 1 });
-				const V3 cur = { m.m_pos.x, m.m_pos.y, m.m_pos.z };
-				const CVector& pp = ped->GetPosition();
-				const V3 anchorRaw = { pp.x, pp.y, pp.z + g_anchorBase + mc.anchorHeight };
-				if (g_cams.haveAnchor && Len(anchorRaw - g_cams.anchor) > mc.teleportDist) g_cams.haveAnchor = false;
-				const V3 anchor = FollowAnchor(mc, g_cams, anchorRaw, right, fwd, dt);
-				g_cams.dist = Approach(g_cams.dist, g_cams.ZoomTarget(mc), mc.zoomResp, dt);
-				g_cams.sideS = Approach(g_cams.sideS, g_cams.side, mc.swapResp, dt);
-				V3 want = anchor - fwd * g_cams.dist + right * (mc.offsetX * g_cams.sideS) + up * mc.offsetY;
-				if (mc.collision)
-				{
-					const V3 dir = want - anchor; const float len = Len(dir);
-					float allowed = len;
-					if (len > 0.05f)
-					{
-						const CVector o(anchor.x, anchor.y, anchor.z);
-						CColPoint col; CEntityGTA* ent = nullptr;
-						const CVector tt(want.x + dir.x / len * (mc.colRadius + mc.colPadding), want.y + dir.y / len * (mc.colRadius + mc.colPadding), want.z + dir.z / len * (mc.colRadius + mc.colPadding));
-						if (CWorld::ProcessLineOfSight(&o, &tt, &col, &ent, true, true, false, true, false, false, true, false))
-						{
-							const V3 hit = { col.m_vecPoint.x, col.m_vecPoint.y, col.m_vecPoint.z };
-							allowed = Clamp(Len(hit - anchor) - mc.colRadius - mc.colPadding, 0.35f, len);
-						}
-					}
-					g_cams.colDist = allowed < g_cams.colDist ? allowed : Approach(g_cams.colDist, allowed, mc.colRecovery, dt);   // encosta na hora, solta devagar
-					if (g_cams.colDist < len) want = anchor + dir * (g_cams.colDist / len);
-				}
-				const V3 fin = cur + (want - cur) * g_cams.blend;
-				m.m_pos = CVector(fin.x, fin.y, fin.z);
-				ac.Source = CVector(fin.x, fin.y, fin.z);
-				dirty = true;
-			}
+			g_pend.shoulder = follow;
 		}
 
-		// ---- tremores ----
+		// ---- tremores (calculados agora, aplicados dentro de CalculateDerivedValues) ----
 		const float strength = c.shakeRewrite ? Sleek::ShakeStrength(c, savedForce, shakeStart, CTimer::m_snTimeInMilliseconds) : 0.0f;
-		Sleek::ShakeOut sh = g_impact.Update(c, strength, dt);
-		Sleek::IdleOut id = g_idle.Update(c, ped != nullptr && !aiming, sprint, dt);
-		const float yaw = sh.yaw + id.yaw, pitch = sh.pitch + id.pitch, roll = sh.roll + id.roll;
-		if (std::fabs(yaw) + std::fabs(pitch) + std::fabs(roll) + std::fabs(sh.offX) + std::fabs(sh.offZ) >= 1e-6f)
-		{
-			Sleek::V3 r{ m.m_right.x, m.m_right.y, m.m_right.z }, f{ m.m_forward.x, m.m_forward.y, m.m_forward.z }, u{ m.m_up.x, m.m_up.y, m.m_up.z };
-			Sleek::RotateBasis(r, f, u, yaw, pitch, roll);
-			m.m_right = CVector(r.x, r.y, r.z); m.m_forward = CVector(f.x, f.y, f.z); m.m_up = CVector(u.x, u.y, u.z);
-			m.m_pos.x += r.x * sh.offX + u.x * sh.offZ; m.m_pos.y += r.y * sh.offX + u.y * sh.offZ; m.m_pos.z += r.z * sh.offX + u.z * sh.offZ;
-			dirty = true;
-			if (g_alsoCamVectors)
-			{
-				CCam& cc = CCamera::GetActiveCamera();
-				Sleek::V3 cf{ cc.Front.x, cc.Front.y, cc.Front.z }, cu{ cc.Up.x, cc.Up.y, cc.Up.z };
-				Sleek::V3 cr = Sleek::Cross(cf, cu);
-				const float l = std::sqrt(Sleek::Dot(cr, cr));
-				if (l > 1e-4f) { cr.x /= l; cr.y /= l; cr.z /= l; Sleek::RotateBasis(cr, cf, cu, yaw, pitch, roll); cc.Front = CVector(cf.x, cf.y, cf.z); cc.Up = CVector(cu.x, cu.y, cu.z); }
-			}
-		}
-		if (dirty)
-		{
-			m.UpdateRW();
-			if (cam->m_pRwCamera) RwFrameUpdateObjects(RwCameraGetFrame(cam->m_pRwCamera));
-		}
+		const Sleek::ShakeOut sh = g_impact.Update(c, strength, dt);
+		const Sleek::IdleOut id = g_idle.Update(c, ped != nullptr && !aiming, sprint, dt);
+		g_pend.yaw = sh.yaw + id.yaw; g_pend.pitch = sh.pitch + id.pitch; g_pend.roll = sh.roll + id.roll; g_pend.offX = sh.offX; g_pend.offZ = sh.offZ;
+		g_pend.dt = dt; g_pend.ped = ped; g_pend.applied = false; g_pend.valid = true;
+
+		if (c.shakeRewrite) cam->m_fCamShakeForce = 0.0f;       // o motor nao aplica o tremor dele; o nosso entra na CalculateDerivedValues
+		orig(thiz);
+		if (c.shakeRewrite) cam->m_fCamShakeForce = savedForce;
+		g_pend.valid = false;
 	}
 
 	void ApplyStick(int16_t& lr, int16_t& ud)
@@ -433,8 +471,10 @@ namespace SleekMove
 		if (t[0] == "ombro" && t.size() == 1) { g_cams.side = -g_cams.side; return g_cams.side > 0 ? "[SLEEK] ombro DIREITO" : "[SLEEK] ombro ESQUERDO"; }
 		if (t[0] == "zoom" && t.size() >= 2)
 		{
-			if (t[1] == "perto") g_cams.zoomLevel = 0; else if (t[1] == "medio") g_cams.zoomLevel = 1; else if (t[1] == "longe") g_cams.zoomLevel = 2; else return "[SLEEK] uso: /sleek zoom perto|medio|longe";
-			return "[SLEEK] zoom da camera de ombro ajustado";
+			if (t[1] == "perto") g_cams.zoomLevel = 0; else if (t[1] == "medio") g_cams.zoomLevel = 1; else if (t[1] == "longe") g_cams.zoomLevel = 2;
+			else if (t[1] == "auto") { g_zoomOverride = false; return "[SLEEK] zoom: volta a respeitar o zoom do projeto"; }
+			else return "[SLEEK] uso: /sleek zoom perto|medio|longe|auto";
+			g_zoomOverride = true; return "[SLEEK] zoom da camera de ombro fixado (use /sleek zoom auto para voltar)";
 		}
 		if (t.size() >= 2 && (t[1] == "on" || t[1] == "off"))
 		{
