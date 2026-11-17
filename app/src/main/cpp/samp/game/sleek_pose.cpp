@@ -21,6 +21,7 @@
 #include "../vendor/armhook/patch.h"
 
 #include <chrono>
+#include <string>
 #include <vector>
 #include <cmath>
 #include <cstdio>
@@ -60,51 +61,61 @@ namespace
 	inline V3 ToV(const RwV3d& v) { return { v.x, v.y, v.z }; }
 	inline void SetV(RwV3d& d, const V3& s) { d.x = s.x; d.y = s.y; d.z = s.z; }
 
+	int  g_parent[128];
+	std::vector<int> g_sub[B_COUNT];
 	bool BuildTree(RpHAnimHierarchy* h);
 	bool BuildCache(RpHAnimHierarchy* h)
 	{
 		g_bc = BoneCache(); g_bc.h = h;
-		if (!h || !h->pNodeInfo || !h->pMatrixArray || h->numNodes <= 0 || h->numNodes > 128) return false;
-		for (int b = 0; b < B_COUNT; b++)
+		for (int b = 0; b < B_COUNT; b++) { g_bc.idx[b] = -1; g_bc.par[b] = -1; }
+		if (!h || !h->pNodeInfo || !h->pMatrixArray || h->numNodes <= 0 || h->numNodes > 128) { FLog("[SLEEK-POSE] hierarquia invalida (nos=%d)", h ? h->numNodes : -1); return false; }
+		const int n = h->numNodes;
+		// log unico: IDs reais dos nos (para conferir o mapeamento dos ossos)
+		if (!g_loggedFlags)
 		{
-			g_bc.idx[b] = RpHAnimIDGetIndex(h, kBoneId[b]);
-			g_bc.par[b] = -1;
-			if (g_bc.idx[b] < 0 || g_bc.idx[b] >= h->numNodes) { g_bc.idx[b] = -1; continue; }
-			RwFrame* f = h->pNodeInfo[g_bc.idx[b]].pFrame;
-			RwFrame* pf = f ? RwFrameGetParent(f) : nullptr;
-			if (!pf) { g_bc.idx[b] = -1; continue; }
-			for (int n = 0; n < h->numNodes; n++) if (h->pNodeInfo[n].pFrame == pf) { g_bc.par[b] = n; break; }
-			if (g_bc.par[b] < 0) g_bc.idx[b] = -1;
+			std::string ids;
+			for (int i = 0; i < n; i++) { char t[24]; snprintf(t, sizeof(t), "%d%s ", h->pNodeInfo[i].nodeID, (h->pNodeInfo[i].flags & 2) ? "^" : ((h->pNodeInfo[i].flags & 1) ? "v" : "")); ids += t; }
+			FLog("[SLEEK-POSE] hierarquia: flags=0x%x nos=%d nodeIDs(^=push v=pop)= %s", h->flags, n, ids.c_str());
 		}
-		// minimo para funcionar: espinha + cabeca (as pernas sao opcionais: skins sem elas so perdem o foot IK)
+		// ossos: procura pelo nodeID direto no vetor (sem depender de funcoes do RW nem de RwFrame)
+		for (int b = 0; b < B_COUNT; b++)
+			for (int i = 0; i < n; i++) if (h->pNodeInfo[i].nodeID == kBoneId[b]) { g_bc.idx[b] = i; break; }
+		// pais pelas flags push/pop do proprio HAnim (0x2 = push, 0x1 = pop)
+		{
+			std::vector<int> st; int cur = -1;
+			for (int i = 0; i < n; i++)
+			{
+				g_parent[i] = cur;
+				const int fl = h->pNodeInfo[i].flags;
+				if (fl & rpHANIMPUSHPARENTMATRIX) st.push_back(i);
+				if (fl & rpHANIMPOPPARENTMATRIX) { cur = st.empty() ? -1 : st.back(); if (!st.empty()) st.pop_back(); }
+				else cur = i;
+			}
+		}
 		g_bc.usable = g_bc.idx[B_SPINE] >= 0 && g_bc.idx[B_HEAD] >= 0;
+		// sanidade: a cabeca precisa descender da espinha
+		if (g_bc.usable)
+		{
+			bool ok = false; int a = g_bc.idx[B_HEAD];
+			for (int guard = 0; a >= 0 && guard < 64; guard++) { if (a == g_bc.idx[B_SPINE]) { ok = true; break; } a = g_parent[a]; }
+			if (!ok) { FLog("[SLEEK-POSE] AVISO: a cabeca nao descende da espinha (push/pop inesperado) - desativado"); g_bc.usable = false; }
+		}
+		if (h->flags & rpHANIMHIERARCHYLOCALSPACEMATRICES) { FLog("[SLEEK-POSE] AVISO: espaco local (flags=0x%x) - desativado", h->flags); g_bc.usable = false; }
+		if (g_bc.usable) BuildTree(h);
 		if (!g_loggedFlags)
 		{
 			g_loggedFlags = true;
-			FLog("[SLEEK-POSE] hierarquia: flags=0x%x nos=%d spine=%d head=%d lthigh=%d rthigh=%d usable=%d", h->flags, h->numNodes, g_bc.idx[B_SPINE], g_bc.idx[B_HEAD], g_bc.idx[B_LTHIGH], g_bc.idx[B_RTHIGH], g_bc.usable ? 1 : 0);
+			FLog("[SLEEK-POSE] ossos: pelve=%d spine=%d spine1=%d neck=%d head=%d lthigh=%d lcalf=%d lfoot=%d rthigh=%d rcalf=%d rfoot=%d | usable=%d", g_bc.idx[B_PELVIS], g_bc.idx[B_SPINE], g_bc.idx[B_SPINE1], g_bc.idx[B_NECK], g_bc.idx[B_HEAD],
+				g_bc.idx[B_LTHIGH], g_bc.idx[B_LCALF], g_bc.idx[B_LFOOT], g_bc.idx[B_RTHIGH], g_bc.idx[B_RCALF], g_bc.idx[B_RFOOT], g_bc.usable ? 1 : 0);
 		}
-		// pMatrixArray precisa estar em espaco de MUNDO (flag LOCALSPACE desligada) - e o caso do ped do jogo; se nao for, desliga com aviso
-		if (h->flags & rpHANIMHIERARCHYLOCALSPACEMATRICES) { FLog("[SLEEK-POSE] AVISO: hierarquia em espaco local (flags=0x%x) - postura/IK desativados", h->flags); g_bc.usable = false; }
-		if (g_bc.usable && !BuildTree(h)) { FLog("[SLEEK-POSE] AVISO: nos sem RwFrame - postura/IK desativados"); g_bc.usable = false; }
 		return g_bc.usable;
 	}
 
 	// ---- subarvores (pelo pai de cada no, via RwFrame) ----
-	int  g_parent[128];
-	std::vector<int> g_sub[B_COUNT];
 
 	bool BuildTree(RpHAnimHierarchy* h)
 	{
 		const int n = h->numNodes;
-		for (int i = 0; i < n; i++)
-		{
-			g_parent[i] = -1;
-			RwFrame* f = h->pNodeInfo[i].pFrame;
-			if (!f) { if (i == 0) continue; return false; }
-			RwFrame* pf = RwFrameGetParent(f);
-			if (!pf) continue;
-			for (int j = 0; j < i; j++) if (h->pNodeInfo[j].pFrame == pf) { g_parent[i] = j; break; }
-		}
 		for (int b = 0; b < B_COUNT; b++)
 		{
 			g_sub[b].clear();
