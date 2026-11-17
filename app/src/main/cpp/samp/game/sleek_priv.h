@@ -12,4 +12,5 @@ namespace SleekMove
 	CPedGTA* PoseEligiblePed();          // jogador local a pe em locomocao normal (sem nado/escalada/queda/ar) ou nullptr
 	void     SetPoseFlag(const char* name, bool v, bool& handled);
 	std::string PoseStatus();
+	void SetPoseTest(float deg);
 }

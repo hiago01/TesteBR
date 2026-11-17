@@ -53,6 +53,8 @@ namespace
 	V3 g_prevFwd{ 0, 1, 0 }; float g_prevFwdSpeed = 0.0f; bool g_havePrev = false;
 	uint32_t g_epoch = 0xFFFFFFFFu;
 	bool g_loggedFlags = false;
+	uint32_t g_cCalls = 0, g_cNoPed = 0, g_cOther = 0, g_cMine = 0, g_cCacheFail = 0, g_cApplied = 0;
+	float g_testDeg = 0.0f;   // /sleek pose teste <graus>: inclina o tronco para provar que o hook funciona
 	int  g_dbgCount = 0;
 
 	inline V3 ToV(const RwV3d& v) { return { v.x, v.y, v.z }; }
@@ -142,7 +144,7 @@ namespace
 		const PoseConfig& pc = SleekMove::PoseCfg();
 		const bool aiming = LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] != 0;
 		const bool crouched = ped->bIsDucking;
-		const bool doPosture = (pc.lean || pc.pitch || pc.headTracking) && !aiming;
+		const bool doPosture = ((pc.lean || pc.pitch || pc.headTracking) && !aiming) || g_testDeg != 0.0f;
 		const bool doFoot = pc.footIK && (!crouched || pc.footIKCrouched) && g_bc.idx[B_LTHIGH] >= 0 && g_bc.idx[B_LCALF] >= 0 && g_bc.idx[B_LFOOT] >= 0 &&
 		                    g_bc.idx[B_RTHIGH] >= 0 && g_bc.idx[B_RCALF] >= 0 && g_bc.idx[B_RFOOT] >= 0 && g_bc.idx[B_PELVIS] >= 0;
 		RwBool ret = g_orig(h);                       // pose do quadro
@@ -194,6 +196,7 @@ namespace
 		if (doPosture)
 		{
 			const LeanOut& L = g_leanOut; const HeadOut& H = g_headOut;
+			if (g_testDeg != 0.0f) { RotateBone3(h, B_SPINE, fwd, right, g_testDeg * kDeg2Rad * 0.5f, 0, 0); RotateBone3(h, B_SPINE1, fwd, right, g_testDeg * kDeg2Rad * 0.5f, 0, 0); }
 			RotateBone3(h, B_SPINE,  fwd, right, L.roll * 0.4f, L.pitch * 0.4f + H.torsoPitch * 0.5f, H.torsoYaw * 0.5f);
 			RotateBone3(h, B_SPINE1, fwd, right, L.roll * 0.6f, L.pitch * 0.6f + H.torsoPitch * 0.5f, H.torsoYaw * 0.5f);
 			RotateBone3(h, B_NECK,   fwd, right, 0.0f, H.neckPitch, H.neckYaw);
@@ -243,19 +246,22 @@ namespace
 				}
 			}
 		}
+		g_cApplied++;
 		if (g_dbgCount < 3 && gate) { g_dbgCount++; FLog("[SLEEK-POSE] ok: lean roll=%.2f pitch=%.2f graus; cabeca yaw=%.2f; pelve dz=%.3f", g_leanOut.roll / kDeg2Rad, g_leanOut.pitch / kDeg2Rad, g_headOut.headYaw / kDeg2Rad, g_pelvisDz); }
 		return ret;
 	}
 
 	RwBool Upd_hook(RpHAnimHierarchy* h)
 	{
+		g_cCalls++;
 		if (g_in || !h) return g_orig(h);
 		CPedGTA* ped = SleekMove::PoseEligiblePed();
-		if (!ped || !ped->m_pRwClump) return g_orig(h);
+		if (!ped || !ped->m_pRwClump) { g_cNoPed++; return g_orig(h); }
 		RpHAnimHierarchy* mine = GetAnimHierarchyFromSkinClump(ped->m_pRwClump);
-		if (mine != h) return g_orig(h);
-		if (g_bc.h != h && !BuildCache(h)) return g_orig(h);
-		if (!g_bc.usable) return g_orig(h);
+		if (mine != h) { g_cOther++; return g_orig(h); }
+		g_cMine++;
+		if (g_bc.h != h && !BuildCache(h)) { g_cCacheFail++; return g_orig(h); }
+		if (!g_bc.usable) { g_cCacheFail++; return g_orig(h); }
 		g_in = true;
 		RwBool r = DoPose(h, ped);
 		g_in = false;
@@ -281,10 +287,11 @@ namespace SleekMove
 		CHook::InlineHook(target, &Upd_hook, &g_orig);
 		FLog("[SLEEK-POSE] hook RpHAnimHierarchyUpdateMatrices @%p via %s: %s", target, sym ? "simbolo" : "endereco 0x255C20", g_orig ? "instalado" : "FALHOU - postura/IK inativos");
 	}
+	void SetPoseTest(float deg) { g_testDeg = deg; }
 	std::string PoseStatus()
 	{
-		char b[200]; snprintf(b, sizeof(b), "hook=%s esqueleto=%s lean=%.1f/%.1f cabeca=%.1f pelve=%.3f", g_orig ? "ok" : "AUSENTE", g_bc.usable ? "ok" : "n/d",
-			g_leanOut.roll / kDeg2Rad, g_leanOut.pitch / kDeg2Rad, g_headOut.headYaw / kDeg2Rad, g_pelvisDz);
+		char b[300]; snprintf(b, sizeof(b), "hook=%s chamadas=%u semPed/inelegivel=%u outros=%u meu=%u cacheFalhou=%u aplicado=%u esqueleto=%s",
+			g_orig ? "ok" : "AUSENTE", g_cCalls, g_cNoPed, g_cOther, g_cMine, g_cCacheFail, g_cApplied, g_bc.usable ? "ok" : "n/d");
 		return b;
 	}
 }

@@ -425,6 +425,11 @@ namespace SleekMove
 			return v ? "[SLEEK] tudo LIGADO" : "[SLEEK] tudo DESLIGADO";
 		}
 		if (t[0] == "fov" && t.size() >= 2) { c.fovScale = Sleek::Clamp((float)atof(t[1].c_str()), 0.0f, 2.0f); snprintf(b, sizeof(b), "[SLEEK] escala do FOV = %.2f", c.fovScale); return b; }
+		if (t[0] == "pose")
+		{
+			if (t.size() >= 3 && t[1] == "teste") { SetPoseTest((float)atof(t[2].c_str())); return "[SLEEK] teste de pose: tronco inclinado (0 = desliga). Se nada mexer, o hook nao esta pegando seu personagem: use /sleek pose"; }
+			return "[SLEEK-POSE] " + PoseStatus();
+		}
 		if (t[0] == "ombro" && t.size() == 1) { g_cams.side = -g_cams.side; return g_cams.side > 0 ? "[SLEEK] ombro DIREITO" : "[SLEEK] ombro ESQUERDO"; }
 		if (t[0] == "zoom" && t.size() >= 2)
 		{
