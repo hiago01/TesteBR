@@ -8,11 +8,53 @@
 #include <sys/mman.h>
 #include <assert.h> // assert()
 #include <dlfcn.h> // dlopen
+#include <link.h>  // dl_iterate_phdr
 
 //uintptr_t CHook::mmap_start 	= 0;
 //uintptr_t CHook::mmap_end		= 0;
 //uintptr_t CHook::memlib_start	= 0;
 //uintptr_t CHook::memlib_end	= 0;
+
+
+// Um slot de PLT/GOT so e valido em segmento PT_LOAD gravavel e NAO executavel (.got/.data.rel.ro/.data).
+// Offsets herdados do build 32-bit caem em .text/.rodata do libGTASA ARM64: escrever ali corrompe codigo/dados
+// (e era a causa dos avisos "mprotect RWX falhou"). Fora do libGTASA nao ha como julgar: permite.
+struct SlotCheck { uintptr_t base; uintptr_t addr; bool inLib; bool ok; };
+
+static int SlotCheckCb(struct dl_phdr_info* info, size_t, void* data)
+{
+    SlotCheck* c = (SlotCheck*)data;
+    if ((uintptr_t)info->dlpi_addr != c->base) return 0;
+    for (int i = 0; i < info->dlpi_phnum; i++)
+    {
+        const ElfW(Phdr)& ph = info->dlpi_phdr[i];
+        if (ph.p_type != PT_LOAD) continue;
+        uintptr_t s = info->dlpi_addr + ph.p_vaddr;
+        uintptr_t e = s + ph.p_memsz;
+        if (c->addr >= s && c->addr + sizeof(uintptr_t) <= e)
+        {
+            c->inLib = true;
+            c->ok = (ph.p_flags & PF_W) && !(ph.p_flags & PF_X);
+            return 1;
+        }
+    }
+    return 1;
+}
+
+bool CHook::IsValidSlot(uintptr_t addr)
+{
+    if (!g_libGTASA) return true;
+    SlotCheck c = { g_libGTASA, addr, false, false };
+    // dlpi_addr do libGTASA e o load bias == g_libGTASA quando o ELF tem vaddr base 0 (caso do libGTASA)
+    dl_iterate_phdr(SlotCheckCb, &c);
+    if (!c.inLib)
+    {
+        // PT_LOAD nao encontrado (bias diferente de g_libGTASA): no libGTASA ARM64 o segmento RW comeca em +0x821958;
+        // tudo abaixo disso e codigo/rodata e nunca e slot.
+        return !(addr >= g_libGTASA && addr < g_libGTASA + 0x821000);
+    }
+    return c.ok;
+}
 
 bool CHook::UnFuck(uintptr_t addr, size_t len)
 {

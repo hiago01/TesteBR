@@ -45,6 +45,7 @@ public:
     // Libera escrita na memoria [ptr, ptr+len). Devolve false (e registra no log) se o endereco for invalido (0/pagina nula)
     // ou se o mprotect falhar; quem escreve DEVE conferir o retorno (escrever mesmo assim derruba o app dentro do memcpy).
     static bool UnFuck(uintptr_t ptr, size_t len = PAGE_SIZE);
+    static bool IsValidSlot(uintptr_t addr);
 
     static uintptr_t GetAddrBaseXDL(uintptr_t addr)
     {
@@ -189,9 +190,9 @@ public:
     template <typename Addr, typename Func, typename Orig>
     static void InstallPLT(Addr addr, Func hook_func, Orig* orig_func)
     {
-        if ((uintptr_t)addr == 0 || !UnFuck(addr))
+        if ((uintptr_t)addr == 0 || !IsValidSlot((uintptr_t)addr) || !UnFuck(addr))
         {
-            FLog("[CHook] InstallPLT ignorado em 0x%lx", (unsigned long)(uintptr_t)addr);
+            FLog("[CHook] InstallPLT ignorado em libGTASA+0x%lx (slot fora de .got/.data ou sem permissao; offset de 32 bits?)", (unsigned long)((uintptr_t)addr - g_libGTASA));
             return;   // hook nao instalado: o jogo usa a funcao original e o ponteiro orig nunca e chamado
         }
 
@@ -203,9 +204,9 @@ public:
     template <typename Addr, typename Func>
     static void InstallPLT(Addr addr, Func hook_func)
     {
-        if ((uintptr_t)addr == 0 || !UnFuck(addr))
+        if ((uintptr_t)addr == 0 || !IsValidSlot((uintptr_t)addr) || !UnFuck(addr))
         {
-            FLog("[CHook] InstallPLT ignorado em 0x%lx", (unsigned long)(uintptr_t)addr);
+            FLog("[CHook] InstallPLT ignorado em libGTASA+0x%lx (slot fora de .got/.data ou sem permissao; offset de 32 bits?)", (unsigned long)((uintptr_t)addr - g_libGTASA));
             return;
         }
         *(uintptr_t*)addr = reinterpret_cast<uintptr_t>(hook_func);
