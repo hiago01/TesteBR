@@ -1,9 +1,10 @@
 // SleekMovement (recriacao): postura do corpo (lean/pitch, head tracking, head follow) e foot IK.
-// Mecanismo: hook em RpHAnimHierarchyUpdateMatrices. So para o esqueleto do jogador LOCAL:
-//   1) salva as matrizes locais (modelling) dos ossos que vamos tocar;
-//   2) gira os ossos (a mesma tecnica do CPedIK do proprio jogo: edita os RwFrame dos ossos antes do calculo das matrizes);
-//   3) chama o original (pose pronta); 4) foot IK: sonda o chao, 2 ossos (coxa/canela) + pelve, chama o original de novo;
-//   5) restaura as matrizes locais (idempotente: nunca acumula rotacao entre chamadas/quadros).
+// Mecanismo (conferido no libGTASA.so ARM64: _Z30RpHAnimHierarchyUpdateMatricesP16RpHAnimHierarchy @ 0x255C20 converte os
+// quaternions dos keyframes em pMatrixArray; editar os RwFrame antes NAO e confiavel). Por isso, so para o esqueleto do jogador LOCAL:
+//   1) chama o original (pMatrixArray = pose do quadro, em espaco de MUNDO);
+//   2) gira o osso E TODA A SUA SUBARVORE dentro de pMatrixArray, em torno do pivo do osso (equivale a girar o osso);
+//   3) foot IK: pelve desce (subarvore inteira), coxa/canela giram, pe acompanha o chao.
+// pMatrixArray e recalculado a cada chamada do original: nada acumula, nao ha o que restaurar.
 #include "../main.h"
 #include "game.h"
 #include "util.h"
@@ -20,6 +21,7 @@
 #include "../vendor/armhook/patch.h"
 
 #include <chrono>
+#include <vector>
 #include <cmath>
 #include <cstdio>
 
@@ -41,7 +43,6 @@ namespace
 		bool usable = false;
 	} g_bc;
 
-	struct Saved { RwFrame* f = nullptr; RwMatrix m; };
 
 	// estado (atualizado ~1x por quadro)
 	Lean g_lean; HeadTrack g_head; FootState g_ft[2];
@@ -57,6 +58,7 @@ namespace
 	inline V3 ToV(const RwV3d& v) { return { v.x, v.y, v.z }; }
 	inline void SetV(RwV3d& d, const V3& s) { d.x = s.x; d.y = s.y; d.z = s.z; }
 
+	bool BuildTree(RpHAnimHierarchy* h);
 	bool BuildCache(RpHAnimHierarchy* h)
 	{
 		g_bc = BoneCache(); g_bc.h = h;
@@ -79,44 +81,72 @@ namespace
 			g_loggedFlags = true;
 			FLog("[SLEEK-POSE] hierarquia: flags=0x%x nos=%d spine=%d head=%d lthigh=%d rthigh=%d usable=%d", h->flags, h->numNodes, g_bc.idx[B_SPINE], g_bc.idx[B_HEAD], g_bc.idx[B_LTHIGH], g_bc.idx[B_RTHIGH], g_bc.usable ? 1 : 0);
 		}
-		// se o RW reescreve os frames a partir da animacao em cada chamada (flag 0x1000), editar frames nao tem efeito: desliga com aviso
-		if (h->flags & rpHANIMHIERARCHYUPDATEMODELLINGMATRICES) { FLog("[SLEEK-POSE] AVISO: hierarquia com UPDATEMODELLINGMATRICES - postura/IK desativados (editar frames nao teria efeito)"); g_bc.usable = false; }
+		// pMatrixArray precisa estar em espaco de MUNDO (flag LOCALSPACE desligada) - e o caso do ped do jogo; se nao for, desliga com aviso
+		if (h->flags & rpHANIMHIERARCHYLOCALSPACEMATRICES) { FLog("[SLEEK-POSE] AVISO: hierarquia em espaco local (flags=0x%x) - postura/IK desativados", h->flags); g_bc.usable = false; }
+		if (g_bc.usable && !BuildTree(h)) { FLog("[SLEEK-POSE] AVISO: nos sem RwFrame - postura/IK desativados"); g_bc.usable = false; }
 		return g_bc.usable;
 	}
 
-	inline RwFrame* FrameOf(RpHAnimHierarchy* h, int b) { return g_bc.idx[b] >= 0 ? h->pNodeInfo[g_bc.idx[b]].pFrame : nullptr; }
+	// ---- subarvores (pelo pai de cada no, via RwFrame) ----
+	int  g_parent[128];
+	std::vector<int> g_sub[B_COUNT];
 
-	// matriz de MUNDO de um no (pMatrixArray, ou ltm do frame se a hierarquia for em espaco local)
-	inline const RwMatrix* WorldOf(RpHAnimHierarchy* h, int node)
+	bool BuildTree(RpHAnimHierarchy* h)
 	{
-		if (h->flags & rpHANIMHIERARCHYLOCALSPACEMATRICES) { RwFrame* f = h->pNodeInfo[node].pFrame; return f ? &f->ltm : &h->pMatrixArray[node]; }
-		return &h->pMatrixArray[node];
+		const int n = h->numNodes;
+		for (int i = 0; i < n; i++)
+		{
+			g_parent[i] = -1;
+			RwFrame* f = h->pNodeInfo[i].pFrame;
+			if (!f) { if (i == 0) continue; return false; }
+			RwFrame* pf = RwFrameGetParent(f);
+			if (!pf) continue;
+			for (int j = 0; j < i; j++) if (h->pNodeInfo[j].pFrame == pf) { g_parent[i] = j; break; }
+		}
+		for (int b = 0; b < B_COUNT; b++)
+		{
+			g_sub[b].clear();
+			if (g_bc.idx[b] < 0) continue;
+			for (int i = g_bc.idx[b]; i < n; i++)
+			{
+				int a = i; bool in = false;
+				for (int guard = 0; a >= 0 && guard < 64; guard++) { if (a == g_bc.idx[b]) { in = true; break; } a = g_parent[a]; }
+				if (in) g_sub[b].push_back(i);
+			}
+		}
+		return true;
 	}
-	inline Basis BasisOf(const RwMatrix* m) { Basis b; b.r = Norm(ToV(m->right), { 1, 0, 0 }); b.u = Norm(ToV(m->up), { 0, 1, 0 }); b.a = Norm(ToV(m->at), { 0, 0, 1 }); return b; }
-	inline Basis ParentBasis(RpHAnimHierarchy* h, int b) { return BasisOf(WorldOf(h, g_bc.par[b])); }
 
-	// aplica rotacoes de MUNDO (eixos ped) no osso b em torno do proprio pivo
-	void RotateBone(RpHAnimHierarchy* h, int b, const Basis& parent, const V3& axisFwd, const V3& axisRight, float roll, float pitch, float yaw)
+	// gira o osso b (e tudo abaixo dele) em torno do pivo (posicao do osso), eixo de MUNDO
+	void RotateSub(RpHAnimHierarchy* h, int b, const V3& axis, float ang)
 	{
-		RwFrame* f = FrameOf(h, b); if (!f) return;
-		V3 r = ToV(f->modelling.right), u = ToV(f->modelling.up), a = ToV(f->modelling.at);
-		if (std::fabs(roll)  > 1e-5f) RotateLocalByWorld(r, u, a, parent, axisFwd, roll);
-		if (std::fabs(pitch) > 1e-5f) RotateLocalByWorld(r, u, a, parent, axisRight, pitch);
-		if (std::fabs(yaw)   > 1e-5f) RotateLocalByWorld(r, u, a, parent, V3{ 0, 0, 1 }, yaw);
-		SetV(f->modelling.right, r); SetV(f->modelling.up, u); SetV(f->modelling.at, a);
-		RwMatrixUpdate(&f->modelling);
+		if (g_bc.idx[b] < 0 || std::fabs(ang) < 1e-5f) return;
+		const V3 P = ToV(h->pMatrixArray[g_bc.idx[b]].pos);
+		for (int n : g_sub[b])
+		{
+			RwMatrix& m = h->pMatrixArray[n];
+			SetV(m.pos, P + Rot(ToV(m.pos) - P, axis, ang));
+			SetV(m.right, Rot(ToV(m.right), axis, ang));
+			SetV(m.up,    Rot(ToV(m.up),    axis, ang));
+			SetV(m.at,    Rot(ToV(m.at),    axis, ang));
+		}
 	}
+	void RotateBone3(RpHAnimHierarchy* h, int b, const V3& fwd, const V3& right, float roll, float pitch, float yaw)
+	{
+		RotateSub(h, b, fwd, roll); RotateSub(h, b, right, pitch); RotateSub(h, b, V3{ 0, 0, 1 }, yaw);
+	}
+	inline V3 BonePos(RpHAnimHierarchy* h, int b) { return ToV(h->pMatrixArray[g_bc.idx[b]].pos); }
 
 	RwBool DoPose(RpHAnimHierarchy* h, CPedGTA* ped)
 	{
 		const PoseConfig& pc = SleekMove::PoseCfg();
-		const Config& cc = SleekMove::Cfg();
 		const bool aiming = LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] != 0;
 		const bool crouched = ped->bIsDucking;
 		const bool doPosture = (pc.lean || pc.pitch || pc.headTracking) && !aiming;
 		const bool doFoot = pc.footIK && (!crouched || pc.footIKCrouched) && g_bc.idx[B_LTHIGH] >= 0 && g_bc.idx[B_LCALF] >= 0 && g_bc.idx[B_LFOOT] >= 0 &&
 		                    g_bc.idx[B_RTHIGH] >= 0 && g_bc.idx[B_RCALF] >= 0 && g_bc.idx[B_RFOOT] >= 0 && g_bc.idx[B_PELVIS] >= 0;
-		if (!doPosture && !doFoot) return g_orig(h);
+		RwBool ret = g_orig(h);                       // pose do quadro
+		if (!doPosture && !doFoot) return ret;
 
 		// ---- estado: ~1x por quadro ----
 		const auto now = Clock::now();
@@ -127,7 +157,6 @@ namespace
 		if (since > 0.25f) { g_lean.Reset(); g_head.Reset(); g_havePrev = false; since = 0.016f; }
 		const float dt = Clamp(since, 0.0005f, 0.05f);
 
-		// base do corpo no mundo
 		V3 fwd = { 0, 1, 0 };
 		if (ped->m_matrix) fwd = Norm({ ped->m_matrix->m_forward.x, ped->m_matrix->m_forward.y, 0 }, { 0, 1, 0 });
 		const V3 right = Norm(Cross(fwd, V3{ 0, 0, 1 }), { 1, 0, 0 });
@@ -149,7 +178,8 @@ namespace
 			li.fwdSpeed = fs; li.rightSpeed = rs; li.angVel = angVel; li.accel = accel;
 			li.inputRight = Clamp((float)(int16_t)LocalPlayerKeys.wKeyLR / 128.0f, -1.0f, 1.0f);
 			g_leanOut = g_lean.Update(pc, li, dt);
-			if (!pc.lean) g_leanOut.roll = 0; if (!pc.pitch) g_leanOut.pitch = 0;
+			if (!pc.lean) g_leanOut.roll = 0;
+			if (!pc.pitch) g_leanOut.pitch = 0;
 
 			HeadIn hi; hi.active = doPosture && pc.headTracking;
 			hi.moving = (std::fabs(fs) + std::fabs(rs)) > 0.1f;
@@ -159,104 +189,61 @@ namespace
 			hi.pitch = std::asin(Clamp(cf.z, -1.0f, 1.0f));
 			g_headOut = g_head.Update(pc, hi, dt);
 		}
-		(void)cc;
 
-		// ---- salva e aplica postura ----
-		Saved sv[B_COUNT];
-		auto save = [&](int b) { RwFrame* f = FrameOf(h, b); if (f && !sv[b].f) { sv[b].f = f; sv[b].m = f->modelling; } };
+		// ---- postura: raiz -> folhas (cada giro ja carrega os ossos abaixo) ----
 		if (doPosture)
 		{
 			const LeanOut& L = g_leanOut; const HeadOut& H = g_headOut;
-			struct Part { int b; float roll, pitch, yaw; };
-			const Part parts[] = {
-				{ B_SPINE,  L.roll * 0.4f, L.pitch * 0.4f, H.torsoYaw * 0.5f },
-				{ B_SPINE1, L.roll * 0.6f, L.pitch * 0.6f, H.torsoYaw * 0.5f },
-				{ B_NECK,   0.0f,          0.0f,           H.neckYaw },
-				{ B_HEAD,   pc.headFollow ? -pc.hfLean * L.roll : 0.0f, pc.headFollow ? -pc.hfPitch * L.pitch : 0.0f, H.headYaw },
-			};
-			// pitch do tronco = lean (+ cabeca/pescoco acrescentam o olhar para cima/baixo)
-			float extraPitch[B_COUNT] = {};
-			extraPitch[B_SPINE] = H.torsoPitch * 0.5f; extraPitch[B_SPINE1] = H.torsoPitch * 0.5f; extraPitch[B_NECK] = H.neckPitch; extraPitch[B_HEAD] = H.headPitch;
-			for (const Part& p : parts)
-			{
-				if (g_bc.idx[p.b] < 0) continue;
-				save(p.b);
-				RotateBone(h, p.b, ParentBasis(h, p.b), fwd, right, p.roll, p.pitch + extraPitch[p.b], p.yaw);
-			}
+			RotateBone3(h, B_SPINE,  fwd, right, L.roll * 0.4f, L.pitch * 0.4f + H.torsoPitch * 0.5f, H.torsoYaw * 0.5f);
+			RotateBone3(h, B_SPINE1, fwd, right, L.roll * 0.6f, L.pitch * 0.6f + H.torsoPitch * 0.5f, H.torsoYaw * 0.5f);
+			RotateBone3(h, B_NECK,   fwd, right, 0.0f, H.neckPitch, H.neckYaw);
+			RotateBone3(h, B_HEAD,   fwd, right, pc.headFollow ? -pc.hfLean * L.roll : 0.0f, H.headPitch + (pc.headFollow ? -pc.hfPitch * L.pitch : 0.0f), H.headYaw);
 		}
-		RwBool ret = g_orig(h);
 
-		// ---- foot IK (segunda passada) ----
+		// ---- foot IK ----
 		if (doFoot)
 		{
 			const int T[2] = { B_LTHIGH, B_RTHIGH }, K[2] = { B_LCALF, B_RCALF }, Ft[2] = { B_LFOOT, B_RFOOT };
-			V3 tp[2], kp[2], fp[2];
-			for (int s = 0; s < 2; s++) { tp[s] = ToV(WorldOf(h, g_bc.idx[T[s]])->pos); kp[s] = ToV(WorldOf(h, g_bc.idx[K[s]])->pos); fp[s] = ToV(WorldOf(h, g_bc.idx[Ft[s]])->pos); }
 			if (gate)
 			{
 				const float pedZ = ped->GetPosition().z;
-				for (int s = 0; s < 2; s++)
+				for (int sd = 0; sd < 2; sd++)
 				{
+					const V3 fp = BonePos(h, Ft[sd]);
 					FootProbe pr;
-					const CVector o(fp[s].x, fp[s].y, fp[s].z + pc.probeStart), t(fp[s].x, fp[s].y, fp[s].z + pc.probeStart - pc.probeDepth - pc.probeStart);
+					const CVector o(fp.x, fp.y, fp.z + pc.probeStart), t(fp.x, fp.y, fp.z - pc.probeDepth);
 					CColPoint col; CEntityGTA* ent = nullptr;
 					if (CWorld::ProcessLineOfSight(&o, &t, &col, &ent, true, true, false, true, false, false, false, false))
 					{ pr.hit = true; pr.groundZ = col.m_vecPoint.z; pr.normal = { col.m_vecNormal.x, col.m_vecNormal.y, col.m_vecNormal.z }; }
-					FootSmooth(pc, g_ft[s], FootRaw(pc, pr, fp[s].z, pedZ), dt);
+					FootSmooth(pc, g_ft[sd], FootRaw(pc, pr, fp.z, pedZ), dt);
 				}
 				g_pelvisDz = Approach(g_pelvisDz, std::min(0.0f, std::min(g_ft[0].dz, g_ft[1].dz)), pc.posResp, dt);
 			}
-			bool any = std::fabs(g_pelvisDz) > 1e-3f;
-			for (int s = 0; s < 2; s++) any = any || std::fabs(g_ft[s].dz) > 1e-3f || (g_ft[s].weight > 0.05f && g_ft[s].nz < 0.999f);
-			if (any)
+			// pelve (e tudo abaixo: pernas incluidas) desce para o pe mais baixo alcancar o chao
+			if (std::fabs(g_pelvisDz) > 1e-4f)
+				for (int n : g_sub[B_PELVIS]) h->pMatrixArray[n].pos.z += g_pelvisDz;
+			for (int sd = 0; sd < 2; sd++)
 			{
-				for (int b : { B_PELVIS, B_LTHIGH, B_LCALF, B_LFOOT, B_RTHIGH, B_RCALF, B_RFOOT }) save(b);
-				// pelve desce para o pe mais baixo alcancar o chao
-				if (std::fabs(g_pelvisDz) > 1e-4f)
+				const FootState& fs = g_ft[sd];
+				const V3 Tp = BonePos(h, T[sd]), Kp = BonePos(h, K[sd]), Fp = BonePos(h, Ft[sd]);
+				const V3 footWorldTarget = Fp + V3{ 0, 0, fs.dz - g_pelvisDz };      // o pe ja desceu junto com a pelve
+				if (Len(footWorldTarget - Fp) > 1e-3f)
 				{
-					RwFrame* pf = FrameOf(h, B_PELVIS);
-					const V3 d = WorldDeltaToLocal(ParentBasis(h, B_PELVIS), { 0, 0, g_pelvisDz });
-					pf->modelling.pos.x += d.x; pf->modelling.pos.y += d.y; pf->modelling.pos.z += d.z;
-					RwMatrixUpdate(&pf->modelling);
+					const V3 Kn = TwoBoneKnee(Tp, Kp, Fp, footWorldTarget);
+					V3 ax1; float an1; Arc(Kp - Tp, Kn - Tp, ax1, an1);
+					RotateSub(h, T[sd], ax1, LimitAngle(an1, pc.maxHipDeg));               // coxa (carrega canela e pe)
+					const V3 K2 = BonePos(h, K[sd]), F2 = BonePos(h, Ft[sd]);
+					V3 ax2; float an2; Arc(F2 - K2, footWorldTarget - K2, ax2, an2);
+					RotateSub(h, K[sd], ax2, LimitAngle(an2, pc.maxKneeDeg));              // canela (carrega o pe)
 				}
-				for (int s = 0; s < 2; s++)
+				if (fs.weight > 0.05f)
 				{
-					const FootState& fs = g_ft[s];
-					const V3 off = { 0, 0, g_pelvisDz };
-					const V3 T0 = tp[s] + off, K0 = kp[s] + off, F0 = fp[s] + off;
-					const V3 target = fp[s] + V3{ 0, 0, fs.dz };
-					Basis thighP = ParentBasis(h, T[s]);
-					Basis calfP = BasisOf(WorldOf(h, g_bc.idx[T[s]])), footP = BasisOf(WorldOf(h, g_bc.idx[K[s]]));
-					if (Len(target - F0) > 1e-3f)
-					{
-						const V3 Kn = TwoBoneKnee(T0, K0, F0, target);
-						V3 ax1; float an1; Arc(K0 - T0, Kn - T0, ax1, an1); an1 = LimitAngle(an1, pc.maxHipDeg);
-						{ RwFrame* f = FrameOf(h, T[s]); V3 r = ToV(f->modelling.right), u = ToV(f->modelling.up), a = ToV(f->modelling.at); RotateLocalByWorld(r, u, a, thighP, ax1, an1); SetV(f->modelling.right, r); SetV(f->modelling.up, u); SetV(f->modelling.at, a); RwMatrixUpdate(&f->modelling); }
-						// base da canela e do pe depois da rotacao da coxa
-						auto rotB = [&](Basis& b) { b.r = Rot(b.r, ax1, an1); b.u = Rot(b.u, ax1, an1); b.a = Rot(b.a, ax1, an1); };
-						rotB(calfP); rotB(footP);
-						const V3 F1 = T0 + Rot(F0 - T0, ax1, an1);
-						V3 ax2; float an2; Arc(F1 - Kn, target - Kn, ax2, an2); an2 = LimitAngle(an2, pc.maxKneeDeg);
-						{ RwFrame* f = FrameOf(h, K[s]); V3 r = ToV(f->modelling.right), u = ToV(f->modelling.up), a = ToV(f->modelling.at); RotateLocalByWorld(r, u, a, calfP, ax2, an2); SetV(f->modelling.right, r); SetV(f->modelling.up, u); SetV(f->modelling.at, a); RwMatrixUpdate(&f->modelling); }
-						auto rotB2 = [&](Basis& b) { b.r = Rot(b.r, ax2, an2); b.u = Rot(b.u, ax2, an2); b.a = Rot(b.a, ax2, an2); };
-						rotB2(footP);
-					}
-					// pe acompanha a inclinacao do chao
-					if (fs.weight > 0.05f)
-					{
-						V3 axn; float ann; Arc({ 0, 0, 1 }, Norm({ fs.nx, fs.ny, fs.nz }), axn, ann);
-						ann = LimitAngle(ann, pc.maxFootDeg) * fs.weight * pc.influence;
-						if (std::fabs(ann) > 1e-4f)
-						{ RwFrame* f = FrameOf(h, Ft[s]); V3 r = ToV(f->modelling.right), u = ToV(f->modelling.up), a = ToV(f->modelling.at); RotateLocalByWorld(r, u, a, footP, axn, ann); SetV(f->modelling.right, r); SetV(f->modelling.up, u); SetV(f->modelling.at, a); RwMatrixUpdate(&f->modelling); }
-					}
+					V3 axn; float ann; Arc({ 0, 0, 1 }, Norm({ fs.nx, fs.ny, fs.nz }), axn, ann);
+					RotateSub(h, Ft[sd], axn, LimitAngle(ann, pc.maxFootDeg) * fs.weight * pc.influence);
 				}
-				ret = g_orig(h);
 			}
 		}
-
-		// ---- restaura (idempotente) ----
-		for (int b = 0; b < B_COUNT; b++) if (sv[b].f) sv[b].f->modelling = sv[b].m;
-		if (g_dbgCount < 3 && doPosture && gate) { g_dbgCount++; FLog("[SLEEK-POSE] ok: lean roll=%.2f pitch=%.2f graus; cabeca yaw=%.2f; pelve dz=%.3f", g_leanOut.roll / kDeg2Rad, g_leanOut.pitch / kDeg2Rad, g_headOut.headYaw / kDeg2Rad, g_pelvisDz); }
+		if (g_dbgCount < 3 && gate) { g_dbgCount++; FLog("[SLEEK-POSE] ok: lean roll=%.2f pitch=%.2f graus; cabeca yaw=%.2f; pelve dz=%.3f", g_leanOut.roll / kDeg2Rad, g_leanOut.pitch / kDeg2Rad, g_headOut.headYaw / kDeg2Rad, g_pelvisDz); }
 		return ret;
 	}
 
@@ -280,21 +267,19 @@ namespace SleekMove
 {
 	void InstallPoseHook()
 	{
-		// OPT-IN: sem o arquivo vazio SAMP/sleek_pose.on o hook NAO e instalado (o jogo roda exatamente como antes).
+		// OPT-IN: sem o arquivo vazio SAMP/sleek_pose.on o hook NAO e instalado.
 		{
 			const std::string mk = g_pszStorage ? std::string(g_pszStorage) + "SAMP/sleek_pose.on" : std::string();
 			FILE* f = mk.empty() ? nullptr : fopen(mk.c_str(), "rb");
 			if (!f) { FLog("[SLEEK-POSE] desativado (crie SAMP/sleek_pose.on para instalar o hook de postura/IK)"); return; }
 			fclose(f);
 		}
-		// NUNCA usar InlineHook("simbolo"): ele chama exit(0) se o simbolo nao existe (foi o crash "Error find RpHAnimHierarchyUpdateMatrices").
-		// 1) tenta o simbolo de forma "suave"; 2) cai no endereco que o proprio projeto ja usa para esta funcao (RW/rphanim.cpp).
-		const uintptr_t sym = CHook::getSymSoft("RpHAnimHierarchyUpdateMatrices");
-		if (sym)
-			CHook::InlineHook((void*)sym, &Upd_hook, &g_orig);
-		else
-			CHook::InlineHook(g_libGTASA, 0x255C20, &Upd_hook, &g_orig);
-		FLog("[SLEEK-POSE] hook RpHAnimHierarchyUpdateMatrices via %s: %s", sym ? "simbolo" : "endereco 0x255C20", g_orig ? "instalado" : "FALHOU - postura/IK inativos");
+		// libGTASA.so e ARM64: a funcao esta exportada com o nome C++ (conferido: 0x255C20). NUNCA usar o overload InlineHook(lib, addr)
+		// (soma +1 = bit thumb do ARM32 -> hook em endereco desalinhado -> crash no CPlayerPed::CPlayerPed) nem InlineHook("nome") (exit(0) se faltar).
+		const uintptr_t sym = CHook::getSymSoft("_Z30RpHAnimHierarchyUpdateMatricesP16RpHAnimHierarchy");
+		void* target = sym ? (void*)sym : (void*)(g_libGTASA + 0x255C20);
+		CHook::InlineHook(target, &Upd_hook, &g_orig);
+		FLog("[SLEEK-POSE] hook RpHAnimHierarchyUpdateMatrices @%p via %s: %s", target, sym ? "simbolo" : "endereco 0x255C20", g_orig ? "instalado" : "FALHOU - postura/IK inativos");
 	}
 	std::string PoseStatus()
 	{

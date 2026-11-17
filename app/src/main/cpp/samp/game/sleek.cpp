@@ -53,7 +53,7 @@ namespace
 	// Arquivo criado SO se nao existir (nunca sobrescrito). Chaves ausentes num arquivo antigo usam os padroes do codigo.
 	const char* kDefaultIni =
 		"; Sleek (recriacao do SleekMovement) - mesmos nomes do .ini original. Edite e use /sleek reload.\n"
-		"; Postura (Lean/Pitch/HeadTracking/FootIK) so funciona com o arquivo vazio SAMP/sleek_pose.on (instala o hook do esqueleto).\n[Features]\nEnableLean=0\nEnablePitch=0\nEnableHeadFollow=1\nEnableFootIK=0\nEnableFootIKWhileCrouched=1\nEnableModernCamera=0\nEnableCameraShakeRewrite=1\nEnableCameraIdleShake=1\nEnableCameraRunFov=1\nEnableCameraPitchFov=1\nEnableHeadTracking=0\nEnableMomentum=1\nEnableCrouchLocomotion=1\n"
+		"; Postura (Lean/Pitch/HeadTracking/FootIK) so funciona com o arquivo vazio SAMP/sleek_pose.on (instala o hook do esqueleto).\n[Features]\nEnableLean=1\nEnablePitch=1\nEnableHeadFollow=1\nEnableFootIK=1\nEnableFootIKWhileCrouched=1\nEnableModernCamera=0\nEnableCameraShakeRewrite=1\nEnableCameraIdleShake=1\nEnableCameraRunFov=1\nEnableCameraPitchFov=1\nEnableHeadTracking=1\nEnableMomentum=1\nEnableCrouchLocomotion=1\n"
 		"[CameraShake]\nIntensity=1.25\nAmplitude=1.1\nSpeed=17.0\nRotationDegrees=4.0\nRotationSpeed=9.0\n"
 		"[CameraIdleShake]\nIntensity=3.0\nSpeed=0.30\nPitchDegrees=0.40\nYawDegrees=0.50\nRollDegrees=0.25\nSprintScale=1.5\n"
 		"[CameraFov]\nRunIncrease=15.0\nSprintIncrease=30.0\nRiseResponse=3.0\nFallResponse=3.2\nLookUpIncrease=15.0\nLookUpStartPitch=5.0\nLookUpFullPitch=45.0\nLookDownIncrease=0.0\nPitchResponse=4.5\nMaxTotalChange=45.0\nExitResponse=12.0\n"
@@ -70,6 +70,13 @@ namespace
 		"; -1 inverte o lado da inclinacao do corpo / frente-tras, se ficar ao contrario no aparelho\nLeanSign=1.0\nPitchSign=1.0\n; altura do centro do ped sobre o chao (foot IK)\nPedGroundOffset=1.0\n; altura-base da ancora da camera de ombro (somada a AnchorHeightOffset)\nShoulderAnchorBase=0.55\n";
 
 	float g_anchorBase = 0.55f;
+
+	bool PoseMarker()
+	{
+		const std::string mk = g_pszStorage ? std::string(g_pszStorage) + "SAMP/sleek_pose.on" : std::string();
+		FILE* f = mk.empty() ? nullptr : fopen(mk.c_str(), "rb");
+		if (!f) return false; fclose(f); return true;
+	}
 
 	void Load()
 	{
@@ -92,9 +99,10 @@ namespace
 		c.pitchFov     = B("Features", "EnableCameraPitchFov", c.pitchFov);
 		c.momentum     = B("Features", "EnableMomentum", c.momentum);
 		c.crouchLoco   = B("Features", "EnableCrouchLocomotion", c.crouchLoco);
-		q.lean = B("Features", "EnableLean", q.lean); q.pitch = B("Features", "EnablePitch", q.pitch);
-		q.headTracking = B("Features", "EnableHeadTracking", q.headTracking); q.headFollow = B("Features", "EnableHeadFollow", q.headFollow);
-		q.footIK = B("Features", "EnableFootIK", q.footIK); q.footIKCrouched = B("Features", "EnableFootIKWhileCrouched", q.footIKCrouched);
+		const bool pm = PoseMarker();   // com SAMP/sleek_pose.on a postura/IK nasce ligada (a chave do INI, se existir, manda)
+		q.lean = B("Features", "EnableLean", pm); q.pitch = B("Features", "EnablePitch", pm);
+		q.headTracking = B("Features", "EnableHeadTracking", pm); q.headFollow = B("Features", "EnableHeadFollow", q.headFollow);
+		q.footIK = B("Features", "EnableFootIK", pm); q.footIKCrouched = B("Features", "EnableFootIKWhileCrouched", q.footIKCrouched);
 		m.enabled = B("Features", "EnableModernCamera", m.enabled);
 		c.shakeIntensity = F("CameraShake", "Intensity", c.shakeIntensity);
 		c.shakeAmplitude = F("CameraShake", "Amplitude", c.shakeAmplitude);

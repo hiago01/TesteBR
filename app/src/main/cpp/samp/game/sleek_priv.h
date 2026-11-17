@@ -1,7 +1,7 @@
 #pragma once
 // interno do modulo Sleek (compartilhado entre sleek.cpp e sleek_pose.cpp)
 #include "sleek_pose_logic.h"
-class CPedGTA;
+struct CPedGTA;
 namespace SleekMove
 {
 	Sleek::Config&     Cfg();
