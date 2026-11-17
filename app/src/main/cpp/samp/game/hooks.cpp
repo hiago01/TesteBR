@@ -2042,8 +2042,8 @@ void CRadar_ClearBlip_hook(uint32_t a2)
 
 void InstallHuaweiCrashFixHooks()
 {
-	CHook::InstallPLT(g_libGTASA + 0x677498, (uintptr_t)rqVertexBufferSelect_hook, (uintptr_t*)&rqVertexBufferSelect);
-	CHook::InstallPLT(g_libGTASA + 0x679B14, (uintptr_t)rqVertexBufferDelete_hook, (uintptr_t*)&rqVertexBufferDelete);
+	// [ARM64] offset de 32 bits (nao e slot de GOT no libGTASA ARM64) - desativado: CHook::InstallPLT(g_libGTASA + 0x677498, (uintptr_t)rqVertexBufferSelect_hook, (uintptr_t*)&rqVertexBufferSelect);
+	// [ARM64] offset de 32 bits (nao e slot de GOT no libGTASA ARM64) - desativado: CHook::InstallPLT(g_libGTASA + 0x679B14, (uintptr_t)rqVertexBufferDelete_hook, (uintptr_t*)&rqVertexBufferDelete);
 	//CHook::InstallPLT(g_libGTASA + 0x677B6C, (uintptr_t)rqSetAlphaTest_hook, (uintptr_t*)&rqSetAlphaTest);
 }
 
@@ -2088,17 +2088,17 @@ void InstallSortLodsFix()
 void InstallCrashFixHooks()
 {
 	// some crashfixes
-	CHook::InstallPLT(g_libGTASA + 0x66F5AC, (uintptr_t)CCustomRoadsignMgr_RenderRoadsignAtomic_hook, (uintptr_t*)&CCustomRoadsignMgr_RenderRoadsignAtomic);
-	CHook::InstallPLT(g_libGTASA + 0x67332C, (uintptr_t)_RwTextureDestroy_hook, (uintptr_t*)&_RwTextureDestroy);
-	CHook::InstallPLT(g_libGTASA + 0x671458, (uintptr_t)CPed_UpdatePosition_hook, (uintptr_t*)&CPed_UpdatePosition);
-	CHook::InstallPLT(g_libGTASA + 0x675490, (uintptr_t)RwFrameAddChild_hook, (uintptr_t*)&RwFrameAddChild);
-	CHook::InstallPLT(g_libGTASA + 0x672D14, (uintptr_t)CTextureDatabaseRuntime__GetEntry_hook, (uintptr_t*)&CTextureDatabaseRuntime__GetEntry);
+	// [ARM64] offset de 32 bits (nao e slot de GOT no libGTASA ARM64) - desativado: CHook::InstallPLT(g_libGTASA + 0x66F5AC, (uintptr_t)CCustomRoadsignMgr_RenderRoadsignAtomic_hook, (uintptr_t*)&CCustomRoadsignMgr_RenderRoadsignAtomic);
+	// [ARM64] offset de 32 bits (nao e slot de GOT no libGTASA ARM64) - desativado: CHook::InstallPLT(g_libGTASA + 0x67332C, (uintptr_t)_RwTextureDestroy_hook, (uintptr_t*)&_RwTextureDestroy);
+	// [ARM64] offset de 32 bits (nao e slot de GOT no libGTASA ARM64) - desativado: CHook::InstallPLT(g_libGTASA + 0x671458, (uintptr_t)CPed_UpdatePosition_hook, (uintptr_t*)&CPed_UpdatePosition);
+	// [ARM64] offset de 32 bits (nao e slot de GOT no libGTASA ARM64) - desativado: CHook::InstallPLT(g_libGTASA + 0x675490, (uintptr_t)RwFrameAddChild_hook, (uintptr_t*)&RwFrameAddChild);
+	// [ARM64] offset de 32 bits (nao e slot de GOT no libGTASA ARM64) - desativado: CHook::InstallPLT(g_libGTASA + 0x672D14, (uintptr_t)CTextureDatabaseRuntime__GetEntry_hook, (uintptr_t*)&CTextureDatabaseRuntime__GetEntry);
 	//CHook::InstallPLT(g_libGTASA + 0x66FBD0, (uintptr_t)RpClumpForAllAtomics_hook, (uintptr_t*)&RpClumpForAllAtomics);
-	CHook::InstallPLT(g_libGTASA + 0x6730F0, (uintptr_t)rpMaterialListDeinitialize_hook, (uintptr_t*)&rpMaterialListDeinitialize);
+	// [ARM64] offset de 32 bits (nao e slot de GOT no libGTASA ARM64) - desativado: CHook::InstallPLT(g_libGTASA + 0x6730F0, (uintptr_t)rpMaterialListDeinitialize_hook, (uintptr_t*)&rpMaterialListDeinitialize);
 	//CHook::InstallPLT(g_libGTASA + 0x6778B0, (uintptr_t)rxOpenGLDefaultAllInOneRenderCB_hook, (uintptr_t*)&rxOpenGLDefaultAllInOneRenderCB);
 	//CHook::InstallPLT(g_libGTASA + 0x677CB4, (uintptr_t)CCustomBuildingDNPipeline__CustomPipeRenderCB_hook, (uintptr_t*)&CCustomBuildingDNPipeline__CustomPipeRenderCB);
 	//CHook::InstallPLT(g_libGTASA + 0x66F9E8, (uintptr_t)EmuShader_Select_hook, (uintptr_t*)&EmuShader_Select);
-	CHook::InstallPLT(g_libGTASA + 0x6750D4, (uintptr_t)CAnimManager_UncompressAnimation_hook, (uintptr_t*)&CAnimManager_UncompressAnimation);
+	// [ARM64] offset de 32 bits (nao e slot de GOT no libGTASA ARM64) - desativado: CHook::InstallPLT(g_libGTASA + 0x6750D4, (uintptr_t)CAnimManager_UncompressAnimation_hook, (uintptr_t*)&CAnimManager_UncompressAnimation);
 	//CHook::InstallPLT(g_libGTASA + 0x670E1C, (uintptr_t)CStreaming__MakeSpaceFor_hook, (uintptr_t*)&CStreaming__MakeSpaceFor);
 }
 
@@ -2136,8 +2136,8 @@ void InstallSAMPHooks()
 	// radar color
 	//CHook::InstallPLT(g_libGTASA + 0x673950, (uintptr_t)CHudColours__GetIntColour_hook, (uintptr_t*)& CHudColours__GetIntColour);
 	// exit vehicle
-	CHook::InstallPLT(g_libGTASA + 0x671984, (uintptr_t)CTaskComplexLeaveCar_hook, (uintptr_t*)& CTaskComplexLeaveCar);
-    CHook::InstallPLT(g_libGTASA + 0x675320, (uintptr_t)CTaskComplexLeaveCar_hook, (uintptr_t*)& CTaskComplexLeaveCar);
+	// [ARM64] offset de 32 bits (nao e slot de GOT no libGTASA ARM64) - desativado: CHook::InstallPLT(g_libGTASA + 0x671984, (uintptr_t)CTaskComplexLeaveCar_hook, (uintptr_t*)& CTaskComplexLeaveCar);
+    // [ARM64] offset de 32 bits (nao e slot de GOT no libGTASA ARM64) - desativado: CHook::InstallPLT(g_libGTASA + 0x675320, (uintptr_t)CTaskComplexLeaveCar_hook, (uintptr_t*)& CTaskComplexLeaveCar);
     // attach obj to ped
 	//CHook::InstallPLT(g_libGTASA + 0x675C68, (uintptr_t)CWorld_ProcessPedsAfterPreRender_Hook, (uintptr_t*)&CWorld_ProcessPedsAfterPreRender);
 	// game pause
@@ -2149,10 +2149,10 @@ void InstallSAMPHooks()
 	//CHook::InstallPLT(g_libGTASA + 0x672880, (uintptr_t)DrawCrosshair_hook, (uintptr_t*)&DrawCrosshair);
 
 	// fix radar in passenger
-	CHook::InstallPLT(g_libGTASA+0x671BBC, (uintptr_t)FindPlayerSpeed_hook, (uintptr_t*)&FindPlayerSpeed);
+	// [ARM64] offset de 32 bits (nao e slot de GOT no libGTASA ARM64) - desativado: CHook::InstallPLT(g_libGTASA+0x671BBC, (uintptr_t)FindPlayerSpeed_hook, (uintptr_t*)&FindPlayerSpeed);
 
 	// fix texture loading
-	CHook::InstallPLT(g_libGTASA + 0x676034, (uintptr_t)CTxdStore__TxdStoreFindCB_hook, (uintptr_t*)&CTxdStore__TxdStoreFindCB);
+	// [ARM64] offset de 32 bits (nao e slot de GOT no libGTASA ARM64) - desativado: CHook::InstallPLT(g_libGTASA + 0x676034, (uintptr_t)CTxdStore__TxdStoreFindCB_hook, (uintptr_t*)&CTxdStore__TxdStoreFindCB);
 
 	// interpolate camera fix
 	// CCamera::Process agora e hookeada em SleekMove::InstallCameraHook (inline, pelo simbolo). O PLT 0x6717BC era offset de 32 bits e escrevia em .rodata no ARM64.
@@ -2165,13 +2165,13 @@ void InstallSAMPHooks()
 	//ARMHook::installHook(g_libGTASA + 0x4DD5E8, (uintptr_t)CTaskSimpleUseGun__SetMoveAnim_hook, (uintptr_t*)&CTaskSimpleUseGun__SetMoveAnim);
 
     // hueta ne rabotaet no pust budet (tipo ne kak v 1.08)
-	CHook::InstallPLT(g_libGTASA + 0x674280, (uintptr_t) CVehicleModelInfo__SetupCommonData_hook, (uintptr_t*)&CVehicleModelInfo__SetupCommonData);
-	CHook::InstallPLT(g_libGTASA + 0x06D008, (uintptr_t) CAEVehicleAudioEntity__GetVehicleAudioSettings_hook, (uintptr_t*)&CAEVehicleAudioEntity__GetVehicleAudioSettings);
+	// [ARM64] offset de 32 bits (nao e slot de GOT no libGTASA ARM64) - desativado: CHook::InstallPLT(g_libGTASA + 0x674280, (uintptr_t) CVehicleModelInfo__SetupCommonData_hook, (uintptr_t*)&CVehicleModelInfo__SetupCommonData);
+	// [ARM64] offset de 32 bits (nao e slot de GOT no libGTASA ARM64) - desativado: CHook::InstallPLT(g_libGTASA + 0x06D008, (uintptr_t) CAEVehicleAudioEntity__GetVehicleAudioSettings_hook, (uintptr_t*)&CAEVehicleAudioEntity__GetVehicleAudioSettings);
 
-	CHook::InstallPLT(g_libGTASA + 0x66FF0C, (uintptr_t)CRadar_ClearBlip_hook, (uintptr_t*)&CRadar_ClearBlip);
+	// [ARM64] offset de 32 bits (nao e slot de GOT no libGTASA ARM64) - desativado: CHook::InstallPLT(g_libGTASA + 0x66FF0C, (uintptr_t)CRadar_ClearBlip_hook, (uintptr_t*)&CRadar_ClearBlip);
 
 	// skills
-	CHook::InstallPLT(g_libGTASA + 0x6749D0, (uintptr_t)CPed__GetWeaponSkill_hook, (uintptr_t*)&CPed__GetWeaponSkill);
+	// [ARM64] offset de 32 bits (nao e slot de GOT no libGTASA ARM64) - desativado: CHook::InstallPLT(g_libGTASA + 0x6749D0, (uintptr_t)CPed__GetWeaponSkill_hook, (uintptr_t*)&CPed__GetWeaponSkill);
 
     //InstallHuaweiCrashFixHooks();
 	InstallCrashFixHooks();
@@ -3870,6 +3870,46 @@ void TestPlayerClothesDesc()
 #include <GLES2/gl2.h>   // If using OpenGL ES 2.0 or 3.0
 void SetUpGLHooks();
 void InstallSortLodsFix();
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// ARM64: portes dos hooks "anti-nulo" que eram InstallPLT em offsets de 32 bits. Instalados por SIMBOLO (inline hook no inicio da
+// funcao). So guardas de ponteiro nulo: sem endereco de retorno, sem layout de struct 32-bit. Cada um loga se achou o simbolo.
+// ---------------------------------------------------------------------------------------------------------------------------
+namespace Arm64Guards
+{
+	static uintptr_t (*o_RwFrameAddChild)(uintptr_t, uintptr_t) = nullptr;
+	static uintptr_t h_RwFrameAddChild(uintptr_t parent, uintptr_t child) { if (!parent || !child) return 0; return o_RwFrameAddChild(parent, child); }
+
+	static int (*o_RwTextureDestroy)(uintptr_t) = nullptr;
+	static int h_RwTextureDestroy(uintptr_t tex) { if (tex == 0 || tex == (uintptr_t)-1) return 0; return o_RwTextureDestroy(tex); }
+
+	static void* (*o_rpMaterialListDeinitialize)(RpMaterialList*) = nullptr;
+	static void* h_rpMaterialListDeinitialize(RpMaterialList* l) { if (!l || !l->materials) return nullptr; return o_rpMaterialListDeinitialize(l); }
+
+	static void (*o_RenderRoadsignAtomic)(uintptr_t, uintptr_t) = nullptr;
+	static void h_RenderRoadsignAtomic(uintptr_t atomic, uintptr_t pos) { if (!atomic) return; o_RenderRoadsignAtomic(atomic, pos); }
+
+	static void (*o_UncompressAnimation)(uintptr_t) = nullptr;
+	static void h_UncompressAnimation(uintptr_t hier) { if (!hier) return; o_UncompressAnimation(hier); }
+
+	static void Install1(const char* name, const char* sym, void* hook, void** orig)
+	{
+		const uintptr_t p = CHook::getSymSoft(sym);
+		if (!p) { FLog("[ARM64] guarda %s: simbolo %s nao encontrado - ignorado", name, sym); return; }
+		CHook::InlineHook((void*)p, hook, orig);
+		FLog("[ARM64] guarda %s @%p: %s", name, (void*)p, *orig ? "instalada" : "FALHOU");
+	}
+
+	void Install()
+	{
+		Install1("RwFrameAddChild", "_Z15RwFrameAddChildP7RwFrameS0_", (void*)h_RwFrameAddChild, (void**)&o_RwFrameAddChild);
+		Install1("RwTextureDestroy", "_Z16RwTextureDestroyP9RwTexture", (void*)h_RwTextureDestroy, (void**)&o_RwTextureDestroy);
+		Install1("rpMaterialListDeinitialize", "_Z27_rpMaterialListDeinitializeP14RpMaterialList", (void*)h_rpMaterialListDeinitialize, (void**)&o_rpMaterialListDeinitialize);
+		Install1("RenderRoadsignAtomic", "_ZN18CCustomRoadsignMgr20RenderRoadsignAtomicEP8RpAtomicRK7CVector", (void*)h_RenderRoadsignAtomic, (void**)&o_RenderRoadsignAtomic);
+		Install1("UncompressAnimation", "_ZN12CAnimManager19UncompressAnimationEP19CAnimBlendHierarchy", (void*)h_UncompressAnimation, (void**)&o_UncompressAnimation);
+	}
+}
+
 void InstallHooks()
 {
 InstallSortLodsFix();
@@ -4065,6 +4105,7 @@ CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
     CHook::Write(g_libGTASA + 0x5DF794, 0xBD48D521);
 
     CHook::InlineHook("_ZN5CDraw6SetFOVEfb", &CDraw__SetFOV_hook, &CDraw__SetFOV);
+    Arm64Guards::Install();   // guardas anti-nulo por simbolo (ARM64)
     SleekMove::InstallPoseHook();   // postura do corpo + foot IK (game/sleek_pose.cpp)
     SleekMove::InstallCameraHook(); // camera de ombro + tremor (game/sleek.cpp)
 

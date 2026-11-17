@@ -279,11 +279,11 @@ namespace SleekMove
 			const CVector& pp = g_pend.ped->GetPosition();
 			const V3 anchor = { pp.x, pp.y, pp.z + g_anchorBase + mc.anchorHeight };
 			g_cams.sideS = Approach(g_cams.sideS, g_cams.side, mc.swapResp, g_pend.dt);
-			V3 want = pos + right * (mc.offsetX * g_cams.sideS) + up * mc.offsetY;
+			V3 want = pos + right * (-mc.offsetX * g_cams.sideS) + up * mc.offsetY;
 			if (g_zoomOverride)   // distancia fixa (perto/medio/longe) so se pedida por /sleek zoom; senao respeita o zoom do projeto
 			{
 				g_cams.dist = Approach(g_cams.dist, g_cams.ZoomTarget(mc), mc.zoomResp, g_pend.dt);
-				want = anchor - fwd * g_cams.dist + right * (mc.offsetX * g_cams.sideS) + up * mc.offsetY;
+				want = anchor - fwd * g_cams.dist + right * (-mc.offsetX * g_cams.sideS) + up * mc.offsetY;
 			}
 			if (mc.collision)
 			{
