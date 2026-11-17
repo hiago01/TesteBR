@@ -1,3 +1,4 @@
+#include "sleek.h"
 #include "CarryTuner.h"
 #include "TargetMenu.h"
 #include <cmath>
@@ -1876,7 +1877,7 @@ void CCamera__Process_hook(uintptr_t thiz)
 	//if(pGame->GetCamera())
 		//pGame->GetCamera()->Update();
 
-	CCamera__Process(thiz);
+	SleekMove::CameraProcess(CCamera__Process, thiz);   // tremor reescrito + tremor ocioso + FOV dinamico (game/sleek.cpp); chama o original
 }
 
 extern CJavaWrapper* pJavaWrapper;
@@ -2706,6 +2707,7 @@ float (*CDraw__SetFOV)(float thiz, float a2);
 float CDraw__SetFOV_hook(float thiz, float a2)
 {
     float tmp = (float)((float)((float)(*(float *)&*(float *)(g_libGTASA + 0xCC7F00) - 1.3333) * 11.0) / 0.44444) + thiz;
+    tmp += SleekMove::FovDelta();   // corrida/sprint/olhar para cima (game/sleek.cpp)
     if(tmp > 100) tmp = 100.0;
     *(float *)(g_libGTASA + 0x88E6BC) = tmp;
     return thiz;

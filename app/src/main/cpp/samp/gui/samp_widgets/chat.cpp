@@ -1,3 +1,4 @@
+#include "../../game/sleek.h"
 #include "../../game/Diag.h"
 #include "../gui.h"
 #include "../../main.h"
@@ -389,6 +390,13 @@ if (input == "/movimento" || input.rfind("/movimento ", 0) == 0)
             std::string args = input.size() > 10 ? input.substr(11) : std::string();
             std::string reply = CMoveMode::Command(args);
             addDebugMessage("%s", reply.c_str());
+
+            return;
+        }
+if (input == "/sleek" || input.rfind("/sleek ", 0) == 0)
+        {
+            // camera/movimento estilo SleekMovement: /sleek | <modulo> on|off | fov <esc> | reload | reset
+            addDebugMessage("%s", SleekMove::Command(input.size() > 6 ? input.substr(7) : std::string()).c_str());
 
             return;
         }

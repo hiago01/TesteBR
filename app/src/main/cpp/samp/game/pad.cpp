@@ -1,3 +1,4 @@
+#include "sleek.h"
 #include "../main.h"
 #include "game.h"
 #include "../net/netgame.h"
@@ -41,13 +42,14 @@ uint16_t CPad__GetPedWalkLeftRight_hook(uintptr_t thiz)
 		// Modo de movimento (WALK/JOG/SPRINT): molda o modulo do stick mantendo a direcao.
 		// Lemos os dois eixos do original para escalar o vetor (e nao cada eixo isolado).
 		// MODERNO (a pe): o joystick analogico proprio substitui o stick nativo (intensidade proporcional, sem moldar por WALK/JOG).
-		{ int16_t mlr, mud; if (ModernInput::Stick(mlr, mud)) { if (CamStick::Active()) CamStick::Map(mlr, mud, mlr, mud); LocalPlayerKeys.wKeyLR = (uint16_t)mlr; return LocalPlayerKeys.wKeyLR; } }
+		{ int16_t mlr, mud; if (ModernInput::Stick(mlr, mud)) { if (CamStick::Active()) CamStick::Map(mlr, mud, mlr, mud); else SleekMove::ApplyStick(mlr, mud); LocalPlayerKeys.wKeyLR = (uint16_t)mlr; return LocalPlayerKeys.wKeyLR; } }
 		int16_t lr = (int16_t)CPad__GetPedWalkLeftRight(thiz);
 		if (CPad__GetPedWalkUpDown)
 		{
 			int16_t ud = (int16_t)CPad__GetPedWalkUpDown(thiz);
 			if (CamStick::Active()) CamStick::Map(lr, ud, lr, ud);      // camera do celular (foto/selfie): joystick "tanque" (game/camstick.h)
 			CMoveMode::ApplyToStick(lr, ud);
+			if (!CamStick::Active()) SleekMove::ApplyStick(lr, ud);      // inercia (game/sleek.cpp)
 		}
 		LocalPlayerKeys.wKeyLR = (uint16_t)lr;
 		return LocalPlayerKeys.wKeyLR;
@@ -72,13 +74,14 @@ uint16_t CPad__GetPedWalkUpDown_hook(uintptr_t thiz)
 	{
 		// Local player
 		// Modo de movimento (WALK/JOG/SPRINT): ver CPad__GetPedWalkLeftRight_hook.
-		{ int16_t mlr, mud; if (ModernInput::Stick(mlr, mud)) { if (CamStick::Active()) CamStick::Map(mlr, mud, mlr, mud); LocalPlayerKeys.wKeyUD = (uint16_t)mud; return LocalPlayerKeys.wKeyUD; } }
+		{ int16_t mlr, mud; if (ModernInput::Stick(mlr, mud)) { if (CamStick::Active()) CamStick::Map(mlr, mud, mlr, mud); else SleekMove::ApplyStick(mlr, mud); LocalPlayerKeys.wKeyUD = (uint16_t)mud; return LocalPlayerKeys.wKeyUD; } }
 		int16_t ud = (int16_t)CPad__GetPedWalkUpDown(thiz);
 		if (CPad__GetPedWalkLeftRight)
 		{
 			int16_t lr = (int16_t)CPad__GetPedWalkLeftRight(thiz);
 			if (CamStick::Active()) CamStick::Map(lr, ud, lr, ud);
 			CMoveMode::ApplyToStick(lr, ud);
+			if (!CamStick::Active()) SleekMove::ApplyStick(lr, ud);      // inercia (game/sleek.cpp)
 		}
 		LocalPlayerKeys.wKeyUD = (uint16_t)ud;
 		return LocalPlayerKeys.wKeyUD;
@@ -96,7 +99,7 @@ uint32_t CPad__GetSprint_hook(uintptr_t thiz, uint32_t unk)
 	{
 		if (ModernInput::Active())      // MODERNO: Corrida = botao proprio (segurado, com o joystick em uso)
 		{
-			LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT] = ModernInput::SprintHeld() ? 1 : 0;
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT] = SleekMove::FilterSprint(ModernInput::SprintHeld() ? 1 : 0) ? 1 : 0;
 			return LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT];
 		}
 		uint32_t dwSprint = CPad__GetSprint(thiz, unk);
@@ -107,6 +110,7 @@ uint32_t CPad__GetSprint_hook(uintptr_t thiz, uint32_t unk)
 			int16_t ud = (int16_t)CPad__GetPedWalkUpDown(thiz);
 			dwSprint = CMoveMode::ApplySprint(dwSprint, lr, ud);
 		}
+		dwSprint = SleekMove::FilterSprint(dwSprint);   // agachado + sprint: continua agachado
 		LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT] = dwSprint;
 		return LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT];
 	}
