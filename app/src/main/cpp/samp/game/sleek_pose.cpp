@@ -304,12 +304,11 @@ namespace SleekMove
 {
 	void InstallPoseHook()
 	{
-		// OPT-IN: sem o arquivo vazio SAMP/sleek_pose.on o hook NAO e instalado.
+		// Ligado por padrao. Para desativar o hook de postura/IK crie o arquivo vazio SAMP/sleek_pose.off
 		{
-			const std::string mk = g_pszStorage ? std::string(g_pszStorage) + "SAMP/sleek_pose.on" : std::string();
+			const std::string mk = g_pszStorage ? std::string(g_pszStorage) + "SAMP/sleek_pose.off" : std::string();
 			FILE* f = mk.empty() ? nullptr : fopen(mk.c_str(), "rb");
-			if (!f) { FLog("[SLEEK-POSE] desativado (crie SAMP/sleek_pose.on para instalar o hook de postura/IK)"); return; }
-			fclose(f);
+			if (f) { fclose(f); FLog("[SLEEK-POSE] desativado por SAMP/sleek_pose.off (apague o arquivo para instalar o hook de postura/IK)"); return; }
 		}
 		// libGTASA.so e ARM64: a funcao esta exportada com o nome C++ (conferido: 0x255C20). NUNCA usar o overload InlineHook(lib, addr)
 		// (soma +1 = bit thumb do ARM32 -> hook em endereco desalinhado -> crash no CPlayerPed::CPlayerPed) nem InlineHook("nome") (exit(0) se faltar).
