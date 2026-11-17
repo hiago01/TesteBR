@@ -23,6 +23,9 @@ namespace SleekMove
 	// Agachado: com o sprint apertado o motor levanta o personagem; aqui o sprint e suprimido enquanto agachado.
 	uint32_t FilterSprint(uint32_t sprint);
 
+	// Hook de postura/foot IK (RpHAnimHierarchyUpdateMatrices): chamar 1x em InjectHooks.
+	void InstallPoseHook();
+
 	// "/sleek ..." -> texto de resposta
 	std::string Command(const std::string& args);
 }

@@ -65,6 +65,9 @@ namespace Sleek
 		float braking = 4.1f, reversalBraking = 3.2f, reversalAngle = 115.0f, reversalSwitch = 0.12f;
 		float lowTurn = 540.0f, highTurn = 210.0f, highTurnStart = 0.60f;
 		bool  momentumWhileAiming = true, momentumWhileCrouched = true;
+		float lateralGrip = 0.72f;           // 1 = sem perda ao curvar; menor = perde velocidade ao mudar de direcao
+		float blockedDecay = 10.0f;          // 1/s: velocidade interna some rapido se o personagem esta bloqueado (parede)
+		float teleportDist = 3.0f;           // metros num quadro => zera a inercia
 
 		// [CrouchLocomotion]
 		bool keepCrouchedWithSprint = true;
@@ -191,6 +194,13 @@ namespace Sleek
 		bool  reversing = false;
 
 		void Reset() { vx = vy = 0.0f; reversing = false; }
+		// BlockedSpeedDecay: chamado quando o personagem esta encostado em algo (o motor nao anda mas o stick insiste)
+		void DecayBlocked(const Config& c, float dt)
+		{
+			const float k = std::exp(-c.blockedDecay * dt);
+			vx *= k; vy *= k;
+			if (Speed() < c.stopEps) Reset();
+		}
 		float Speed() const { return std::sqrt(vx * vx + vy * vy); }
 
 		void Update(const Config& c, float ix, float iy, bool sprint, float dt)
@@ -235,6 +245,8 @@ namespace Sleek
 				const float na = cur + step;
 				const float tgt = im;
 				float nsp = sp < tgt ? std::min(tgt, sp + accel * dt) : std::max(tgt, sp - c.braking * dt);
+				// LateralGrip: curvar perde velocidade proporcional ao giro (grip 1 = nada; 0,72 = perde um pouco por curva)
+				nsp *= 1.0f - (1.0f - Clamp(c.lateralGrip, 0.0f, 1.0f)) * std::fabs(std::sin(step));
 				vx = std::cos(na) * nsp; vy = std::sin(na) * nsp;
 			}
 			else

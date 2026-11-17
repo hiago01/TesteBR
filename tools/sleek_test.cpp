@@ -1,4 +1,4 @@
-#include "../app/src/main/cpp/samp/game/sleek_logic.h"
+#include "../app/src/main/cpp/samp/game/sleek_pose_logic.h"
 #include <cstdio>
 using namespace Sleek;
 static int fails=0;
@@ -34,4 +34,44 @@ int main(){
     CHECK(r.vy<-0.5f && minsp<=c.reversalSwitch+0.05f);
     Momentum t; for(int i=0;i<120;i++) t.Update(c,0,1,true,dt); t.Update(c,1,0,true,dt);          // giro de 90 graus: nao instantaneo em corrida
     CHECK(t.vy>0.3f); }
+
+  // ===== pose =====
+  { PoseConfig pc;
+    // rotacao local-por-mundo: eixos continuam ortonormais; rotacao nula = identidade; pai girado
+    Basis P; P.r={0,1,0}; P.u={-1,0,0}; P.a={0,0,1};   // pai girado 90 graus
+    V3 cr{1,0,0}, cu{0,1,0}, ca{0,0,1}; RotateLocalByWorld(cr,cu,ca,P,V3{0,0,1},0.0f);
+    CHECK(std::fabs(cr.x-1)<1e-5&&std::fabs(cu.y-1)<1e-5);
+    RotateLocalByWorld(cr,cu,ca,P,V3{0,1,0},0.4f);
+    CHECK(std::fabs(Dot(cr,cu))<1e-5 && std::fabs(Len(cr)-1)<1e-5 && std::fabs(Len(ca)-1)<1e-5);
+    // a rotacao em torno do eixo MUNDO y inclina o 'at' local (mundo z) para +x do mundo (roll + = direita)
+    Basis I; V3 r{1,0,0},u{0,1,0},a{0,0,1}; RotateLocalByWorld(r,u,a,I,V3{0,1,0},0.5f); CHECK(a.x>0.4f && a.z>0.8f);
+    // arco
+    V3 ax; float ang1; Arc({1,0,0},{0,1,0},ax,ang1); CHECK(std::fabs(ang1-kPi/2)<1e-4 && ax.z>0.99f);
+    // lean: virar a esquerda inclina para a esquerda (roll<0), acelerar inclina para frente (pitch<0), tudo limitado; volta a zero
+    Lean l; LeanIn in; in.active=true; in.fwdSpeed=1; in.angVel=3.0f; in.accel=1; LeanOut o; for(int i=0;i<200;i++) o=l.Update(pc,in,dt);
+    CHECK(o.roll<-0.01f && std::fabs(o.roll)<=pc.maxLean*kDeg2Rad+1e-4 && o.pitch<-0.01f && std::fabs(o.pitch)<=pc.maxAccelPitch*kDeg2Rad+1e-4);
+    in.active=false; for(int i=0;i<300;i++) o=l.Update(pc,in,dt); CHECK(std::fabs(o.roll)<1e-3&&std::fabs(o.pitch)<1e-3);
+    // head: limita yaw, some ao olhar para tras, reparte entre torso/pescoco/cabeca
+    HeadTrack h; HeadIn hi; hi.active=true; hi.yawRel=120*kDeg2Rad; HeadOut ho; for(int i=0;i<300;i++) ho=h.Update(pc,hi,dt);
+    CHECK(std::fabs(ho.headYaw)+std::fabs(ho.neckYaw)+std::fabs(ho.torsoYaw)<0.01f);                // atras: sem efeito
+    hi.yawRel=60*kDeg2Rad; for(int i=0;i<300;i++) ho=h.Update(pc,hi,dt);
+    float tot=ho.torsoYaw+ho.neckYaw+ho.headYaw; CHECK(std::fabs(tot-60*kDeg2Rad)<0.02f && ho.headYaw>ho.neckYaw && ho.neckYaw>ho.torsoYaw);
+    hi.yawRel=170*kDeg2Rad*0+80*kDeg2Rad; hi.moving=true; for(int i=0;i<300;i++) ho=h.Update(pc,hi,dt);
+    CHECK(std::fabs(ho.torsoYaw+ho.neckYaw+ho.headYaw)<=pc.maxYaw*kDeg2Rad*pc.movingScale+0.02f);   // limite * escala ao andar
+    // IK: perna esticada, joelho novo mantem comprimentos e o pe alcanca alvo alcancavel
+    V3 T{0,0,1}, K{0,0.1f,0.55f}, F{0,0,0.1f}; V3 tg{0,0,0.2f}; V3 K2=TwoBoneKnee(T,K,F,tg);
+    CHECK(std::fabs(Len(K2-T)-Len(K-T))<1e-3 && std::fabs(Len(F-K)-Len(tg-K2))<1e-2);
+    V3 far{0,0,-5}; V3 K3=TwoBoneKnee(T,K,F,far); CHECK(std::fabs(Len(K3-T)-Len(K-T))<1e-3);        // alvo impossivel: sem NaN
+    // foot raw: chao plano = sem correcao; degrau para cima = sobe; pe no ar = sem correcao; normal ingreme = ignora
+    FootProbe pr; pr.hit=true; pr.groundZ=9.0f; pr.normal={0,0,1};
+    FootTarget ft=FootRaw(pc,pr,10.0f-1.0f+0.11f,10.0f); CHECK(std::fabs(ft.dz+0.0f)<0.02f+1.0f && ft.w>0.9f);   // groundZ 9 = chao assumido
+    pr.groundZ=9.2f; ft=FootRaw(pc,pr,9.11f,10.0f); CHECK(ft.dz>0.15f && ft.dz<=pc.maxStepUp+1e-4);
+    ft=FootRaw(pc,pr,9.8f,10.0f); CHECK(ft.w<0.05f && std::fabs(ft.dz)<0.05f);
+    pr.normal={0.8f,0,0.6f}; ft=FootRaw(pc,pr,9.11f,10.0f); CHECK(ft.dz==0 && ft.w==0);
+    FootState fs; for(int i=0;i<120;i++) FootSmooth(pc,fs,FootTarget{0.2f,1,{0,0,1}},dt); CHECK(std::fabs(fs.dz-0.2f)<0.01f && fs.weight>0.99f);
+    // camera de ombro: ancora segue com atraso maximo respeitado
+    CamConfig cc; CamState cs; V3 R{1,0,0}, Fw{0,1,0}; V3 an=FollowAnchor(cc,cs,{0,0,0},R,Fw,dt); CHECK(Len(an)<1e-6);
+    an=FollowAnchor(cc,cs,{3.0f,0,0},R,Fw,dt); CHECK(std::fabs(3.0f-an.x)<=cc.maxLatLag+1e-4);
+    for(int i=0;i<200;i++) an=FollowAnchor(cc,cs,{3.0f,0,0},R,Fw,dt); CHECK(std::fabs(3.0f-an.x)<0.01f);
+  }
   printf(fails? "%d FALHAS\n":"sleek_logic: TODOS OS TESTES OK\n",fails); return fails!=0; }

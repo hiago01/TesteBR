@@ -1,37 +1,43 @@
-# Sleek (recriação do SleekMovement) — câmera + movimento
+# Sleek (recriação do SleekMovement) — câmera + movimento + postura + foot IK + câmera de ombro
 
-O `SleekMovement.asi` é um binário **x86 do PC (GTA SA 1.0 US)**: não roda no Android. Esta entrega **recria em C++ ARM64** os módulos que você escolheu (câmera + movimento), usando o `SleekMovement.ini` como especificação (mesmos nomes de seção/chave).
+O `SleekMovement.asi` é x86 do PC e não roda no Android. Tudo aqui é **recriado em C++ ARM64**, usando o `SleekMovement.ini` como especificação (mesmos nomes de seção/chave).
 
-## O que foi recriado
-| Módulo | Como funciona no cliente |
+## Módulos
+| Módulo | Como funciona |
 |---|---|
-| Tremor de impacto reescrito (`EnableCameraShakeRewrite`) | Zera `m_fCamShakeForce` só durante o `CCamera::Process` original (o motor não aplica o tremor dele), restaura depois, e aplica tremor suave rotacional + deslocamento mínimo. |
-| Tremor ocioso (`EnableCameraIdleShake`) | Pitch/yaw/roll orgânicos (senos incomensuráveis), x1,5 no sprint. Desliga ao mirar / de carro. |
-| FOV de corrida/sprint (`EnableCameraRunFov`) | +15° correndo, +30° no sprint, com subida/descida suave (via `CDraw__SetFOV_hook`). Andar devagar não abre o FOV. |
-| FOV por pitch (`EnableCameraPitchFov`) | Olhar para cima abre até +15°. Total limitado a `MaxTotalChange`. |
-| Inércia (`EnableMomentum`) | Aceleração/frenagem progressivas, giro limitado por velocidade, freada antes de inverter a direção. Atua no stick local (`pad.cpp`), depois do modo WALK/JOG/SPRINT. |
-| Agachado (`EnableCrouchLocomotion`) | `KeepCrouchedWithSprint`: sprint apertado agachado não levanta o personagem. |
+| Tremor de impacto / tremor ocioso / FOV corrida-sprint-pitch | (entrega anterior) hook em `CCamera::Process` + `CDraw::SetFOV` |
+| **Inércia completa** | aceleração/frenagem, giro limitado, freada antes de inverter, **LateralGrip** (curvar perde velocidade), **BlockedSpeedDecay** (empurrando parede >0,25 s a velocidade interna some), **teleporte** (>3 m num quadro zera inércia, FOV, câmera, postura e IK) |
+| **Câmera de ombro** (`EnableModernCamera`) | só na câmera de seguir a pé: âncora suavizada com atrasos por eixo (lateral/aproximar/afastar/vertical), offset de ombro, 3 níveis de zoom, troca de ombro suave, colisão por raycast (raio+folga, encosta na hora e solta devagar) |
+| **Lean + pitch do corpo** | inclinação lateral (entrada + giro + velocidade angular) e para frente/trás (acelerar/frear), repartida entre `SPINE`/`SPINE1`; `HeadFollow` mantém a cabeça parcialmente nivelada |
+| **Head tracking** | tronco/pescoço/cabeça olham para onde a câmera olha (limites 75°/30°/25°, ×0,7 andando, some ao olhar para trás) |
+| **Foot IK** | sonda o chão sob cada pé (raycast), IK de 2 ossos (coxa/canela) + pelve desce, pé acompanha a inclinação do chão |
+| Agachado | `KeepCrouchedWithSprint` (sprint não levanta) |
 
-## NÃO portado (precisa de hooks de animação/esqueleto)
-Câmera de ombro (ModernCamera), lean/pitch do corpo, head tracking, foot IK, blends de mira, e os *blends de animação* do CrouchLocomotion. Também não portados dentro da inércia: `LateralGrip`, `BlockedSpeedDecay`, `TeleportResetDistance` (o estado zera após pausa >0,25 s).
+### Como a postura/IK funciona (mecanismo)
+Hook em `RpHAnimHierarchyUpdateMatrices`, **só para o esqueleto do jogador local**: salva as matrizes locais dos ossos → gira os ossos (mesma técnica do `CPedIK` do jogo: editar os `RwFrame` antes do cálculo) → chama o original → (foot IK) 2ª passada → **restaura** as matrizes (idempotente, nunca acumula). Se o hook não instalar ou o esqueleto for incompatível, tudo vira no-op e o jogo segue normal (log `[SLEEK-POSE]`).
 
-## Arquivos (a partir da raiz do projeto)
-- `app/src/main/cpp/samp/game/sleek_logic.h` — lógica pura (testada no PC)
-- `app/src/main/cpp/samp/game/sleek.h/.cpp` — integração, INI, comando
-- `app/src/main/cpp/samp/game/hooks.cpp` — `CCamera__Process_hook` chama `SleekMove::CameraProcess`; `CDraw__SetFOV_hook` soma `FovDelta()`
-- `app/src/main/cpp/samp/game/pad.cpp` — `SleekMove::ApplyStick` (4 pontos) e `FilterSprint`
-- `app/src/main/cpp/samp/gui/samp_widgets/chat.cpp` — comando `/sleek`
-- `tools/sleek_test.cpp` — `g++ -std=c++17 tools/sleek_test.cpp && ./a.out` → "TODOS OS TESTES OK"
+## Comandos
+`/sleek` (status) · `/sleek <módulo> on|off` com módulos: `tremor ocioso corrida pitch inercia agachado lean inclina cabeca pe ombro` · `/sleek ombro` (troca o lado) · `/sleek zoom perto|medio|longe` · `/sleek fov 0.5` · `/sleek off` · `/sleek reload` · `/sleek reset`
 
-(O CMake já usa `GLOB_RECURSE`: os arquivos novos entram sozinhos.)
+## Config
+`SAMP/sleek.ini` (criado só se não existir; **nunca sobrescrito** — chaves novas ausentes usam os padrões do código). Seção extra `[Client]`: `FovScale`, `ShakeGain`, `ShakeDurationSeconds`, `AlsoRotateCamVectors`, `LeanSign`/`PitchSign` (-1 inverte o lado), `PedGroundOffset`, `ShoulderAnchorBase`.
 
-## Config e teste
-`SAMP/sleek.ini` é criado com os padrões na 1ª execução e **nunca sobrescrito**. Seção extra `[Client]`: `FovScale` (1.0 = INI; 0.5 = metade), `ShakeGain`, `ShakeDurationSeconds`, `AlsoRotateCamVectors`.
-
-Comandos: `/sleek` (status) · `/sleek tremor|ocioso|corrida|pitch|inercia|agachado on|off` · `/sleek fov 0.5` · `/sleek off` · `/sleek reload` · `/sleek reset`.
+## O que continua NÃO portado
+- **Blends de animação** (AimLag, AimStrafeBlend, AimReloadBlend, AimReleaseBlend e os blends de entrada/saída do CrouchLocomotion): precisam de hooks na camada de `CAnimBlendAssociation` (pesos de blend por animação), que este cliente não expõe hoje. Não inventei isso sem poder testar.
+- Foot IK: 1 sonda por pé (sem as sondas frente/trás/lado e sem `MaxFootLateralCorrection`); sem correção de quadril lateral.
+- Postura/IK só no **jogador local** (outros jogadores não).
+- Botão de troca de ombro/zoom na tela: por enquanto só por comando.
 
 ## Honestidade sobre o teste
-- Lógica pura: testada no PC (FOV, rotação da câmera, tremores, inércia).
-- Código de integração: checado só por sintaxe (sem NDK/aparelho aqui). **Não rodou no jogo.**
-- Incertezas a validar no aparelho: (1) o tremor ocioso edita a matriz da câmera **depois** do `CCamera::Process` + `UpdateRW` + `RwFrameUpdateObjects`; se não aparecer nada, teste `AlsoRotateCamVectors=1` e me avise; (2) a unidade/decaimento de `m_fCamShakeForce` foi estimada (5 s linear; ajuste com `ShakeGain`/`ShakeDurationSeconds`); (3) o sinal do eixo do stick (frente = −128) é simétrico na inércia, mas o giro pode precisar de ajuste fino.
-- Se o FOV ficar exagerado: `/sleek fov 0.5`. Qualquer módulo problemático: `/sleek <modulo> off`.
+- Lógica pura (FOV, tremores, inércia, rotação de ossos, IK de 2 ossos, alvo de pé, head tracking, lean, âncora da câmera): **testada no PC** (`tools/sleek_test.cpp`).
+- Integração com o jogo: só checada por sintaxe (sem NDK/aparelho). **Nada disso rodou no jogo ainda.**
+- Riscos reais a validar no aparelho (o log `[SLEEK-POSE]` diz tudo):
+  1. A hierarquia do ped não pode ter a flag `UPDATEMODELLINGMATRICES` (0x1000) — senão o código se desliga sozinho e avisa no log.
+  2. A base dos ossos pai é lida de `pMatrixArray` (mundo); se for espaço local, usa o `ltm` do frame.
+  3. Câmera/tremor/ombro editam `m_mCameraMatrix` + `UpdateRW` + `Source`; se não aparecer nada, tente `AlsoRotateCamVectors=1`.
+  4. Sinais de lean/pitch podem sair invertidos → `LeanSign=-1` / `PitchSign=-1` no `[Client]`.
+  5. Se o pé "flutuar" ou afundar no plano: ajuste `PedGroundOffset` (padrão 1.0).
+- Qualquer módulo problemático: `/sleek <módulo> off`; `/sleek off` desliga tudo.
+
+## Arquivos (a partir da raiz do projeto)
+`app/src/main/cpp/samp/game/` → `sleek_logic.h`, `sleek_pose_logic.h`, `sleek_priv.h`, `sleek.h/.cpp`, `sleek_pose.cpp`, `hooks.cpp`, `pad.cpp`; `gui/samp_widgets/chat.cpp`; `tools/sleek_test.cpp`. (CMake usa `GLOB_RECURSE`: arquivos novos entram sozinhos.)
