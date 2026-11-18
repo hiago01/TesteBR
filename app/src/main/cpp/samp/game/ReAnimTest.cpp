@@ -25,6 +25,10 @@ namespace {
 const char* kBlock = "reanim";
 const char* kExtras[] = { "baseball", "chainsaw", "fight_e", "goggles", "grenade", "knife", "parachute", "playidles", "shop", "vending" };
 
+// Re-anims For IWP (anims de armas): SAMP/anims/reanim/iwp/<nome>.ifp -> bloco "iwp_<nome>"
+const char* kIwp[] = { "ar15", "aug", "boltsnp", "buddy", "bullpup", "colt45", "flame", "garand", "hkrifl", "micsmg", "mp7", "newshot",
+                       "python", "revlvr", "revlvr_alt", "rifle", "rocket", "shotgun", "silenced", "tecani", "tmygun", "twobar", "uzi", "WeaponDetails" };
+
 // animacoes que NAO existem no ped.ifp oficial do projeto (so no Re Anims)
 const char* kNovas[] = {
     "CAR_sitp2", "FIGHT_PUSH", "IDLE_SWAT", "IDLE_homeless", "IDLE_latino", "IDLE_vendor", "IDLE_vendorfemale", "LIMP", "M7DECENT",
@@ -81,7 +85,7 @@ std::string PlayName(const std::string& block, const std::string& anim, bool hol
 std::string Command(const std::string& args) {
     std::vector<std::string> t = Split(args);
     if (t.empty() || t[0] == "ajuda")
-        return "[REANIM] carregar | extras | lista [novas|todas|texto] [pag] | tocar <nome|n|bloco:nome> [hold] | proxima | anterior | oficial <nome> | parar   (testa o Re Anims sem trocar o ped.ifp oficial)";
+        return "[REANIM] carregar | extras | armas | lista [novas|todas|texto] [pag] | tocar <nome|n|bloco:nome> [hold] | proxima | anterior | oficial <nome> | parar   (testa o Re Anims sem trocar o ped.ifp oficial)";
     const std::string c = t[0];
 
     if (c == "carregar") {
@@ -104,6 +108,17 @@ std::string Command(const std::string& args) {
         return "[REANIM] extras: " + std::to_string(ok) + " blocos ok, " + std::to_string(fail) + " falharam. Use /reanim lista re_knife (e tocar re_knife:<anim>)";
     }
 
+    if (c == "armas") {
+        int ok = 0, fail = 0; std::string bad;
+        for (const char* e : kIwp) {
+            std::string blk = std::string("iwp_") + e;
+            if (Has(blk.c_str())) { ++ok; continue; }
+            std::string f = AnimDir() + "reanim/iwp/" + e + ".ifp";
+            if (CustomAnim::Init(f.c_str(), blk.c_str())) ++ok; else { ++fail; bad += std::string(" ") + e; }
+        }
+        return "[REANIM] armas (IWP): " + std::to_string(ok) + " blocos ok, " + std::to_string(fail) + " falharam" + (bad.empty() ? "" : ":" + bad) + ". /reanim lista iwp_ar15 | /reanim tocar iwp_ar15:AR15_fire";
+    }
+
     if (c == "parar") { CPedGTA* p = LocalPed(); if (!p) return "[REANIM] ped local indisponivel"; CustomAnim::StopAll(p); return "[REANIM] parado"; }
 
     if (c == "oficial") {
@@ -115,9 +130,9 @@ std::string Command(const std::string& args) {
 
     if (c == "lista") {
         std::string blk = kBlock;
-        if (t.size() > 1 && (t[1].rfind("re_", 0) == 0 || t[1] == kBlock)) {      // lista de um bloco extra
+        if (t.size() > 1 && (t[1].rfind("re_", 0) == 0 || t[1].rfind("iwp_", 0) == 0 || t[1] == kBlock)) {      // lista de um bloco extra
             blk = t[1]; const auto* n = CustomIfp::GetAnimNames(blk.c_str());
-            if (!n) return "[REANIM] bloco '" + blk + "' nao carregado (/reanim extras)";
+            if (!n) return "[REANIM] bloco '" + blk + "' nao carregado (/reanim extras | /reanim armas)";
             std::string r = "[REANIM] " + blk + ": "; for (size_t i = 0; i < n->size(); ++i) { if (i) r += ", "; r += (*n)[i]; } return r;
         }
         if (!Has(kBlock)) return "[REANIM] use /reanim carregar primeiro";
