@@ -520,10 +520,16 @@ namespace Phone
 			const Color col = d ? d->color : Colors::Accent;
 			const float rad = q.w * 0.23f;
 			cv.fillRect(q.moved(0, q.h * 0.03f), Color(0, 0, 0, 60), rad);
-			cv.fillRect(q, Color::mix(col, Color(0, 0, 0), 0.30f), rad);
-			cv.fillRect({ q.x, q.y, q.w, q.h * 0.62f }, col, rad);
-			cv.fillRect({ q.x, q.y + q.h * 0.30f, q.w, q.h * 0.32f }, col, 0);
-			DrawGlyph(cv, d ? d->id : std::string(), q.inset(q.w * 0.22f), Color(255, 255, 255));
+			uint64_t itex = 0; Vec2 iuv0{ 0, 0 }, iuv1{ 1, 1 };
+			if (d && m_ctx.appIcon && m_ctx.appIcon(d->id, itex, iuv0, iuv1) && itex)
+				cv.image(q, itex, iuv0, iuv1);         // icone como imagem (atlas embutido)
+			else
+			{
+				cv.fillRect(q, Color::mix(col, Color(0, 0, 0), 0.30f), rad);
+				cv.fillRect({ q.x, q.y, q.w, q.h * 0.62f }, col, rad);
+				cv.fillRect({ q.x, q.y + q.h * 0.30f, q.w, q.h * 0.32f }, col, 0);
+				DrawGlyph(cv, d ? d->id : std::string(), q.inset(q.w * 0.22f), Color(255, 255, 255));
+			}
 			if (badge > 0)
 			{
 				const float br = q.w * 0.19f; const Vec2 bc{ q.right() - br * 0.3f, q.y + br * 0.3f };

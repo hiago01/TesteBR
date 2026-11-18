@@ -17,6 +17,9 @@
 #include "../../vendor/raknet/BitStream.h"
 #include "phone.h"
 #include "phonephotos.h"
+#include "phoneicons.h"
+#include "../../game/RW/RenderWare.h"
+#include "../../vendor/stb/stb_image.h"   // implementacao em game/sprite2d.cpp
 #include "maximomenu.h"
 #include "maximoos.h"
 #include "inventory.h"
@@ -35,6 +38,51 @@ extern CNetGame* pNetGame;
 extern volatile bool g_bTouchCancel;
 
 using namespace Phone;
+
+namespace
+{
+	// Atlas de icones dos apps (mesmo caminho de textura de ctlicons / moderncontrols.cpp). Falhou = icones desenhados por codigo, como antes.
+	RwRaster* s_appIcoRaster = nullptr;
+	bool      s_appIcoFailed = false;
+
+	RwRaster* CreateAppIconRaster()
+	{
+		int w = 0, h = 0, ch = 0;
+		unsigned char* px = stbi_load_from_memory(PhoneIcons::kPng, (int)PhoneIcons::kPngSize, &w, &h, &ch, 4);
+		if (!px) { FLog("[PHONEICONS] stbi falhou: %s", stbi_failure_reason()); return nullptr; }
+		if (!RwImageCreate || !RwImageAllocatePixels || !RwImageFindRasterFormat || !RwRasterCreate || !RwRasterSetFromImage)
+		{ FLog("[PHONEICONS] funcoes RenderWare indisponiveis"); stbi_image_free(px); return nullptr; }
+		RwImage* image = RwImageCreate(w, h, 32);
+		if (!image || !RwImageAllocatePixels(image)) { if (image) RwImageDestroy(image); stbi_image_free(px); return nullptr; }
+		for (int y = 0; y < h; ++y) memcpy(image->cpPixels + (size_t)y * image->stride, px + (size_t)y * w * 4, (size_t)w * 4);
+		stbi_image_free(px);
+		int rw = w, rh = h, rd = 32, rf = 0;
+		RwImageFindRasterFormat(image, rwRASTERTYPETEXTURE, &rw, &rh, &rd, &rf);
+		rf &= ~(rwRASTERFORMATMIPMAP | rwRASTERFORMATAUTOMIPMAP);
+		if (rf & (rwRASTERFORMATPAL8 | rwRASTERFORMATPAL4))
+		{ rf &= ~(rwRASTERFORMATPAL8 | rwRASTERFORMATPAL4 | rwRASTERFORMATPIXELFORMATMASK); rf |= rwRASTERFORMAT8888; rd = 32; }
+		if ((rf & rwRASTERFORMATPIXELFORMATMASK) == 0) rf |= rwRASTERFORMAT8888;
+		RwRaster* raster = RwRasterCreate(rw, rh, rd, rf);
+		if (!raster) { RwImageDestroy(image); return nullptr; }
+		if (!RwRasterSetFromImage(raster, image)) { if (RwRasterDestroy) RwRasterDestroy(raster); RwImageDestroy(image); return nullptr; }
+		RwImageDestroy(image);
+		FLog("[PHONEICONS] atlas %dx%d criado", w, h);
+		return raster;
+	}
+
+	bool AppIconFor(const std::string& id, uint64_t& tex, Vec2& uv0, Vec2& uv1)
+	{
+		const int cell = PhoneIcons::CellFor(id.c_str());
+		if (cell < 0 || s_appIcoFailed) return false;
+		if (!s_appIcoRaster) { s_appIcoRaster = CreateAppIconRaster(); if (!s_appIcoRaster) { s_appIcoFailed = true; return false; } }
+		const float iw = 1.0f / (float)PhoneIcons::kWidth, ih = 1.0f / (float)PhoneIcons::kHeight;
+		const float ux = (float)((cell % PhoneIcons::kCols) * PhoneIcons::kCell), uy = (float)((cell / PhoneIcons::kCols) * PhoneIcons::kCell);
+		tex = (uint64_t)(uintptr_t)s_appIcoRaster;
+		uv0 = Vec2{ ux * iw, uy * ih }; uv1 = Vec2{ (ux + (float)PhoneIcons::kCell) * iw, (uy + (float)PhoneIcons::kCell) * ih };
+		return true;
+	}
+}
+
 
 namespace
 {
@@ -178,6 +226,7 @@ namespace
 				if (g_storeSvc) { g_storeSvc->reset(); if (!hasPhone) g_storeSvc->markNoPhone(); else g_storeSvc->refresh(NowMs(), true); }
 			};
 			p->context().photos = PhonePhotos::Api();
+			p->context().appIcon = [](const std::string& id, uint64_t& t, Vec2& a, Vec2& b) { return AppIconFor(id, t, a, b); };
 			return p;
 		}();
 		return *pm;

@@ -4,6 +4,7 @@
 #include "PhoneMetrics.h"
 #include "../maximoos/AppModel.h"
 #include "../maximoos/StatusBar.h"
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -86,6 +87,8 @@ namespace Phone
 		std::string imei, wallpaper = "w1";                                                       // do aparelho (preenchido pelo PhoneManager a partir da Loja)
 		bool deviceMissing = false;                                                               // o jogador NAO tem celular comprado (o aparelho mostra o aviso)
 		Gram::Service* gram = nullptr;                                                            // rede social (nullptr = sem servico)
+		// Icone de app como IMAGEM (atlas embutido, preenchido por phone.cpp). false = sem imagem: o icone e desenhado por codigo como antes.
+		std::function<bool(const std::string& appId, uint64_t& tex, Vec2& uv0, Vec2& uv1)> appIcon;
 		std::function<bool(const std::string& appId)> appExists;                                  // o cliente tem este app? (preenchido pelo PhoneManager)
 		std::function<bool(const std::string& appId)> openApp;                                    // preenchido pelo PhoneManager
 		std::string launchArg;                                                                    // argumento para o app aberto (ex.: numero); o destino consome em onResume
