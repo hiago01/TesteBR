@@ -3,6 +3,7 @@
 #include "../imguirenderer.h"
 #include "../../game/game.h"
 #include "../../game/RW/RenderWare.h"
+#include "../../game/World.h"
 #include "../../net/netgame.h"
 #include "../../net/playerpool.h"
 #include "../../net/localplayer.h"
@@ -10,6 +11,8 @@
 #include "waypoint3d.h"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <mutex>
@@ -24,7 +27,8 @@ namespace
 {
 	constexpr int kMax = 12;
 
-	struct Pin { float x = 0, y = 0, z = 0; std::string name; };
+	struct Pin { float x = 0, y = 0, z = 0; std::string name, label; };
+	std::atomic<bool> g_seen{false};
 	std::mutex       g_mtx;
 	Pin              g_sede; bool g_sedeOn = false;      // marcacao temporaria do servidor (op 21): "SEDE (grupo)"
 	std::vector<Pin> g_pins;            // escrito pela thread de rede, lido pela de desenho (copia por quadro)
@@ -100,12 +104,14 @@ void Waypoint3D::OnPacket(RakNet::BitStream& bs)
 		p.name.assign(len, '\0');
 		if (len && !bs.Read(&p.name[0], (unsigned)len)) return;
 		for (char& ch : p.name) if ((unsigned char)ch < 32) ch = ' ';
+		p.label = p.name;
 		p.name = Upper(p.name);
-		if (p.name.empty()) p.name = "LOCAL";
+		if (p.name.empty()) { p.name = "LOCAL"; p.label = "Local"; }
 		v.push_back(std::move(p));
 	}
 	std::lock_guard<std::mutex> l(g_mtx);
 	g_pins = std::move(v);
+	g_seen.store(true);
 }
 
 void Waypoint3D::OnSede(RakNet::BitStream& bs)
@@ -128,7 +134,18 @@ void Waypoint3D::Reset()
 	std::lock_guard<std::mutex> l(g_mtx);
 	g_pins.clear();
 	g_sedeOn = false;
+	g_seen.store(false);
 }
+
+int Waypoint3D::Count() { std::lock_guard<std::mutex> l(g_mtx); return (int)g_pins.size(); }
+bool Waypoint3D::Get(int i, float& x, float& y, std::string& label)
+{
+	std::lock_guard<std::mutex> l(g_mtx);
+	if (i < 0 || i >= (int)g_pins.size()) return false;
+	x = g_pins[i].x; y = g_pins[i].y; label = g_pins[i].label;
+	return true;
+}
+bool Waypoint3D::ServerSupports() { return g_seen.load(); }
 
 void Waypoint3D::Draw(ImGuiRenderer* r, float k)
 {
@@ -147,6 +164,31 @@ void Waypoint3D::Draw(ImGuiRenderer* r, float k)
 	}
 	if (!havePl) return;
 	const ImVec2 scr = pUI ? pUI->displaySize() : ImVec2(1920, 1080);
+
+	// z = -1000 (criada no mapa): chao do lugar quando a area esta carregada (a ate ~350 m e perto da altura do jogador); senao a altura do jogador. Guarda 1,5 s.
+	struct AutoZ { float x, y, z; int64_t t; };
+	static std::vector<AutoZ> azc;
+	const int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+	for (Pin& p : pins)
+	{
+		if (p.z > -900.0f) continue;
+		AutoZ* e = nullptr;
+		for (AutoZ& a : azc) if (a.x == p.x && a.y == p.y) { e = &a; break; }
+		if (!e) { if (azc.size() >= 32) azc.erase(azc.begin()); azc.push_back({p.x, p.y, pz, 0}); e = &azc.back(); }
+		if (nowMs - e->t > 1500)
+		{
+			e->t = nowMs;
+			const float dx2 = p.x - px, dy2 = p.y - py;
+			float gz = pz;
+			if (dx2 * dx2 + dy2 * dy2 < 350.0f * 350.0f)
+			{
+				const float g = CWorld::FindGroundZForCoord(p.x, p.y);
+				if (std::fabs(g - pz) < 60.0f) gz = g;
+			}
+			e->z = gz;
+		}
+		p.z = e->z;
+	}
 
 	std::vector<Item> items;
 	for (const Pin& p : pins)

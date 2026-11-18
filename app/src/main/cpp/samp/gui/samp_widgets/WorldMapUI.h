@@ -12,6 +12,7 @@
 #include "MapLines.h"
 #include "RoadGraph.h"
 #include "MiniRoute.h"
+#include "ZoneNames.h"
 
 #include <algorithm>
 #include <atomic>
@@ -40,6 +41,11 @@ namespace WorldMap
 		// ---- linhas / GPS pelas ruas (opcional: a plataforma padrao nao tem grafo e tudo segue como antes) ----
 		virtual const Roads::Graph* roads() { return nullptr; }   // grafo de ruas (NODES*.DAT); nullptr = ainda carregando/indisponivel
 		virtual const Lines::Styles& lineStyles() { static Lines::Styles s = Lines::Defaults(); return s; }
+		// ---- marcacoes 3D do jogador (servidor org.pwn: /marcar; o cliente guarda a lista em waypoint3d.cpp) ----
+		virtual int  pinCount() { return 0; }
+		virtual bool pinAt(int i, float& x, float& y, std::string& label) { (void)i; (void)x; (void)y; (void)label; return false; }
+		// toque no mapa/local: pede ao servidor que crie a marcacao 3D (z = -1000: o cliente acha o chao). So faz algo se o servidor suporta.
+		virtual void createPin(float x, float y, float z, const std::string& name) { (void)x; (void)y; (void)z; (void)name; }
 	};
 
 	class Ui
@@ -187,7 +193,8 @@ namespace WorldMap
 		void ProcessEvents();
 		void OnTap(float x, float y);
 		void SelectLocation(int idx, bool fromList);
-		void SetFreeGps(float wx, float wy);
+		void SetFreeGps(float wx, float wy, bool create = true, const std::string& label = std::string());
+		int  NearestPin(float rx, float ry, float radiusPx, float& wx, float& wy, std::string& label) const;
 		void ClearGps(bool notify);
 		void TickGps();
 		void ClearLocalRoute() { m_localRoute.clear(); m_localValid = false; m_localWhy.clear(); }
@@ -315,6 +322,23 @@ namespace WorldMap
 		if (notify) P->sendCommand("/mapax clear");
 	}
 
+	// primeiros n caracteres (UTF-8) do texto
+	inline std::string ClipUtf8(const std::string& t, int n)
+	{
+		int c = 0; size_t i = 0;
+		while (i < t.size() && c < n) { i++; while (i < t.size() && ((unsigned char)t[i] & 0xC0) == 0x80) i++; c++; }
+		return t.substr(0, i);
+	}
+	// nome do lugar no ponto (zona do GTA, sem a cidade: "Chinatown"); vazio = sem nome util
+	inline std::string ZoneLabel(float x, float y)
+	{
+		char b[96]; ZoneNames::Describe(x, y, 0.0f, b, sizeof b);
+		std::string t = b;
+		const size_t bar = t.find(" | ");
+		if (bar != std::string::npos) t = t.substr(bar + 3);
+		return t == "San Andreas" ? std::string() : t;
+	}
+
 	inline void Ui::SelectLocation(int idx, bool fromList)
 	{
 		if (idx < 0 || idx >= (int)m_locs.size()) return;
@@ -325,10 +349,26 @@ namespace WorldMap
 		P->setGps(l.x, l.y, l.z);
 		if (fromList) CenterOn(m_view, l.x, l.y);
 		Cmd("/mapax sel %d", l.id);
+		P->createPin(l.x, l.y, l.z, ClipUtf8(l.name, 24));                    // e a marcacao 3D com o nome do local
 		Toast("GPS: " + l.name);
 	}
 
-	inline void Ui::SetFreeGps(float wx, float wy)
+	inline int Ui::NearestPin(float rx, float ry, float radiusPx, float& wx, float& wy, std::string& label) const
+	{
+		int best = -1; float bestD = radiusPx;
+		const int n = P->pinCount();
+		for (int i = 0; i < n; i++)
+		{
+			float x = 0, y = 0; std::string nm;
+			if (!P->pinAt(i, x, y, nm)) continue;
+			const Vec2 s = ToScreen(m_view, x, y);
+			const float d = Dist(s.x, s.y, rx, ry - 12.0f * m_L.k);      // o pino fica acima do ponto: mede pela cabeca
+			if (d <= bestD) { bestD = d; best = i; wx = x; wy = y; label = nm; }
+		}
+		return best;
+	}
+
+	inline void Ui::SetFreeGps(float wx, float wy, bool create, const std::string& label)
 	{
 		wx = Clampf(wx, kWorldMin, kWorldMax);
 		wy = Clampf(wy, kWorldMin, kWorldMax);
@@ -337,7 +377,9 @@ namespace WorldMap
 		m_selLoc = -1;
 		P->setGps(wx, wy, 0.0f);
 		Cmd("/mapax pos %d %d", (int)std::lround(wx), (int)std::lround(wy));
-		Toast("GPS marcado");
+		std::string nm = label.empty() ? ZoneLabel(wx, wy) : label;
+		if (create) P->createPin(wx, wy, -1000.0f, ClipUtf8(nm.empty() ? std::string("Marcacao") : nm, 24));      // marcacao 3D com o nome do lugar clicado
+		Toast(nm.empty() ? std::string("GPS marcado") : "GPS marcado: " + nm);
 	}
 
 	// chegou ao destino (funciona com o mapa fechado)
@@ -363,6 +405,8 @@ namespace WorldMap
 			const float rx = x - L.mapA.x, ry = y - L.mapA.y;
 			const int hit = NearestLocation(m_view, m_locs, rx, ry, 26.0f * L.k);
 			if (hit >= 0) { SelectLocation(hit, false); return; }
+			float pwx = 0, pwy = 0; std::string pnm;
+			if (NearestPin(rx, ry, 26.0f * L.k, pwx, pwy, pnm) >= 0) { SetFreeGps(pwx, pwy, false, pnm); return; }       // toque numa marcacao: GPS ate ela (sem criar outra)
 			const Vec2 w = ToWorld(m_view, rx, ry);
 			SetFreeGps(w.x, w.y);
 		}
@@ -918,6 +962,21 @@ namespace WorldMap
 				r->drawText(ImVec2(c.x + s + 5 * k, c.y - 6.5f * k), text, l.name, true, 11.0f * k);
 		}
 
+		// ---- marcacoes 3D do jogador: pino azul + nome ----
+		{
+			const int np = P->pinCount();
+			for (int i = 0; i < np; i++)
+			{
+				float wx = 0, wy = 0; std::string nm;
+				if (!P->pinAt(i, wx, wy, nm)) continue;
+				const ImVec2 c = S(wx, wy);
+				if (c.x < L.mapA.x - 20 || c.x > L.mapB.x + 20 || c.y < L.mapA.y - 20 || c.y > L.mapB.y + 20) continue;
+				const float ps = 6.0f * k;
+				DrawPin(r, c, ps, ImColor(64, 164, 255, 255), ImColor(255, 255, 255, 255));
+				r->drawText(ImVec2(c.x + ps + 4.0f * k, c.y - ps * 1.55f - 6.5f * k), text, nm, true, 11.0f * k);
+			}
+		}
+
 		// ---- destino (GPS) e jogador ----
 		if (m_gps.on)
 		{
@@ -1019,7 +1078,7 @@ namespace WorldMap
 			auto hot = [&](int id) { for (const Finger& f : m_f) if (f.down && f.region == 3 && f.btn == id) return true; return false; };
 			DrawButton(r, L.closeA, L.closeB, "FECHAR", blue, 13.0f * k, hot(BTN_CLOSE));
 			if (m_gps.on) DrawButton(r, L.clrA, L.clrB, "LIMPAR GPS", btn, 12.0f * k, hot(BTN_CLEAR));
-			const char* hint = "Arraste para mover | pinca para zoom | toque para marcar o GPS";
+			const char* hint = "Arraste para mover | pinca para zoom | toque para marcar o GPS e a marcacao 3D";
 			const ImVec2 ts = r->calculateTextSize(hint, 11.0f * k);
 			r->drawText(ImVec2(L.panB.x - L.pad - ts.x, L.barY + (L.barH - ts.y) * 0.5f), mute, hint, false, 11.0f * k);
 		}
