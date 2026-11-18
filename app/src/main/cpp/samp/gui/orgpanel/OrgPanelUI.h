@@ -44,6 +44,7 @@ namespace OrgPanel
 	public:
 		// ================= estado publico simples =================
 		bool isOpen() const { return m_open; }
+		void setLogo(uint64_t tex) { m_logo = tex; }          // textura do logo do servidor (0 = sem logo); criada pelo hospedeiro
 		std::vector<Cmd>& cmds() { return m_cmds; }
 		const Home& home() const { return m_home; }
 
@@ -122,6 +123,7 @@ namespace OrgPanel
 	private:
 		// ---------- dados ----------
 		struct Load { bool loaded = false, loading = false, failed = false; };
+		uint64_t m_logo = 0;
 		bool m_open = false; std::string m_token; int64_t m_t0 = 0, m_now = 0; float m_dt = 16;
 		Home m_home; std::vector<Member> m_members; std::vector<FarmRow> m_farm; std::vector<FarmHist> m_hist; std::vector<Tx> m_tx; std::vector<Rank> m_ranks;
 		long long m_balance = 0; bool m_canWithdraw = false;
@@ -891,6 +893,48 @@ namespace OrgPanel
 			}
 			cv.popClip();
 			drawScrollbar(cv, m_svMem);
+			drawBrand(cv);
+		}
+
+
+		// ---------------- marca do servidor (aba Membros): logo com fundo neon que acende e apaga ----------------
+		// intensidade 0..1 do neon no tempo t (ms): liga piscando, fica aceso respirando, apaga suave, fica apagado e recomeca (ciclo 6 s)
+		static float NeonLevel(int64_t t)
+		{
+			const float c = (float)(t % 6000);
+			if (c < 500) return 0.10f;                                   // apagado
+			if (c < 580) return 0.85f;                                   // pisca ao ligar
+			if (c < 650) return 0.18f;
+			if (c < 760) return 1.0f;
+			if (c < 820) return 0.30f;
+			if (c < 1000) return 1.0f;
+			if (c < 4200) return 0.94f + 0.06f * std::sin((c - 1000.0f) * 0.0031f);   // aceso, respirando
+			if (c < 4900) { const float k = (c - 4200.0f) / 700.0f; return 1.0f - 0.9f * k * k * (3.0f - 2.0f * k); }   // apaga suave
+			return 0.10f;
+		}
+		void drawBrand(Canvas& cv)
+		{
+			if (!m_logo) return;
+			const float g = NeonLevel(m_now - m_t0);
+			const Rect plate = R(921, 288, 414, 377);
+			cv.fillRect(plate, Color(6, 16, 44, 150), S(22));
+			cv.pushClip(plate);
+			const Vec2 c = { plate.x + plate.w * 0.5f, plate.y + plate.h * 0.47f };
+			const float base = std::min(plate.w, plate.h);
+			for (int i = 0; i < 16; ++i)       // brilho de fundo: camadas suaves (azul por fora, ciano no miolo)
+			{
+				const float k = 1.0f - i / 16.0f; const float rad = base * (0.20f + 0.50f * k);
+				cv.fillCircle(c, rad, Color(i < 9 ? 30 : 70, i < 9 ? 110 : 200, 255, (int)(g * (i < 9 ? 11 : 9))));
+			}
+			cv.popClip();
+			// contorno neon da placa (acende/apaga junto)
+			cv.strokeRect(plate, Color(46, 150, 255, (int)(60 + 195 * g)), S(22), std::max(1.5f, S(2.0f)));
+			if (g > 0.3f) cv.strokeRect(plate.inset(-S(3), -S(3)), Color(46, 150, 255, (int)(60 * g)), S(25), std::max(1.0f, S(3.0f)));
+			// logo (apagado = escurece, como letreiro desligado)
+			const float lg = base * 0.80f;
+			cv.setAlpha(0.45f + 0.55f * g);
+			cv.image({ c.x - lg * 0.5f, c.y - lg * 0.5f, lg, lg }, m_logo);
+			cv.setAlpha(1.0f);
 		}
 
 		void drawScrollbar(Canvas& cv, const ScrollView& sv)

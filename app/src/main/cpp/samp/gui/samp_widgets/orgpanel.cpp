@@ -6,6 +6,9 @@
 #include "../../vendor/raknet/SAMP/SAMPRPC.h"
 #include "../../vendor/raknet/BitStream.h"
 #include "../../java/jniutil.h"
+#include "../../game/RW/RenderWare.h"
+#include "../../vendor/stb/stb_image.h"   // implementacao em game/sprite2d.cpp
+#include "../orgpanel/OrgLogo.h"
 #include "../maximoos/InputManager.h"
 #include "../maximoos/GestureTracker.h"
 #include "../orgpanel/OrgPanelUI.h"
@@ -92,6 +95,11 @@ namespace
 		void pushClip(const Rect& r) override { m_r->pushClipRect(V(r.x, r.y), V(r.right(), r.bottom()), true); ++m_clips; }
 		void popClip() override { if (m_clips > 0) { m_r->popClipRect(); --m_clips; } }
 		void setAlpha(float a) override { m_alpha = std::clamp(a, 0.0f, 1.0f); }
+		void image(const Rect& r, uint64_t tex, Vec2 uv0, Vec2 uv1) override
+		{
+			if (!tex || r.empty()) return;
+			m_r->drawImage(V(r.x, r.y), V(r.right(), r.bottom()), (ImTextureID)(uintptr_t)tex, ImColor(255, 255, 255, (int)std::lround(255.0f * m_alpha)), ImVec2(uv0.x, uv0.y), ImVec2(uv1.x, uv1.y));
+		}
 	private:
 		int m_role = 0;
 		static ImVec2 V(float x, float y) { return ImVec2(x, y); }
@@ -104,6 +112,36 @@ namespace
 		}
 		ImGuiRenderer* m_r; float m_alpha = 1.0f; int m_clips = 0;
 	};
+
+	// ---- logo do servidor (PNG embutido, mesmo caminho do atlas da HUD: stb_image -> RwImage -> RwRaster) ----
+	RwRaster* s_logo = nullptr; bool s_logoFailed = false;
+	RwRaster* CreateLogoRaster()
+	{
+		int w = 0, h = 0, ch = 0;
+		unsigned char* px = stbi_load_from_memory(OrgLogo::kPng, (int)OrgLogo::kPngSize, &w, &h, &ch, 4);
+		if (!px) { FLog("[GRUPO] logo: stbi falhou: %s", stbi_failure_reason()); return nullptr; }
+		if (!RwImageCreate || !RwImageAllocatePixels || !RwImageFindRasterFormat || !RwRasterCreate || !RwRasterSetFromImage) { stbi_image_free(px); return nullptr; }
+		RwImage* image = RwImageCreate(w, h, 32);
+		if (!image || !RwImageAllocatePixels(image)) { if (image) RwImageDestroy(image); stbi_image_free(px); return nullptr; }
+		for (int y = 0; y < h; ++y) memcpy(image->cpPixels + (size_t)y * image->stride, px + (size_t)y * w * 4, (size_t)w * 4);
+		stbi_image_free(px);
+		int rw = w, rh = h, rd = 32, rf = 0;
+		RwImageFindRasterFormat(image, rwRASTERTYPETEXTURE, &rw, &rh, &rd, &rf);
+		rf &= ~(rwRASTERFORMATMIPMAP | rwRASTERFORMATAUTOMIPMAP);
+		if (rf & (rwRASTERFORMATPAL8 | rwRASTERFORMATPAL4)) { rf &= ~(rwRASTERFORMATPAL8 | rwRASTERFORMATPAL4 | rwRASTERFORMATPIXELFORMATMASK); rf |= rwRASTERFORMAT8888; rd = 32; }
+		if ((rf & rwRASTERFORMATPIXELFORMATMASK) == 0) rf |= rwRASTERFORMAT8888;
+		RwRaster* raster = RwRasterCreate(rw, rh, rd, rf);
+		if (!raster) { RwImageDestroy(image); return nullptr; }
+		if (!RwRasterSetFromImage(raster, image)) { if (RwRasterDestroy) RwRasterDestroy(raster); RwImageDestroy(image); return nullptr; }
+		RwImageDestroy(image);
+		FLog("[GRUPO] logo %dx%d criado (raster %dx%d)", w, h, rw, rh);
+		return raster;
+	}
+	uint64_t LogoTex()
+	{
+		if (!s_logo && !s_logoFailed) { s_logo = CreateLogoRaster(); if (!s_logo) s_logoFailed = true; }
+		return (uint64_t)(uintptr_t)s_logo;
+	}
 
 	// ---- estado (rede escreve em g_pend*; o desenho consome) ----
 	OrgPanel::Panel& Pn() { static OrgPanel::Panel p; return p; }
@@ -257,6 +295,7 @@ void OrgPanelWidget::draw(ImGuiRenderer* r)
 		Gt().tick(now, touches);
 	}
 	const ImVec2 sc = pUI ? pUI->displaySize() : ImVec2(1920, 1080);
+	p.setLogo(LogoTex());                       // so cria na primeira vez que o painel desenha (thread de desenho/GL)
 	{
 		ImGuiCanvas cv(r);
 		p.frame(cv, sc.x, sc.y, touches, now, dt);
