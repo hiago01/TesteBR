@@ -68,7 +68,7 @@ namespace
 	}
 }
 
-bool JumpButtonState::ConsumeJustDown() { return g_req.ConsumeJustDown(); }
+bool JumpButtonState::ConsumeJustDown() { return g_req.ConsumeJustDown(NowMs()); }
 bool JumpButtonState::Held()            { return g_req.Held(NowMs()); }
 
 JumpButton::JumpButton() : Widget()

@@ -8,6 +8,7 @@
 namespace JumpLogic
 {
 	constexpr int kCooldownMs = 350;   // anti-repeticao entre toques
+	constexpr int kFreshMs    = 250;   // Fix21: um toque so vale ate este tempo; se o ped nao consumiu (escalando/no ar), o pedido MORRE
 	constexpr int kHoldMs     = 120;   // CPad::GetJump (segurado) fica verdadeiro por este tempo apos o toque
 
 	struct Circle { float cx, cy, r; };
@@ -52,6 +53,9 @@ namespace JumpLogic
 
 		void Press(int64_t nowMs) { pressMs.store(nowMs); fresh.store(true); }
 		bool ConsumeJustDown()    { return fresh.exchange(false); }                      // 1 vez por toque
+		// Fix21: com validade. Sem isso o toque feito durante a escalada/queda ficava guardado e virava um PULO EXTRA
+		// assim que o ped voltava ao chao (ex.: depois de subir a borda).
+		bool ConsumeJustDown(int64_t nowMs) { const bool f = fresh.exchange(false); return f && (nowMs - pressMs.load()) < kFreshMs; }
 		bool Held(int64_t nowMs) const { return (nowMs - pressMs.load()) < kHoldMs; }    // curto, so para GetJump
 		void Clear()              { fresh.store(false); pressMs.store(-1000000); }
 	};

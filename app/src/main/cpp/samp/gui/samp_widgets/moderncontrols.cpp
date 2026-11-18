@@ -247,7 +247,8 @@ bool ModernInput::Stick(int16_t& lr, int16_t& ud)
 	return true;
 }
 bool ModernInput::SprintHeld()    { return g_active.load() && (g_runLock.load() || ((g_held.load() & (1u << B_RUN)) && (g_lr.load() != 0 || g_ud.load() != 0))); }
-bool ModernInput::JumpJustDown()  { return g_active.load() && ConsumeEdge(B_JUMP); }
+// Fix21: o toque de pulo que o ped nao consumiu em 250 ms (escalando/no ar) e descartado, nao vira pulo extra depois
+bool ModernInput::JumpJustDown()  { return g_active.load() && ConsumeEdge(B_JUMP) && (NowMs() - g_jumpMs.load()) < 250; }
 bool ModernInput::JumpHeld()      { return g_active.load() && (NowMs() - g_jumpMs.load()) < kJumpHoldMs; }
 bool ModernInput::CrouchJustDown(){ return g_active.load() && ConsumeEdge(B_CROUCH); }
 bool ModernInput::AttackHeld()    { return g_active.load() && (g_held.load() & (1u << B_ATTACK)); }
