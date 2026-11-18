@@ -31,6 +31,7 @@ namespace WorldMap
 		virtual ~IPlatform() {}
 		virtual ImVec2 screen() = 0;
 		virtual bool   player(float& x, float& y, float& headingDeg) = 0;   // false = sem jogador
+		virtual ImTextureID uiIcon(int id) { (void)id; return 0; }              // icones do painel: 0 mover (mao), 1 ver (olho), 2 ocultar (olho cortado); 0 = desenha com formas
 		virtual ImTextureID tile(int idx) = 0;     // textura do tile radar%02d (0 = indisponivel ainda)
 		virtual ImTextureID fullMap() = 0;         // imagem unica opcional do mundo todo (0 = nenhuma)
 		virtual void   setGps(float x, float y, float z) = 0;   // blip no radar do jogo
@@ -159,8 +160,9 @@ namespace WorldMap
 			bool  hasFilt = false;
 			float rowH = 30, barY = 0, barH = 34;
 			ImVec2 closeA, closeB, clrA, clrB, zinA, zinB, zoutA, zoutB, ctrA, ctrB;
+			ImVec2 eyeA, eyeB, moveA, moveB;  // botoes do menu (lista): ver/ocultar e mover (ficam mesmo com o menu oculto)
 		};
-		enum { BTN_NONE = 0, BTN_CLOSE, BTN_CLEAR, BTN_ZIN, BTN_ZOUT, BTN_CENTER };
+		enum { BTN_NONE = 0, BTN_CLOSE, BTN_CLEAR, BTN_ZIN, BTN_ZOUT, BTN_CENTER, BTN_LIST_EYE, BTN_LIST_MOVE };
 
 		IPlatform* P;
 		float   m_vis = 0.0f;         // animacao "TV": 0 = desligada, 1 = ligada (sobe ao abrir, desce ao fechar)
@@ -176,6 +178,8 @@ namespace WorldMap
 		// estado (so a thread de desenho)
 		std::vector<Location> m_locs;          // o que a lista/mapa mostram AGORA (filtrado pela zona: mundo ou cidade)
 		std::vector<Location> m_locsSrv;       // o que o servidor mandou (RPC 204 op 1), sem filtro
+		bool m_listHidden = false;             // menu (lista) oculto: so os botoes ver/mover ficam na tela
+		mutable float m_listDx = 0, m_listDy = 0;   // deslocamento do menu em relacao ao canto padrao (limitado ao mapa em MakeLayout)
 		bool m_zoneCity = false;               // true = jogador DENTRO da cidade nova: imagem, lista e GPS so da cidade
 		City m_city;
 		static constexpr int kCityIdBase = 60000;   // ids dos locais do cliente (locais.txt): o servidor nao os conhece
@@ -311,6 +315,23 @@ namespace WorldMap
 		L.listB = ImVec2(L.mapB.x - L.pad, std::min(maxB, want));
 		L.filtA = ImVec2(L.listA.x + 6.0f * k, L.listA.y + 5.0f * k); L.filtB = ImVec2(L.listB.x - 6.0f * k, L.listA.y + 5.0f * k + L.rowH - 4.0f * k);
 		L.cntA = ImVec2(L.listB.x - 70.0f * k, L.listB.y + 5.0f * k); L.cntB = ImVec2(L.listB.x, L.cntA.y + cntH - 4.0f * k);
+		// botoes do menu: coluna a ESQUERDA da lista (olho = ver/ocultar, mao = mover). Menu oculto: so a coluna, encostada no canto, e ainda da para mover.
+		{
+			const float bs = 32.0f * k, gp = 6.0f * k;
+			float bx0, bx1, by0, by1;
+			if (!m_listHidden) { bx0 = L.listA.x - gp - bs; bx1 = L.listB.x; by0 = L.listA.y; by1 = L.cntB.y; }
+			else { bx0 = L.listB.x - bs; bx1 = L.listB.x; by0 = L.listA.y; by1 = L.listA.y + 2.0f * bs + gp; }
+			const float loX = L.mapA.x + L.pad - bx0, hiX = std::max(loX, L.mapB.x - L.pad - bx1);
+			const float loY = L.mapA.y + L.pad - by0, hiY = std::max(loY, L.mapB.y - L.pad - by1);
+			const float dx = Clampf(m_listDx, loX, hiX), dy = Clampf(m_listDy, loY, hiY);
+			m_listDx = dx; m_listDy = dy;
+			auto sh = [&](ImVec2& p) { p.x += dx; p.y += dy; };
+			sh(L.listA); sh(L.listB); sh(L.filtA); sh(L.filtB); sh(L.cntA); sh(L.cntB); L.rowsY += dy;
+			const float hx = bx0 + dx, hy = by0 + dy;
+			L.eyeA = ImVec2(hx, hy);                  L.eyeB = ImVec2(hx + bs, hy + bs);
+			L.moveA = ImVec2(hx, hy + bs + gp);       L.moveB = ImVec2(hx + bs, hy + 2.0f * bs + gp);
+			if (m_listHidden) { L.listB = L.listA; L.hasFilt = false; L.rowsY = L.listA.y; }      // sem area: nada da lista recebe toque
+		}
 		// botoes em pilula, canto inferior esquerdo: FECHAR | - | + | O | LIMPAR GPS
 		const float bx = L.mapA.x + L.pad, zs = L.barH, g = 6.0f * k;
 		L.closeA = ImVec2(bx, L.barY);                     L.closeB = ImVec2(bx + 104.0f * k, L.barY + L.barH);
@@ -325,6 +346,8 @@ namespace WorldMap
 	{
 		const Layout& L = m_L;
 		if (In(x, y, L.closeA, L.closeB)) return BTN_CLOSE;
+		if (In(x, y, L.eyeA, L.eyeB)) return BTN_LIST_EYE;
+		if (In(x, y, L.moveA, L.moveB)) return BTN_LIST_MOVE;
 		if (m_gps.on && In(x, y, L.clrA, L.clrB)) return BTN_CLEAR;
 		if (In(x, y, L.zinA, L.zinB)) return BTN_ZIN;
 		if (In(x, y, L.zoutA, L.zoutB)) return BTN_ZOUT;
@@ -797,6 +820,10 @@ namespace WorldMap
 						PanPx(m_view, f.x - px, f.y - py);
 					}
 				}
+				else if (f.region == 3 && f.btn == BTN_LIST_MOVE)
+				{
+					m_listDx += f.x - px; m_listDy += f.y - py;      // MakeLayout limita ao mapa no proximo quadro
+				}
 				else if (f.region == 2 && f.moved)
 				{
 					const float total = (float)m_rows.size() * L.rowH + 8.0f * L.k, viewH = L.listB.y - L.rowsY;
@@ -814,6 +841,7 @@ namespace WorldMap
 					{
 						case BTN_CLOSE: Close(true); break;
 						case BTN_CLEAR: ClearGps(true); Toast("GPS removido"); break;
+						case BTN_LIST_EYE: m_listHidden = !m_listHidden; break;
 						case BTN_ZIN:   ZoomAt(m_view, m_view.w * 0.5f, m_view.h * 0.5f, 1.5f); break;
 						case BTN_ZOUT:  ZoomAt(m_view, m_view.w * 0.5f, m_view.h * 0.5f, 1.0f / 1.5f); break;
 						case BTN_CENTER:
@@ -1222,6 +1250,7 @@ namespace WorldMap
 		if (m_open.load()) m_vis = std::min(1.0f, m_vis + dtA / kTvOnSec);
 		else               m_vis = std::max(0.0f, m_vis - dtA / kTvOffSec);
 		bool closing = !m_open.load();
+		MiniCity::gMapOpen.store(m_open.load() || m_vis > 0.0f);      // mapa grande aparecendo: o minimapa do HUD some (hooks.cpp / hud.cpp)
 
 		if (closing && m_vis <= 0.0f)
 		{
@@ -1261,7 +1290,7 @@ namespace WorldMap
 			}
 		}
 		Clamp(m_view);
-		m_listScroll = ClampScroll(m_listScroll, (float)m_rows.size() * L.rowH + 8.0f * k, L.listB.y - L.rowsY);
+		if (!m_listHidden) m_listScroll = ClampScroll(m_listScroll, (float)m_rows.size() * L.rowH + 8.0f * k, L.listB.y - L.rowsY);
 
 		float plx = 0, ply = 0, plh = 0;
 		const bool havePlayer = P->player(plx, ply, plh);
@@ -1467,6 +1496,7 @@ namespace WorldMap
 		r->drawRect(L.mapA, L.mapB, border, false, 1.0f);
 
 		// ---- lista em categorias (vidro escuro flutuante; nome alinhado a direita + icone; selecionado = pilula branca) ----
+		if (!m_listHidden)
 		{
 			r->drawRoundedRect(L.listA, L.listB, glass, 9.0f * k, true);
 			if (L.hasFilt)
@@ -1574,6 +1604,42 @@ namespace WorldMap
 			const ImVec2 csz = r->calculateTextSize(cb, 11.0f * k);
 			r->drawRoundedRect(ImVec2(L.listB.x - csz.x - 16.0f * k, L.cntA.y), ImVec2(L.listB.x, L.cntB.y), glass, (L.cntB.y - L.cntA.y) * 0.5f, true);
 			r->drawText(ImVec2(L.listB.x - csz.x - 8.0f * k, L.cntA.y + ((L.cntB.y - L.cntA.y) - csz.y) * 0.5f), text, cb, false, 11.0f * k);
+		}
+
+		// ---- botoes do menu: olho (ver/ocultar) e mao (mover); ficam mesmo com o menu oculto ----
+		{
+			auto hot = [&](int id) { for (const Finger& f : m_f) if (f.down && f.region == 3 && f.btn == id) return true; return false; };
+			const ImColor bgc(14, 16, 22, 200), lineC(255, 255, 255, 70), white(255, 255, 255, 255);
+			auto circle = [&](const ImVec2& a, const ImVec2& b, bool on) {
+				r->drawRoundedRect(a, b, on ? ui_colors::blueD : bgc, (b.y - a.y) * 0.5f, true);
+				r->drawRoundedRect(a, b, lineC, (b.y - a.y) * 0.5f, false, 1.0f);
+			};
+			// olho: menu visivel -> mostra o olho CORTADO (toque oculta); oculto -> olho aberto (toque mostra)
+			circle(L.eyeA, L.eyeB, hot(BTN_LIST_EYE));
+			const float is = (L.eyeB.x - L.eyeA.x) * 0.60f;
+			auto icon = [&](int id, const ImVec2& a, const ImVec2& b) {
+				const ImVec2 c((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f);
+				const ImTextureID t = P->uiIcon(id);
+				if (t) { r->drawImage(ImVec2(c.x - is * 0.5f, c.y - is * 0.5f), ImVec2(c.x + is * 0.5f, c.y + is * 0.5f), t, white); return; }
+				// sem textura: formas simples
+				if (id == 0)   // setas laterais + mao (punho)
+				{
+					r->drawLine(ImVec2(c.x - is * 0.5f, c.y), ImVec2(c.x + is * 0.5f, c.y), white, 2.0f * k);
+					ImVec2 l[3] = { ImVec2(c.x - is * 0.5f, c.y), ImVec2(c.x - is * 0.28f, c.y - is * 0.18f), ImVec2(c.x - is * 0.28f, c.y + is * 0.18f) };
+					ImVec2 rr[3] = { ImVec2(c.x + is * 0.5f, c.y), ImVec2(c.x + is * 0.28f, c.y - is * 0.18f), ImVec2(c.x + is * 0.28f, c.y + is * 0.18f) };
+					r->drawConvexPolyFilled(l, 3, white); r->drawConvexPolyFilled(rr, 3, white);
+					r->drawRoundedRect(ImVec2(c.x - is * 0.2f, c.y - is * 0.26f), ImVec2(c.x + is * 0.2f, c.y + is * 0.3f), white, 3.0f * k, false, 2.0f * k);
+				}
+				else           // olho: amendoa + pupila (+ corte)
+				{
+					r->drawRoundedRect(ImVec2(c.x - is * 0.5f, c.y - is * 0.2f), ImVec2(c.x + is * 0.5f, c.y + is * 0.2f), white, is * 0.2f, false, 2.0f * k);
+					r->drawRoundedRect(ImVec2(c.x - is * 0.14f, c.y - is * 0.14f), ImVec2(c.x + is * 0.14f, c.y + is * 0.14f), white, is * 0.14f, true);
+					if (id == 2) r->drawLine(ImVec2(c.x - is * 0.45f, c.y + is * 0.4f), ImVec2(c.x + is * 0.45f, c.y - is * 0.4f), white, 2.4f * k);
+				}
+			};
+			icon(m_listHidden ? 1 : 2, L.eyeA, L.eyeB);
+			circle(L.moveA, L.moveB, hot(BTN_LIST_MOVE));
+			icon(0, L.moveA, L.moveB);
 		}
 
 		// ---- barra inferior: botoes em pilula + escala e nome da zona (estilo do mapa do GTA V) ----

@@ -661,7 +661,7 @@ namespace
 	{
 		const bool allowed = Hud::MapAllowed();                                       // true = minimapa visivel (motorista)
 		const bool mapOpen = WorldMapWidget::IsOpen();                                // mapa aberto: so o local; fechado: local + bussola
-		if (!allowed && mapOpen) return;                                              // a pe: a etiqueta some quando o mapa aparece na tela
+		if (mapOpen) return;                                                          // mapa grande aberto: some a etiqueta (o minimapa tambem some)
 		using namespace std::chrono;
 		const int64_t now = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
 		// ancora: acima do minimapa (motorista). A pe nao ha minimapa: usa o ultimo canto conhecido dele (ou o canto da tela)

@@ -598,7 +598,7 @@ void CHud__DrawRadar_hook()
 {
     // minimapa so para o MOTORISTA dentro de um veiculo (Hud::g.mapOnlyDriving): fora disso o radar nem e desenhado
     // (o retangulo do minimapa para de ser publicado: o toque que abre o /mapa e o nome do local tambem somem)
-    if (!Hud::MapAllowed()) { MiniRoute::ClearScreen(); MiniCity::ClearXf(); return; }
+    if (!Hud::MapAllowed() || MiniCity::gMapOpen.load()) { MiniRoute::ClearScreen(); MiniCity::ClearXf(); return; }      // mapa grande aberto: sem minimapa
 
     RadarScreenRect* radarRect = nullptr;
     uintptr_t transformState = 0;

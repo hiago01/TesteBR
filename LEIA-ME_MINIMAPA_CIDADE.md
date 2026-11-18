@@ -9,3 +9,13 @@ Descompacte na raiz do repositório (caminhos `app/src/main/cpp/...`). Contém t
 - GPS/HQs: o cliente aceita até 80 locais do servidor (era 40), combina com o servidor da Cidade Nova.
 
 Verificado: sintaxe (clang, com stubs de Android) de hooks.cpp, hud.cpp, worldmap.cpp, waypoint3d.cpp, imguirenderer.cpp (só restam erros de stub JNI/GL no meu ambiente) e a matemática do recorte/afim em teste de host. **Não testado no aparelho.** Se o minimapa ficar vazio/azul na cidade, mande o samp_log.txt (procure `[MINIMAPA]`) e um print.
+
+## v4 — menu do mapa: ocultar/mostrar e mover
+
+- Com o **mapa grande aberto**, o minimapa do HUD (e a etiqueta "Cidade Nova"/local) **some**; volta ao fechar o mapa.
+- Na **esquerda da lista** (lado direito da tela) ficam 2 botões redondos:
+  - **Olho**: com o menu visível mostra o olho cortado (toque = ocultar); com o menu oculto mostra o olho aberto (toque = mostrar).
+  - **Mão com setas**: arraste para **mover o menu** pela tela (limitado à área do mapa). Funciona **também com o menu oculto** (ficam só os dois botões).
+- Ícones embutidos no código (MapIcons.h, 64x64) — sem arquivo novo, sem IMG novo. Se a textura falhar, desenha com formas simples.
+- Arquivos: WorldMapUI.h, worldmap.cpp, MapIcons.h (novo), MiniCity.h, hooks.cpp, hud.cpp.
+- NÃO testado no aparelho; só compilação de sintaxe e teste lógico do layout/toques (botões acertáveis, oculto, limite de arrasto).

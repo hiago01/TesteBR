@@ -9,6 +9,7 @@
 #include "../../vendor/stb/stb_image.h"   // implementacao em game/sprite2d.cpp
 #include "worldmap.h"
 #include "WorldMapUI.h"
+#include "MapIcons.h"
 #include "waypoint3d.h"
 
 #include <atomic>
@@ -116,6 +117,20 @@ namespace
 			hd = pp->m_pPed->m_fCurrentRotation * 57.2957795f;
 			return true;
 		}
+		ImTextureID uiIcon(int id) override   // icones embutidos (MapIcons.h): alfa 64x64 -> RGBA branco, criado uma vez
+		{
+			if (id < 0 || id > 2) return 0;
+			if (m_icon[id]) return (ImTextureID)m_icon[id];
+			if (m_iconFailed[id]) return 0;
+			const unsigned char* a = MapIcons::Get(id);
+			static unsigned char rgba[64 * 64 * 4];
+			for (int i = 0; i < 64 * 64; ++i) { rgba[i * 4] = 255; rgba[i * 4 + 1] = 255; rgba[i * 4 + 2] = 255; rgba[i * 4 + 3] = a[i]; }
+			m_icon[id] = MakeRaster(rgba, 64, 64);
+			if (!m_icon[id]) { m_iconFailed[id] = true; return 0; }       // sem raster: o painel desenha com formas
+			return (ImTextureID)m_icon[id];
+		}
+		RwRaster* m_icon[3] = { nullptr, nullptr, nullptr };
+		bool m_iconFailed[3] = { false, false, false };
 		ImTextureID tile(int idx) override
 		{
 			if (idx < 0 || idx >= kTiles * kTiles) return 0;
