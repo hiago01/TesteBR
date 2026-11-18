@@ -34,7 +34,7 @@ namespace OrgPanel
 	{
 		const Color BgTop(22, 42, 78), BgBot(11, 22, 46);
 		const Color Card(150, 185, 235, 34), CardLine(195, 218, 255, 78), Inner(10, 22, 50, 70), Row(160, 190, 235, 34), RowHi(200, 225, 255, 62);
-		const Color Text(240, 246, 255), Dim(168, 188, 220), Faint(120, 144, 184);
+		const Color Text(248, 251, 255), Dim(205, 218, 240), Faint(170, 188, 216);       // legibilidade: textos mais claros (mesma familia de cor)
 		const Color Cyan(64, 232, 216), Pink(255, 96, 172), Green(76, 226, 150), Beige(214, 186, 172), Blue(120, 170, 255), Danger(255, 92, 110);
 		const Color Dark(20, 34, 62);
 	}
@@ -367,8 +367,50 @@ namespace OrgPanel
 	private:
 		Rect R(float x, float y, float w, float h) const { return { m_ox + x * m_u, m_oy + y * m_u, w * m_u, h * m_u }; }
 		float S(float lu) const { return lu * m_u; }
-		float FS(float lu) const { return std::max(11.0f, lu * m_u); }
-		void T(Canvas& cv, float x, float y, float w, float h, const std::string& s, float size, Color c, Align al = Align::Left, int font = FontText) const { DrawTextAs(cv, font, R(x, y, w, h), s, c, FS(size), al); }
+		// ---- legibilidade: escala tipografica unica (tamanhos de projeto em "lu") ----
+		//  tabelas/texto corrente (<=13): +30%  |  texto secundario (cinza): +25%  |  subtitulos (13..19): +20%  |  titulos: +8%  |  botoes: +15% (FSB)
+		static float TypeScale(float size, bool dim)
+		{
+			if (size <= 13.0f) return size * (dim ? 1.25f : 1.30f);
+			if (size < 19.0f) return size * 1.20f;
+			return size * 1.08f;
+		}
+		float FloorPx(float lu) const { return lu <= 13.0f ? 12.0f : 11.0f; }                  // telas pequenas: nunca menos que 13 px no texto corrente
+		float FS(float lu) const { return std::max(FloorPx(lu), lu * m_u); }                    // ja em px, SEM a escala tipografica (usado nas medidas internas)
+		float FSB(float lu) const { return std::max(12.0f, lu * 1.15f * m_u); }                 // botoes: +15%
+		float FST(float lu, bool dim = false) const { return std::max(FloorPx(lu) * 1.0f, TypeScale(lu, dim) * m_u); }
+		static bool IsDim(const Color& c) { return c.r == Pal::Dim.r && c.g == Pal::Dim.g && c.b == Pal::Dim.b ? true : (c.r == Pal::Faint.r && c.g == Pal::Faint.g && c.b == Pal::Faint.b); }
+		// reduz o tamanho (ate 72%) em passos de 3% ate o texto caber na largura w (px); a medida nao e linear, por isso o laco
+		static float FitPx(Canvas& cv, int font, const std::string& s, float px, float w)
+		{
+			cv.setFont(font);
+			const float lo = px * 0.72f;
+			while (px > lo && cv.measure(s, px).x > w) px *= 0.97f;
+			cv.setFont(FontText);
+			return std::max(px, lo);
+		}
+		// texto em caixa (lu): escala tipografica + ajuste automatico: se nao couber, reduz ate 80% e so entao corta com "..." (nunca sobrepoe)
+		void T(Canvas& cv, float x, float y, float w, float h, const std::string& s, float size, Color c, Align al = Align::Left, int font = FontText) const
+		{
+			const Rect r = R(x, y, w, h);
+			const float px = FitPx(cv, font, s, FST(size, IsDim(c)), r.w);
+			DrawTextAs(cv, font, r, s, c, px, al);
+		}
+		// texto com tamanho (px) ja decidido: a coluna inteira usa o mesmo tamanho (o menor que faz o maior texto caber)
+		void TP(Canvas& cv, float x, float y, float w, float h, const std::string& s, float px, Color c, Align al, int font) const { DrawTextAs(cv, font, R(x, y, w, h), s, c, px, al); }
+		template <class V, class G> float ColPx(Canvas& cv, const V& items, const std::vector<int>& idx, G get, float size, float w, int font) const
+		{
+			const float base = FST(size); float px = base;
+			for (int i : idx) px = std::min(px, FitPx(cv, font, get(items[i]), base, R(0, 0, w, 1).w));
+			return px;
+		}
+		// texto de botao/aba/campo em px de tela, com ajuste automatico
+		void TB(Canvas& cv, float x, float y, float w, float h, const std::string& s, float size, Color c, Align al = Align::Left, int font = FontTextSemibold) const
+		{
+			const Rect r = R(x, y, w, h);
+			const float px = FitPx(cv, font, s, FSB(size), r.w);
+			DrawTextAs(cv, font, r, s, c, px, al);
+		}
 		void addHit(const Rect& r, int id, int arg = 0, bool enabled = true, const Rect* clip = nullptr)
 		{
 			Hit h; h.r = r; if (clip) { const float x0 = std::max(r.x, clip->x), y0 = std::max(r.y, clip->y), x1 = std::min(r.right(), clip->right()), y1 = std::min(r.bottom(), clip->bottom()); if (x1 <= x0 || y1 <= y0) return; h.r = { x0, y0, x1 - x0, y1 - y0 }; }
@@ -496,7 +538,9 @@ namespace OrgPanel
 			Color fill = primary ? Color(255, 255, 255, 235) : Color(255, 255, 255, pr ? 70 : 34);
 			cv.fillRect(r, enabled ? fill : fill.alpha(0.5f), r.h * 0.5f);
 			cv.strokeRect(r, Color(220, 235, 255, enabled ? 140 : 70), r.h * 0.5f, std::max(1.0f, S(1.2f)));
-			DrawTextAs(cv, FontTextSemibold, r, label, primary ? Pal::Dark : (enabled ? tint : Pal::Faint), FS(size), Align::Center);
+			{ const Color tc = primary ? Pal::Dark : (enabled ? tint : Pal::Dim); const float pad = S(10);
+				const float px = FitPx(cv, FontTextSemibold, label, FSB(size), r.w - pad);
+				DrawTextAs(cv, FontTextSemibold, r, label, tc, px, Align::Center); }
 			addHit(R(x, y, w, h), id, arg, true);
 			m_hits.back().enabled = enabled;
 		}
@@ -510,7 +554,7 @@ namespace OrgPanel
 			if (show.empty()) { show = hint; col = Pal::Dim; }
 			else if (foc && ((m_now / 450) & 1)) show += "|";
 			const float pad = S(16); Rect tr = { r.x + pad, r.y, r.w - pad * 2 - (search ? S(30) : 0), r.h };
-			DrawTextAs(cv, FontText, tr, show, col, FS(13.5f), Align::Left);
+			DrawTextAs(cv, FontText, tr, show, col, FST(13.5f), Align::Left);
 			if (search) IcoSearch(cv, { r.right() - S(34), r.y + r.h * 0.5f - S(10), S(20), S(20) }, Pal::Text);
 			addHit(r, H_FIELD, f, true);
 			if (foc) { m_focusRect = r; }
@@ -577,7 +621,7 @@ namespace OrgPanel
 		void drawHeader(Canvas& cv)
 		{
 			// titulo + nome do grupo: a largura do texto manda (a fonte do jogo e a do PC tem larguras diferentes)
-			const float fs = FS(30);
+			const float fs = FST(30);
 			cv.setFont(FontDisplayBold);
 			const float w1 = cv.measure("GERENCIADOR DE GRUPO", fs).x / m_u;
 			cv.setFont(FontText);
@@ -590,7 +634,7 @@ namespace OrgPanel
 			const std::string cnt = m_homeLoad.loaded ? std::to_string(m_home.members) + " / " + std::to_string(m_home.maxMembers) : "-";
 			const std::string mon = m_homeLoad.loaded ? Money(m_home.bank) : "-";
 			cv.setFont(FontTextSemibold);
-			const float cw = cv.measure(cnt, FS(14)).x / m_u + 4, mw = cv.measure(mon, FS(14)).x / m_u + 4, bw = cv.measure("Fechar", FS(14)).x / m_u + 4;
+			const float cw = cv.measure(cnt, FST(14)).x / m_u + 4, mw = cv.measure(mon, FST(14)).x / m_u + 4, bw = cv.measure("Fechar", FSB(14)).x / m_u + 4;
 			cv.setFont(FontText);
 			const float btnW = 52 + bw, total = 16 + 22 + 8 + cw + 18 + 20 + 8 + mw + 14 + btnW + 4;
 			const float px = 1334 - total;
@@ -606,7 +650,7 @@ namespace OrgPanel
 			const Rect b = R(x, 40, btnW, 40);
 			cv.fillRect(b, Color(255, 255, 255, pr ? 80 : 40), b.h * 0.5f); cv.strokeRect(b, Color(220, 235, 255, 150), b.h * 0.5f, std::max(1.0f, S(1.2f)));
 			IcoExit(cv, R(x + 14, 49, 22, 22), Pal::Text);
-			T(cv, x + 44, 40, bw + 4, 40, "Fechar", 14, Pal::Text, Align::Left, FontTextSemibold);
+			TB(cv, x + 44, 40, bw + 4, 40, "Fechar", 14, Pal::Text, Align::Left);
 			addHit(b, H_CLOSE, 0);
 		}
 		static std::string upper(std::string s) { for (auto& c : s) if (c >= 'a' && c <= 'z') c -= 32; return s; }
@@ -616,21 +660,21 @@ namespace OrgPanel
 			struct TabDef { const char* label; int icon; } defs[4] = { { "Início", 0 }, { "Membros", 1 }, { "Farm", 2 }, { "Cofre", 3 } };
 			float xs[4], ws[4]; float x = 25;
 			cv.setFont(FontTextSemibold);
-			for (int i = 0; i < 4; ++i) { ws[i] = 46 + cv.measure(defs[i].label, FS(14)).x / std::max(0.01f, m_u); xs[i] = x; x += ws[i] + 14; }
+			for (int i = 0; i < 4; ++i) { ws[i] = 46 + cv.measure(defs[i].label, FSB(14)).x / std::max(0.01f, m_u); xs[i] = x; x += ws[i] + 14; }
 			cv.setFont(FontText);
 			// pilula animada
 			const int a = std::clamp((int)std::floor(m_tabPos), 0, 3), b = std::min(3, a + 1); const float f = std::clamp(m_tabPos - a, 0.0f, 1.0f);
 			const float px = xs[a] + (xs[b] - xs[a]) * f, pw = ws[a] + (ws[b] - ws[a]) * f;
-			cv.fillRect(R(px, 125, pw, 32), Color(255, 255, 255, 240), S(16));
+			cv.fillRect(R(px, 123, pw, 36), Color(255, 255, 255, 240), S(18));
 			for (int i = 0; i < 4; ++i)
 			{
 				const float act = std::clamp(1.0f - std::fabs(m_tabPos - i), 0.0f, 1.0f);
 				const Color col = Color::mix(Pal::Text, Pal::Dark, act);
-				if (act < 0.98f) { cv.strokeRect(R(xs[i], 125, ws[i], 32), Color(220, 235, 255, (int)(130 * (1.0f - act))), S(16), std::max(1.0f, S(1.2f))); }
-				const Rect ic = R(xs[i] + 13, 133, 17, 17);
+				if (act < 0.98f) { cv.strokeRect(R(xs[i], 123, ws[i], 36), Color(220, 235, 255, (int)(130 * (1.0f - act))), S(18), std::max(1.0f, S(1.2f))); }
+				const Rect ic = R(xs[i] + 13, 132.5f, 17, 17);
 				if (i == 0) IcoHome(cv, ic, col); else if (i == 1) IcoPeople(cv, ic, col); else if (i == 2) IcoTools(cv, ic, col); else IcoVault(cv, ic, col);
-				T(cv, xs[i] + 36, 125, ws[i] - 40, 32, defs[i].label, 14, col, Align::Left, FontTextSemibold);
-				addHit(R(xs[i], 125, ws[i], 32), H_TAB, i, true);
+				TB(cv, xs[i] + 36, 123, ws[i] - 40, 36, defs[i].label, 14, col, Align::Left);
+				addHit(R(xs[i] - 4, 119, ws[i] + 8, 44), H_TAB, i, true);          // area de toque maior que a pilula
 			}
 		}
 
@@ -640,12 +684,12 @@ namespace OrgPanel
 			const Home& h = m_home;
 			// --- opcoes + mural ---
 			Card(cv, 32, 175, 389, 499, "OPÇÕES DO GRUPO");
-			T(cv, 20, 237, 120, 18, "Discord do grupo", 11.5f, Pal::Dim, Align::Center);
-			T(cv, 140, 237, 120, 18, "Rádio do grupo", 11.5f, Pal::Dim, Align::Center);
-			T(cv, 296, 237, 100, 18, "Localização", 11.5f, Pal::Dim, Align::Center);
-			Pill(cv, 45, 259, 70, 25, "Copiar", H_COPY, 0, true);
-			Pill(cv, 157, 259, 86, 25, "Conectar", H_RADIO, 0, true);
-			Pill(cv, 284, 259, 123, 25, "Marcar no GPS", H_GPS, 0, h.hasGps);
+			T(cv, 12, 234, 136, 24, "Discord do grupo", 11.5f, Pal::Dim, Align::Center);
+			T(cv, 132, 234, 136, 24, "Rádio do grupo", 11.5f, Pal::Dim, Align::Center);
+			T(cv, 290, 234, 112, 24, "Localização", 11.5f, Pal::Dim, Align::Center);
+			Pill(cv, 38, 262, 84, 32, "Copiar", H_COPY, 0, true);
+			Pill(cv, 150, 262, 100, 32, "Conectar", H_RADIO, 0, true);
+			Pill(cv, 281, 262, 130, 32, "Marcar no GPS", H_GPS, 0, h.hasGps);
 			cv.fillRect(R(33, 359, 387, 1), Color(200, 225, 255, 50), 0);
 			IcoNotes(cv, R(48, 376, 18, 18), Pal::Text);
 			T(cv, 74, 372, 250, 26, "Mural de avisos", 15, Pal::Text, Align::Left, FontTextSemibold);
@@ -654,10 +698,10 @@ namespace OrgPanel
 			{
 				const std::string txt = m_f[F_NOTICE].s; const Rect inner = box.inset(S(14), S(12));
 				cv.pushClip(inner);
-				float y = inner.y; const float lh = FS(12.5f) * 1.35f;
+				float y = inner.y; const float lh = FST(12.5f) * 1.4f;
 				std::vector<std::string> lines; wrap(cv, txt.empty() && !m_noticeDirty ? std::string(has(P_NOTICE) ? "Toque aqui para escrever o aviso do grupo." : "Nenhum aviso por enquanto.") : txt + (m_focus == F_NOTICE && ((m_now / 450) & 1) ? "|" : ""), FS(12.5f), inner.w, lines);
 				const Color col = txt.empty() && !m_noticeDirty ? Pal::Faint : Pal::Text;
-				for (const std::string& l : lines) { cv.text({ inner.x, y }, col, l, FS(12.5f)); y += lh; }
+				for (const std::string& l : lines) { cv.text({ inner.x, y }, col, l, FST(12.5f)); y += lh; }
 				cv.popClip();
 				m_focusRect = m_focus == F_NOTICE ? box : m_focusRect;
 			}
@@ -667,10 +711,10 @@ namespace OrgPanel
 			Card(cv, 437, 175, 389, 183, "ENTREGAR");
 			cv.fillRect(R(450, 231, 362, 113), Pal::Inner, S(18)); cv.strokeRect(R(450, 231, 362, 113), Color(220, 235, 255, 80), S(18), std::max(1.0f, S(1.1f)));
 			cv.setFont(FontTextSemibold);
-			const std::string unit = Money(h.farmPrice) + " / Unidade"; const float uw = cv.measure(unit, FS(16.5f)).x / m_u + 6;
+			const std::string unit = Money(h.farmPrice) + " / Unidade"; const float uw = cv.measure(unit, FST(16.5f)).x / m_u + 6;
 			cv.setFont(FontText);
 			T(cv, 464, 244, uw, 30, unit, 16.5f, Pal::Text, Align::Left, FontTextSemibold);
-			Pill(cv, 464 + uw + 12, 247, 70, 22, "Entregar", H_DELIVER, 0, h.farmOn, 11.5f);
+			Pill(cv, 464 + uw + 12, 243, 92, 30, "Entregar", H_DELIVER, 0, h.farmOn, 11.5f);
 			cv.fillRect(R(464, 288, 334, 1), Color(200, 225, 255, 50), 0);
 			T(cv, 464, 296, 120, 20, "Meta diária", 11.5f, Pal::Dim);
 			T(cv, 584, 296, 214, 20, std::to_string(h.farmToday) + "/" + std::to_string(h.farmGoal), 11.5f, Pal::Text, Align::Right);
@@ -696,7 +740,7 @@ namespace OrgPanel
 			Card(cv, 842, 175, 389, 499, "RANKING");
 			cv.fillRect(R(855, 231, 362, 163), Pal::Inner, S(18)); cv.strokeRect(R(855, 231, 362, 163), Color(220, 235, 255, 80), S(18), std::max(1.0f, S(1.1f)));
 			T(cv, 869, 244, 200, 24, "Entrega de farm", 14.5f, Pal::Text, Align::Left, FontTextSemibold);
-			Pill(cv, 1135, 244, 68, 24, "Ver todos", H_SEEALL, 0, true, 11.5f);
+			Pill(cv, 1117, 240, 87, 30, "Ver todos", H_SEEALL, 0, true, 11.5f);
 			{
 				const Rect r = R(869, 282, 334, 27); cv.fillRect(r, Pal::Row, r.h * 0.5f);
 				IcoTrophy(cv, R(884, 287, 16, 16), Pal::Text);
@@ -710,7 +754,7 @@ namespace OrgPanel
 				const float x = 869 + i * 49.0f; const Rect r = R(x, 361, 44, 21); const int st = h.week[i];
 				Color fill = st == 1 ? Color(76, 226, 150, 200) : st == 2 ? Color(255, 96, 172, 215) : st == 3 ? Color(214, 186, 172, 230) : Color(255, 255, 255, 22);
 				cv.fillRect(r, fill, r.h * 0.5f); cv.strokeRect(r, Color(220, 235, 255, st ? 40 : 120), r.h * 0.5f, std::max(1.0f, S(1.0f)));
-				DrawTextAs(cv, FontTextSemibold, r, dn[i], st ? Pal::Dark : Pal::Text, FS(11), Align::Center);
+				DrawTextAs(cv, FontTextSemibold, r, dn[i], st ? Pal::Dark : Pal::Text, FST(11), Align::Center);
 			}
 			cv.fillRect(R(855, 410, 362, 251), Pal::Inner, S(18)); cv.strokeRect(R(855, 410, 362, 251), Color(220, 235, 255, 80), S(18), std::max(1.0f, S(1.1f)));
 			T(cv, 869, 421, 250, 24, "Tempo jogado", 14.5f, Pal::Text, Align::Left, FontTextSemibold);
@@ -720,16 +764,16 @@ namespace OrgPanel
 				if (i < (int)h.top.size())
 				{
 					const TopTime& t = h.top[i];
-					T(cv, 881, y, 40, 25, std::to_string(t.pos) + "\xC2\xBA", 11.5f, Pal::Dim);
-					T(cv, 915, y, 190, 25, t.name + " #" + std::to_string(t.acct), 11.5f, Pal::Text);
-					T(cv, 1050, y, 142, 25, DaysHours(t.secs), 11.5f, Pal::Text, Align::Right);
+					T(cv, 877, y, 36, 25, std::to_string(t.pos) + "\xC2\xBA", 11.5f, Pal::Dim);
+					T(cv, 910, y, 168, 25, t.name + " #" + std::to_string(t.acct), 11.5f, Pal::Text);
+					T(cv, 1078, y, 120, 25, DaysHours(t.secs), 11.5f, Pal::Text, Align::Right);
 				}
 			}
 			{
 				const float y = 620; const Rect r = R(869, y, 334, 25); cv.fillRect(r, Color(15, 28, 58, 150), r.h * 0.5f);
-				T(cv, 881, y, 40, 25, std::to_string(h.me.pos) + "\xC2\xBA", 11.5f, Pal::Dim);
-				T(cv, 915, y, 190, 25, h.me.name + " #" + std::to_string(h.me.acct), 11.5f, Pal::Text);
-				T(cv, 1050, y, 142, 25, DaysHours(h.me.secs), 11.5f, Pal::Text, Align::Right);
+				T(cv, 877, y, 36, 25, std::to_string(h.me.pos) + "\xC2\xBA", 11.5f, Pal::Dim);
+				T(cv, 910, y, 168, 25, h.me.name + " #" + std::to_string(h.me.acct), 11.5f, Pal::Text);
+				T(cv, 1078, y, 120, 25, DaysHours(h.me.secs), 11.5f, Pal::Text, Align::Right);
 			}
 		}
 
@@ -763,22 +807,23 @@ namespace OrgPanel
 			// adicionar membro
 			const Rect p = R(921, 172, 414, 46); cv.fillRect(p, Color(255, 255, 255, 26), p.h * 0.5f); cv.strokeRect(p, Color(220, 235, 255, 120), p.h * 0.5f, std::max(1.0f, S(1.2f)));
 			IcoUserPlus(cv, R(937, 184, 22, 22), Pal::Text);
-			T(cv, 966, 172, 156, 46, "Adicionar novo membro", 11.5f, Pal::Text, Align::Left, FontTextSemibold);
-			FieldBox(cv, 1128, 182, 84, 26, F_RG, "ID", false);
-			Pill(cv, 1220, 182, 106, 26, "Recrutar", H_RECRUIT, 0, has(P_INVITE), 12.5f);
-			Pill(cv, 920, 236, 156, 32, "Gerenciar cargos", H_ROLES, 0, has(P_ROLES), 13);
-			Pill(cv, 1083, 236, 121, 32, "Criar cargo", H_CREATE, 0, true, 13);
+			T(cv, 968, 172, 174, 46, "Adicionar novo membro", 10.5f, Pal::Text, Align::Left, FontTextSemibold);
+			FieldBox(cv, 1146, 179, 70, 32, F_RG, "ID", false);
+			Pill(cv, 1222, 179, 106, 32, "Recrutar", H_RECRUIT, 0, has(P_INVITE), 12.5f);
+			Pill(cv, 920, 236, 160, 36, "Gerenciar cargos", H_ROLES, 0, has(P_ROLES), 13);
+			Pill(cv, 1088, 236, 121, 36, "Criar cargo", H_CREATE, 0, true, 13);
 			// tabela
 			Card(cv, 32, 236, 874, 429, nullptr);
 			const char* heads[6] = { "Nome", "Status", "Tempo jogado", "Entrada", "Último Login", "Cargo" };
-			const float hx[6] = { 47, 214, 306, 423, 548, 738 };
-			const float hw[6] = { 150, 70, 100, 90, 160, 110 };
+			const float hx[6] = { 47, 247, 319, 421, 513, 672 };
+			const float hw[6] = { 198, 70, 100, 90, 155, 154 };
 			for (int i = 0; i < 6; ++i) T(cv, hx[i], 246, hw[i], 24, heads[i], 11, Pal::Dim, i == 0 ? Align::Left : Align::Center);
 			cv.fillRect(R(33, 278, 872, 1), Color(200, 225, 255, 40), 0);
 			std::vector<int> idx;
 			for (int i = 0; i < (int)m_members.size(); ++i) if (Match(m_members[i].name, m_members[i].acct, m_f[F_SEARCH_M].s)) idx.push_back(i);
 			const Rect vp = R(33, 280, 872, 383); const float pitch = 48.0f * m_u;
 			m_svMem.setLayout(vp, pitch * idx.size()); m_svs.push_back(&m_svMem);
+			const float pxName = ColPx(cv, m_members, idx, [](const Member& m) { return std::to_string(m.acct) + " | " + m.name; }, 11.5f, hw[0], FontTextSemibold);
 			cv.pushClip(vp);
 			if (!m_memLoad.loaded) T(cv, 33, 440, 872, 30, m_memLoad.failed ? "Não foi possível carregar os membros." : "Carregando...", 14, Pal::Dim, Align::Center);
 			else if (idx.empty()) T(cv, 33, 440, 872, 30, "Nenhum membro encontrado.", 14, Pal::Dim, Align::Center);
@@ -788,7 +833,7 @@ namespace OrgPanel
 				if (!m_svMem.visible(row)) continue;
 				const float ry = (row.y - m_oy) / m_u;                       // y em lu
 				if (k % 2 == 0) cv.fillRect({ row.x, row.y, row.w, row.h }, Color(160, 190, 235, 22), 0);
-				T(cv, hx[0], ry, 170, 48, std::to_string(m.acct) + " | " + m.name, 11.5f, Pal::Text, Align::Left, FontTextSemibold);
+				TP(cv, hx[0], ry, hw[0], 48, std::to_string(m.acct) + " | " + m.name, pxName, Pal::Text, Align::Left, FontTextSemibold);
 				T(cv, hx[1], ry, hw[1], 48, m.online ? "ONLINE" : "OFFLINE", 11, m.online ? Pal::Green : Pal::Pink, Align::Center, FontTextSemibold);
 				T(cv, hx[2], ry, hw[2], 48, HoursMin(m.secs), 11, Pal::Text, Align::Center);
 				T(cv, hx[3], ry, hw[3], 48, m.joined, 11, Pal::Text, Align::Center);
@@ -822,8 +867,8 @@ namespace OrgPanel
 		{
 			FieldBox(cv, 32, 172, 873, 46, F_SEARCH_F, "Pesquisar nome", true);
 			Card(cv, 32, 236, 874, 429, nullptr);
-			T(cv, 45, 248, 70, 26, "Posição", 11, Pal::Dim); T(cv, 138, 248, 100, 26, "Nome", 11, Pal::Dim);
-			T(cv, 280, 245, 70, 14, "Quantidade", 9.5f, Pal::Dim, Align::Center); T(cv, 280, 258, 70, 14, "Diária", 9.5f, Pal::Dim, Align::Center); T(cv, 349, 245, 70, 14, "Quantidade", 9.5f, Pal::Dim, Align::Center); T(cv, 349, 258, 70, 14, "Semanal", 9.5f, Pal::Dim, Align::Center);
+			T(cv, 45, 248, 70, 26, "Posição", 11, Pal::Dim); T(cv, 116, 248, 100, 26, "Nome", 11, Pal::Dim);
+			T(cv, 278, 242, 74, 16, "Quantidade", 9.5f, Pal::Dim, Align::Center); T(cv, 278, 258, 74, 16, "Diária", 9.5f, Pal::Dim, Align::Center); T(cv, 347, 242, 74, 16, "Quantidade", 9.5f, Pal::Dim, Align::Center); T(cv, 347, 258, 74, 16, "Semanal", 9.5f, Pal::Dim, Align::Center);
 			static const char* dn[7] = { "SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM" };
 			for (int d = 0; d < 7; ++d) T(cv, 425 + d * 64 - 0, 248, 56, 26, dn[d], 10.5f, Pal::Dim, Align::Center, FontTextMedium);
 			cv.fillRect(R(33, 278, 872, 1), Color(200, 225, 255, 40), 0);
@@ -831,6 +876,7 @@ namespace OrgPanel
 			for (int i = 0; i < (int)m_farm.size(); ++i) if (Match(m_farm[i].name, m_farm[i].acct, m_f[F_SEARCH_F].s)) idx.push_back(i);
 			const Rect vp = R(33, 280, 872, 383); const float pitch = 55.5f * m_u;
 			m_svFarm.setLayout(vp, pitch * idx.size()); m_svs.push_back(&m_svFarm);
+			const float pxName = ColPx(cv, m_farm, idx, [](const FarmRow& f) { return std::to_string(f.acct) + " | " + f.name; }, 10.5f, 168, FontTextSemibold);
 			cv.pushClip(vp);
 			if (!m_farmLoad.loaded) T(cv, 33, 440, 872, 30, m_farmLoad.failed ? "Não foi possível carregar o farm." : "Carregando...", 14, Pal::Dim, Align::Center);
 			else if (idx.empty()) T(cv, 33, 440, 872, 30, "Nenhum membro encontrado.", 14, Pal::Dim, Align::Center);
@@ -841,20 +887,20 @@ namespace OrgPanel
 				const float ry = (row.y - m_oy) / m_u;
 				if (k % 2 == 0) cv.fillRect(row, Color(160, 190, 235, 22), 0);
 				if (f.pos <= 3) IcoTrophy(cv, R(46, ry + 19, 17, 17), f.pos == 1 ? Color(255, 205, 70) : f.pos == 2 ? Color(205, 215, 230) : Color(255, 130, 200));
-				T(cv, 70, ry, 50, pitch / m_u, std::to_string(f.pos) + "\xC2\xB0", 11, Pal::Text, Align::Left, FontTextSemibold);
-				T(cv, 138, ry, 146, pitch / m_u, std::to_string(f.acct) + " | " + f.name, 10.5f, Pal::Text, Align::Left, FontTextSemibold);
+				T(cv, 70, ry, 44, pitch / m_u, std::to_string(f.pos) + "\xC2\xB0", 11, Pal::Text, Align::Left, FontTextSemibold);
+				TP(cv, 116, ry, 168, pitch / m_u, std::to_string(f.acct) + " | " + f.name, pxName, Pal::Text, Align::Left, FontTextSemibold);
 				for (int c = 0; c < 2; ++c)
 				{
-					const Rect pr = R(287 + c * 69, ry + 19, 58, 18); cv.fillRect(pr, Color(255, 255, 255, 28), pr.h * 0.5f); cv.strokeRect(pr, Color(220, 235, 255, 120), pr.h * 0.5f, std::max(1.0f, S(1.0f)));
-					DrawTextAs(cv, FontTextSemibold, pr, Dots(c == 0 ? f.day : f.week), Pal::Text, FS(10.5f), Align::Center);
+					const Rect pr = R(287 + c * 69, ry + 17, 58, 22); cv.fillRect(pr, Color(255, 255, 255, 28), pr.h * 0.5f); cv.strokeRect(pr, Color(220, 235, 255, 120), pr.h * 0.5f, std::max(1.0f, S(1.0f)));
+					DrawTextAs(cv, FontTextSemibold, pr, Dots(c == 0 ? f.day : f.week), Pal::Text, FST(10.5f), Align::Center);
 				}
-				for (int d = 0; d < 7; ++d) drawDayCell(cv, R(425 + d * 64 + 0, ry + 18, 58, 20), f.st[d]);
+				for (int d = 0; d < 7; ++d) drawDayCell(cv, R(425 + d * 64 + 0, ry + 16, 58, 24), f.st[d]);
 			}
 			cv.popClip();
 			drawScrollbar(cv, m_svFarm);
 			// historico
 			Card(cv, 923, 172, 391, 493, "HISTÓRICO FARM");
-			T(cv, 953, 232, 90, 20, "Data", 11, Pal::Dim); T(cv, 1065, 232, 110, 20, "Player", 11, Pal::Dim); T(cv, 1190, 232, 100, 20, "Qnt Itens", 11, Pal::Dim, Align::Right);
+			T(cv, 940, 232, 125, 20, "Data", 11, Pal::Dim); T(cv, 1070, 232, 112, 20, "Player", 11, Pal::Dim); T(cv, 1190, 232, 100, 20, "Qnt Itens", 11, Pal::Dim, Align::Right);
 			const Rect vp2 = R(924, 256, 389, 407); const float p2 = 34.0f * m_u;
 			m_svHist.setLayout(vp2, p2 * m_hist.size()); m_svs.push_back(&m_svHist);
 			cv.pushClip(vp2);
@@ -864,8 +910,8 @@ namespace OrgPanel
 				const FarmHist& y = m_hist[k]; const Rect row = m_svHist.itemRect(p2 * k, p2);
 				if (!m_svHist.visible(row)) continue;
 				const float ry = (row.y - m_oy) / m_u;
-				T(cv, 940, ry, 120, 34, y.time.substr(0, 16), 10, Pal::Text);
-				T(cv, 1065, ry, 130, 34, y.name, 10, Pal::Text);
+				T(cv, 940, ry, 128, 34, y.time.substr(0, 16), 10.5f, Pal::Text);
+				T(cv, 1070, ry, 112, 34, y.name, 10.5f, Pal::Text);
 				T(cv, 1190, ry, 100, 34, Dots(y.qty), 10.5f, Pal::Text, Align::Right, FontTextSemibold);
 			}
 			cv.popClip();
@@ -893,18 +939,19 @@ namespace OrgPanel
 			T(cv, 60, 455, 200, 22, "Saldo atual", 12.5f, Pal::Dim);
 			T(cv, 60, 480, 640, 56, Money(m_balance), 42, Pal::Text, Align::Left, FontDisplayBold);
 			cv.fillRect(R(60, 545, 654, 1), Color(200, 225, 255, 50), 0);
-			FieldBox(cv, 60, 556, 213, 34, F_AMOUNT, "Valor", false);
-			Pill(cv, 60, 602, 78, 34, "Depositar", H_DEPOSIT, 0, true, 12.5f);
-			Pill(cv, 146, 602, 58, 34, "Sacar", H_WITHDRAW, 0, m_canWithdraw, 12.5f);
+			FieldBox(cv, 60, 553, 213, 40, F_AMOUNT, "Valor", false);
+			Pill(cv, 60, 603, 106, 38, "Depositar", H_DEPOSIT, 0, true, 12.5f);
+			Pill(cv, 174, 603, 80, 38, "Sacar", H_WITHDRAW, 0, m_canWithdraw, 12.5f);
 			// transacoes
 			Card(cv, 759, 172, 555, 493, "TRANSAÇÕES");
-			FieldBox(cv, 773, 228, 526, 32, F_SEARCH_B, "Pesquisar nome", true);
-			T(cv, 787, 270, 150, 22, "Player", 11, Pal::Dim); T(cv, 940, 270, 80, 22, "Ação", 11, Pal::Dim, Align::Center); T(cv, 1030, 270, 80, 22, "Tipo", 11, Pal::Dim, Align::Center);
-			T(cv, 1108, 270, 80, 22, "Valor", 11, Pal::Dim, Align::Center); T(cv, 1190, 270, 100, 22, "Data", 11, Pal::Dim, Align::Right);
+			FieldBox(cv, 773, 226, 526, 36, F_SEARCH_B, "Pesquisar nome", true);
+			T(cv, 787, 270, 190, 22, "Player", 11, Pal::Dim); T(cv, 979, 270, 66, 22, "Ação", 11, Pal::Dim, Align::Center); T(cv, 1047, 270, 70, 22, "Tipo", 11, Pal::Dim, Align::Center);
+			T(cv, 1119, 270, 62, 22, "Valor", 11, Pal::Dim, Align::Center); T(cv, 1183, 270, 117, 22, "Data", 11, Pal::Dim, Align::Right);
 			std::vector<int> idx;
 			for (int i = 0; i < (int)m_tx.size(); ++i) if (Match(m_tx[i].name, m_tx[i].acct, m_f[F_SEARCH_B].s)) idx.push_back(i);
 			const Rect vp = R(760, 293, 553, 370); const float pitch = 35.0f * m_u;
 			m_svBank.setLayout(vp, pitch * idx.size()); m_svs.push_back(&m_svBank);
+			const float pxName = ColPx(cv, m_tx, idx, [](const Tx& x) { return std::to_string(x.acct) + " | " + x.name; }, 10.5f, 190, FontTextSemibold);
 			cv.pushClip(vp);
 			if (idx.empty()) T(cv, 760, 440, 553, 26, m_bankLoad.loaded ? "Nenhuma transação registrada." : "Carregando...", 12, Pal::Faint, Align::Center);
 			for (size_t k = 0; k < idx.size(); ++k)
@@ -913,12 +960,12 @@ namespace OrgPanel
 				if (!m_svBank.visible(row)) continue;
 				const float ry = (row.y - m_oy) / m_u;
 				const Rect pr = R(773, ry + 3, 526, 29); cv.fillRect(pr, Pal::Row, pr.h * 0.5f);
-				T(cv, 787, ry, 160, 35, std::to_string(x.acct) + " | " + x.name, 10.5f, Pal::Text, Align::Left, FontTextSemibold);
+				TP(cv, 787, ry, 190, 35, std::to_string(x.acct) + " | " + x.name, pxName, Pal::Text, Align::Left, FontTextSemibold);
 				const bool in = x.action == "ENTRADA";
-				T(cv, 940, ry, 80, 35, x.action, 10, in ? Pal::Cyan : Pal::Pink, Align::Center, FontTextSemibold);
-				T(cv, 1030, ry, 80, 35, x.kind, 10, Pal::Text, Align::Center, FontTextSemibold);
-				T(cv, 1108, ry, 80, 35, Dots(x.amount), 10.5f, Pal::Text, Align::Center, FontTextSemibold);
-				T(cv, 1180, ry, 110, 35, x.time, 9.5f, Pal::Text, Align::Right);
+				T(cv, 979, ry, 66, 35, x.action, 10, in ? Pal::Cyan : Pal::Pink, Align::Center, FontTextSemibold);
+				T(cv, 1047, ry, 70, 35, x.kind, 10, Pal::Text, Align::Center, FontTextSemibold);
+				T(cv, 1119, ry, 62, 35, Dots(x.amount), 10.5f, Pal::Text, Align::Center, FontTextSemibold);
+				T(cv, 1183, ry, 117, 35, x.time, 10, Pal::Text, Align::Right);
 			}
 			cv.popClip();
 			drawScrollbar(cv, m_svBank);
@@ -972,8 +1019,8 @@ namespace OrgPanel
 					const float ry = (row.y - m_oy) / m_u; const bool sel = (int)i == m_roleSel;
 					const Rect pr = R(248, ry + 4, 292, 44); cv.fillRect(pr, sel ? Color(255, 255, 255, 70) : Pal::Row, S(14)); if (sel) cv.strokeRect(pr, Color(180, 215, 255, 220), S(14), std::max(1.0f, S(1.6f)));
 					T(cv, 262, ry + 4, 30, 44, std::to_string(rk.rank), 15, Pal::Cyan, Align::Left, FontDisplayBold);
-					T(cv, 292, ry + 4, 190, 44, rk.name, 13, Pal::Text, Align::Left, FontTextSemibold);
-					T(cv, 480, ry + 4, 56, 44, std::to_string(rk.count) + (rk.count == 1 ? " membro" : " membros"), 8.5f, Pal::Dim, Align::Right);
+					T(cv, 292, ry + 4, 150, 44, rk.name, 13, Pal::Text, Align::Left, FontTextSemibold);
+					T(cv, 446, ry + 4, 90, 44, std::to_string(rk.count) + (rk.count == 1 ? " membro" : " membros"), 10, Pal::Dim, Align::Right);
 					addHit(pr, H_R_SEL, (int)i, true, &vp);
 				}
 				cv.popClip();
@@ -1008,7 +1055,7 @@ namespace OrgPanel
 		{
 			if (m_toast.empty() || m_toastA < 0.02f) return;
 			cv.setFont(FontTextSemibold);
-			const float w = std::min(1100.0f * m_u, std::max(S(280), cv.measure(m_toast, FS(14)).x + S(64)));
+			const float w = std::min(1100.0f * m_u, std::max(S(280), cv.measure(m_toast, FST(14)).x + S(64)));
 			cv.setFont(FontText);
 			const float y = m_oy + S(104) + (1.0f - m_toastA) * -S(14);
 			const Rect r = { (m_sw - w) * 0.5f, y, w, S(44) };
@@ -1016,7 +1063,7 @@ namespace OrgPanel
 			cv.fillRect(r.moved(0, S(3)), Color(0, 0, 0, 80), r.h * 0.5f);
 			cv.fillRect(r, m_toastBad ? Color(120, 28, 52, 245) : Color(18, 96, 88, 245), r.h * 0.5f);
 			cv.strokeRect(r, m_toastBad ? Color(255, 140, 160, 200) : Color(120, 240, 220, 200), r.h * 0.5f, std::max(1.0f, S(1.3f)));
-			DrawTextAs(cv, FontTextSemibold, r.inset(S(18), 0), m_toast, Pal::Text, FS(14), Align::Center);
+			DrawTextAs(cv, FontTextSemibold, r.inset(S(18), 0), m_toast, Pal::Text, FST(14), Align::Center);
 			cv.setAlpha(1.0f);
 		}
 	};
