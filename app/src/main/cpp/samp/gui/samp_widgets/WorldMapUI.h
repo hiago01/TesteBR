@@ -51,6 +51,14 @@ namespace WorldMap
 		virtual int  hqCount() { return 0; }
 		// cats = categorias separadas por ";" (ex.: "Governamental;Saude", vazio = sem categoria); area = local de atuacao ("Los Santos", "Las Venturas"... ou "Global")
 		virtual bool hqAt(int i, float& x, float& y, float& z, std::string& name, std::string& cats, std::string& area) { (void)i; (void)x; (void)y; (void)z; (void)name; (void)cats; (void)area; return false; }
+		// ---- cidade nova (fora do mapa de San Andreas): imagem propria + locais do cliente (SAMP/radar/cidade/) ----
+		virtual const City* city() { return nullptr; }                          // nullptr / !ok = cidade nao instalada (tudo segue como antes)
+		virtual ImTextureID cityOverview() { return 0; }                         // imagem geral (0 = ainda nao carregou)
+		virtual ImTextureID cityTile(int col, int row) { (void)col; (void)row; return 0; }   // tile de detalhe (0 = nao existe / ainda carregando)
+		virtual void cityGrid(float& x0, float& y1, float& tileM, int& cols, int& rows) { x0 = 0; y1 = 0; tileM = 0; cols = 0; rows = 0; }   // canto noroeste da grade de tiles
+		virtual void cityImageRect(float& x0, float& y0, float& x1, float& y1) { x0 = y0 = x1 = y1 = 0; }                                    // area coberta pela imagem geral
+		virtual int  cityPlaceCount() { return 0; }
+		virtual bool cityPlaceAt(int i, int& icon, float& x, float& y, float& z, std::string& name) { (void)i; (void)icon; (void)x; (void)y; (void)z; (void)name; return false; }
 	};
 
 	class Ui
@@ -165,7 +173,11 @@ namespace WorldMap
 		int64_t m_lastBack = 0;
 
 		// estado (so a thread de desenho)
-		std::vector<Location> m_locs;
+		std::vector<Location> m_locs;          // o que a lista/mapa mostram AGORA (filtrado pela zona: mundo ou cidade)
+		std::vector<Location> m_locsSrv;       // o que o servidor mandou (RPC 204 op 1), sem filtro
+		bool m_zoneCity = false;               // true = jogador DENTRO da cidade nova: imagem, lista e GPS so da cidade
+		City m_city;
+		static constexpr int kCityIdBase = 60000;   // ids dos locais do cliente (locais.txt): o servidor nao os conhece
 		// lista lateral em CATEGORIAS recolhiveis: cada linha e um cabecalho (kind 0, idx = categoria), um local do servidor (1), a sede de um grupo (2) ou uma marcacao salva (3)
 		struct Row { int kind; int idx; int cat; };
 		std::vector<Row> m_rows;
@@ -206,6 +218,10 @@ namespace WorldMap
 
 		Layout MakeLayout() const;
 		void Toast(const std::string& s) { m_toast = s; m_toastUntil = P->nowMs() + 2600; }
+		bool ZoneOk(float x, float y) const { return m_zoneCity ? InsideCity(m_city, x, y) : InsideWorld(x, y); }   // o ponto pertence ao mapa mostrado agora?
+		void RebuildLocs(int keepId);
+		void UpdateZone(bool havePlayer, float plx, float ply, bool forceInit);
+		void DrawCityImage(ImGuiRenderer* r, const ImVec2& origin, int& drawn);
 		void ResetDrawState();
 		void DrainPending();
 		void ProcessEvents();
@@ -234,6 +250,7 @@ namespace WorldMap
 		void DrawRouteLine(ImGuiRenderer* r, const std::vector<Vec2>& rt, const ImVec2& origin, float k, bool havePlayer, float plx, float ply);
 		void Cmd(const char* fmt, int a = 0, int b = 0)
 		{
+			if (m_zoneCity) return;      // cidade nova: GPS so no cliente (o servidor nao conhece estes locais nem as coordenadas)
 			char buf[64];
 			std::snprintf(buf, sizeof(buf), fmt, a, b);
 			P->sendCommand(buf);
@@ -313,6 +330,74 @@ namespace WorldMap
 		return BTN_NONE;
 	}
 
+	// ---------------------------------------------------------------------------------------------
+	//  Cidade nova: zona (mundo x cidade), lista de locais e imagem
+	// ---------------------------------------------------------------------------------------------
+	// Locais da zona atual: os do servidor que caem dentro dela + (na cidade) os do cliente (locais.txt, ids >= 60000)
+	inline void Ui::RebuildLocs(int keepId)
+	{
+		m_locs.clear();
+		for (const Location& l : m_locsSrv) if (ZoneOk(l.x, l.y)) m_locs.push_back(l);
+		if (m_zoneCity)
+		{
+			const int n = P->cityPlaceCount();
+			for (int i = 0; i < n && (int)m_locs.size() < kMaxLocations + 64; i++)
+			{
+				Location l; int icon = 0;
+				if (!P->cityPlaceAt(i, icon, l.x, l.y, l.z, l.name) || !ZoneOk(l.x, l.y)) continue;
+				l.id = kCityIdBase + i; l.icon = icon;
+				m_locs.push_back(std::move(l));
+			}
+		}
+		m_selLoc = -1;
+		for (size_t i = 0; i < m_locs.size(); i++) if (m_locs[i].id == keepId) m_selLoc = (int)i;
+	}
+
+	// Troca de zona (entrou/saiu da cidade): limites e imagem do mapa, lista e GPS. O GPS de outra zona e' desligado (nao faz sentido atravessar).
+	inline void Ui::UpdateZone(bool havePlayer, float plx, float ply, bool forceInit)
+	{
+		const City* c = P->city();
+		m_city = (c && c->ok) ? *c : City();
+		const bool want = m_city.ok && havePlayer && InsideCity(m_city, plx, ply);
+		if (want == m_zoneCity && !forceInit) return;
+		if (want != m_zoneCity)
+		{
+			if (m_gps.on && !(want ? InsideCity(m_city, m_gps.x, m_gps.y) : InsideWorld(m_gps.x, m_gps.y))) ClearGps(true);   // com a zona ANTIGA: avisa o servidor
+			m_zoneCity = want;
+			if (want) SetBounds(m_view, m_city.minX, m_city.minY, m_city.maxX, m_city.maxY, true);
+			else ResetBounds(m_view);
+			RebuildLocs(-1);
+			if (want) for (int cc = 2; cc < kCats; cc++) m_catOpen[cc] = true;      // cidade: categorias ja abertas (poucos locais)
+			m_listScroll = 0;
+			m_needInit.store(true);        // recentra no jogador, com o zoom certo da zona
+		}
+	}
+
+	// Imagem da cidade: geral sempre; tiles de detalhe so com zoom alto (os que ainda nao carregaram deixam ver a geral por baixo)
+	inline void Ui::DrawCityImage(ImGuiRenderer* r, const ImVec2& origin, int& drawn)
+	{
+		auto S = [&](float wx, float wy) { const Vec2 s = ToScreen(m_view, wx, wy); return ImVec2(origin.x + s.x, origin.y + s.y); };
+		float ix0, iy0, ix1, iy1; P->cityImageRect(ix0, iy0, ix1, iy1);
+		const ImTextureID ov = P->cityOverview();
+		if (ov && ix1 > ix0 && iy1 > iy0) { r->drawImage(S(ix0, iy1), S(ix1, iy0), ov); drawn++; }
+		if (m_view.scale < 0.40f) return;
+		float gx0, gy1, tileM; int cols, rows; P->cityGrid(gx0, gy1, tileM, cols, rows);
+		if (tileM <= 0.0f || cols <= 0 || rows <= 0) return;
+		const float halfW = m_view.w * 0.5f / m_view.scale, halfH = m_view.h * 0.5f / m_view.scale;
+		const int c0 = std::max(0, (int)std::floor((m_view.cx - halfW - gx0) / tileM)), c1 = std::min(cols - 1, (int)std::floor((m_view.cx + halfW - gx0) / tileM));
+		const int r0 = std::max(0, (int)std::floor((gy1 - (m_view.cy + halfH)) / tileM)), r1 = std::min(rows - 1, (int)std::floor((gy1 - (m_view.cy - halfH)) / tileM));
+		for (int rr = r0; rr <= r1; rr++)
+			for (int cc = c0; cc <= c1; cc++)
+			{
+				const ImTextureID t = P->cityTile(cc, rr);
+				if (!t) continue;
+				const float tx0 = gx0 + cc * tileM, ty1 = gy1 - rr * tileM;
+				ImVec2 a = S(tx0, ty1), b = S(tx0 + tileM, ty1 - tileM);
+				a.x -= 0.5f; a.y -= 0.5f; b.x += 0.5f; b.y += 0.5f;
+				r->drawImage(a, b, t);
+			}
+	}
+
 	inline void Ui::ResetDrawState()
 	{
 		for (auto& f : m_f) f = Finger();
@@ -328,9 +413,8 @@ namespace WorldMap
 			if (p.op == 1)
 			{
 				const int keepId = (m_selLoc >= 0 && m_selLoc < (int)m_locs.size()) ? m_locs[m_selLoc].id : -1;
-				m_locs = std::move(p.locs);
-				m_selLoc = -1;
-				for (size_t i = 0; i < m_locs.size(); i++) if (m_locs[i].id == keepId) m_selLoc = (int)i;
+				m_locsSrv = std::move(p.locs);
+				RebuildLocs(keepId);
 				if (m_gps.on && m_gps.loc >= 0) { /* mantem o GPS mesmo se o local sumiu da lista */ }
 			}
 			else if (p.op == 3)
@@ -400,7 +484,7 @@ namespace WorldMap
 		for (int i = 0; i < n; i++)
 		{
 			float x = 0, y = 0; std::string nm;
-			if (!P->pinAt(i, x, y, nm)) continue;
+			if (!P->pinAt(i, x, y, nm) || !ZoneOk(x, y)) continue;
 			const Vec2 s = ToScreen(m_view, x, y);
 			const float d = Dist(s.x, s.y, rx, ry - 12.0f * m_L.k);      // o pino fica acima do ponto: mede pela cabeca
 			if (d <= bestD) { bestD = d; best = i; wx = x; wy = y; label = nm; }
@@ -415,7 +499,7 @@ namespace WorldMap
 		for (int i = 0; i < n; i++)
 		{
 			float x = 0, y = 0, z = 0; std::string nm, cats, ar;
-			if (!P->hqAt(i, x, y, z, nm, cats, ar) || !HqPass(cats, ar)) continue;
+			if (!P->hqAt(i, x, y, z, nm, cats, ar) || !ZoneOk(x, y) || !HqPass(cats, ar)) continue;
 			const Vec2 s = ToScreen(m_view, x, y);
 			const float d = Dist(s.x, s.y, rx, ry);
 			if (d <= bestD) { bestD = d; best = i; wx = x; wy = y; name = nm; }
@@ -510,7 +594,7 @@ namespace WorldMap
 		}
 		std::vector<Row> items[kCats];
 		const int np = P->pinCount();
-		for (int i = 0; i < np; i++) items[0].push_back({ 3, i, 0 });
+		for (int i = 0; i < np; i++) { float px = 0, py = 0; std::string pn; if (P->pinAt(i, px, py, pn) && ZoneOk(px, py)) items[0].push_back({ 3, i, 0 }); }
 		for (size_t i = 0; i < m_locs.size(); i++) { const int c = CatOfIcon(m_locs[i].icon); items[c].push_back({ 1, (int)i, c }); }
 		// grupos por categoria
 		std::vector<std::string> names; std::vector<std::vector<int>> members;
@@ -519,7 +603,7 @@ namespace WorldMap
 		for (int i = 0; i < nh; i++)
 		{
 			float x, y, z; std::string nm, cats, ar;
-			if (!P->hqAt(i, x, y, z, nm, cats, ar) || !HqPass(cats, ar)) continue;
+			if (!P->hqAt(i, x, y, z, nm, cats, ar) || !ZoneOk(x, y) || !HqPass(cats, ar)) continue;
 			m_hqShown++;
 			std::vector<std::string> cs = SplitCats(cats);
 			if (cs.empty()) cs.push_back("Sem categoria");
@@ -599,14 +683,14 @@ namespace WorldMap
 
 	inline void Ui::SetFreeGps(float wx, float wy, bool create, const std::string& label)
 	{
-		wx = Clampf(wx, kWorldMin, kWorldMax);
-		wy = Clampf(wy, kWorldMin, kWorldMax);
+		wx = Clampf(wx, m_view.bx0, m_view.bx1);
+		wy = Clampf(wy, m_view.by0, m_view.by1);
 		m_gps.on = true; m_gps.x = wx; m_gps.y = wy; m_gps.z = 0; m_gps.loc = -1;
 		m_route.clear(); ClearLocalRoute();
 		m_selLoc = -1;
 		P->setGps(wx, wy, 0.0f);
 		Cmd("/mapax pos %d %d", (int)std::lround(wx), (int)std::lround(wy));
-		std::string nm = label.empty() ? ZoneLabel(wx, wy) : label;
+		std::string nm = label.empty() ? (m_zoneCity ? std::string("Cidade Nova") : ZoneLabel(wx, wy)) : label;
 		if (create) P->setDestMarker(wx, wy, -1000.0f, ClipUtf8(nm.empty() ? std::string("Destino") : nm, 24));      // marcacao 3D (unica) com o nome do lugar clicado
 		else P->clearDestMarker();                                                                                 // GPS numa marcacao salva: ela ja tem o proprio 3D
 		Toast(nm.empty() ? std::string("GPS marcado") : "GPS marcado: " + nm);
@@ -841,7 +925,7 @@ namespace WorldMap
 	// jogador sai da rota (mais que 'recalcular_a'); no maximo 1 calculo a cada 1,2 s. Falha = segue a linha reta tracejada.
 	inline void Ui::UpdateLocalRoute(bool havePlayer, float plx, float ply)
 	{
-		if (!m_gps.on || m_route.size() >= 2 || !havePlayer) return;
+		if (m_zoneCity || !m_gps.on || m_route.size() >= 2 || !havePlayer) return;
 		const Roads::Graph* g = P->roads();
 		if (!g) return;
 		const Lines::Styles& S = P->lineStyles();
@@ -1038,10 +1122,11 @@ namespace WorldMap
 		if (m_resetReq.exchange(false))
 		{
 			if (m_gps.on) P->clearGps();
-			m_gps = Gps(); m_locs.clear(); m_rows.clear(); m_route.clear(); ClearLocalRoute(); m_selLoc = -1; m_listScroll = 0; ResetDrawState();
+			m_gps = Gps(); m_locs.clear(); m_locsSrv.clear(); m_zoneCity = false; ResetBounds(m_view); m_rows.clear(); m_route.clear(); ClearLocalRoute(); m_selLoc = -1; m_listScroll = 0; ResetDrawState();
 		}
 		if (m_sendClose.exchange(false)) P->sendCommand("/mapax close");
 		DrainPending();
+		{ float zx = 0, zy = 0, zh = 0; const bool zp = P->player(zx, zy, zh); UpdateZone(zp, zx, zy, false); }
 		TickGps();
 
 		// animacao de TV: liga (sobe) quando abre, desliga (desce) quando fecha; o mapa segue desenhado ate apagar
@@ -1127,8 +1212,9 @@ namespace WorldMap
 		r->drawRect(L.mapA, L.mapB, mapBg, true);
 		auto S = [&](float wx, float wy) { const Vec2 s = ToScreen(m_view, wx, wy); return ImVec2(L.mapA.x + s.x, L.mapA.y + s.y); };
 		int tilesDrawn = 0;
-		const ImTextureID full = P->fullMap();
-		if (full)
+		const ImTextureID full = m_zoneCity ? (ImTextureID)0 : P->fullMap();
+		if (m_zoneCity) { DrawCityImage(r, L.mapA, tilesDrawn); }
+		else if (full)
 		{
 			r->drawImage(S(kWorldMin, kWorldMax), S(kWorldMax, kWorldMin), full);
 			tilesDrawn = 1;
@@ -1153,10 +1239,10 @@ namespace WorldMap
 			}
 		}
 		if (P->mapDim() > 0) r->drawRect(L.mapA, L.mapB, ImColor(0, 0, 0, P->mapDim()), true);   // escurece (estilo do painel)
-		r->drawRect(S(kWorldMin, kWorldMax), S(kWorldMax, kWorldMin), ImColor(255, 255, 255, 40), false, 1.5f);
+		r->drawRect(S(m_view.bx0, m_view.by1), S(m_view.bx1, m_view.by0), ImColor(255, 255, 255, 40), false, 1.5f);
 
 		// ---- ruas (camada opcional) e caminho ----
-		DrawRoads(r, L.mapA, k);
+		if (!m_zoneCity) DrawRoads(r, L.mapA, k);          // grafo de ruas (NODES) so cobre o mapa original
 		UpdateLocalRoute(havePlayer, plx, ply);
 		if (m_gps.on)
 		{
@@ -1186,7 +1272,7 @@ namespace WorldMap
 		}
 
 		// ---- locais ----
-		const bool labels = m_view.scale >= 0.22f;
+		const bool labels = m_view.scale >= (m_zoneCity ? 0.05f : 0.22f);
 		for (size_t i = 0; i < m_locs.size(); i++)
 		{
 			const Location& l = m_locs[i];
@@ -1206,7 +1292,7 @@ namespace WorldMap
 			for (int i = 0; i < nh; i++)
 			{
 				float wx = 0, wy = 0, wz = 0; std::string nm, hc, ha;
-				if (!P->hqAt(i, wx, wy, wz, nm, hc, ha) || !HqPass(hc, ha)) continue;       // os filtros da lista valem tambem para os icones
+				if (!P->hqAt(i, wx, wy, wz, nm, hc, ha) || !ZoneOk(wx, wy) || !HqPass(hc, ha)) continue;       // os filtros da lista valem tambem para os icones
 				const ImVec2 c = S(wx, wy);
 				if (c.x < L.mapA.x - 20 || c.x > L.mapB.x + 20 || c.y < L.mapA.y - 20 || c.y > L.mapB.y + 20) continue;
 				const bool sel = m_gps.on && Dist(m_gps.x, m_gps.y, wx, wy) < 2.0f;
@@ -1223,7 +1309,7 @@ namespace WorldMap
 			for (int i = 0; i < np; i++)
 			{
 				float wx = 0, wy = 0; std::string nm;
-				if (!P->pinAt(i, wx, wy, nm)) continue;
+				if (!P->pinAt(i, wx, wy, nm) || !ZoneOk(wx, wy)) continue;
 				const ImVec2 c = S(wx, wy);
 				if (c.x < L.mapA.x - 20 || c.x > L.mapB.x + 20 || c.y < L.mapA.y - 20 || c.y > L.mapB.y + 20) continue;
 				const float ps = 6.0f * k;
@@ -1268,7 +1354,7 @@ namespace WorldMap
 			}
 			if (tilesDrawn == 0)
 			{
-				const char* msg = "Imagem do mapa indisponivel (tiles do radar nao carregaram - veja [MAPA] no samp_log.txt)";
+				const char* msg = m_zoneCity ? "Imagem da cidade indisponivel (SAMP/radar/cidade/overview.png - veja [CIDADE] no samp_log.txt)" : "Imagem do mapa indisponivel (tiles do radar nao carregaram - veja [MAPA] no samp_log.txt)";
 				const ImVec2 ts = r->calculateTextSize(msg, 11.0f * k);
 				r->drawText(ImVec2(L.mapA.x + (m_view.w - ts.x) * 0.5f, L.mapB.y - 24.0f * k), ImColor(255, 190, 90, 255), msg, true, 11.0f * k);
 			}
@@ -1421,7 +1507,7 @@ namespace WorldMap
 			char sb[24]; if (meters >= 1000.0f) std::snprintf(sb, sizeof(sb), "%d km", (int)(meters / 1000.0f)); else std::snprintf(sb, sizeof(sb), "%d m", (int)meters);
 			r->drawText(ImVec2(sx + wpx + 8.0f * k, sy - 7.0f * k), text, sb, true, 11.0f * k);
 			// nome da zona no centro do mapa (ex.: "Chinatown")
-			const std::string zn = ZoneLabel(m_view.cx, m_view.cy);
+			const std::string zn = m_zoneCity ? std::string("Cidade Nova") : ZoneLabel(m_view.cx, m_view.cy);
 			if (!zn.empty()) r->drawText(ImVec2(sx, sy - 28.0f * k), text, zn, true, 16.0f * k);
 		}
 

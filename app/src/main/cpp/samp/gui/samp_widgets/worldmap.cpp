@@ -14,6 +14,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <sys/stat.h>
@@ -173,6 +174,127 @@ namespace
 		int tilesLoaded() override { return m_loaded; }
 		int mapDim() override { return RadarSkin::Enabled() ? 0 : 70; }
 
+		// ---- cidade nova (fora do mapa de San Andreas): SAMP/radar/cidade/{cidade.ini, overview.png, t_<col>_<row>.png, locais.txt} ----
+		// Tudo opcional: sem cidade.ini o mapa funciona exatamente como antes. Imagens carregadas aos poucos (1 por quadro) e os tiles
+		// de detalhe ficam num cache pequeno (8) para nao gastar memoria de video.
+		struct CityTile { RwRaster* r = nullptr; bool tried = false; int lastFrame = 0; };
+		struct CityPlace { int icon = 0; float x = 0, y = 0, z = 0; std::string name; };
+		City m_cityInfo; bool m_cityTried = false;
+		float m_ix0 = 0, m_iy0 = 0, m_ix1 = 0, m_iy1 = 0, m_tileM = 0; int m_tcols = 0, m_trows = 0;
+		RwRaster* m_cityOv = nullptr; bool m_cityOvTried = false;
+		std::vector<CityTile> m_cityTiles; int m_cityLoadFrame = -1; int m_cityTilesLoaded = 0;
+		std::vector<CityPlace> m_places; bool m_placesTried = false;
+
+		std::string CityDir() const { return g_pszStorage ? std::string(g_pszStorage) + "SAMP/radar/cidade/" : std::string(); }
+		void CityLoadIni()
+		{
+			m_cityTried = true; m_cityInfo = City();
+			const std::string dir = CityDir();
+			if (dir.empty()) return;
+			FILE* f = fopen((dir + "cidade.ini").c_str(), "rb");
+			if (!f) { FLog("[CIDADE] %scidade.ini nao existe: modo cidade desligado (mapa normal)", dir.c_str()); return; }
+			char line[256]; float v[12] = {}; bool has[12] = {};
+			static const char* const keys[] = { "x0", "y0", "x1", "y1", "min_x", "max_x", "min_y", "max_y", "tile_m", "tiles_cols", "tiles_rows", "tile_px" };
+			while (fgets(line, sizeof(line), f))
+			{
+				if (line[0] == '#' || line[0] == '\n') continue;
+				char* eq = strchr(line, '='); if (!eq) continue;
+				*eq = 0; std::string k(line); const double val = atof(eq + 1);
+				for (int i = 0; i < 12; i++) if (k == keys[i]) { v[i] = (float)val; has[i] = true; }
+			}
+			fclose(f);
+			for (int i = 0; i < 11; i++) if (!has[i]) { FLog("[CIDADE] cidade.ini incompleto (falta '%s'): modo cidade desligado", keys[i]); return; }
+			if (!(v[5] > v[4]) || !(v[7] > v[6]) || !(v[2] > v[0]) || !(v[3] > v[1])) { FLog("[CIDADE] cidade.ini com limites invalidos: modo cidade desligado"); return; }
+			m_ix0 = v[0]; m_iy0 = v[1]; m_ix1 = v[2]; m_iy1 = v[3];
+			m_tileM = v[8]; m_tcols = (int)v[9]; m_trows = (int)v[10];
+			if (m_tcols < 0 || m_trows < 0 || m_tcols > 64 || m_trows > 64) { m_tcols = m_trows = 0; }
+			m_cityTiles.assign((size_t)m_tcols * m_trows, CityTile());
+			m_cityInfo.ok = true; m_cityInfo.minX = v[4]; m_cityInfo.maxX = v[5]; m_cityInfo.minY = v[6]; m_cityInfo.maxY = v[7];
+			FLog("[CIDADE] cidade.ini ok: area x %.0f..%.0f y %.0f..%.0f | imagem %.0f,%.0f..%.0f,%.0f | grade de tiles %dx%d (%.0f m)", v[4], v[5], v[6], v[7], m_ix0, m_iy0, m_ix1, m_iy1, m_tcols, m_trows, m_tileM);
+		}
+		const City* city() override
+		{
+			if (!m_cityTried) CityLoadIni();
+			return m_cityInfo.ok ? &m_cityInfo : nullptr;
+		}
+		RwRaster* CityLoadPng(const std::string& path, const char* what)
+		{
+			int w = 0, h = 0, ch = 0;
+			unsigned char* px = stbi_load(path.c_str(), &w, &h, &ch, 4);
+			if (!px) { FLog("[CIDADE] %s: arquivo nao abriu (%s)", what, path.c_str()); return nullptr; }
+			RwRaster* ras = MakeRaster(px, w, h);
+			stbi_image_free(px);
+			FLog("[CIDADE] %s %dx%d %s", what, w, h, ras ? "ok" : "FALHOU (raster)");
+			return ras;
+		}
+		ImTextureID cityOverview() override
+		{
+			if (m_cityOvTried) return (ImTextureID)m_cityOv;
+			if (!city()) return 0;
+			m_cityOvTried = true;
+			m_cityOv = CityLoadPng(CityDir() + "overview.png", "overview.png");
+			return (ImTextureID)m_cityOv;
+		}
+		ImTextureID cityTile(int col, int row) override
+		{
+			if (!city() || col < 0 || row < 0 || col >= m_tcols || row >= m_trows) return 0;
+			CityTile& t = m_cityTiles[(size_t)row * m_tcols + col];
+			const int fr = ImGui::GetFrameCount();
+			if (t.r) { t.lastFrame = fr; return (ImTextureID)t.r; }
+			if (t.tried) return 0;
+			if (m_cityLoadFrame == fr) return 0;          // 1 PNG por quadro
+			m_cityLoadFrame = fr;
+			// cache: no maximo 8 tiles; libera o mais antigo que ja nao e' usado ha alguns quadros
+			if (m_cityTilesLoaded >= 8)
+			{
+				CityTile* old = nullptr;
+				for (CityTile& c : m_cityTiles) if (c.r && c.lastFrame < fr - 3 && (!old || c.lastFrame < old->lastFrame)) old = &c;
+				if (!old) return 0;
+				if (RwRasterDestroy) RwRasterDestroy(old->r);
+				old->r = nullptr; old->tried = false; m_cityTilesLoaded--;
+			}
+			char nm[40]; std::snprintf(nm, sizeof(nm), "t_%d_%d.png", col, row);
+			int w = 0, h = 0, ch = 0;
+			const std::string path = CityDir() + nm;
+			if (FILE* f = fopen(path.c_str(), "rb")) fclose(f); else { t.tried = true; return 0; }   // tile vazio (so mar) nao e' gerado
+			t.tried = true;
+			t.r = CityLoadPng(path, nm);
+			if (t.r) { t.lastFrame = fr; m_cityTilesLoaded++; }
+			(void)w; (void)h; (void)ch;
+			return (ImTextureID)t.r;
+		}
+		void cityGrid(float& x0, float& y1, float& tileM, int& cols, int& rows) override { x0 = m_ix0; y1 = m_iy1; tileM = m_tileM; cols = m_tcols; rows = m_trows; }
+		void cityImageRect(float& x0, float& y0, float& x1, float& y1) override { x0 = m_ix0; y0 = m_iy0; x1 = m_ix1; y1 = m_iy1; }
+		void CityLoadPlaces()
+		{
+			m_placesTried = true; m_places.clear();
+			const std::string dir = CityDir();
+			if (dir.empty()) return;
+			FILE* f = fopen((dir + "locais.txt").c_str(), "rb");
+			if (!f) { FLog("[CIDADE] locais.txt nao existe: a cidade fica so com os locais do servidor"); return; }
+			char line[300];
+			while (fgets(line, sizeof(line), f) && m_places.size() < 120)
+			{
+				if (line[0] == '#' || line[0] == '\n' || line[0] == '\r') continue;
+				CityPlace pl; char name[200] = {};
+				if (std::sscanf(line, "%d|%f|%f|%f|%199[^\r\n]", &pl.icon, &pl.x, &pl.y, &pl.z, name) < 5) continue;
+				if (!Finite(pl.x) || !Finite(pl.y) || !Finite(pl.z)) continue;
+				pl.name = name;
+				if (pl.name.size() > 40) pl.name.resize(40);
+				m_places.push_back(std::move(pl));
+			}
+			fclose(f);
+			FLog("[CIDADE] locais.txt: %d locais", (int)m_places.size());
+		}
+		int cityPlaceCount() override { if (!m_placesTried) CityLoadPlaces(); return (int)m_places.size(); }
+		bool cityPlaceAt(int i, int& icon, float& x, float& y, float& z, std::string& name) override
+		{
+			if (!m_placesTried) CityLoadPlaces();
+			if (i < 0 || i >= (int)m_places.size()) return false;
+			icon = m_places[i].icon; x = m_places[i].x; y = m_places[i].y; z = m_places[i].z; name = m_places[i].name;
+			return true;
+		}
+
 		// ---- ruas (NODES0..63.DAT) e estilo das linhas ----------------------------------------------------------------
 		// O grafo so e carregado quando o mapa PRECISA dele (GPS ligado ou camada de ruas): em segundo plano, uma vez. Enquanto
 		// carrega (ou se falhar) roads() devolve nullptr e o mapa usa a rota do servidor / linha reta, como antes.
@@ -306,6 +428,17 @@ std::string WorldMapWidget::DebugCommand(const std::string& args)
 		const bool on = args.find("off") == std::string::npos && (args.find("on") != std::string::npos || !MiniRoute::gEnabled.load());
 		MiniRoute::gEnabled.store(on);
 		return on ? "[MAPA] rota no minimapa LIGADA" : "[MAPA] rota no minimapa desligada";
+	}
+	if (args == "cidade")                                   // /mapa cidade: relê cidade.ini e locais.txt e mostra o estado
+	{
+		if (g_plat.m_cityOv && RwRasterDestroy) RwRasterDestroy(g_plat.m_cityOv);
+		g_plat.m_cityOv = nullptr;
+		for (auto& t : g_plat.m_cityTiles) { if (t.r && RwRasterDestroy) RwRasterDestroy(t.r); t.r = nullptr; t.tried = false; }
+		g_plat.m_cityTilesLoaded = 0;
+		g_plat.m_cityTried = false; g_plat.m_placesTried = false; g_plat.m_cityOvTried = false;
+		const City* c = g_plat.city();
+		std::snprintf(b, sizeof(b), "[CIDADE] %s | locais.txt=%d | imagem geral=%s | tiles em memoria=%d", c ? "instalada" : "NAO instalada (veja [CIDADE] no log)", g_plat.cityPlaceCount(), g_plat.cityOverview() ? "ok" : "nao", g_plat.m_cityTilesLoaded);
+		return b;
 	}
 	if (args == "nodes")
 	{

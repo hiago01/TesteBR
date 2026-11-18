@@ -57,23 +57,38 @@ namespace WorldMap
 	}
 
 	// ---------------------------------------------------------------- vista (zoom/arrasto)
+	// ---------------------------------------------------------------- cidade nova (fora do mapa de San Andreas)
+	// Retangulo de uso da imagem da cidade (SAMP/radar/cidade/cidade.ini). "Dentro da cidade" = FORA do mapa original (+-3000) e dentro do retangulo.
+	struct City { bool ok = false; float minX = 0, maxX = 0, minY = 0, maxY = 0; };
+	inline bool InsideWorld(float x, float y) { return x >= -3000.0f && x <= 3000.0f && y >= -3000.0f && y <= 3000.0f; }
+	inline bool InsideCity(const City& c, float x, float y) { return c.ok && !InsideWorld(x, y) && x >= c.minX && x <= c.maxX && y >= c.minY && y <= c.maxY; }
+
 	struct View
 	{
 		float cx = 0.0f, cy = 0.0f;   // centro (mundo)
 		float scale = 0.2f;           // pixels de tela por unidade de mundo
 		float w = 800.0f, h = 600.0f; // area do mapa (pixels)
+		// limites do mapa mostrado (padrao: o mundo todo). Na cidade nova: o retangulo da cidade, com a imagem inteira cabendo na tela ("contain")
+		float bx0 = kWorldMin, bx1 = kWorldMax, by0 = kWorldMin, by1 = kWorldMax;
+		bool  contain = false;
 	};
-	inline float MinScale(const View& v) { return std::max(v.w, v.h) / kWorldSize; }   // o mundo cobre toda a area
+	inline void SetBounds(View& v, float x0, float y0, float x1, float y1, bool contain) { v.bx0 = x0; v.bx1 = x1; v.by0 = y0; v.by1 = y1; v.contain = contain; }
+	inline void ResetBounds(View& v) { SetBounds(v, kWorldMin, kWorldMin, kWorldMax, kWorldMax, false); }
+	inline float MinScale(const View& v)
+	{
+		const float sw = v.w / (v.bx1 - v.bx0), sh = v.h / (v.by1 - v.by0);
+		return v.contain ? std::min(sw, sh) : std::max(sw, sh);      // padrao (mundo quadrado): max(w,h)/6000, igual ao de antes
+	}
 	inline float MaxScale(const View&)  { return 1.6f; }                               // ~ 500 m na tela
 	inline void  Clamp(View& v)
 	{
 		v.scale = Clampf(v.scale, MinScale(v), MaxScale(v));
 		const float halfW = v.w * 0.5f / v.scale, halfH = v.h * 0.5f / v.scale;
-		// nao deixa sair do mundo (se a vista for maior que o mundo, centraliza)
-		const float minCx = kWorldMin + halfW, maxCx = kWorldMax - halfW;
-		const float minCy = kWorldMin + halfH, maxCy = kWorldMax - halfH;
-		v.cx = minCx > maxCx ? 0.0f : Clampf(v.cx, minCx, maxCx);
-		v.cy = minCy > maxCy ? 0.0f : Clampf(v.cy, minCy, maxCy);
+		// nao deixa sair do mapa (se a vista for maior que o mapa, centraliza)
+		const float minCx = v.bx0 + halfW, maxCx = v.bx1 - halfW;
+		const float minCy = v.by0 + halfH, maxCy = v.by1 - halfH;
+		v.cx = minCx > maxCx ? (v.bx0 + v.bx1) * 0.5f : Clampf(v.cx, minCx, maxCx);
+		v.cy = minCy > maxCy ? (v.by0 + v.by1) * 0.5f : Clampf(v.cy, minCy, maxCy);
 	}
 	// p = posicao relativa ao canto superior esquerdo da area do mapa
 	inline Vec2 ToScreen(const View& v, float wx, float wy)
