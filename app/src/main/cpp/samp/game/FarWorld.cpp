@@ -140,6 +140,37 @@ namespace
                  x, y, cx, cy, s_nDone, (int)CRenderer::ms_nNoOfVisibleEntities);
     }
 
+
+    // --- Patch 3: CEntity::SetupBigBuilding() ------------------------------------------------------------------------------
+    // LoadScene marca como "big building" toda instancia sem LOD-filho cujo modelo tem distancia de desenho > 300 (os terrenos/
+    // estradas do SA-MP tem 599). Big building NAO entra nas listas de setor (so numa grade 30x30 de 200 m que o renderer varre
+    // apenas dentro de +-3000, e sem colisao): por isso o terreno nunca era pedido ao streaming (stream=0 nas sondas) e nao tinha
+    // colisao. Para as instancias do mapa novo (fora de +-3000, ou modelos do bloco SA-MP 18631..19999) a marca e' pulada: elas
+    // viram predios comuns (setor + colisao + streaming normal). LODs de verdade (refcount != 0) continuam como antes.
+    using SetupBigFn = void (*)(CEntityGTA*);
+    static SetupBigFn o_SetupBig = nullptr;
+    static int s_bigSkipped = 0;
+    static void h_SetupBig(CEntityGTA* e)
+    {
+        if (e)
+        {
+            const uint8_t lodRefs = *reinterpret_cast<const uint8_t*>(reinterpret_cast<uintptr_t>(e) + 0x58);
+            if (lodRefs == 0)
+            {
+                const int id = e->m_nModelIndex;
+                const CVector& p = e->GetPosition();
+                const bool longe = std::fabs(p.x) > 3000.0f || std::fabs(p.y) > 3000.0f;
+                if (longe || (id >= 18631 && id < 20000))
+                {
+                    if (++s_bigSkipped <= 6 || (s_bigSkipped % 1000) == 0)
+                        FLog("[FARWORLD] big building ignorado #%d: id=%d pos=(%.0f,%.0f,%.0f) -> vira predio comum (colisao + streaming)", s_bigSkipped, id, p.x, p.y, p.z);
+                    return;
+                }
+            }
+        }
+        o_SetupBig(e);
+    }
+
     static bool Desligado()
     {
         std::string p = (g_pszStorage && g_pszStorage[0]) ? std::string(g_pszStorage) : std::string("/storage/emulated/0/Android/data/com.maximo.roleplay/files/");
@@ -168,6 +199,9 @@ void FarWorld::Install()
     }
     if (!a) return;
 
+    const uintptr_t pb = CHook::getSymSoft("_ZN7CEntity16SetupBigBuildingEv");
+    if (pb) { CHook::InlineHook((void*)pb, (void*)h_SetupBig, (void**)&o_SetupBig); FLog("[FARWORLD] hook SetupBigBuilding @%p: %s", (void*)pb, o_SetupBig ? "instalado" : "FALHOU"); }
+    else FLog("[FARWORLD] simbolo SetupBigBuilding nao encontrado: terrenos (draw>300) seguem como big building");
     s_camPos = reinterpret_cast<const float*>(CHook::getSymSoft("_ZN9CRenderer20ms_vecCameraPositionE"));
     s_scanCode = reinterpret_cast<const volatile uint16_t*>(g_libGTASA + 0xC18350);   // CWorld::ms_nCurrentScanCode
     const uintptr_t p = CHook::getSymSoft("_ZN9CRenderer14ScanSectorListEii");
