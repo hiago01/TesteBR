@@ -250,6 +250,7 @@ namespace WorldMap
 		void UpdateLocalRoute(bool havePlayer, float plx, float ply);
 		const std::vector<Vec2>& EffectiveRoute();
 		void DrawRoads(ImGuiRenderer* r, const ImVec2& origin, float k);
+		void DrawExitLink(ImGuiRenderer* r, const ImVec2& origin, float k);   // ponta da ligacao San Fierro <-> Cidade Nova (so o trecho de x >= -3000)
 		void PublishMiniRoute();                       // minimapa: publica a rota (mundo) para o hook do radar
 		void DrawMiniRoute(ImGuiRenderer* r);          // minimapa: desenha a rota ja convertida para pixels
 		void DrawMiniCity(ImGuiRenderer* r);           // minimapa: imagem da cidade nova por cima do radar (so dentro da cidade)
@@ -1026,6 +1027,40 @@ namespace WorldMap
 		MiniRoute::PublishWorld(wp, straight);
 	}
 
+	// Ligacao entre os dois mapas: so a "ponta". No mapa de SA aparece o comeco da rodovia (da borda oeste ate Bayside); no mapa da cidade
+	// aparece o fim dela (continuacao alem da divisa x=-3000 ate Bayside). Coordenadas = eixo da rodovia de saida (MOBJ).
+	inline void Ui::DrawExitLink(ImGuiRenderer* r, const ImVec2& origin, float k)
+	{
+		if (!m_city.ok) return;
+		static const float kPts[][2] = {
+			{ -3000.0f, 1967.09f }, { -2950.0f, 1967.09f }, { -2836.0f, 1967.09f }, { -2741.5f, 1968.5f }, { -2704.3f, 1982.1f },
+			{ -2671.7f, 2004.7f }, { -2645.0f, 2034.2f }, { -2625.6f, 2068.9f }, { -2615.1f, 2107.4f }, { -2615.1f, 2276.0f } };
+		const int n = (int)(sizeof(kPts) / sizeof(kPts[0]));
+		std::vector<ImVec2> pts;
+		pts.reserve(n);
+		for (int i = 0; i < n; i++)
+		{
+			const Vec2 sp = ToScreen(m_view, kPts[i][0], kPts[i][1]);
+			pts.push_back(ImVec2(origin.x + sp.x, origin.y + sp.y));
+		}
+		const float w = Clampf(14.0f * m_view.scale, 2.5f * k, 8.0f * k);
+		r->drawPolyline(pts.data(), n, ImColor(255, 255, 255, 235), false, w + 2.5f * k);
+		r->drawPolyline(pts.data(), n, ImColor(255, 205, 70, 255), false, w);
+		const float fs = 12.0f * k;
+		if (!m_zoneCity)
+		{
+			// SA: a rodovia sai pela borda oeste -> seta e nome da cidade nova
+			const ImVec2 a = pts.front();
+			r->drawText(ImVec2(a.x + 8.0f * k, a.y - 7.0f * k - fs), ImColor(255, 255, 255, 255), "< Cidade Nova", true, fs);
+		}
+		else
+		{
+			// Cidade: a rodovia chega em Bayside (San Fierro)
+			const ImVec2 b = pts.back();
+			r->drawText(ImVec2(b.x + 8.0f * k, b.y - fs * 0.5f), ImColor(255, 255, 255, 255), "San Fierro >", true, fs);
+		}
+	}
+
 	inline void Ui::DrawMiniCity(ImGuiRenderer* r)
 	{
 		if (!m_zoneCity || !MiniCity::gEnabled.load()) return;
@@ -1359,6 +1394,7 @@ namespace WorldMap
 
 		// ---- ruas (camada opcional) e caminho ----
 		if (!m_zoneCity) DrawRoads(r, L.mapA, k);          // grafo de ruas (NODES) so cobre o mapa original
+		DrawExitLink(r, L.mapA, k);                        // ponta da rodovia de saida (SA e cidade)
 		UpdateLocalRoute(havePlayer, plx, ply);
 		if (m_gps.on)
 		{
