@@ -521,14 +521,28 @@ namespace Phone
 			const float rad = q.w * 0.23f;
 			cv.fillRect(q.moved(0, q.h * 0.03f), Color(0, 0, 0, 60), rad);
 			uint64_t itex = 0; Vec2 iuv0{ 0, 0 }, iuv1{ 1, 1 };
+			const bool isCal = d && d->id == "calendario";
 			if (d && m_ctx.appIcon && m_ctx.appIcon(d->id, itex, iuv0, iuv1) && itex)
 				cv.image(q, itex, iuv0, iuv1);         // icone como imagem (atlas embutido)
+			else if (isCal)
+				cv.fillRect(q, Color(244, 244, 244), rad);   // sem atlas: cartao branco liso (a data e desenhada abaixo)
 			else
 			{
 				cv.fillRect(q, Color::mix(col, Color(0, 0, 0), 0.30f), rad);
 				cv.fillRect({ q.x, q.y, q.w, q.h * 0.62f }, col, rad);
 				cv.fillRect({ q.x, q.y + q.h * 0.30f, q.w, q.h * 0.32f }, col, 0);
 				DrawGlyph(cv, d ? d->id : std::string(), q.inset(q.w * 0.22f), Color(255, 255, 255));
+			}
+			if (isCal)
+			{
+				// icone vivo: dia da semana (vermelho) e dia do mes (grande) da data real do aparelho
+				const StatusInfo si = m_ctx.status ? m_ctx.status() : StatusInfo();
+				static const char* kWd[7] = { "Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb" };
+				if (si.weekday >= 0 && si.weekday < 7 && si.day >= 1 && si.day <= 31)
+				{
+					DrawTextAs(cv, FontTextSemibold, { q.x, q.y + q.h * 0.105f, q.w, q.h * 0.21f }, std::string(kWd[si.weekday]), Color(255, 55, 60), q.h * 0.19f, Align::Center);
+					DrawTextAs(cv, FontText, { q.x, q.y + q.h * 0.34f, q.w, q.h * 0.54f }, std::to_string(si.day), Color(38, 38, 40), q.h * 0.58f, Align::Center);
+				}
 			}
 			if (badge > 0)
 			{
