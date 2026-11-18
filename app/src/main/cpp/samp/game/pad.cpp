@@ -180,7 +180,9 @@ uint32_t CPad__GetAbortClimb_hook(uintptr_t thiz)
 	}
 	else
 	{
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_SECONDARY_ATTACK] = CPad__GetAutoClimb(thiz);
+		// Fix19: antes chamava CPad__GetAutoClimb aqui (copia errada): 'abortar subida' ficava igual a 'subir automatico',
+		// entao ao terminar de subir a borda o jogo recebia ABORT e disparava o pulo/queda extra. Chama o original certo.
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_SECONDARY_ATTACK] = CPad__GetAbortClimb(thiz);
 		return LocalPlayerKeys.bKeys[ePadKeys::KEY_SECONDARY_ATTACK];
 	}
 }
