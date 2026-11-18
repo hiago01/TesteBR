@@ -581,6 +581,17 @@ static void MiniRoute_AfterRadar()
         }
     }
 
+    // ---- rodovia de saida da cidade nova: sempre no minimapa (continuacao San Fierro <-> Cidade Nova) ----
+    if (radiusOk && MiniCity::gEnabled.load())
+    {
+        std::vector<std::vector<MiniRoute::Vec2>> lruns;
+        if (!poly.empty()) MiniRoute::BuildPoly(MiniRoute::LinkWorld(), fRadar, fScreen, poly, lruns);
+        else MiniRoute::Build(MiniRoute::LinkWorld(), fRadar, fScreen, MiniRoute::kClipRadius, lruns);
+        using namespace std::chrono;
+        MiniRoute::PublishLink(std::move(lruns), radiusPx, duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
+    }
+    else MiniRoute::ClearLink();
+
     std::vector<MiniRoute::Vec2> world;
     bool straight = false;
     if (!routeOn || !radiusOk || !MiniRoute::GetWorld(world, straight)) { MiniRoute::ClearScreen(); return; }
@@ -598,7 +609,7 @@ void CHud__DrawRadar_hook()
 {
     // minimapa so para o MOTORISTA dentro de um veiculo (Hud::g.mapOnlyDriving): fora disso o radar nem e desenhado
     // (o retangulo do minimapa para de ser publicado: o toque que abre o /mapa e o nome do local tambem somem)
-    if (!Hud::MapAllowed() || MiniCity::gMapOpen.load()) { MiniRoute::ClearScreen(); MiniCity::ClearXf(); return; }      // mapa grande aberto: sem minimapa
+    if (!Hud::MapAllowed() || MiniCity::gMapOpen.load()) { MiniRoute::ClearScreen(); MiniRoute::ClearLink(); MiniCity::ClearXf(); return; }      // mapa grande aberto: sem minimapa
 
     RadarScreenRect* radarRect = nullptr;
     uintptr_t transformState = 0;

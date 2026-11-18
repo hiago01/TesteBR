@@ -239,6 +239,32 @@ namespace MiniRoute
 		return true;
 	}
 
+
+	// ---- "ligacao" fixa (rodovia de saida da cidade nova): polilinha do mundo que aparece SEMPRE no minimapa, independente do GPS ----
+	inline std::vector<std::vector<Vec2>> gLinkScreen;
+	inline float gLinkRad = 0.0f;
+	inline int64_t gLinkStamp = -1000000;
+	inline const std::vector<Vec2>& LinkWorld()
+	{
+		static const std::vector<Vec2> w = {
+			{ -5499.0f, 1967.09f }, { -4200.0f, 1967.09f }, { -3000.0f, 1967.09f }, { -2950.0f, 1967.09f }, { -2836.0f, 1967.09f }, { -2741.5f, 1968.5f },
+			{ -2704.3f, 1982.1f }, { -2671.7f, 2004.7f }, { -2645.0f, 2034.2f }, { -2625.6f, 2068.9f }, { -2615.1f, 2107.4f }, { -2615.1f, 2281.0f } };
+		return w;
+	}
+	inline void PublishLink(std::vector<std::vector<Vec2>>&& runs, float radiusPx, int64_t now)
+	{
+		std::lock_guard<std::mutex> l(gMx);
+		gLinkScreen = std::move(runs); gLinkRad = radiusPx; gLinkStamp = now;
+	}
+	inline void ClearLink() { std::lock_guard<std::mutex> l(gMx); gLinkScreen.clear(); }
+	inline bool GetLink(std::vector<std::vector<Vec2>>& out, float& radiusPx, int64_t now)
+	{
+		std::lock_guard<std::mutex> l(gMx);
+		if (gLinkScreen.empty() || now - gLinkStamp > kFreshMs || !(gLinkRad > 1.0f)) return false;
+		out = gLinkScreen; radiusPx = gLinkRad;
+		return true;
+	}
+
 	// Remove os primeiros 'dist' pixels da polilinha (a linha nao cobre a seta do jogador no centro do radar).
 	// Devolve false se sobrar menos de 2 pontos.
 	inline bool TrimStart(std::vector<Vec2>& pts, float dist)

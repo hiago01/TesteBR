@@ -253,6 +253,7 @@ namespace WorldMap
 		void DrawExitLink(ImGuiRenderer* r, const ImVec2& origin, float k);   // ponta da ligacao San Fierro <-> Cidade Nova (so o trecho de x >= -3000)
 		void PublishMiniRoute();                       // minimapa: publica a rota (mundo) para o hook do radar
 		void DrawMiniRoute(ImGuiRenderer* r);          // minimapa: desenha a rota ja convertida para pixels
+		void DrawMiniLink(ImGuiRenderer* r);           // minimapa: rodovia de saida (continuacao SA <-> cidade nova)
 		void DrawMiniCity(ImGuiRenderer* r);           // minimapa: imagem da cidade nova por cima do radar (so dentro da cidade)
 		void DrawRouteLine(ImGuiRenderer* r, const std::vector<Vec2>& rt, const ImVec2& origin, float k, bool havePlayer, float plx, float ply);
 		void Cmd(const char* fmt, int a = 0, int b = 0)
@@ -1143,6 +1144,25 @@ namespace WorldMap
 		}
 	}
 
+	inline void Ui::DrawMiniLink(ImGuiRenderer* r)
+	{
+		if (!m_city.ok || m_zoneCity) return;      // dentro da cidade a rodovia ja esta na imagem do minimapa
+		std::vector<std::vector<Vec2>> runs;
+		float rad = 0;
+		if (!MiniRoute::GetLink(runs, rad, P->nowMs())) return;
+		const float w = Clampf(rad * 0.05f, 2.2f, 7.0f);
+		const float ow = w + 2.0f * Clampf(rad * 0.012f, 1.0f, 2.5f);
+		std::vector<ImVec2> pts;
+		for (const auto& run : runs)
+		{
+			pts.clear();
+			for (const Vec2& p : run) pts.push_back(ImVec2(p.x, p.y));
+			if (pts.size() < 2) continue;
+			r->drawPolyline(pts.data(), (int)pts.size(), ImColor(255, 255, 255, 235), false, ow);
+			r->drawPolyline(pts.data(), (int)pts.size(), ImColor(255, 205, 70, 255), false, w);
+		}
+	}
+
 	inline void Ui::DrawMiniRoute(ImGuiRenderer* r)
 	{
 		std::vector<std::vector<Vec2>> runs;
@@ -1291,6 +1311,7 @@ namespace WorldMap
 		{
 			PublishMiniRoute();     // mapa fechado: a rota aparece no minimapa (radar nativo)
 			DrawMiniCity(r);        // cidade nova: imagem no minimapa (por baixo da rota)
+			DrawMiniLink(r);        // rodovia de saida (continuacao nos dois lados)
 			DrawMiniRoute(r);
 			ResetDrawState();
 			return;
