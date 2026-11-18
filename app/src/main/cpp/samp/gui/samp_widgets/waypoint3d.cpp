@@ -2,7 +2,6 @@
 #include "../gui.h"
 #include "../imguirenderer.h"
 #include "../../game/game.h"
-#include "../../game/Camera.h"
 #include "../../game/RW/RenderWare.h"
 #include "../../net/netgame.h"
 #include "../../net/playerpool.h"
@@ -137,15 +136,16 @@ void Waypoint3D::Draw(ImGuiRenderer* r, float k)
 	{ std::lock_guard<std::mutex> l(g_mtx); pins = g_pins; if (g_sedeOn) pins.push_back(g_sede); }
 	if (pins.empty() || !pNetGame || !pGame) return;
 
-	// distancia a partir do PERSONAGEM (nao da camera); sem ele, da camera
-	const CVector cam = TheCamera.GetPosition();
-	float px = cam.x, py = cam.y, pz = cam.z;
+	// distancia a partir do PERSONAGEM; sem ele (ainda nao nasceu) nao desenha
+	float px = 0, py = 0, pz = 0;
+	bool havePl = false;
 	if (CPlayerPool* pool = pNetGame->GetPlayerPool())
 	{
 		CLocalPlayer* lp = pool->GetLocalPlayer();
 		CPlayerPed* pp = lp ? lp->GetPlayerPed() : nullptr;
-		if (pp && pp->m_pPed) { const CVector pv = pp->m_pPed->GetPosition(); px = pv.x; py = pv.y; pz = pv.z; }
+		if (pp && pp->m_pPed) { const CVector pv = pp->m_pPed->GetPosition(); px = pv.x; py = pv.y; pz = pv.z; havePl = true; }
 	}
+	if (!havePl) return;
 	const ImVec2 scr = pUI ? pUI->displaySize() : ImVec2(1920, 1080);
 
 	std::vector<Item> items;
