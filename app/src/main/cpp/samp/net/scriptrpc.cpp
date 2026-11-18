@@ -13,6 +13,7 @@
 #include "../game/Hose.h"
 #include "../game/IdCard3D.h"
 #include "../game/Flag.h"
+#include "../game/MapTeleport.h"
 #include "../game/Giroflex.h"
 #include "../game/Weapskin.h"
 #include "../gui/samp_widgets/inventory.h"
@@ -2254,6 +2255,7 @@ void RegisterScriptRPCs(RakClientInterface *pRakClient)
 	Weapskin_Reset();      // nova conexao: sem skins de arma
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrFlag, ScrFlag);
 	Flag_Reset();          // nova conexao: descarta bandeiras do servidor anterior
+	MapTeleport_Reset();   // teleporte pelo mapa em andamento: cancela
 	WorldMapWidget::Reset();
 	InventoryUI::Reset();  // nova conexão: inventário fechado e vazio
 	if (Diag::On("anim")) CustomAnimSync::Register(pRakClient);   // RPC 230: anim customizada (servidor -> cliente)
@@ -2333,6 +2335,7 @@ void UnregisterScriptRPCs(RakClientInterface *pRakClient)
 	Weapskin_Reset();
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrFlag);
 	Flag_Reset();
+	MapTeleport_Reset();
 	WorldMapWidget::Reset();
 	InventoryUI::Reset();
 	IdCard3D_Reset();      // saiu do servidor: limpa cartões

@@ -11,6 +11,7 @@
 #include "WorldMapUI.h"
 #include "MapIcons.h"
 #include "waypoint3d.h"
+#include "../../game/MapTeleport.h"
 
 #include <atomic>
 #include <chrono>
@@ -417,6 +418,12 @@ void WorldMapWidget::draw(ImGuiRenderer* r) { g_ui.Draw(r); }
 void WorldMapWidget::OnServerPacket(const unsigned char* data, int bytes)
 {
 	RakNet::BitStream bs(const_cast<unsigned char*>(data), bytes, false);
+	if (bytes >= 1 && data[0] == 5)   // op 5: TELEPORTE de admin pelo mapa (u8 5 | f32 x | f32 y | f32 zDica) - tratado em game/MapTeleport.cpp
+	{
+		uint8_t op = 0; float tx = 0, ty = 0, tz = -1000.0f;
+		if (bs.Read(op) && bs.Read(tx) && bs.Read(ty) && bs.Read(tz)) MapTeleport_Start(tx, ty, tz);
+		return;
+	}
 	WorldMap::Packet p;
 	if (!WorldMap::ParsePacket(bs, p)) return;
 	g_serverSupports.store(true);

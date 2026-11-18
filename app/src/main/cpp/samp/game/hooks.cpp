@@ -48,6 +48,7 @@
 #include "ScooterRider.h"
 #include "IdCard3D.h"
 #include "Flag.h"
+#include "MapTeleport.h"
 #include "Giroflex.h"
 #include "Weapskin.h"
 #include "game/Animation/AnimManager.h"
@@ -676,6 +677,7 @@ void RenderEffects() {
     IdCard3D_Render();    // cartao de identidade 3D acima da cabeca (RwIm3D, billboard)
     Flag_Update();        // bandeira 3D com fisica de tecido: simulacao (so as proximas/ativas)
     Flag_Render();        // bandeira 3D: mastro + base + tecido (RwIm3D, com profundidade)
+    MapTeleport_Update(); // teleporte de admin pelo mapa: segura o ped, acha o chao, posiciona (so quando ha pedido do servidor)
     ScooterRider::Update(); // piloto do patinete: animacao do recurso MTA (SAMP/anims/scooter.ifp)
     JobsUI_RenderWorld(); // agencia/emprego: anel no chao + icone flutuante na cena 3D (RwIm3D, com profundidade)
 //    CGlass::Render();
