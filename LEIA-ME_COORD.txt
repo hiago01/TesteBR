@@ -1,11 +1,9 @@
-/coord - coordenadas na tela (NAO TESTADO; precisa de build do APK)
+COORDENADAS NA TELA (cliente) - NAO TESTADO no aparelho (compilar no GitHub Actions)
 
-/coord          liga/desliga
-/coord on|off   forca ligado/desligado
-/coord pos      escreve a posicao no chat uma vez (X Y Z A)
+/xyz          liga/desliga o painel (X Y / Z e "chao" = Z-1 / angulo)
+/xyz on|off   liga ou desliga
+/xyz s        salva o ponto: escreve no chat "[XYZ #n] X Y Z chao A" e no samp_log.txt
+              (use /xyz s em cada ponto: topo do arco, junta de cada rampa, rua)
 
-Aparece no topo, logo a direita do logo MAXIMO: "X -2615.08   Y 2152.04   Z 14.90   A 123.4".
-X Y Z = posicao do jogador (a pe ou no veiculo); A = angulo no padrao do SA-MP (GetPlayerFacingAngle: 0 = norte, 90 = oeste).
-Segue a regra da HUD: some se a HUD estiver oculta (/hud off) ou o jogador congelado. Fica ligado ate desligar (nao salva ao fechar o jogo).
-
-Arquivos: hudstate.h (flag + CoordsGet), hud.cpp (desenho), chat.cpp (comando).
+O /coord do SEU servidor (que salva posicao) continua funcionando: o cliente nao o intercepta.
+Arquivos (a partir da raiz do repo): app/src/main/cpp/samp/gui/samp_widgets/{hudstate.h,hud.cpp,chat.cpp}

@@ -28,6 +28,7 @@
 #include "../../game/CustomDiag.h"
 #include "../../game/movemode.h"
 #include "controlmode.h"
+#include "hudstate.h"
 #include "controlsselector.h"
 extern UI* pUI;
 extern CGame* pGame;
@@ -200,50 +201,28 @@ if (input == "/trena" || input.rfind("/trena ", 0) == 0)
             while (p0 <= reply.size()) { size_t p1 = reply.find('\n', p0); if (p1 == std::string::npos) p1 = reply.size(); addDebugMessage("%s", reply.substr(p0, p1 - p0).c_str()); p0 = p1 + 1; }
             return;
         }
-if (input == "/coord" || input.rfind("/coord ", 0) == 0)
+        if (input == "/xyz" || input == "/coords" || input.rfind("/xyz ", 0) == 0 || input.rfind("/coords ", 0) == 0)
         {
-            // salva coordenadas em SAMP/coordenadas.txt: /coord [nome] | lista | apagar
-            const std::string args = input.size() > 6 ? input.substr(7) : std::string();
-            const std::string reply = Coord_Command(args);
-            size_t p0 = 0;
-            while (p0 <= reply.size()) { size_t p1 = reply.find('\n', p0); if (p1 == std::string::npos) p1 = reply.size(); addDebugMessage("%s", reply.substr(p0, p1 - p0).c_str()); p0 = p1 + 1; }
-            return;
-        }
-if (input == "/lodinfo")
-        {
-            const std::string reply = LodInfo_Command("");
-            size_t p0 = 0;
-            while (p0 <= reply.size()) { size_t p1 = reply.find('\n', p0); if (p1 == std::string::npos) p1 = reply.size(); addDebugMessage("%s", reply.substr(p0, p1 - p0).c_str()); p0 = p1 + 1; }
-            return;
-        }
-if (input == "/diag")
-        {
-            addDebugMessage("%s", Diag::Summary().c_str());
-            return;
-        }
-if (input == "/radarskin" || input.rfind("/radarskin ", 0) == 0)
-        {
-            // tiles PNG (Google Maps) no radar nativo: /radarskin on|off|reload|info
-            const std::string args = input.size() > 10 ? input.substr(11) : std::string();
-            addDebugMessage("%s", RadarSkin::Command(args).c_str());
-            return;
-        }
-if (input == "/coord" || input == "/coords" || input.rfind("/coord ", 0) == 0 || input.rfind("/coords ", 0) == 0)
-        {
-            // coordenadas na tela: /coord (liga/desliga) | /coord on | /coord off | /coord pos (escreve a posicao no chat)
+            // coordenadas na tela (o /coord do servidor, que salva posicoes, continua funcionando): /xyz (liga/desliga) | on | off | s (salva no chat e no samp_log)
             const size_t sp = input.find(' ');
             const std::string args = sp == std::string::npos ? std::string() : input.substr(sp + 1);
             float cx = 0, cy = 0, cz = 0, ca = 0; bool cv = false;
-            if (args == "pos")
+            if (args == "s" || args == "salvar" || args == "pos")
             {
-                if (Hud::CoordsGet(cx, cy, cz, ca, cv)) addDebugMessage("[COORD] X %.2f  Y %.2f  Z %.2f  A %.1f", cx, cy, cz, ca);
-                else addDebugMessage("[COORD] sem jogador");
+                if (Hud::CoordsGet(cx, cy, cz, ca, cv))
+                {
+                    static int s_n = 0;
+                    s_n++;
+                    addDebugMessage("[XYZ #%d] X %.3f  Y %.3f  Z %.3f  chao %.3f  A %.1f", s_n, cx, cy, cz, cz - 1.0f, ca);
+                    FLog("[XYZ #%d] X %.3f Y %.3f Z %.3f chao %.3f A %.1f %s", s_n, cx, cy, cz, cz - 1.0f, ca, cv ? "veiculo" : "a pe");
+                }
+                else addDebugMessage("[XYZ] sem jogador");
                 return;
             }
             bool on = !Hud::gCoords.load();
             if (args == "on" || args == "1") on = true; else if (args == "off" || args == "0") on = false;
             Hud::gCoords.store(on);
-            addDebugMessage(on ? "[COORD] coordenadas na tela LIGADAS (/coord desliga; /coord pos escreve no chat)" : "[COORD] coordenadas na tela desligadas");
+            addDebugMessage(on ? "[XYZ] coordenadas na tela LIGADAS (/xyz desliga; /xyz s salva o ponto no chat e no samp_log)" : "[XYZ] coordenadas na tela desligadas");
             return;
         }
 if (input == "/mapa" || input.rfind("/mapa ", 0) == 0)

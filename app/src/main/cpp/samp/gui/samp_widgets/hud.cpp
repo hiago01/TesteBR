@@ -670,23 +670,30 @@ namespace
 		}
 	}
 
-	// Coordenadas na tela (/coord): caixa escura a direita do logo, no topo. Texto "X Y Z A" do jogador local (2 casas), atualizado a cada quadro.
+	// Coordenadas na tela (/xyz): painel escuro a direita do logo, 3 linhas grandes (legiveis em print): X Y / Z + chao (Z-1) / angulo e veiculo.
 	void DrawCoords(ImGuiRenderer* r, const ImVec2& screen, float S)
 	{
 		if (!Hud::gCoords.load()) return;
 		float x, y, z, a; bool veh;
 		if (!Hud::CoordsGet(x, y, z, a, veh)) return;
-		char t[96];
-		std::snprintf(t, sizeof(t), "X %.2f   Y %.2f   Z %.2f   A %.1f%s", x, y, z, a, veh ? "  (veiculo)" : "");
-		const float fsz = 13.0f * S, h = 24.0f * S, pad = 9.0f * S;
-		const ImVec2 ts = r->calculateTextSize(std::string(t), fsz);
+		char l1[64], l2[64], l3[64];
+		std::snprintf(l1, sizeof(l1), "X %.2f    Y %.2f", x, y);
+		std::snprintf(l2, sizeof(l2), "Z %.2f    chao %.2f", z, z - 1.0f);
+		std::snprintf(l3, sizeof(l3), "A %.1f  %s", a, veh ? "veiculo" : "a pe");
+		const float fsz = 16.0f * S, lineH = 21.0f * S, pad = 10.0f * S;
+		const std::string s1(l1), s2(l2), s3(l3);
+		const ImVec2 t1 = r->calculateTextSize(s1, fsz), t2 = r->calculateTextSize(s2, fsz), t3 = r->calculateTextSize(s3, fsz);
+		const float w = std::max(t1.x, std::max(t2.x, t3.x)) + pad * 2.0f, h = lineH * 3.0f + pad * 1.4f;
 		const float lh = kLogoH * S, lw = lh * ((float)HudAtlas::kLogo.w / (float)HudAtlas::kLogo.h);
-		float x0 = (screen.x + lw) * 0.5f + 12.0f * S;                       // logo centralizado: a caixa fica logo a direita dele
-		const float w = ts.x + pad * 2.0f, y0 = 8.0f * S;
+		float x0 = (screen.x + lw) * 0.5f + 12.0f * S;                       // logo centralizado: o painel fica logo a direita dele
+		const float y0 = 6.0f * S;
 		if (x0 + w > screen.x - 8.0f * S) x0 = std::max(4.0f * S, screen.x - 8.0f * S - w);
-		r->drawRoundedRect(ImVec2(x0, y0), ImVec2(x0 + w, y0 + h), ImColor(10, 10, 10, 225), 5.0f * S, true);
-		r->drawRoundedRect(ImVec2(x0, y0), ImVec2(x0 + w, y0 + h), ImColor(255, 220, 90, 120), 5.0f * S, false, 1.0f);
-		r->drawText(ImVec2(x0 + pad, y0 + (h - ts.y) * 0.5f), ImColor(255, 235, 140, 255), std::string(t), false, fsz);
+		r->drawRoundedRect(ImVec2(x0, y0), ImVec2(x0 + w, y0 + h), ImColor(8, 8, 12, 235), 7.0f * S, true);
+		r->drawRoundedRect(ImVec2(x0, y0), ImVec2(x0 + w, y0 + h), ImColor(255, 220, 90, 150), 7.0f * S, false, 1.2f);
+		const float tx = x0 + pad, ty = y0 + pad * 0.7f;
+		r->drawText(ImVec2(tx, ty), ImColor(255, 240, 150, 255), s1, false, fsz);
+		r->drawText(ImVec2(tx, ty + lineH), ImColor(150, 235, 255, 255), s2, false, fsz);
+		r->drawText(ImVec2(tx, ty + lineH * 2.0f), ImColor(215, 215, 215, 255), s3, false, fsz);
 	}
 
 	// Nome do local (cidade | zona) numa etiqueta escura com icone de pino, logo ACIMA do minimapa e alinhada a esquerda dele.
@@ -840,7 +847,7 @@ void HudInfo::draw(ImGuiRenderer* r)
 
 	DrawMiniTv(r, screen);           // efeito de TV ligando quando o minimapa aparece (entrar no veiculo)
 	DrawLocationTag(r, screen, S);   // nome do local acima do minimapa (so motorista no veiculo)
-	DrawCoords(r, screen, S);        // /coord: X Y Z A na tela
+	DrawCoords(r, screen, S);        // /xyz: X Y Z A na tela
 
 	// ------------------------------------------------------------------ logo
 	{
