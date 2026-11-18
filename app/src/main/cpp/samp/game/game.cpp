@@ -660,9 +660,30 @@ void CGame::DisableEnterExits()
     }
 }
 
+// UseCJWalk (ARM64). O codigo antigo ignorava o parametro e sempre fazia NOP em libGTASA+0x5C3970 - que no ARM64 e o
+// "str w8,[x19,#0x630]" de CPlayerPed::ProcessAnimGroups (grava m_nAnimGroup do ped): o grupo de animacao nunca mais era
+// atualizado e o andar do CJ nunca era aplicado (nem desligado). Agora: em ProcessAnimGroups+0xDC fica a instrucao
+//     ldr w20,[x20,#0x50]     ; grupo de movimento vindo do modelo (peds.ide) para peds != CJ
+// e com UseCJWalk ligado ela vira  mov w20,#0x36  (54 = ANIM_GROUP_PLAYER, o andar do CJ); desligado, volta a original.
 void CGame::ToggleCJWalk(bool bUseCJWalk)
 {
-        CHook::NOP(g_libGTASA + 0x5C3970, 2);
+    static uintptr_t site = 0;
+    static uint32_t  orig = 0;
+    static bool      tried = false;
+    if (!tried)
+    {
+        tried = true;
+        const uintptr_t sym = CHook::getSymSoft("_ZN10CPlayerPed17ProcessAnimGroupsEv");
+        const uintptr_t cand = sym ? sym + 0xDC : g_libGTASA + 0x5C38BC;
+        const uint32_t w = *(volatile uint32_t*)cand;
+        if (w == 0xB9405294u) { site = cand; orig = w; }
+        else FLog("[CJWALK] instrucao inesperada 0x%08X em %p (esperado ldr w20,[x20,#0x50]) - UseCJWalk NAO aplicado", w, (void*)cand);
+    }
+    if (!site) return;
+    const uint32_t want = bUseCJWalk ? 0x528006D4u : orig;      // mov w20,#0x36
+    if (*(volatile uint32_t*)site == want) return;
+    CHook::Write(site, want);
+    FLog("[CJWALK] UseCJWalk %s (ProcessAnimGroups+0xDC)", bUseCJWalk ? "LIGADO: todos os peds andam como o CJ" : "desligado: grupo do modelo (peds.ide)");
 }
 
 void CGame::InitialiseOnceBeforeRW() {
