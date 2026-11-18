@@ -49,7 +49,8 @@ namespace WorldMap
 		virtual void clearDestMarker() {}
 		// ---- sedes de TODOS os grupos (servidor org.pwn op 22; GPS da /orgcfg, senao o 1o /orgspawn): categoria "Grupos" da lista ----
 		virtual int  hqCount() { return 0; }
-		virtual bool hqAt(int i, float& x, float& y, float& z, std::string& name) { (void)i; (void)x; (void)y; (void)z; (void)name; return false; }
+		// cats = categorias separadas por ";" (ex.: "Governamental;Saude", vazio = sem categoria); area = local de atuacao ("Los Santos", "Las Venturas"... ou "Global")
+		virtual bool hqAt(int i, float& x, float& y, float& z, std::string& name, std::string& cats, std::string& area) { (void)i; (void)x; (void)y; (void)z; (void)name; (void)cats; (void)area; return false; }
 	};
 
 	class Ui
@@ -144,7 +145,9 @@ namespace WorldMap
 		struct Layout
 		{
 			float k = 1, pad = 10;
-			ImVec2 scr, panA, panB, mapA, mapB, listA, listB, cntA, cntB;
+			ImVec2 scr, panA, panB, mapA, mapB, listA, listB, cntA, cntB, filtA, filtB;
+			float rowsY = 0;                  // inicio das linhas da lista (abaixo dos filtros, se houver)
+			bool  hasFilt = false;
 			float rowH = 30, barY = 0, barH = 34;
 			ImVec2 closeA, closeB, clrA, clrB, zinA, zinB, zoutA, zoutB, ctrA, ctrB;
 		};
@@ -166,7 +169,13 @@ namespace WorldMap
 		// lista lateral em CATEGORIAS recolhiveis: cada linha e um cabecalho (kind 0, idx = categoria), um local do servidor (1), a sede de um grupo (2) ou uma marcacao salva (3)
 		struct Row { int kind; int idx; int cat; };
 		std::vector<Row> m_rows;
-		bool m_catOpen[6] = { true, true, false, false, false, false };
+		bool m_catOpen[6] = { true, true, false, false, false, false };   // [1] (antigo "Grupos") nao e mais usado: cada categoria de GRUPO vira um cabecalho proprio (m_gcatNames)
+		// grupos: categorias (varias por grupo) e local de atuacao; filtros por local e por categoria (toque nas pilulas do topo da lista)
+		std::string m_fArea, m_fCat;                   // "" = todos
+		std::vector<std::string> m_gcatNames;          // categorias de grupo mostradas (um cabecalho cada), na ordem da lista
+		std::vector<int> m_gcatCount;                  // quantos grupos em cada uma
+		std::vector<std::string> m_gclosed;            // cabecalhos de categoria de grupo FECHADOS (padrao: abertos)
+		int m_hqShown = 0;                             // grupos que passam nos filtros
 		static constexpr int kCats = 6;
 		std::vector<Vec2> m_route;           // rota que o SERVIDOR mandou (RPC 204 op 4); tem prioridade
 		std::vector<Vec2> m_routeDraw;       // m_route com cantos arredondados (cache para desenho)
@@ -203,6 +212,10 @@ namespace WorldMap
 		void OnTap(float x, float y);
 		void SelectLocation(int idx, bool fromList);
 		void BuildRows();
+		static std::vector<std::string> SplitCats(const std::string& c);
+		bool HqPass(const std::string& cats, const std::string& area) const;
+		void FilterOptions(bool area, std::vector<std::string>& out) const;
+		void CycleFilter(bool area);
 		bool RowPos(const Row& rw, float& x, float& y, std::string& name) const;
 		void SelectRow(const Row& rw);
 		int  NearestHq(float rx, float ry, float radiusPx, float& wx, float& wy, std::string& name) const;
@@ -273,8 +286,11 @@ namespace WorldMap
 		const float cntH = 20.0f * k;
 		const float maxB = L.barY - cntH - 10.0f * k;
 		L.listA = ImVec2(L.mapB.x - L.pad - listW, L.mapA.y + L.pad);
-		const float want = L.listA.y + std::max(1.0f, (float)m_rows.size()) * L.rowH + 8.0f * k;
+		L.hasFilt = P->hqCount() > 0;                                      // ha grupos: pilulas de filtro (local / categoria) no topo da lista
+		L.rowsY = L.listA.y + (L.hasFilt ? L.rowH + 6.0f * k : 0.0f);
+		const float want = L.rowsY + std::max(1.0f, (float)m_rows.size()) * L.rowH + 8.0f * k;
 		L.listB = ImVec2(L.mapB.x - L.pad, std::min(maxB, want));
+		L.filtA = ImVec2(L.listA.x + 6.0f * k, L.listA.y + 5.0f * k); L.filtB = ImVec2(L.listB.x - 6.0f * k, L.listA.y + 5.0f * k + L.rowH - 4.0f * k);
 		L.cntA = ImVec2(L.listB.x - 70.0f * k, L.listB.y + 5.0f * k); L.cntB = ImVec2(L.listB.x, L.cntA.y + cntH - 4.0f * k);
 		// botoes em pilula, canto inferior esquerdo: FECHAR | - | + | O | LIMPAR GPS
 		const float bx = L.mapA.x + L.pad, zs = L.barH, g = 6.0f * k;
@@ -398,8 +414,8 @@ namespace WorldMap
 		const int n = P->hqCount();
 		for (int i = 0; i < n; i++)
 		{
-			float x = 0, y = 0, z = 0; std::string nm;
-			if (!P->hqAt(i, x, y, z, nm)) continue;
+			float x = 0, y = 0, z = 0; std::string nm, cats, ar;
+			if (!P->hqAt(i, x, y, z, nm, cats, ar) || !HqPass(cats, ar)) continue;
 			const Vec2 s = ToScreen(m_view, x, y);
 			const float d = Dist(s.x, s.y, rx, ry);
 			if (d <= bestD) { bestD = d; best = i; wx = x; wy = y; name = nm; }
@@ -407,17 +423,134 @@ namespace WorldMap
 		return best;
 	}
 
-	// monta a lista em categorias: Meus locais (marcacoes salvas), Grupos (sedes), depois os locais do servidor por tipo; categoria vazia nao aparece
+	// "Governamental;Saude" -> {"Governamental","Saude"}
+	inline std::vector<std::string> Ui::SplitCats(const std::string& c)
+	{
+		std::vector<std::string> v; std::string cur;
+		for (size_t i = 0; i <= c.size(); i++)
+		{
+			if (i == c.size() || c[i] == ';')
+			{
+				size_t a = 0, b = cur.size();
+				while (a < b && cur[a] == ' ') a++;
+				while (b > a && cur[b - 1] == ' ') b--;
+				if (b > a) v.push_back(cur.substr(a, b - a));
+				cur.clear();
+			}
+			else cur += c[i];
+		}
+		return v;
+	}
+
+	// filtros: local = o escolhido OU "Global" (grupo que atua no estado todo aparece em qualquer local); categoria = o grupo tem a categoria ("Sem categoria" = nenhuma)
+	inline bool Ui::HqPass(const std::string& cats, const std::string& area) const
+	{
+		if (!m_fArea.empty() && area != m_fArea && area != "Global") return false;
+		if (!m_fCat.empty())
+		{
+			const std::vector<std::string> cs = SplitCats(cats);
+			if (cs.empty()) return m_fCat == "Sem categoria";
+			bool has = false;
+			for (const std::string& c : cs) if (c == m_fCat) has = true;
+			if (!has) return false;
+		}
+		return true;
+	}
+
+	// valores possiveis de cada filtro (de TODOS os grupos, sem aplicar os filtros): local (Global por ultimo) / categoria (Governamental primeiro, "Sem categoria" por ultimo)
+	inline void Ui::FilterOptions(bool area, std::vector<std::string>& out) const
+	{
+		out.clear();
+		bool noCat = false, global = false;
+		const int n = P->hqCount();
+		for (int i = 0; i < n; i++)
+		{
+			float x, y, z; std::string nm, cats, ar;
+			if (!P->hqAt(i, x, y, z, nm, cats, ar)) continue;
+			if (area) { if (ar == "Global") global = true; else if (std::find(out.begin(), out.end(), ar) == out.end()) out.push_back(ar); }
+			else
+			{
+				const std::vector<std::string> cs = SplitCats(cats);
+				if (cs.empty()) noCat = true;
+				for (const std::string& c : cs) if (std::find(out.begin(), out.end(), c) == out.end()) out.push_back(c);
+			}
+		}
+		std::sort(out.begin(), out.end(), [area](const std::string& a, const std::string& b) {
+			if (!area) { if (a == "Governamental" && b != "Governamental") return true; if (b == "Governamental" && a != "Governamental") return false; }
+			return a < b; });
+		if (area && global) out.push_back("Global");
+		if (!area && noCat) out.push_back("Sem categoria");
+	}
+
+	// toque numa pilula de filtro: Todos -> primeiro valor -> ... -> ultimo -> Todos
+	inline void Ui::CycleFilter(bool area)
+	{
+		std::vector<std::string> opts; FilterOptions(area, opts);
+		std::string& cur = area ? m_fArea : m_fCat;
+		if (opts.empty()) { cur.clear(); return; }
+		if (cur.empty()) cur = opts[0];
+		else
+		{
+			size_t k = 0; while (k < opts.size() && opts[k] != cur) k++;
+			cur = (k + 1 >= opts.size()) ? std::string() : opts[k + 1];       // valor que sumiu: k = size -> volta para Todos
+		}
+		BuildRows();
+		m_listScroll = 0;
+	}
+
+	// monta a lista em categorias: Meus locais (marcacoes salvas); GRUPOS (um cabecalho por categoria do grupo; o grupo aparece em todas as dele; filtros de local/categoria);
+	// depois os locais do servidor por tipo. Categoria vazia nao aparece.
 	inline void Ui::BuildRows()
 	{
+		// filtro que nao existe mais (grupo foi apagado/renomeado) volta para "Todos"
+		{
+			std::vector<std::string> o;
+			FilterOptions(true, o);  if (!m_fArea.empty() && std::find(o.begin(), o.end(), m_fArea) == o.end()) m_fArea.clear();
+			FilterOptions(false, o); if (!m_fCat.empty() && std::find(o.begin(), o.end(), m_fCat) == o.end()) m_fCat.clear();
+		}
 		std::vector<Row> items[kCats];
 		const int np = P->pinCount();
 		for (int i = 0; i < np; i++) items[0].push_back({ 3, i, 0 });
-		const int nh = P->hqCount();
-		for (int i = 0; i < nh; i++) items[1].push_back({ 2, i, 1 });
 		for (size_t i = 0; i < m_locs.size(); i++) { const int c = CatOfIcon(m_locs[i].icon); items[c].push_back({ 1, (int)i, c }); }
+		// grupos por categoria
+		std::vector<std::string> names; std::vector<std::vector<int>> members;
+		const int nh = P->hqCount();
+		m_hqShown = 0;
+		for (int i = 0; i < nh; i++)
+		{
+			float x, y, z; std::string nm, cats, ar;
+			if (!P->hqAt(i, x, y, z, nm, cats, ar) || !HqPass(cats, ar)) continue;
+			m_hqShown++;
+			std::vector<std::string> cs = SplitCats(cats);
+			if (cs.empty()) cs.push_back("Sem categoria");
+			for (const std::string& c : cs)
+			{
+				if (!m_fCat.empty() && c != m_fCat) continue;                // filtrando por categoria: so o cabecalho dela
+				size_t k = 0; while (k < names.size() && names[k] != c) k++;
+				if (k == names.size()) { names.push_back(c); members.emplace_back(); }
+				members[k].push_back(i);
+			}
+		}
+		std::vector<size_t> ord(names.size());
+		for (size_t k = 0; k < ord.size(); k++) ord[k] = k;
+		std::sort(ord.begin(), ord.end(), [&](size_t a, size_t b) {
+			const std::string &x = names[a], &y = names[b];
+			const int ra = x == "Governamental" ? 0 : (x == "Sem categoria" ? 2 : 1), rb = y == "Governamental" ? 0 : (y == "Sem categoria" ? 2 : 1);
+			return ra != rb ? ra < rb : x < y; });
 		m_rows.clear();
-		for (int c = 0; c < kCats; c++)
+		m_gcatNames.clear(); m_gcatCount.clear();
+		if (!items[0].empty()) { m_rows.push_back({ 0, 0, 0 }); if (m_catOpen[0]) m_rows.insert(m_rows.end(), items[0].begin(), items[0].end()); }
+		for (size_t o = 0; o < ord.size(); o++)
+		{
+			const size_t k = ord[o];
+			const int hid = (int)m_gcatNames.size();
+			m_gcatNames.push_back(names[k]); m_gcatCount.push_back((int)members[k].size());
+			m_rows.push_back({ 0, 100 + hid, 100 + hid });
+			if (std::find(m_gclosed.begin(), m_gclosed.end(), names[k]) == m_gclosed.end())
+				for (int hi : members[k]) m_rows.push_back({ 2, hi, 100 + hid });
+		}
+		if (nh > 0 && m_hqShown == 0) m_rows.push_back({ 4, 0, 100 });      // filtros sem nenhum grupo
+		for (int c = 2; c < kCats; c++)
 		{
 			if (items[c].empty()) continue;
 			m_rows.push_back({ 0, c, c });
@@ -427,11 +560,11 @@ namespace WorldMap
 
 	inline bool Ui::RowPos(const Row& rw, float& x, float& y, std::string& name) const
 	{
-		float z = 0;
+		float z = 0; std::string c, a;
 		switch (rw.kind)
 		{
 			case 1: if (rw.idx < 0 || rw.idx >= (int)m_locs.size()) return false; x = m_locs[rw.idx].x; y = m_locs[rw.idx].y; name = m_locs[rw.idx].name; return true;
-			case 2: return P->hqAt(rw.idx, x, y, z, name);
+			case 2: return P->hqAt(rw.idx, x, y, z, name, c, a);
 			case 3: return P->pinAt(rw.idx, x, y, name);
 		}
 		return false;
@@ -440,7 +573,22 @@ namespace WorldMap
 	// toque numa linha da lista: cabecalho abre/fecha; local = GPS do servidor; sede = GPS + marcacao 3D; marcacao salva = GPS (ela ja tem o proprio 3D)
 	inline void Ui::SelectRow(const Row& rw)
 	{
-		if (rw.kind == 0) { if (rw.idx >= 0 && rw.idx < kCats) m_catOpen[rw.idx] = !m_catOpen[rw.idx]; BuildRows(); return; }
+		if (rw.kind == 4) return;
+		if (rw.kind == 0)
+		{
+			if (rw.idx >= 100)
+			{
+				const int k = rw.idx - 100;
+				if (k >= 0 && k < (int)m_gcatNames.size())
+				{
+					auto it = std::find(m_gclosed.begin(), m_gclosed.end(), m_gcatNames[k]);
+					if (it == m_gclosed.end()) m_gclosed.push_back(m_gcatNames[k]); else m_gclosed.erase(it);
+				}
+			}
+			else if (rw.idx >= 0 && rw.idx < kCats) m_catOpen[rw.idx] = !m_catOpen[rw.idx];
+			BuildRows();
+			return;
+		}
 		if (rw.kind == 1) { SelectLocation(rw.idx, true); return; }
 		float x = 0, y = 0; std::string nm;
 		if (!RowPos(rw, x, y, nm)) return;
@@ -484,7 +632,13 @@ namespace WorldMap
 		const Layout& L = m_L;
 		if (In(x, y, L.listA, L.listB))      // a lista flutua sobre o mapa: ela tem prioridade
 		{
-			const int i = (int)std::floor((y - L.listA.y + m_listScroll - 4.0f * L.k) / L.rowH);
+			if (L.hasFilt && y < L.rowsY)        // pilulas de filtro: esquerda = local, direita = categoria
+			{
+				const float mid = (L.filtA.x + L.filtB.x) * 0.5f;
+				if (y >= L.filtA.y && y <= L.filtB.y) CycleFilter(x < mid);
+				return;
+			}
+			const int i = (int)std::floor((y - L.rowsY + m_listScroll - 4.0f * L.k) / L.rowH);
 			if (i >= 0 && i < (int)m_rows.size()) { const Row rw = m_rows[i]; SelectRow(rw); }
 		}
 		else if (In(x, y, L.mapA, L.mapB))
@@ -558,7 +712,7 @@ namespace WorldMap
 				}
 				else if (f.region == 2 && f.moved)
 				{
-					const float total = (float)m_rows.size() * L.rowH + 8.0f * L.k, viewH = L.listB.y - L.listA.y;
+					const float total = (float)m_rows.size() * L.rowH + 8.0f * L.k, viewH = L.listB.y - L.rowsY;
 					m_listScroll = ClampScroll(f.scroll0 - (f.y - f.sy), total, viewH);
 				}
 			}
@@ -935,7 +1089,7 @@ namespace WorldMap
 			}
 		}
 		Clamp(m_view);
-		m_listScroll = ClampScroll(m_listScroll, (float)m_rows.size() * L.rowH + 8.0f * k, L.listB.y - L.listA.y);
+		m_listScroll = ClampScroll(m_listScroll, (float)m_rows.size() * L.rowH + 8.0f * k, L.listB.y - L.rowsY);
 
 		float plx = 0, ply = 0, plh = 0;
 		const bool havePlayer = P->player(plx, ply, plh);
@@ -1051,8 +1205,8 @@ namespace WorldMap
 			const int nh = P->hqCount();
 			for (int i = 0; i < nh; i++)
 			{
-				float wx = 0, wy = 0, wz = 0; std::string nm;
-				if (!P->hqAt(i, wx, wy, wz, nm)) continue;
+				float wx = 0, wy = 0, wz = 0; std::string nm, hc, ha;
+				if (!P->hqAt(i, wx, wy, wz, nm, hc, ha) || !HqPass(hc, ha)) continue;       // os filtros da lista valem tambem para os icones
 				const ImVec2 c = S(wx, wy);
 				if (c.x < L.mapA.x - 20 || c.x > L.mapB.x + 20 || c.y < L.mapA.y - 20 || c.y > L.mapB.y + 20) continue;
 				const bool sel = m_gps.on && Dist(m_gps.x, m_gps.y, wx, wy) < 2.0f;
@@ -1142,40 +1296,70 @@ namespace WorldMap
 		// ---- lista em categorias (vidro escuro flutuante; nome alinhado a direita + icone; selecionado = pilula branca) ----
 		{
 			r->drawRoundedRect(L.listA, L.listB, glass, 9.0f * k, true);
-			r->pushClipRect(L.listA, L.listB, true);
+			if (L.hasFilt)
+			{
+				// pilulas de filtro: "Local: Todos" | "Cat: Todas" (toque troca o valor, ciclando)
+				const float mid = (L.filtA.x + L.filtB.x) * 0.5f, gp = 2.0f * k, fsz = 10.5f * k;
+				for (int side = 0; side < 2; side++)
+				{
+					const bool isArea = side == 0;
+					const ImVec2 a(isArea ? L.filtA.x : mid + gp, L.filtA.y), b(isArea ? mid - gp : L.filtB.x, L.filtB.y);
+					const std::string& cur = isArea ? m_fArea : m_fCat;
+					const bool active = !cur.empty();
+					r->drawRoundedRect(a, b, active ? ImColor(244, 246, 250, 235) : ImColor(255, 255, 255, 28), (b.y - a.y) * 0.5f, true);
+					std::string lb = std::string(isArea ? "Local: " : "Cat: ") + (active ? cur : std::string(isArea ? "Todos" : "Todas"));
+					const float maxW = (b.x - a.x) - 12.0f * k;
+					while (lb.size() > 4 && r->calculateTextSize(lb, fsz).x > maxW) lb.resize(lb.size() - 1);
+					const ImVec2 ts0 = r->calculateTextSize(lb, fsz);
+					r->drawText(ImVec2(a.x + ((b.x - a.x) - ts0.x) * 0.5f, a.y + ((b.y - a.y) - ts0.y) * 0.5f), active ? ImColor(20, 22, 28, 255) : text, lb, false, fsz);
+				}
+			}
+			r->pushClipRect(ImVec2(L.listA.x, L.rowsY), L.listB, true);
 			const float fs = 12.5f * k;
 			const float off = 4.0f * k;
 			int selNo = 0, itemNo = 0;
 			for (size_t i = 0; i < m_rows.size(); i++)
 			{
 				const Row& rw = m_rows[i];
-				const float y = L.listA.y + off + (float)i * L.rowH - m_listScroll;
-				if (rw.kind != 0) itemNo++;
-				if (y + L.rowH < L.listA.y || y > L.listB.y) { float x0, y0; std::string n0; if (rw.kind != 0 && RowPos(rw, x0, y0, n0) && m_gps.on && Dist(m_gps.x, m_gps.y, x0, y0) < 2.0f) selNo = itemNo; continue; }
+				const float y = L.rowsY + off + (float)i * L.rowH - m_listScroll;
+				if (rw.kind != 0 && rw.kind != 4) itemNo++;
+				if (y + L.rowH < L.rowsY || y > L.listB.y) { float x0, y0; std::string n0; if (rw.kind != 0 && RowPos(rw, x0, y0, n0) && m_gps.on && Dist(m_gps.x, m_gps.y, x0, y0) < 2.0f) selNo = itemNo; continue; }
 				const float ax = L.listA.x + 5.0f * k, bx2 = L.listB.x - 5.0f * k, ay = y + 2.0f * k, by = y + L.rowH - 2.0f * k;
 				if (rw.kind == 0)
 				{
 					// cabecalho da categoria: seta (aberta/fechada) + NOME + quantidade
-					int cnt = 0;
-					for (size_t j = i + 1; j < m_rows.size() && m_rows[j].kind != 0; j++) cnt++;
-					if (!m_catOpen[rw.idx])
+					const bool isG = rw.idx >= 100;                         // categoria de GRUPO (roxo): "GRUPOS: GOVERNAMENTAL"
+					const int gk = rw.idx - 100;
+					int cnt = 0; bool open = true;
+					if (isG) { if (gk >= 0 && gk < (int)m_gcatCount.size()) { cnt = m_gcatCount[gk]; open = std::find(m_gclosed.begin(), m_gclosed.end(), m_gcatNames[gk]) == m_gclosed.end(); } }
+					else
 					{
+						open = m_catOpen[rw.idx];
 						if (rw.idx == 0) cnt = P->pinCount();
-						else if (rw.idx == 1) cnt = P->hqCount();
-						else { cnt = 0; for (const Location& l : m_locs) if (CatOfIcon(l.icon) == rw.idx) cnt++; }
+						else { for (const Location& l : m_locs) if (CatOfIcon(l.icon) == rw.idx) cnt++; }
 					}
+					const ImColor hcol = isG ? hqCol : mute;
 					const float cy = y + L.rowH * 0.5f, ts2 = 5.0f * k, cx = ax + 10.0f * k;
 					ImVec2 tri[3];
-					if (m_catOpen[rw.idx]) { tri[0] = ImVec2(cx - ts2, cy - ts2 * 0.6f); tri[1] = ImVec2(cx + ts2, cy - ts2 * 0.6f); tri[2] = ImVec2(cx, cy + ts2 * 0.7f); }
+					if (open) { tri[0] = ImVec2(cx - ts2, cy - ts2 * 0.6f); tri[1] = ImVec2(cx + ts2, cy - ts2 * 0.6f); tri[2] = ImVec2(cx, cy + ts2 * 0.7f); }
 					else                   { tri[0] = ImVec2(cx - ts2 * 0.6f, cy - ts2); tri[1] = ImVec2(cx - ts2 * 0.6f, cy + ts2); tri[2] = ImVec2(cx + ts2 * 0.8f, cy); }
-					r->drawConvexPolyFilled(tri, 3, mute);
-					std::string nm = CatName(rw.idx);
+					r->drawConvexPolyFilled(tri, 3, hcol);
+					std::string nm = isG ? (gk >= 0 && gk < (int)m_gcatNames.size() ? "Grupos: " + m_gcatNames[gk] : std::string("Grupos")) : std::string(CatName(rw.idx));
 					for (char& ch : nm) if (ch >= 'a' && ch <= 'z') ch = (char)(ch - 32);
+					const float hmax = (bx2 - ax) - 56.0f * k;
+					while (nm.size() > 4 && r->calculateTextSize(nm, 11.5f * k).x > hmax) nm.resize(nm.size() - 1);
 					const ImVec2 tsz = r->calculateTextSize(nm, 11.5f * k);
-					r->drawText(ImVec2(cx + 12.0f * k, y + (L.rowH - tsz.y) * 0.5f), mute, nm, false, 11.5f * k);
+					r->drawText(ImVec2(cx + 12.0f * k, y + (L.rowH - tsz.y) * 0.5f), hcol, nm, false, 11.5f * k);
 					char cb[16]; std::snprintf(cb, sizeof(cb), "%d", cnt);
 					const ImVec2 csz = r->calculateTextSize(cb, 11.0f * k);
-					r->drawText(ImVec2(bx2 - 6.0f * k - csz.x, y + (L.rowH - csz.y) * 0.5f), mute, cb, false, 11.0f * k);
+					r->drawText(ImVec2(bx2 - 6.0f * k - csz.x, y + (L.rowH - csz.y) * 0.5f), hcol, cb, false, 11.0f * k);
+					continue;
+				}
+				if (rw.kind == 4)
+				{
+					const char* msg = "Nenhum grupo neste filtro";
+					const ImVec2 msz = r->calculateTextSize(msg, 11.0f * k);
+					r->drawText(ImVec2(bx2 - 8.0f * k - msz.x, y + (L.rowH - msz.y) * 0.5f), mute, msg, false, 11.0f * k);
 					continue;
 				}
 				float wx = 0, wy = 0; std::string nm;
@@ -1186,24 +1370,32 @@ namespace WorldMap
 				const ImVec2 ic(bx2 - 14.0f * k, y + L.rowH * 0.5f);
 				const ImColor icol = rw.kind == 2 ? hqCol : (rw.kind == 3 ? pinCol : text);
 				DrawIcon(r, rw.kind == 1 ? m_locs[rw.idx].icon : (rw.kind == 2 ? 1 : 0), ic, is, sel ? ImColor(20, 22, 28, 255) : icol);
-				const float maxW = (bx2 - ax) - 44.0f * k;
+				float maxW = (bx2 - ax) - 44.0f * k;
+				std::string tag;
+				if (rw.kind == 2)      // local de atuacao em letra pequena, a esquerda (some se faltar espaco)
+				{
+					float tx_, ty_, tz_; std::string n1, c1, a1;
+					if (P->hqAt(rw.idx, tx_, ty_, tz_, n1, c1, a1)) tag = a1;
+					if (!tag.empty()) { const float tw = r->calculateTextSize(tag, 9.5f * k).x; if (r->calculateTextSize(nm, fs).x + tw + 12.0f * k <= maxW) { maxW -= tw + 8.0f * k; } else tag.clear(); }
+				}
 				while (nm.size() > 3 && r->calculateTextSize(nm, fs).x > maxW) nm.resize(nm.size() - 1);
 				const ImVec2 ts = r->calculateTextSize(nm, fs);
 				r->drawText(ImVec2(ic.x - is - 8.0f * k - ts.x, y + (L.rowH - ts.y) * 0.5f), sel ? ImColor(20, 22, 28, 255) : text, nm, false, fs);
+				if (!tag.empty()) { const ImVec2 tsz2 = r->calculateTextSize(tag, 9.5f * k); r->drawText(ImVec2(ax + 8.0f * k, y + (L.rowH - tsz2.y) * 0.5f), sel ? ImColor(60, 66, 80, 255) : mute, tag, false, 9.5f * k); }
 			}
 			if (m_rows.empty())
-				r->drawText(ImVec2(L.listA.x + 12 * k, L.listA.y + 10 * k), mute, "Sem locais", false, 12.0f * k);
-			const float total = (float)m_rows.size() * L.rowH + 8.0f * k, viewH = L.listB.y - L.listA.y;
+				r->drawText(ImVec2(L.listA.x + 12 * k, L.rowsY + 10 * k), mute, "Sem locais", false, 12.0f * k);
+			const float total = (float)m_rows.size() * L.rowH + 8.0f * k, viewH = L.listB.y - L.rowsY;
 			if (total > viewH)
 			{
 				const float th = std::max(24.0f * k, viewH * viewH / total);
-				const float ty = L.listA.y + (viewH - th) * (m_listScroll / (total - viewH));
-				r->drawRect(ImVec2(L.listB.x - 3 * k, L.listA.y + 6 * k), ImVec2(L.listB.x - k, L.listB.y - 6 * k), ImColor(255, 255, 255, 22), true);
+				const float ty = L.rowsY + (viewH - th) * (m_listScroll / (total - viewH));
+				r->drawRect(ImVec2(L.listB.x - 3 * k, L.rowsY + 6 * k), ImVec2(L.listB.x - k, L.listB.y - 6 * k), ImColor(255, 255, 255, 22), true);
 				r->drawRect(ImVec2(L.listB.x - 3 * k, ty), ImVec2(L.listB.x - k, ty + th), ImColor(255, 255, 255, 140), true);
 			}
 			r->popClipRect();
 			// contador "selecionado/total" (como "33/39" do GTA V)
-			const int totalItems = P->pinCount() + P->hqCount() + (int)m_locs.size();
+			const int totalItems = P->pinCount() + m_hqShown + (int)m_locs.size();
 			char cb[24];
 			if (m_gps.on && selNo > 0) std::snprintf(cb, sizeof(cb), "%d/%d", selNo, totalItems); else std::snprintf(cb, sizeof(cb), "%d", totalItems);
 			const ImVec2 csz = r->calculateTextSize(cb, 11.0f * k);

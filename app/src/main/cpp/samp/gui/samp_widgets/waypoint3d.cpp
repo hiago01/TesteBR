@@ -27,7 +27,7 @@ namespace
 {
 	constexpr int kMax = 12;
 
-	struct Pin { float x = 0, y = 0, z = 0; std::string name, label; };
+	struct Pin { float x = 0, y = 0, z = 0; std::string name, label, cats, area; };
 	std::mutex       g_mtx;
 	Pin              g_sede; bool g_sedeOn = false; int g_sedeSrc = 0;     // src: 1 = sede (servidor, op 21), 2 = destino do mapa aberto (cliente)      // marcacao temporaria do servidor (op 21): "SEDE (grupo)"
 	std::vector<Pin> g_hq;              // sedes dos grupos (op 22); so o mapa aberto le
@@ -143,17 +143,26 @@ void Waypoint3D::OnHq(RakNet::BitStream& bs)
 		for (char& ch : p.name) if ((unsigned char)ch < 32) ch = ' ';
 		p.label = p.name;
 		if (p.label.empty()) p.label = "Grupo";
+		for (std::string* t : { &p.cats, &p.area })      // categorias "A;B" e local de atuacao (texto simples, vem normalizado do servidor)
+		{
+			uint8_t l2 = 0;
+			if (!bs.Read(l2)) return;
+			t->assign(l2, '\0');
+			if (l2 && !bs.Read(&(*t)[0], (unsigned)l2)) return;
+			for (char& ch : *t) if ((unsigned char)ch < 32) ch = ' ';
+		}
+		if (p.area.empty()) p.area = "Global";
 		v.push_back(std::move(p));
 	}
 	std::lock_guard<std::mutex> l(g_mtx);
 	g_hq = std::move(v);
 }
 int Waypoint3D::HqCount() { std::lock_guard<std::mutex> l(g_mtx); return (int)g_hq.size(); }
-bool Waypoint3D::HqGet(int i, float& x, float& y, float& z, std::string& name)
+bool Waypoint3D::HqGet(int i, float& x, float& y, float& z, std::string& name, std::string& cats, std::string& area)
 {
 	std::lock_guard<std::mutex> l(g_mtx);
 	if (i < 0 || i >= (int)g_hq.size()) return false;
-	x = g_hq[i].x; y = g_hq[i].y; z = g_hq[i].z; name = g_hq[i].label;
+	x = g_hq[i].x; y = g_hq[i].y; z = g_hq[i].z; name = g_hq[i].label; cats = g_hq[i].cats; area = g_hq[i].area;
 	return true;
 }
 

@@ -167,7 +167,7 @@ namespace
 		void clearDestMarker() override { Waypoint3D::ClearDest(); }
 		// sedes de todos os grupos (op 22 do servidor): categoria "Grupos" da lista e icones no mapa
 		int  hqCount() override { return Waypoint3D::HqCount(); }
-		bool hqAt(int i, float& x, float& y, float& z, std::string& name) override { return Waypoint3D::HqGet(i, x, y, z, name); }
+		bool hqAt(int i, float& x, float& y, float& z, std::string& name, std::string& cats, std::string& area) override { return Waypoint3D::HqGet(i, x, y, z, name, cats, area); }
 		void sendCommand(const char* cmd) override { if (pNetGame && g_serverSupports.load()) pNetGame->SendChatCommand(cmd); }
 		int64_t nowMs() override { return NowMsReal(); }
 		int tilesLoaded() override { return m_loaded; }
