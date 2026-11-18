@@ -26,3 +26,13 @@ Verificado: sintaxe (clang, com stubs de Android) de hooks.cpp, hud.cpp, worldma
 - **Ruas**: as imagens da cidade foram refeitas (tools/citymap.py): as ruas reais (~15 m) eram finas demais e sumiam em 1 km. Agora têm largura mínima (visão geral ~40 m, rodovia ~52 m; tiles ~22/29 m) e contorno escuro. Instalar `SAMP/radar/cidade/*` (Mapa-Cidade-arquivos.zip) — são só PNG soltos, sem IMG novo.
 - **Saída da Cidade**: é a rodovia (MRoad150m) que sai da cidade por y≈1967, faz a curva e termina ao norte em x≈-2615, y≈2277. Entrada nova em `locais.txt`: `8|-2615.0|2270.0|13.0|Saida da Cidade` (aparece no mapa e na lista/GPS dentro da cidade). Para mover, edite essa linha.
 - NÃO testado no aparelho (só compilação de sintaxe do WorldMapUI.h + testes de layout).
+
+## v6 — mapa da cidade nova em banco texdb (sem PNG)
+
+- As imagens da cidade (visão geral + 25 tiles) agora vêm do **banco `texdb/cidade`**, no mesmo formato do banco do mapa: `cidade.txt` + `cidade.{etc,dxt}.{dat,toc,tmb}` + `cidade.unc.tmb`. O jogo escolhe ETC1 (Mali) ou DXT1 (Adreno/Tegra) pelo mesmo formato do banco `gta3` (igual ao `mapaui`), sem decodificar PNG e sem IMG novo.
+- O cliente **não lê mais PNG** da cidade (`SAMP/radar/cidade/overview.png` e `t_*.png` deixam de ser usados e podem ser apagados). Continuam em `SAMP/radar/cidade/`: `cidade.ini` (limites) e `locais.txt` (locais).
+- Nomes no banco: `cn_overview` e `cn_t_<col>_<lin>`. Tile só de mar não existe no banco (igual antes).
+- Sem o banco: o mapa da cidade abre sem imagem (log `[CIDADE] banco texdb/cidade/cidade.txt nao existe`), com locais/GPS/zonas funcionando.
+- Peso: ~14,5 MB por formato (ETC e DXT = 2 pastas de dados, 29 MB no total de arquivos; o aparelho usa só um). Qualidade conferida (PSNR 38–42 dB contra o PNG).
+- API nova em RadarSkin: `CityDbAvailable / CityTexture / CityTextureFree`. Gerador: `tools/cidade_texdb.py` (usa `tools/skin_texdb.py`): `python3 tools/cidade_texdb.py <pasta com PNG> saida` -> `saida/cidade/`.
+- NÃO testado no aparelho; só checagem de sintaxe dos .cpp e conferência de decodificação do banco no PC.

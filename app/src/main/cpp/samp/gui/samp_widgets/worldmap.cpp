@@ -192,11 +192,11 @@ namespace
 		// ---- cidade nova (fora do mapa de San Andreas): SAMP/radar/cidade/{cidade.ini, overview.png, t_<col>_<row>.png, locais.txt} ----
 		// Tudo opcional: sem cidade.ini o mapa funciona exatamente como antes. Imagens carregadas aos poucos (1 por quadro) e os tiles
 		// de detalhe ficam num cache pequeno (8) para nao gastar memoria de video.
-		struct CityTile { RwRaster* r = nullptr; bool tried = false; int lastFrame = 0; };
+		struct CityTile { RwTexture* tex = nullptr; RwRaster* r = nullptr; bool tried = false; int lastFrame = 0; };
 		struct CityPlace { int icon = 0; float x = 0, y = 0, z = 0; std::string name; };
 		City m_cityInfo; bool m_cityTried = false;
 		float m_ix0 = 0, m_iy0 = 0, m_ix1 = 0, m_iy1 = 0, m_tileM = 0; int m_tcols = 0, m_trows = 0;
-		RwRaster* m_cityOv = nullptr; bool m_cityOvTried = false;
+		RwTexture* m_cityOvTex = nullptr; RwRaster* m_cityOv = nullptr; bool m_cityOvTried = false;
 		std::vector<CityTile> m_cityTiles; int m_cityLoadFrame = -1; int m_cityTilesLoaded = 0;
 		std::vector<CityPlace> m_places; bool m_placesTried = false;
 
@@ -232,22 +232,28 @@ namespace
 			if (!m_cityTried) CityLoadIni();
 			return m_cityInfo.ok ? &m_cityInfo : nullptr;
 		}
-		RwRaster* CityLoadPng(const std::string& path, const char* what)
+		// imagens da cidade: SO do banco texdb/cidade (cn_overview, cn_t_<col>_<lin>), ETC1/DXT1 pelo motor do jogo. Nao le mais PNG.
+		RwTexture* CityLoadDb(const char* name)
 		{
-			int w = 0, h = 0, ch = 0;
-			unsigned char* px = stbi_load(path.c_str(), &w, &h, &ch, 4);
-			if (!px) { FLog("[CIDADE] %s: arquivo nao abriu (%s)", what, path.c_str()); return nullptr; }
-			RwRaster* ras = MakeRaster(px, w, h);
-			stbi_image_free(px);
-			FLog("[CIDADE] %s %dx%d %s", what, w, h, ras ? "ok" : "FALHOU (raster)");
-			return ras;
+			RwTexture* t = (RwTexture*)RadarSkin::CityTexture(name);
+			FLog("[CIDADE] %s %s", name, t ? "ok (texdb)" : "nao esta no banco");
+			return t;
+		}
+		void CityFreeTile(CityTile& t) { if (t.tex) RadarSkin::CityTextureFree(t.tex); t.tex = nullptr; t.r = nullptr; }
+		void CityFreeAll()
+		{
+			if (m_cityOvTex) RadarSkin::CityTextureFree(m_cityOvTex);
+			m_cityOvTex = nullptr; m_cityOv = nullptr;
+			for (CityTile& t : m_cityTiles) { CityFreeTile(t); t.tried = false; }
+			m_cityTilesLoaded = 0;
 		}
 		ImTextureID cityOverview() override
 		{
 			if (m_cityOvTried) return (ImTextureID)m_cityOv;
 			if (!city()) return 0;
 			m_cityOvTried = true;
-			m_cityOv = CityLoadPng(CityDir() + "overview.png", "overview.png");
+			m_cityOvTex = CityLoadDb("cn_overview");
+			m_cityOv = m_cityOvTex ? m_cityOvTex->raster : nullptr;
 			return (ImTextureID)m_cityOv;
 		}
 		ImTextureID cityTile(int col, int row) override
@@ -257,7 +263,7 @@ namespace
 			const int fr = ImGui::GetFrameCount();
 			if (t.r) { t.lastFrame = fr; return (ImTextureID)t.r; }
 			if (t.tried) return 0;
-			if (m_cityLoadFrame == fr) return 0;          // 1 PNG por quadro
+			if (m_cityLoadFrame == fr) return 0;          // 1 tile por quadro
 			m_cityLoadFrame = fr;
 			// cache: no maximo 8 tiles; libera o mais antigo que ja nao e' usado ha alguns quadros
 			if (m_cityTilesLoaded >= 8)
@@ -265,17 +271,13 @@ namespace
 				CityTile* old = nullptr;
 				for (CityTile& c : m_cityTiles) if (c.r && c.lastFrame < fr - 3 && (!old || c.lastFrame < old->lastFrame)) old = &c;
 				if (!old) return 0;
-				if (RwRasterDestroy) RwRasterDestroy(old->r);
-				old->r = nullptr; old->tried = false; m_cityTilesLoaded--;
+				CityFreeTile(*old);
+				old->tried = false; m_cityTilesLoaded--;
 			}
-			char nm[40]; std::snprintf(nm, sizeof(nm), "t_%d_%d.png", col, row);
-			int w = 0, h = 0, ch = 0;
-			const std::string path = CityDir() + nm;
-			if (FILE* f = fopen(path.c_str(), "rb")) fclose(f); else { t.tried = true; return 0; }   // tile vazio (so mar) nao e' gerado
-			t.tried = true;
-			t.r = CityLoadPng(path, nm);
-			if (t.r) { t.lastFrame = fr; m_cityTilesLoaded++; }
-			(void)w; (void)h; (void)ch;
+			char nm[40]; std::snprintf(nm, sizeof(nm), "cn_t_%d_%d", col, row);
+			t.tried = true;                                // tile vazio (so mar) nao esta no banco: nao tenta de novo
+			t.tex = (RwTexture*)RadarSkin::CityTexture(nm);
+			if (t.tex) { t.r = t.tex->raster; t.lastFrame = fr; m_cityTilesLoaded++; }
 			return (ImTextureID)t.r;
 		}
 		void cityGrid(float& x0, float& y1, float& tileM, int& cols, int& rows) override { x0 = m_ix0; y1 = m_iy1; tileM = m_tileM; cols = m_tcols; rows = m_trows; }
@@ -459,10 +461,7 @@ std::string WorldMapWidget::DebugCommand(const std::string& args)
 	}
 	if (args == "cidade")                                   // /mapa cidade: relê cidade.ini e locais.txt e mostra o estado
 	{
-		if (g_plat.m_cityOv && RwRasterDestroy) RwRasterDestroy(g_plat.m_cityOv);
-		g_plat.m_cityOv = nullptr;
-		for (auto& t : g_plat.m_cityTiles) { if (t.r && RwRasterDestroy) RwRasterDestroy(t.r); t.r = nullptr; t.tried = false; }
-		g_plat.m_cityTilesLoaded = 0;
+		g_plat.CityFreeAll();
 		g_plat.m_cityTried = false; g_plat.m_placesTried = false; g_plat.m_cityOvTried = false;
 		const City* c = g_plat.city();
 		std::snprintf(b, sizeof(b), "[CIDADE] %s | locais.txt=%d | imagem geral=%s | tiles em memoria=%d", c ? "instalada" : "NAO instalada (veja [CIDADE] no log)", g_plat.cityPlaceCount(), g_plat.cityOverview() ? "ok" : "nao", g_plat.m_cityTilesLoaded);

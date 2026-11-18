@@ -178,6 +178,29 @@ namespace
 		return t;
 	}
 
+	// ---- banco texdb "cidade" (texdb/cidade/cidade.{txt,etc|dxt.*}): mapa da cidade nova (visao geral + tiles de detalhe), gerado por tools/cidade_texdb.py ----
+	// Mesmo caminho do "mapaui": formato do aparelho vem do banco gta3 (ETC -> ETC1, DXT -> DXT1). 0 = nao tentou, 1 = pronto, -1 = indisponivel.
+	int g_cityDbState = 0;
+
+	void InitCityDb()
+	{
+		if (g_cityDbState != 0) return;
+		g_cityDbState = -1;
+		const std::string d = g_pszStorage ? std::string(g_pszStorage) + "texdb/cidade/" : std::string();
+		if (d.empty() || !FileExists(d + "cidade.txt")) { FLog("[CIDADE] banco texdb/cidade/cidade.txt nao existe: o mapa da cidade fica sem imagem"); return; }
+		TextureDatabaseRuntime* ref = TextureDatabaseRuntime::GetDatabase("gta3");
+		if (!ref) { FLog("[CIDADE] banco gta3 nao encontrado: sem formato de referencia"); return; }
+		const TextureDatabaseFormat fmt = ref->loadedFormat;
+		const char* ext = fmt == DF_ETC ? "etc" : fmt == DF_DXT ? "dxt" : nullptr;
+		if (!ext) { FLog("[CIDADE] formato do aparelho (%d) nao gerado (so etc/dxt)", (int)fmt); return; }
+		for (const char* e : { "dat", "toc" })
+			if (!FileExists(d + "cidade." + ext + "." + e)) { FLog("[CIDADE] falta cidade.%s.%s", ext, e); return; }
+		if (!TextureDatabaseRuntime::GetDatabase("cidade") && !TextureDatabaseRuntime::Load("cidade", true, fmt)) { FLog("[CIDADE] Load(cidade) falhou"); return; }
+		if (!TextureDatabaseRuntime::GetDatabase("cidade")) { FLog("[CIDADE] banco cidade nao ficou carregado"); return; }
+		g_cityDbState = 1;
+		FLog("[CIDADE] banco texdb cidade carregado (%s)", ext);
+	}
+
 	void EnsureInit();
 	// Poe o tile do skin em gRadarTextures[idx] se ainda estiver vazio. true = o slot ficou preenchido por nos.
 	bool FillSlot(int x, int y)
@@ -317,6 +340,26 @@ namespace RadarSkin
 		std::snprintf(b, sizeof(b), "[RADARSKIN] %s | PNG=%d banco=%s(%d) mapaui=%d(%d) | streamRadar=%d carregados=%d ausentes=%d | oceano=%d,%d,%d | use /radarskin on|off|reload",
 			g_enabled.load() ? "ligado" : "desligado", (int)FileExists(TilePath(0)), g_dbState == 1 ? g_dbFmt : (g_dbState < 0 ? "indisp" : "?"), g_dbHit, g_uiDbState, g_uiDbHit, g_streamCalls, g_loaded, g_failed, g_ocean[0], g_ocean[1], g_ocean[2]);
 		return b;
+	}
+
+	bool CityDbAvailable() { InitCityDb(); return g_cityDbState == 1; }
+
+	void* CityTexture(const char* name)
+	{
+		if (!name || !CityDbAvailable()) return nullptr;
+		TextureDatabaseRuntime* db = TextureDatabaseRuntime::GetDatabase("cidade");
+		if (!db) return nullptr;
+		TextureDatabaseRuntime::Register(db);
+		RwTexture* t = TextureDatabaseRuntime::GetTexture(name);
+		TextureDatabaseRuntime::Unregister(db);          // sempre, mesmo sem textura
+		if (!t) return nullptr;
+		++t->refCount;                                    // devolvido por CityTextureFree
+		return t;
+	}
+
+	void CityTextureFree(void* tex)
+	{
+		if (tex && RwTextureDestroy) RwTextureDestroy((RwTexture*)tex);
 	}
 
 	void* UiTileRaster(int idx)
