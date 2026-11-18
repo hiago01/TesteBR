@@ -27,6 +27,7 @@ namespace
 
 	struct Pin { float x = 0, y = 0, z = 0; std::string name; };
 	std::mutex       g_mtx;
+	Pin              g_sede; bool g_sedeOn = false;      // marcacao temporaria do servidor (op 21): "SEDE (grupo)"
 	std::vector<Pin> g_pins;            // escrito pela thread de rede, lido pela de desenho (copia por quadro)
 
 	// nome em MAIUSCULAS (UTF-8): ASCII e letras latinas acentuadas (U+00E0..U+00FE, exceto o sinal de divisao) como no HUD de referencia
@@ -108,16 +109,32 @@ void Waypoint3D::OnPacket(RakNet::BitStream& bs)
 	g_pins = std::move(v);
 }
 
+void Waypoint3D::OnSede(RakNet::BitStream& bs)
+{
+	uint8_t on = 0, len = 0; Pin p;
+	if (!bs.Read(on) || !bs.Read(p.x) || !bs.Read(p.y) || !bs.Read(p.z) || !bs.Read(len)) return;
+	if (on && !(std::fabs(p.x) < 100000.0f && std::fabs(p.y) < 100000.0f && std::fabs(p.z) < 100000.0f)) return;
+	p.name.assign(len, '\0');
+	if (len && !bs.Read(&p.name[0], (unsigned)len)) return;
+	for (char& ch : p.name) if ((unsigned char)ch < 32) ch = ' ';
+	p.name = Upper(p.name);
+	if (p.name.empty()) p.name = "SEDE";
+	std::lock_guard<std::mutex> l(g_mtx);
+	g_sedeOn = on != 0;
+	if (g_sedeOn) g_sede = std::move(p);
+}
+
 void Waypoint3D::Reset()
 {
 	std::lock_guard<std::mutex> l(g_mtx);
 	g_pins.clear();
+	g_sedeOn = false;
 }
 
 void Waypoint3D::Draw(ImGuiRenderer* r, float k)
 {
 	std::vector<Pin> pins;
-	{ std::lock_guard<std::mutex> l(g_mtx); pins = g_pins; }
+	{ std::lock_guard<std::mutex> l(g_mtx); pins = g_pins; if (g_sedeOn) pins.push_back(g_sede); }
 	if (pins.empty() || !pNetGame || !pGame) return;
 
 	// distancia a partir do PERSONAGEM (nao da camera); sem ele, da camera
