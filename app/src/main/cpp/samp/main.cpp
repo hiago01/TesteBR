@@ -54,6 +54,7 @@ uintptr_t g_libSAMP = 0x00;
 
 void ApplyGlobalPatches();
 void ApplyPatches_level0();
+namespace FarWorld { void Install(); }
 void ApplyMultiTouchPatches();
 void InstallGlobalHooks();
 void InstallSpecialHooks();
@@ -480,6 +481,7 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved)
 	CHook::InitHookStuff();
 	InstallSpecialHooks();
 	ApplyPatches_level0();
+	FarWorld::Install();   // predios (IPL) alem de +-3000: ver game/FarWorld.h
     InitRenderWareFunctions();
     MultiTouch::initialize();
 

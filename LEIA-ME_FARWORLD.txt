@@ -1,0 +1,3 @@
+FARWORLD - predios (IPL) alem de +-3000
+Copie estes arquivos na raiz do repo (mesmos caminhos), compile e instale. Arquivo novo: game/FarWorld.{h,cpp,_words.inc}; alterado: main.cpp (2 linhas).
+Desligar sem recompilar: crie um arquivo vazio SAMP/farworld.off. Veja no samp_log.txt as linhas [FARWORLD].
