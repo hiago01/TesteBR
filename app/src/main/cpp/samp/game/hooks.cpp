@@ -2,6 +2,7 @@
 #include "CarryTuner.h"
 #include "TargetMenu.h"
 #include <cmath>
+#include <algorithm>
 #include "Diag.h"
 #include <GLES2/gl2.h>
 #include <cstring>
@@ -562,8 +563,12 @@ static void MiniRoute_AfterRadar()
             if (std::isfinite(ok) && MiniCity::WorldPerPx(xf) > 0.0f)
             {
                 xf.cx = c.x; xf.cy = c.y; xf.rad = radiusPx;
-                if (!poly.empty()) xf.poly = poly;
-                else { for (int i = 0; i < 32; i++) { const float a = (float)i * 6.2831853f / 32.0f; xf.poly.push_back({ c.x - std::sin(a) * radiusPx * 0.965f, c.y + std::cos(a) * radiusPx * 0.965f }); } }
+                // A moldura do minimapa deste projeto e um QUADRADO centrado no radar (medido no print: meia-largura ~0,968 do raio). A imagem preenche o quadrado todo.
+                {
+                    const float hw = radiusPx * MiniCity::gFrame.load();
+                    xf.poly = { { c.x - hw, c.y - hw }, { c.x - hw, c.y + hw }, { c.x + hw, c.y + hw }, { c.x + hw, c.y - hw } };
+                    if (MiniCity::Side(xf.poly[0], xf.poly[1], { c.x, c.y }) < 0.0f) std::reverse(xf.poly.begin(), xf.poly.end());      // mesmo sentido que o recorte espera
+                }
                 // rumo do veiculo (motorista) ou do jogador a pe: GetHeading = atan2(-frente.x, frente.y) -> frente = (-sin h, cos h) no mundo
                 const float h = pp->m_pPed->pVehicle ? pp->m_pPed->pVehicle->GetHeading() : pp->m_pPed->m_fCurrentRotation;
                 const float fx = -std::sin(h) * d, fy = std::cos(h) * d;

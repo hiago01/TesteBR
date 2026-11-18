@@ -425,6 +425,13 @@ std::string WorldMapWidget::DebugCommand(const std::string& args)
 	}
 	if (args.rfind("minicidade", 0) == 0)                   // /mapa minicidade on|off  (imagem da cidade nova no minimapa; padrao: ligada)
 	{
+		const size_t mp = args.find("moldura");                   // /mapa minicidade moldura 0.95  (ajuste fino do tamanho do quadrado, sem recompilar)
+		if (mp != std::string::npos)
+		{
+			const float v = (float)std::atof(args.c_str() + mp + 7);
+			if (v >= 0.80f && v <= 1.20f) { MiniCity::gFrame.store(v); return "[MAPA] moldura do minimapa da cidade = " + std::to_string(v); }
+			return "[MAPA] uso: /mapa minicidade moldura 0.80 a 1.20 (padrao 0.962)";
+		}
 		const bool on = args.find("off") == std::string::npos && (args.find("on") != std::string::npos || !MiniCity::gEnabled.load());
 		MiniCity::gEnabled.store(on);
 		return on ? "[MAPA] cidade no minimapa LIGADA" : "[MAPA] cidade no minimapa desligada";

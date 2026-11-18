@@ -1,7 +1,8 @@
 # Minimapa da Cidade Nova (cliente)
 Descompacte na raiz do repositório (caminhos `app/src/main/cpp/...`). Contém tudo do mapa da cidade + o minimapa, então substitui o Cliente-MapaCidade anterior. Precisa dos arquivos da cidade em `SAMP/radar/cidade/` (Mapa-Cidade-arquivos.zip).
 
-- Dentro da cidade o minimapa do HUD passa a desenhar a imagem da cidade (tiles de 1,6 m/px quando o zoom pede, imagem geral caso contrário), girando com a câmera, recortada no formato real da máscara do radar. Fundo azul-água no disco.
+- Dentro da cidade o minimapa do HUD passa a desenhar a imagem da cidade (tiles de 1,6 m/px quando o zoom pede, imagem geral caso contrário), girando com a câmera, **preenchendo a moldura QUADRADA** do minimapa (v2: antes saía num círculo dentro do quadrado). Tamanho do quadrado = 0,962 do raio do radar (medido no seu print); se sobrar/faltar borda: `/mapa minicidade moldura 0.95` (aceita 0.80–1.20), sem recompilar.
+- **Filtros por zona (v2):** as pílulas Local/Cat só oferecem opções de grupos da zona atual. Fora da cidade "Cidade Nova" não aparece em Local e nenhum local/grupo dela aparece; dentro da cidade só aparecem os de lá (os de fora somem). Ao entrar/sair da cidade os filtros voltam para Todos/Todas.
 - A seta do jogador é redesenhada (a imagem cobre a nativa), apontando o rumo do veículo; o destino do GPS aparece como ponto; a linha da rota continua a do MiniRoute (reta, sem ruas na cidade).
 - O rótulo "San Andreas" acima do minimapa vira **Cidade Nova** dentro da cidade.
 - `/mapa minicidade on|off` liga/desliga (padrão ligado). Fora da cidade nada muda.

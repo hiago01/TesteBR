@@ -366,6 +366,7 @@ namespace WorldMap
 		{
 			if (m_gps.on && !(want ? InsideCity(m_city, m_gps.x, m_gps.y) : InsideWorld(m_gps.x, m_gps.y))) ClearGps(true);   // com a zona ANTIGA: avisa o servidor
 			m_zoneCity = want;
+			m_fArea.clear(); m_fCat.clear();       // os filtros Local/Cat valem so para a zona anterior
 			if (want) SetBounds(m_view, m_city.minX, m_city.minY, m_city.maxX, m_city.maxY, true);
 			else ResetBounds(m_view);
 			RebuildLocs(-1);
@@ -552,7 +553,7 @@ namespace WorldMap
 		for (int i = 0; i < n; i++)
 		{
 			float x, y, z; std::string nm, cats, ar;
-			if (!P->hqAt(i, x, y, z, nm, cats, ar)) continue;
+			if (!P->hqAt(i, x, y, z, nm, cats, ar) || !ZoneOk(x, y)) continue;      // so as opcoes de grupos DESTA zona (a Cidade Nova nao aparece fora dela, nem os grupos de fora dentro dela)
 			if (area) { if (ar == "Global") global = true; else if (std::find(out.begin(), out.end(), ar) == out.end()) out.push_back(ar); }
 			else
 			{

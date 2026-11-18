@@ -26,6 +26,7 @@ namespace MiniCity
 
 	inline std::atomic<bool> gEnabled{ true };    // /mapa minimapa cidade on|off
 	inline std::atomic<bool> gInCity{ false };    // jogador dentro da cidade (publicado pela interface)
+	inline std::atomic<float> gFrame{ 0.962f };   // meia-largura da MOLDURA quadrada do minimapa, em fracao do raio do radar (medido no aparelho: ~0,968); /mapa minicidade moldura <0.80-1.20>
 
 	struct Xf
 	{
