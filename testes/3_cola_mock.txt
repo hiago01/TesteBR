@@ -1,0 +1,75 @@
+[A] carga: flags.txt + modelo + texturas
+    LOG [FLAG_PHYSICS] modelo carregado: SAMP/models/flag_maximo.dff | mastro 150 v | base 252 v | tecido 1066 v (533 particulas de simulacao, grade 13x41) | 1920 tris de tecido
+    LOG [FLAG_PHYSICS] bandeira 1 criada em 100.0 100.0 10.0 | giro 0 | vento 0 graus x 1.00 | interior 0 | local (total 1)
+    LOG [FLAG_PHYSICS] bandeira 2 criada em 110.0 100.0 10.0 | giro 90 | vento 90 graus x 0.50 | interior 0 | local (total 2)
+    LOG [FLAG_PHYSICS] SAMP/flags.txt linha 4 ignorada (formato: x y z [giro [vento [intensidade [interior]]]])
+    LOG [FLAG_PHYSICS] bandeira 3 criada em 120.0 100.0 10.0 | giro 0 | vento 0 graus x 1.00 | interior 3 | local (total 3)
+    LOG [FLAG_PHYSICS] SAMP/flags.txt lido: 3 bandeira(s) criada(s), 1 linha(s) com problema
+    LOG [FLAG_PHYSICS] texturas carregadas do banco mapasmaximo: flag_maximo e flag_maximo_verso
+  [BANDEIRA] modelo=ok texturas=ok | 3 bandeira(s), 0 ativa(s), 0 desenhada(s) | fisica 0.000 ms/quadro | resets=0 maxEstiramento=1.00
+  [BANDEIRA] #1(100,100,10 on 149m) #2(110,100,10 on 156m) #3(120,100,10 on 163m)
+[B] 5 s a ~60 fps, camera a ~100 m das bandeiras
+  lotes estatico/frente/verso = 480/574/339 | maior lote=240 vert | erros de chamada=0
+  [BANDEIRA] modelo=ok texturas=ok | 3 bandeira(s), 2 ativa(s), 2 desenhada(s) | fisica 0.449 ms/quadro | resets=0 maxEstiramento=1.13
+[C] interior diferente => nao simula nem desenha
+[D] camera atras: nao desenha; longe (>150 m): nao desenha
+[E] comandos
+  /bandeira criar                  -> [BANDEIRA] bandeira 4 criada em 7.5 6.0 6.0
+  /bandeira criar 50 50 5 45       -> [BANDEIRA] bandeira 5 criada em 50.0 50.0 5.0
+  /bandeira criar abc              -> [BANDEIRA] uso: criar [x y z [giro]]  (sem argumentos = ao lado de voce)
+  /bandeira vento todas 180 2      -> [BANDEIRA] vento 180 graus x 2.00 em 5 bandeira(s)
+  /bandeira vento 1 45 0.5         -> [BANDEIRA] vento 45 graus x 0.50 em 1 bandeira(s)
+  /bandeira girar 1 30             -> [BANDEIRA] ok
+  /bandeira mover 1 101 100 10     -> [BANDEIRA] ok
+  /bandeira desativar 2            -> [BANDEIRA] desativada (nao simula nem desenha)
+  /bandeira ativar 2               -> [BANDEIRA] ativada
+  /bandeira luz 0.6                -> [BANDEIRA] brilho ajustado
+  /bandeira luz 9                  -> [BANDEIRA] uso: luz <0.3-1.5> (brilho do sombreado fixo, p.ex. 0.6 a noite)
+  /bandeira remover 999            -> [BANDEIRA] id nao encontrado
+  /bandeira remover 4              -> [BANDEIRA] removida
+  /bandeira teste                  -> [BANDEIRA] bandeira 4 criada em 7.5 6.0 6.0
+  /bandeira parar                  -> [BANDEIRA] simulacao e desenho pausados
+  /bandeira seguir                 -> [BANDEIRA] retomado
+  /bandeira xyz                    -> [BANDEIRA] comando desconhecido (/bandeira ajuda)
+  /bandeira ajuda                  -> [BANDEIRA] 5 bandeira(s) | uso: criar [x y z [giro]] | teste | lista | remover <id|todas> | vento <id|todas> <graus> <intensidade> | girar <id> <graus> | mover <id> x y z | ativar|desativar <id> | luz <0.3-1.5> | parar|seguir | recarregar | info
+[F] servidor (RPC 207)
+  [BANDEIRA] #1(101,100,10 on 40m) #2(110,100,10 on 40m) #3(120,100,10 on 43m) #5(50,50,5 on 56m) #4(8,6,6 on 112m) #1000(101,106,10 on srv 46m)
+  apos Flag_Reset (reconexao): [BANDEIRA] #1(101,100,10 on 40m) #2(110,100,10 on 40m) #3(120,100,10 on 43m) #5(50,50,5 on 56m) #4(8,6,6 on 112m)
+[G] limite de 24 bandeiras
+  [BANDEIRA] 24 bandeira(s) | uso: criar [x y z [giro]] | teste | lista | remover <id|todas> | vento <id|todas> <graus> <intensidade> | girar <id> <graus> | mover <id> x y z | ativar|desativar <id> | luz <0.3-1.5> | parar|seguir | recarregar | info
+[H] sem textura no banco: nao desenha, tenta de novo ate 5x e para
+  chamadas ao banco: 2 | [BANDEIRA] modelo=ok texturas=pendente | 3 bandeira(s), 2 ativa(s), 0 desenhada(s) | fisica 0.615 ms/quadro | resets=0 maxEstiramento=1.06
+
+--- log completo [FLAG_PHYSICS] (primeiras 30 linhas) ---
+[FLAG_PHYSICS] modelo carregado: SAMP/models/flag_maximo.dff | mastro 150 v | base 252 v | tecido 1066 v (533 particulas de simulacao, grade 13x41) | 1920 tris de tecido
+[FLAG_PHYSICS] bandeira 1 criada em 100.0 100.0 10.0 | giro 0 | vento 0 graus x 1.00 | interior 0 | local (total 1)
+[FLAG_PHYSICS] bandeira 2 criada em 110.0 100.0 10.0 | giro 90 | vento 90 graus x 0.50 | interior 0 | local (total 2)
+[FLAG_PHYSICS] SAMP/flags.txt linha 4 ignorada (formato: x y z [giro [vento [intensidade [interior]]]])
+[FLAG_PHYSICS] bandeira 3 criada em 120.0 100.0 10.0 | giro 0 | vento 0 graus x 1.00 | interior 3 | local (total 3)
+[FLAG_PHYSICS] SAMP/flags.txt lido: 3 bandeira(s) criada(s), 1 linha(s) com problema
+[FLAG_PHYSICS] texturas carregadas do banco mapasmaximo: flag_maximo e flag_maximo_verso
+[FLAG_PHYSICS] 2 ativa(s), 0 desenhada(s) | fisica 0.000 ms/quadro | 0.00 passos/quadro (3 quadros)
+[FLAG_PHYSICS] bandeira 4 criada em 7.5 6.0 6.0 | giro 0 | vento 0 graus x 1.00 | interior 0 | local (total 4)
+[FLAG_PHYSICS] bandeira 5 criada em 50.0 50.0 5.0 | giro 45 | vento 45 graus x 1.00 | interior 0 | local (total 5)
+[FLAG_PHYSICS] bandeira 4 removida (total 4)
+[FLAG_PHYSICS] bandeira 4 criada em 7.5 6.0 6.0 | giro 0 | vento 0 graus x 1.00 | interior 0 | local (total 5)
+[FLAG_PHYSICS] bandeira 1000 criada em 100.0 105.0 10.0 | giro 0 | vento 0 graus x 1.00 | interior 0 | servidor (total 6)
+[FLAG_PHYSICS] criar: valores invalidos (NaN/Inf)
+[FLAG_PHYSICS] RPC 207: op 99 desconhecida
+[FLAG_PHYSICS] 1 bandeira(s) removida(s) (do servidor)
+[FLAG_PHYSICS] bandeira 6 criada em 10.0 10.0 10.0 | giro 0 | vento 0 graus x 1.00 | interior 0 | local (total 6)
+[FLAG_PHYSICS] bandeira 7 criada em 10.0 10.0 10.0 | giro 0 | vento 0 graus x 1.00 | interior 0 | local (total 7)
+[FLAG_PHYSICS] bandeira 8 criada em 10.0 10.0 10.0 | giro 0 | vento 0 graus x 1.00 | interior 0 | local (total 8)
+[FLAG_PHYSICS] bandeira 9 criada em 10.0 10.0 10.0 | giro 0 | vento 0 graus x 1.00 | interior 0 | local (total 9)
+[FLAG_PHYSICS] bandeira 10 criada em 10.0 10.0 10.0 | giro 0 | vento 0 graus x 1.00 | interior 0 | local (total 10)
+[FLAG_PHYSICS] bandeira 11 criada em 10.0 10.0 10.0 | giro 0 | vento 0 graus x 1.00 | interior 0 | local (total 11)
+[FLAG_PHYSICS] bandeira 12 criada em 10.0 10.0 10.0 | giro 0 | vento 0 graus x 1.00 | interior 0 | local (total 12)
+[FLAG_PHYSICS] bandeira 13 criada em 10.0 10.0 10.0 | giro 0 | vento 0 graus x 1.00 | interior 0 | local (total 13)
+[FLAG_PHYSICS] bandeira 14 criada em 10.0 10.0 10.0 | giro 0 | vento 0 graus x 1.00 | interior 0 | local (total 14)
+[FLAG_PHYSICS] bandeira 15 criada em 10.0 10.0 10.0 | giro 0 | vento 0 graus x 1.00 | interior 0 | local (total 15)
+[FLAG_PHYSICS] bandeira 16 criada em 10.0 10.0 10.0 | giro 0 | vento 0 graus x 1.00 | interior 0 | local (total 16)
+[FLAG_PHYSICS] bandeira 17 criada em 10.0 10.0 10.0 | giro 0 | vento 0 graus x 1.00 | interior 0 | local (total 17)
+[FLAG_PHYSICS] bandeira 18 criada em 10.0 10.0 10.0 | giro 0 | vento 0 graus x 1.00 | interior 0 | local (total 18)
+[FLAG_PHYSICS] bandeira 19 criada em 10.0 10.0 10.0 | giro 0 | vento 0 graus x 1.00 | interior 0 | local (total 19)
+
+APROVADO (0 falhas)

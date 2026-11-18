@@ -12,6 +12,7 @@
 #include "../gui/samp_widgets/vehhud.h"
 #include "../game/Hose.h"
 #include "../game/IdCard3D.h"
+#include "../game/Flag.h"
 #include "../game/Giroflex.h"
 #include "../game/Weapskin.h"
 #include "../gui/samp_widgets/inventory.h"
@@ -2072,6 +2073,46 @@ void ScrSetIdCard(RPCParameters* rpcParams)
 	IdCard3D_OnServerPacket(playerId, (flags & 1) != 0, category, cargo, func);
 }
 
+// Bandeira 3D Maximo RP: servidor -> client (RPC_ScrFlag = 207). Ver game/Flag.h e servidor/maximo_flag.inc
+//   uint8 op | int16 id | (conforme a op)
+//   op 0 Create : float x,y,z | float giroGraus | float ventoDirGraus | float ventoInt | uint8 flags (bit0 = ativa) | uint8 interior
+//   op 1 Remove : (so o id)
+//   op 2 Clear  : remove todas as bandeiras criadas pelo servidor (id ignorado)
+//   op 3 Wind   : float ventoDirGraus | float ventoInt   (id = -1: todas as do servidor)
+//   op 4 Enable : uint8 flags (bit0 = ativa)
+//   op 5 Move   : float x,y,z | float giroGraus
+void ScrFlag(RPCParameters* rpcParams)
+{
+	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
+	int iBitLength = rpcParams->numberOfBitsOfData;
+	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+
+	FlagPacket p;
+	if (!bsData.Read(p.op) || !bsData.Read(p.id)) return;
+	switch (p.op)
+	{
+	case FlagOp::Create:
+		if (!bsData.Read(p.x) || !bsData.Read(p.y) || !bsData.Read(p.z) || !bsData.Read(p.yawDeg) ||
+			!bsData.Read(p.windDirDeg) || !bsData.Read(p.windInt) || !bsData.Read(p.flags) || !bsData.Read(p.interior)) return;
+		break;
+	case FlagOp::Remove:
+	case FlagOp::Clear:
+		break;
+	case FlagOp::Wind:
+		if (!bsData.Read(p.windDirDeg) || !bsData.Read(p.windInt)) return;
+		break;
+	case FlagOp::Enable:
+		if (!bsData.Read(p.flags)) return;
+		break;
+	case FlagOp::Move:
+		if (!bsData.Read(p.x) || !bsData.Read(p.y) || !bsData.Read(p.z) || !bsData.Read(p.yawDeg)) return;
+		break;
+	default:
+		return;
+	}
+	Flag_OnServerPacket(p);
+}
+
 // Giroflex Maximo RP: servidor -> client (RPC_ScrGiroflex = 205): uint16 vehicleId | uint8 estado (0/1)
 void ScrGiroflex(RPCParameters* rpcParams)
 {
@@ -2211,6 +2252,8 @@ void RegisterScriptRPCs(RakClientInterface *pRakClient)
 	Giroflex_Reset();      // nova conexao: giroflex desligado
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrWeapSkin, ScrWeapSkin);
 	Weapskin_Reset();      // nova conexao: sem skins de arma
+	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrFlag, ScrFlag);
+	Flag_Reset();          // nova conexao: descarta bandeiras do servidor anterior
 	WorldMapWidget::Reset();
 	InventoryUI::Reset();  // nova conexão: inventário fechado e vazio
 	if (Diag::On("anim")) CustomAnimSync::Register(pRakClient);   // RPC 230: anim customizada (servidor -> cliente)
@@ -2288,6 +2331,8 @@ void UnregisterScriptRPCs(RakClientInterface *pRakClient)
 	Giroflex_Reset();
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrWeapSkin);
 	Weapskin_Reset();
+	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrFlag);
+	Flag_Reset();
 	WorldMapWidget::Reset();
 	InventoryUI::Reset();
 	IdCard3D_Reset();      // saiu do servidor: limpa cartões

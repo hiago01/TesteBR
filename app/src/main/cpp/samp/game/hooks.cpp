@@ -47,6 +47,7 @@
 #include "Hose.h"
 #include "ScooterRider.h"
 #include "IdCard3D.h"
+#include "Flag.h"
 #include "Giroflex.h"
 #include "Weapskin.h"
 #include "game/Animation/AnimManager.h"
@@ -673,6 +674,8 @@ void RenderEffects() {
     Hose_Update();        // mangueira (visual, sem colisao): logica + pontos
     Hose_Render();        // mangueira: desenho do tubo (RwIm3D)
     IdCard3D_Render();    // cartao de identidade 3D acima da cabeca (RwIm3D, billboard)
+    Flag_Update();        // bandeira 3D com fisica de tecido: simulacao (so as proximas/ativas)
+    Flag_Render();        // bandeira 3D: mastro + base + tecido (RwIm3D, com profundidade)
     ScooterRider::Update(); // piloto do patinete: animacao do recurso MTA (SAMP/anims/scooter.ifp)
     JobsUI_RenderWorld(); // agencia/emprego: anel no chao + icone flutuante na cena 3D (RwIm3D, com profundidade)
 //    CGlass::Render();

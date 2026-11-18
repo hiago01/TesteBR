@@ -1,0 +1,138 @@
+--- a/app/src/main/cpp/samp/vendor/raknet/SAMP/SAMPRPC.cpp
++++ b/app/src/main/cpp/samp/vendor/raknet/SAMP/SAMPRPC.cpp
+@@ -164,6 +164,8 @@
+ int RPC_ScrGiroflex = 205;
+ // Skin de arma Maximo RP (servidor -> cliente: uint16 jogador | uint8 arma | uint16 modelo; ver game/Weapskin.h)
+ int RPC_ScrWeapSkin = 206;
++// Bandeira 3D com fisica de tecido Maximo RP (servidor -> cliente: op/id/posicao/vento; ver game/Flag.h e maximo_flag.inc) - ID customizado
++int RPC_ScrFlag = 207;
+ // Celular Maximo RP: cliente -> servidor (240, pedidos: numero/mensagem/ligar/atender/desligar) e servidor -> cliente (241, respostas e eventos). Ver gui/phone/PhoneNet.h e maximo_celular.inc
+ int RPC_PhoneRequest = 240;
+ int RPC_PhoneEvent = 241;
+--- a/app/src/main/cpp/samp/vendor/raknet/SAMP/SAMPRPC.h
++++ b/app/src/main/cpp/samp/vendor/raknet/SAMP/SAMPRPC.h
+@@ -167,3 +167,4 @@
+ extern int RPC_VehHud;          // avisos + velocimetro (servidor -> cliente), gui/samp_widgets/vehhud.h
+ extern int RPC_JobsRequest;
+ extern int RPC_ScrWeapSkin;
++extern int RPC_ScrFlag;
+--- a/app/src/main/cpp/samp/net/scriptrpc.cpp
++++ b/app/src/main/cpp/samp/net/scriptrpc.cpp
+@@ -12,6 +12,7 @@
+ #include "../gui/samp_widgets/vehhud.h"
+ #include "../game/Hose.h"
+ #include "../game/IdCard3D.h"
++#include "../game/Flag.h"
+ #include "../game/Giroflex.h"
+ #include "../game/Weapskin.h"
+ #include "../gui/samp_widgets/inventory.h"
+@@ -2072,6 +2073,46 @@
+ 	IdCard3D_OnServerPacket(playerId, (flags & 1) != 0, category, cargo, func);
+ }
+ 
++// Bandeira 3D Maximo RP: servidor -> client (RPC_ScrFlag = 207). Ver game/Flag.h e servidor/maximo_flag.inc
++//   uint8 op | int16 id | (conforme a op)
++//   op 0 Create : float x,y,z | float giroGraus | float ventoDirGraus | float ventoInt | uint8 flags (bit0 = ativa) | uint8 interior
++//   op 1 Remove : (so o id)
++//   op 2 Clear  : remove todas as bandeiras criadas pelo servidor (id ignorado)
++//   op 3 Wind   : float ventoDirGraus | float ventoInt   (id = -1: todas as do servidor)
++//   op 4 Enable : uint8 flags (bit0 = ativa)
++//   op 5 Move   : float x,y,z | float giroGraus
++void ScrFlag(RPCParameters* rpcParams)
++{
++	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
++	int iBitLength = rpcParams->numberOfBitsOfData;
++	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
++
++	FlagPacket p;
++	if (!bsData.Read(p.op) || !bsData.Read(p.id)) return;
++	switch (p.op)
++	{
++	case FlagOp::Create:
++		if (!bsData.Read(p.x) || !bsData.Read(p.y) || !bsData.Read(p.z) || !bsData.Read(p.yawDeg) ||
++			!bsData.Read(p.windDirDeg) || !bsData.Read(p.windInt) || !bsData.Read(p.flags) || !bsData.Read(p.interior)) return;
++		break;
++	case FlagOp::Remove:
++	case FlagOp::Clear:
++		break;
++	case FlagOp::Wind:
++		if (!bsData.Read(p.windDirDeg) || !bsData.Read(p.windInt)) return;
++		break;
++	case FlagOp::Enable:
++		if (!bsData.Read(p.flags)) return;
++		break;
++	case FlagOp::Move:
++		if (!bsData.Read(p.x) || !bsData.Read(p.y) || !bsData.Read(p.z) || !bsData.Read(p.yawDeg)) return;
++		break;
++	default:
++		return;
++	}
++	Flag_OnServerPacket(p);
++}
++
+ // Giroflex Maximo RP: servidor -> client (RPC_ScrGiroflex = 205): uint16 vehicleId | uint8 estado (0/1)
+ void ScrGiroflex(RPCParameters* rpcParams)
+ {
+@@ -2211,6 +2252,8 @@
+ 	Giroflex_Reset();      // nova conexao: giroflex desligado
+ 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrWeapSkin, ScrWeapSkin);
+ 	Weapskin_Reset();      // nova conexao: sem skins de arma
++	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrFlag, ScrFlag);
++	Flag_Reset();          // nova conexao: descarta bandeiras do servidor anterior
+ 	WorldMapWidget::Reset();
+ 	InventoryUI::Reset();  // nova conexão: inventário fechado e vazio
+ 	if (Diag::On("anim")) CustomAnimSync::Register(pRakClient);   // RPC 230: anim customizada (servidor -> cliente)
+@@ -2288,6 +2331,8 @@
+ 	Giroflex_Reset();
+ 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrWeapSkin);
+ 	Weapskin_Reset();
++	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrFlag);
++	Flag_Reset();
+ 	WorldMapWidget::Reset();
+ 	InventoryUI::Reset();
+ 	IdCard3D_Reset();      // saiu do servidor: limpa cartões
+--- a/app/src/main/cpp/samp/game/hooks.cpp
++++ b/app/src/main/cpp/samp/game/hooks.cpp
+@@ -47,6 +47,7 @@
+ #include "Hose.h"
+ #include "ScooterRider.h"
+ #include "IdCard3D.h"
++#include "Flag.h"
+ #include "Giroflex.h"
+ #include "Weapskin.h"
+ #include "game/Animation/AnimManager.h"
+@@ -673,6 +674,8 @@
+     Hose_Update();        // mangueira (visual, sem colisao): logica + pontos
+     Hose_Render();        // mangueira: desenho do tubo (RwIm3D)
+     IdCard3D_Render();    // cartao de identidade 3D acima da cabeca (RwIm3D, billboard)
++    Flag_Update();        // bandeira 3D com fisica de tecido: simulacao (so as proximas/ativas)
++    Flag_Render();        // bandeira 3D: mastro + base + tecido (RwIm3D, com profundidade)
+     ScooterRider::Update(); // piloto do patinete: animacao do recurso MTA (SAMP/anims/scooter.ifp)
+     JobsUI_RenderWorld(); // agencia/emprego: anel no chao + icone flutuante na cena 3D (RwIm3D, com profundidade)
+ //    CGlass::Render();
+--- a/app/src/main/cpp/samp/gui/samp_widgets/chat.cpp
++++ b/app/src/main/cpp/samp/gui/samp_widgets/chat.cpp
+@@ -14,6 +14,7 @@
+ #include "../../game/Hose.h"
+ #include "../../game/Trena.h"
+ #include "../../game/IdCard3D.h"
++#include "../../game/Flag.h"
+ #include "../../game/Giroflex.h"
+ #include "../../game/CustomSkin.h"
+ #include "../../game/CorpTex.h"
+@@ -269,6 +270,15 @@
+                 return;
+             }
+         }
++if (input == "/bandeira" || input.rfind("/bandeira ", 0) == 0)
++        {
++            // bandeira 3D com fisica de tecido: /bandeira criar | teste | lista | remover | vento | ... (ver BANDEIRA_MAXIMO.md)
++            std::string args = input.size() > 9 ? input.substr(10) : std::string();
++            std::string reply = Flag_Command(args);
++            addDebugMessage("%s", reply.c_str());
++
++            return;
++        }
+ if (input == "/mangueira" || input.rfind("/mangueira ", 0) == 0)
+         {
+             // mangueira de parede: /mangueira a | pegar | soltar | limpar | config ...

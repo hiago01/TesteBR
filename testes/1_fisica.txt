@@ -1,0 +1,29 @@
+[1] leitor do DFF (/tmp/fl/flag_maximo.dff, 112927 bytes)
+  partes=3 verts: mastro=150 base=252 tecido=1066  grade 13x41 N=533  tris tecido=1920 mats=2 (flag_maximo, flag_maximo_verso)
+  DFF corrompido: sem crash (chunk invalido no Clump)
+[2] estabilidade x FPS (20 s, vento 1.0 para +X)
+     10 fps: extensao=1.147 m  altura=+1.536 m  maxEstiramento=1.107  menorDistMastro=0.1261  resets=0 nan=0 yaw=0.02
+     20 fps: extensao=1.128 m  altura=+1.521 m  maxEstiramento=1.106  menorDistMastro=0.1264  resets=0 nan=0 yaw=0.11
+     30 fps: extensao=1.128 m  altura=+1.521 m  maxEstiramento=1.107  menorDistMastro=0.1265  resets=0 nan=0 yaw=0.11
+     60 fps: extensao=1.128 m  altura=+1.521 m  maxEstiramento=1.107  menorDistMastro=0.1264  resets=0 nan=0 yaw=0.11
+     90 fps: extensao=1.128 m  altura=+1.521 m  maxEstiramento=1.107  menorDistMastro=0.1264  resets=0 nan=0 yaw=0.11
+    144 fps: extensao=1.128 m  altura=+1.521 m  maxEstiramento=1.107  menorDistMastro=0.1264  resets=0 nan=0 yaw=0.11
+[3] vento x forma
+  vento 0.0: extensao=0.244 m (de 1.24)  altura media da ponta=+1.062 m  maxEst=1.246 resets=0
+  vento 0.3: extensao=0.757 m (de 1.24)  altura media da ponta=+1.189 m  maxEst=1.116 resets=0
+  vento 0.6: extensao=1.017 m (de 1.24)  altura media da ponta=+1.362 m  maxEst=1.104 resets=0
+  vento 1.0: extensao=1.128 m (de 1.24)  altura media da ponta=+1.521 m  maxEst=1.107 resets=0
+  vento 1.5: extensao=1.180 m (de 1.24)  altura media da ponta=+1.573 m  maxEst=1.140 resets=0
+  vento 2.5: extensao=1.212 m (de 1.24)  altura media da ponta=+1.595 m  maxEst=1.177 resets=0
+  vento 4.0: extensao=1.287 m (de 1.24)  altura media da ponta=+1.606 m  maxEst=1.310 resets=0
+[4] mudanca de direcao do vento (60 fps): 0 -> 90 graus aos 5 s
+  yaw final = 1.54 rad (alvo 1.57)
+  yaw final = -3.03 rad (alvo -3.00, giro de ~172 graus pelo caminho curto)
+[5] entradas absurdas
+  dt 0/-1/NaN/5s e vento extremo: ok, resets=0
+[6] guarda anti-explosao
+  NaN injetado -> reset automatico (1) e recuperacao ok
+[7] custo (1 flag, 4 substeps = pior caso por quadro)
+  0.3883 ms por passo (host x86, -O2: ARM64 de celular ~3-6x mais lento) -> pior caso 4 passos = 1.553 ms
+
+APROVADO (0 falhas)

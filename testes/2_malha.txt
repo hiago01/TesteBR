@@ -1,0 +1,6 @@
+  camera frente (-Y) : estatico 708 tri (2 lotes) | frente 946 tri (3) | verso 14 tri (1) | maior lote 240 vert
+  camera verso (+Y)  : estatico 708 tri (2 lotes) | frente 3 tri (1) | verso 957 tri (3) | maior lote 240 vert
+  camera de cima     : estatico 708 tri (2 lotes) | frente 523 tri (2) | verso 437 tri (2) | maior lote 240 vert
+  camera lateral +X  : estatico 708 tri (2 lotes) | frente 468 tri (2) | verso 492 tri (2) | maior lote 240 vert
+  repouso: camera -Y => 960 frente / 0 verso; camera +Y => 0 frente / 960 verso
+APROVADO (0 falhas)

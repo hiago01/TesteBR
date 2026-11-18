@@ -1,0 +1,5 @@
+BANDEIRA 3D MAXIMO RP - v1
+Descompacte na RAIZ do repositorio (os caminhos ja sao app/..., SAMP/..., texdb/...).
+Leia BANDEIRA_MAXIMO.md. NADA foi testado no aparelho. Primeiro teste no jogo: /bandeira teste  e  /bandeira info.
+O banco texdb/mapasmaximo deste pacote SUBSTITUI o do pacote da estrada (contem as texturas da estrada + a bandeira).
+Se o seu app/.../hooks.cpp, scriptrpc.cpp, chat.cpp ou SAMPRPC.* mudou desde a ultima vez, aplique tools/bandeira/bandeira-edits.diff (so adiciona linhas) em vez de sobrescrever.

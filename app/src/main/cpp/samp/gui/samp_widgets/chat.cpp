@@ -14,6 +14,7 @@
 #include "../../game/Hose.h"
 #include "../../game/Trena.h"
 #include "../../game/IdCard3D.h"
+#include "../../game/Flag.h"
 #include "../../game/Giroflex.h"
 #include "../../game/CustomSkin.h"
 #include "../../game/CorpTex.h"
@@ -268,6 +269,15 @@ const std::string corpArgs = input.size() > 5 ? input.substr(6) : std::string();
 
                 return;
             }
+        }
+if (input == "/bandeira" || input.rfind("/bandeira ", 0) == 0)
+        {
+            // bandeira 3D com fisica de tecido: /bandeira criar | teste | lista | remover | vento | ... (ver BANDEIRA_MAXIMO.md)
+            std::string args = input.size() > 9 ? input.substr(10) : std::string();
+            std::string reply = Flag_Command(args);
+            addDebugMessage("%s", reply.c_str());
+
+            return;
         }
 if (input == "/mangueira" || input.rfind("/mangueira ", 0) == 0)
         {
