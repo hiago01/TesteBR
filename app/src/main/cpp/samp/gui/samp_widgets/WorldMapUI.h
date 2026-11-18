@@ -1387,35 +1387,78 @@ namespace WorldMap
 			}
 		}
 
-		// ---- locais ----
-		const bool labels = m_view.scale >= (m_zoneCity ? 0.05f : 0.22f);
-		for (size_t i = 0; i < m_locs.size(); i++)
+		// ---- locais + sedes dos grupos (roxo): icones sempre visiveis; nomes em pilula escura, sem sobreposicao ----
+		// Na cidade nova os marcadores sao maiores (o mapa e' grande e o zoom de 1 km deixava tudo minusculo). Os nomes sao
+		// colocados por prioridade (selecionado > locais > grupos) e cada um tenta direita, esquerda, acima, abaixo: se nenhuma
+		// posicao esta livre o nome fica de fora (o icone continua) -> no zoom afastado nao vira uma "sopa" de letras.
 		{
-			const Location& l = m_locs[i];
-			const ImVec2 c = S(l.x, l.y);
-			if (c.x < L.mapA.x - 20 || c.x > L.mapB.x + 20 || c.y < L.mapA.y - 20 || c.y > L.mapB.y + 20) continue;
-			const bool sel = (int)i == m_selLoc;
-			const float s = (sel ? 9.5f : 7.5f) * k;
-			r->drawRoundedRect(ImVec2(c.x - s - 2 * k, c.y - s - 2 * k), ImVec2(c.x + s + 2 * k, c.y + s + 2 * k), sel ? gps : ImColor(10, 12, 16, 230), s + 2 * k, true);
-			DrawIcon(r, l.icon, c, s * 0.8f, text);
-			if (labels || sel)
-				r->drawText(ImVec2(c.x + s + 5 * k, c.y - 6.5f * k), text, l.name, true, 11.0f * k);
-		}
-
-		// ---- sedes dos grupos (roxo): sempre visiveis, tambem na categoria "Grupos" ----
-		{
+			const bool labels = m_view.scale >= (m_zoneCity ? 0.05f : 0.22f);
+			struct Mk { ImVec2 c; float s; int icon; ImColor col; std::string name; bool sel; int prio; };
+			std::vector<Mk> mk;
+			const float mul = m_zoneCity ? 1.45f : 1.0f;
+			const float fsz = (m_zoneCity ? 13.5f : 11.0f) * k;
+			auto inView = [&](const ImVec2& c) { return !(c.x < L.mapA.x - 20 || c.x > L.mapB.x + 20 || c.y < L.mapA.y - 20 || c.y > L.mapB.y + 20); };
+			for (size_t i = 0; i < m_locs.size(); i++)
+			{
+				const Location& l = m_locs[i];
+				const ImVec2 c = S(l.x, l.y);
+				if (!inView(c)) continue;
+				const bool sel = (int)i == m_selLoc;
+				mk.push_back({ c, (sel ? 9.5f : 7.5f) * k * mul, l.icon, text, l.name, sel, sel ? 0 : 1 });
+			}
 			const int nh = P->hqCount();
 			for (int i = 0; i < nh; i++)
 			{
 				float wx = 0, wy = 0, wz = 0; std::string nm, hc, ha;
 				if (!P->hqAt(i, wx, wy, wz, nm, hc, ha) || !ZoneOk(wx, wy) || !HqPass(hc, ha)) continue;       // os filtros da lista valem tambem para os icones
 				const ImVec2 c = S(wx, wy);
-				if (c.x < L.mapA.x - 20 || c.x > L.mapB.x + 20 || c.y < L.mapA.y - 20 || c.y > L.mapB.y + 20) continue;
+				if (!inView(c)) continue;
 				const bool sel = m_gps.on && Dist(m_gps.x, m_gps.y, wx, wy) < 2.0f;
-				const float hs = (sel ? 9.0f : 7.0f) * k;
-				r->drawRoundedRect(ImVec2(c.x - hs - 2 * k, c.y - hs - 2 * k), ImVec2(c.x + hs + 2 * k, c.y + hs + 2 * k), sel ? gps : ImColor(10, 12, 16, 230), hs + 2 * k, true);
-				DrawIcon(r, 1, c, hs * 0.8f, hqCol);
-				if (labels || sel) r->drawText(ImVec2(c.x + hs + 5 * k, c.y - 6.5f * k), text, ClipUtf8(nm, 24), true, 11.0f * k);
+				mk.push_back({ c, (sel ? 9.0f : 7.0f) * k * mul, 1, hqCol, ClipUtf8(nm, 24), sel, sel ? 0 : 2 });
+			}
+			// icones (o selecionado por cima)
+			for (int pass = 0; pass < 2; pass++)
+				for (const Mk& m : mk)
+				{
+					if ((pass == 1) != m.sel) continue;
+					r->drawRoundedRect(ImVec2(m.c.x - m.s - 2 * k, m.c.y - m.s - 2 * k), ImVec2(m.c.x + m.s + 2 * k, m.c.y + m.s + 2 * k), m.sel ? gps : ImColor(10, 12, 16, 235), m.s + 2 * k, true);
+					DrawIcon(r, m.icon, m.c, m.s * 0.8f, m.col);
+				}
+			if (labels || m_selLoc >= 0)
+			{
+				std::vector<int> ord(mk.size());
+				for (size_t i = 0; i < ord.size(); i++) ord[i] = (int)i;
+				std::stable_sort(ord.begin(), ord.end(), [&](int x, int y) { return mk[x].prio < mk[y].prio; });
+				struct Rc { float x0, y0, x1, y1; };
+				std::vector<Rc> used;
+				for (const Mk& m : mk) used.push_back({ m.c.x - m.s - 2 * k, m.c.y - m.s - 2 * k, m.c.x + m.s + 2 * k, m.c.y + m.s + 2 * k });   // os proprios icones tambem bloqueiam nomes
+				const float padX = 5.0f * k, padY = 2.5f * k;
+				for (int oi : ord)
+				{
+					const Mk& m = mk[oi];
+					if (!labels && !m.sel) continue;
+					const ImVec2 ts = r->calculateTextSize(m.name, fsz);
+					const float w = ts.x + padX * 2, h = ts.y + padY * 2, g = m.s + 5.0f * k;
+					const Rc cand[4] = {
+						{ m.c.x + g, m.c.y - h * 0.5f, m.c.x + g + w, m.c.y + h * 0.5f },                 // direita
+						{ m.c.x - g - w, m.c.y - h * 0.5f, m.c.x - g, m.c.y + h * 0.5f },                 // esquerda
+						{ m.c.x - w * 0.5f, m.c.y - g - h, m.c.x + w * 0.5f, m.c.y - g },                 // acima
+						{ m.c.x - w * 0.5f, m.c.y + g, m.c.x + w * 0.5f, m.c.y + g + h } };               // abaixo
+					int pick = -1;
+					for (int ci = 0; ci < 4 && pick < 0; ci++)
+					{
+						const Rc& q = cand[ci];
+						if (q.x0 < L.mapA.x + 2 || q.x1 > L.mapB.x - 2 || q.y0 < L.mapA.y + 2 || q.y1 > L.mapB.y - 2) continue;       // nunca fora do mapa
+						bool ok = true;
+						for (const Rc& u : used) if (!(q.x1 <= u.x0 || q.x0 >= u.x1 || q.y1 <= u.y0 || q.y0 >= u.y1)) { ok = false; break; }
+						if (ok) pick = ci;
+					}
+					if (pick < 0) { if (!m.sel) continue; pick = 0; }       // o selecionado sempre tem nome
+					const Rc& q = cand[pick];
+					r->drawRoundedRect(ImVec2(q.x0, q.y0), ImVec2(q.x1, q.y1), ImColor(12, 14, 20, 215), 5.0f * k, true);
+					r->drawText(ImVec2(q.x0 + padX, q.y0 + padY), text, m.name, false, fsz);
+					used.push_back({ q.x0 - 1.0f * k, q.y0 - 1.0f * k, q.x1 + 1.0f * k, q.y1 + 1.0f * k });
+				}
 			}
 		}
 

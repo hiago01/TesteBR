@@ -19,3 +19,10 @@ Verificado: sintaxe (clang, com stubs de Android) de hooks.cpp, hud.cpp, worldma
 - Ícones embutidos no código (MapIcons.h, 64x64) — sem arquivo novo, sem IMG novo. Se a textura falhar, desenha com formas simples.
 - Arquivos: WorldMapUI.h, worldmap.cpp, MapIcons.h (novo), MiniCity.h, hooks.cpp, hud.cpp.
 - NÃO testado no aparelho; só compilação de sintaxe e teste lógico do layout/toques (botões acertáveis, oculto, limite de arrasto).
+
+## v5 — locais mais visíveis, ruas no zoom de 1 km e "Saída da Cidade"
+
+- **Locais (icones + nomes)**: na cidade nova os marcadores ficam ~45% maiores e os nomes passam a ter pílula escura (fonte 13,5). Os nomes são colocados por prioridade (selecionado > locais > grupos), tentando direita, esquerda, acima e abaixo; se não couber sem encostar em outro nome/ícone, o nome é omitido (o ícone continua) — some a "sopa de letras" do zoom de 1 km. O local selecionado sempre mostra o nome.
+- **Ruas**: as imagens da cidade foram refeitas (tools/citymap.py): as ruas reais (~15 m) eram finas demais e sumiam em 1 km. Agora têm largura mínima (visão geral ~40 m, rodovia ~52 m; tiles ~22/29 m) e contorno escuro. Instalar `SAMP/radar/cidade/*` (Mapa-Cidade-arquivos.zip) — são só PNG soltos, sem IMG novo.
+- **Saída da Cidade**: é a rodovia (MRoad150m) que sai da cidade por y≈1967, faz a curva e termina ao norte em x≈-2615, y≈2277. Entrada nova em `locais.txt`: `8|-2615.0|2270.0|13.0|Saida da Cidade` (aparece no mapa e na lista/GPS dentro da cidade). Para mover, edite essa linha.
+- NÃO testado no aparelho (só compilação de sintaxe do WorldMapUI.h + testes de layout).
