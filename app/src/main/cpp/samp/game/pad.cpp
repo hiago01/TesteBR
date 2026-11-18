@@ -10,6 +10,9 @@
 #include <dlfcn.h>
 #include <chrono>
 #include "../gui/samp_widgets/controlmode.h"
+#include "../net/localplayer.h"
+#include "Plugins/RpAnimBlendPlugin/RpAnimBlend.h"
+#include "RW/RenderWare.h"
 
 extern UI* pUI;
 extern CGame* pGame;
@@ -157,6 +160,31 @@ uint32_t CPad__GetJump_hook(uintptr_t thiz)
 	}
 }
 
+// Fix20: depois de terminar de subir uma borda (CLIMB_STAND / CLIMB_STAND_FINISH) o "Subir automaticamente" do mobile
+// re-disparava na hora (meio-fio/obstaculo logo a frente) e o personagem dava um pulo extra. Bloqueia o auto-climb
+// por 900 ms apos o fim da subida. Nao mexe enquanto ele ainda esta agarrado/puxando.
+static bool AutoClimbCooldown()
+{
+	static int64_t s_lastEnd = -1000000;
+	const int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::steady_clock::now().time_since_epoch()).count();
+	if (pNetGame && pNetGame->GetPlayerPool())
+	{
+		CLocalPlayer* lp = pNetGame->GetPlayerPool()->GetLocalPlayer();
+		if (lp && lp->GetPlayerPed() && lp->GetPlayerPed()->m_pPed && lp->GetPlayerPed()->m_pPed->m_pRwClump)
+		{
+			RpClump* c = lp->GetPlayerPed()->m_pPed->m_pRwClump;
+			const uint32_t ids[] = { (uint32_t)ANIM_ID_CLIMB_STAND, (uint32_t)ANIM_ID_CLIMB_STAND_FINISH };
+			for (uint32_t id : ids)
+			{
+				CAnimBlendAssociation* a = RpAnimBlendClumpGetAssociation(c, id);
+				if (a && a->IsRunning() && a->m_fBlendAmount > 0.05f) { s_lastEnd = now; break; }
+			}
+		}
+	}
+	return (now - s_lastEnd) < 900;
+}
+
 uint32_t(*CPad__GetAutoClimb)(uintptr_t thiz);
 uint32_t CPad__GetAutoClimb_hook(uintptr_t thiz)
 {
@@ -166,6 +194,7 @@ uint32_t CPad__GetAutoClimb_hook(uintptr_t thiz)
 	}
 	else
 	{
+		if (AutoClimbCooldown()) { LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = 0; return 0; }
 		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = CPad__GetAutoClimb(thiz);
 		return LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP];
 	}
