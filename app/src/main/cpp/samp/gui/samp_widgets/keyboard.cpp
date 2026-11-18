@@ -22,10 +22,24 @@ namespace
 	const ImColor kSend      (214, 110, 20, 245);
 	const ImColor kAccent    (0xF5, 0x91, 0x32, 255);
 	const ImColor kField     (255, 255, 255, 58);
-	const ImColor kBtn       (214, 8, 92, 245);          // vermelho/magenta dos botoes do chat
-	const ImColor kBtnDown   (255, 80, 140, 255);
+	// barra do chat (v ^ /) e campo: paleta azul neon do HUD (azul-marinho + contorno azul brilhante)
+	const ImColor kBtn       (7, 22, 66, 240);           // azul-marinho dos botoes do chat
+	const ImColor kBtnDown   (22, 78, 190, 250);
 	const ImColor kWhite     (1.0f, 1.0f, 1.0f, 1.0f);
 	const ImColor kHint      (200, 200, 200, 130);
+
+	// contorno azul neon com brilho: 3 camadas suaves por fora + traco forte + fio claro no miolo
+	void NeonOutline(ImGuiRenderer* r, const ImVec2& a, const ImVec2& b, float rd, float th, bool bright)
+	{
+		const float k = bright ? 1.0f : 0.85f;
+		for (int g = 3; g >= 1; --g)
+		{
+			const float o = th * 0.9f * g;
+			r->drawRoundedRect(ImVec2(a.x - o, a.y - o), ImVec2(b.x + o, b.y + o), ImColor(46, 150, 255, (int)((bright ? 46 : 30) / g)), rd + o, false, th * 1.6f);
+		}
+		r->drawRoundedRect(a, b, ImColor(46, 150, 255, (int)(255 * k)), rd, false, th * 1.5f);
+		r->drawRoundedRect(ImVec2(a.x + th * 0.7f, a.y + th * 0.7f), ImVec2(b.x - th * 0.7f, b.y - th * 0.7f), ImColor(150, 205, 255, (int)(150 * k)), std::max(1.0f, rd - th * 0.7f), false, std::max(1.0f, th * 0.5f));
+	}
 
 	const long kRepeatDelayMs = 420;
 	const long kRepeatEveryMs = 55;
@@ -383,7 +397,8 @@ void Keyboard::draw(ImGuiRenderer* renderer)
 	const float fs = std::min(UISettings::fontSize() * 0.9f, rowH() * 0.58f);
 	const float rd = std::max(4.0f, inputH() * 0.14f);
 
-	renderer->drawRoundedRect(fa, fb, kField, rd);
+	renderer->drawRoundedRect(fa, fb, ImColor(6, 18, 56, 225), rd);                       // campo: mesmo azul-marinho dos botoes
+	NeonOutline(renderer, fa, fb, rd, std::max(1.5f, inputH() * 0.025f), false);
 
 	// texto (Latin-1 -> UTF-8) com rolagem para o cursor aparecer sempre
 	const std::string& raw = m_core.field.text;
@@ -434,6 +449,7 @@ void Keyboard::draw(ImGuiRenderer* renderer)
 	{
 		const bool down = (m_pressed.target == tg[i]);
 		renderer->drawRoundedRect(ba[i], bb[i], down ? kBtnDown : kBtn, rd);
+		NeonOutline(renderer, ba[i], bb[i], rd, std::max(1.5f, inputH() * 0.03f), down);
 
 		const float w = bb[i].x - ba[i].x, h = bb[i].y - ba[i].y;
 		auto P = [&](float fx, float fy) { return ImVec2(ba[i].x + w * fx, ba[i].y + h * fy); };
