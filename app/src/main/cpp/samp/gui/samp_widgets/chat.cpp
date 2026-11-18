@@ -228,6 +228,24 @@ if (input == "/radarskin" || input.rfind("/radarskin ", 0) == 0)
             addDebugMessage("%s", RadarSkin::Command(args).c_str());
             return;
         }
+if (input == "/coord" || input == "/coords" || input.rfind("/coord ", 0) == 0 || input.rfind("/coords ", 0) == 0)
+        {
+            // coordenadas na tela: /coord (liga/desliga) | /coord on | /coord off | /coord pos (escreve a posicao no chat)
+            const size_t sp = input.find(' ');
+            const std::string args = sp == std::string::npos ? std::string() : input.substr(sp + 1);
+            float cx = 0, cy = 0, cz = 0, ca = 0; bool cv = false;
+            if (args == "pos")
+            {
+                if (Hud::CoordsGet(cx, cy, cz, ca, cv)) addDebugMessage("[COORD] X %.2f  Y %.2f  Z %.2f  A %.1f", cx, cy, cz, ca);
+                else addDebugMessage("[COORD] sem jogador");
+                return;
+            }
+            bool on = !Hud::gCoords.load();
+            if (args == "on" || args == "1") on = true; else if (args == "off" || args == "0") on = false;
+            Hud::gCoords.store(on);
+            addDebugMessage(on ? "[COORD] coordenadas na tela LIGADAS (/coord desliga; /coord pos escreve no chat)" : "[COORD] coordenadas na tela desligadas");
+            return;
+        }
 if (input == "/mapa" || input.rfind("/mapa ", 0) == 0)
         {
             // mapa aberto: /mapa (abre/fecha) | /mapa grade | /mapa info | /mapa ruas [on|off] | /mapa nodes | /mapa linhas

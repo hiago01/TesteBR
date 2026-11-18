@@ -129,6 +129,21 @@ namespace Hud
 		g.extra.store(0);
 	}
 
+	bool CoordsGet(float& x, float& y, float& z, float& ang, bool& veh)
+	{
+		if (!pNetGame || !pNetGame->GetPlayerPool()) return false;
+		CLocalPlayer* lp = pNetGame->GetPlayerPool()->GetLocalPlayer();
+		CPlayerPed* pp = lp ? lp->GetPlayerPed() : nullptr;
+		if (!pp || !pp->m_pPed) return false;
+		const CVector p = pp->m_pPed->GetPosition();
+		x = p.x; y = p.y; z = p.z;
+		veh = pp->m_pPed->pVehicle != nullptr;
+		float hd = (veh ? pp->m_pPed->pVehicle->GetHeading() : pp->m_pPed->m_fCurrentRotation) * 57.2957795f;
+		hd = std::fmod(hd, 360.0f); if (hd < 0.0f) hd += 360.0f;
+		ang = hd;
+		return std::isfinite(x) && std::isfinite(y) && std::isfinite(z);
+	}
+
 	std::string DebugCommand(const std::string& args)
 	{
 		auto split = [](const std::string& s) {
@@ -655,6 +670,25 @@ namespace
 		}
 	}
 
+	// Coordenadas na tela (/coord): caixa escura a direita do logo, no topo. Texto "X Y Z A" do jogador local (2 casas), atualizado a cada quadro.
+	void DrawCoords(ImGuiRenderer* r, const ImVec2& screen, float S)
+	{
+		if (!Hud::gCoords.load()) return;
+		float x, y, z, a; bool veh;
+		if (!Hud::CoordsGet(x, y, z, a, veh)) return;
+		char t[96];
+		std::snprintf(t, sizeof(t), "X %.2f   Y %.2f   Z %.2f   A %.1f%s", x, y, z, a, veh ? "  (veiculo)" : "");
+		const float fsz = 13.0f * S, h = 24.0f * S, pad = 9.0f * S;
+		const ImVec2 ts = r->calculateTextSize(std::string(t), fsz);
+		const float lh = kLogoH * S, lw = lh * ((float)HudAtlas::kLogo.w / (float)HudAtlas::kLogo.h);
+		float x0 = (screen.x + lw) * 0.5f + 12.0f * S;                       // logo centralizado: a caixa fica logo a direita dele
+		const float w = ts.x + pad * 2.0f, y0 = 8.0f * S;
+		if (x0 + w > screen.x - 8.0f * S) x0 = std::max(4.0f * S, screen.x - 8.0f * S - w);
+		r->drawRoundedRect(ImVec2(x0, y0), ImVec2(x0 + w, y0 + h), ImColor(10, 10, 10, 225), 5.0f * S, true);
+		r->drawRoundedRect(ImVec2(x0, y0), ImVec2(x0 + w, y0 + h), ImColor(255, 220, 90, 120), 5.0f * S, false, 1.0f);
+		r->drawText(ImVec2(x0 + pad, y0 + (h - ts.y) * 0.5f), ImColor(255, 235, 140, 255), std::string(t), false, fsz);
+	}
+
 	// Nome do local (cidade | zona) numa etiqueta escura com icone de pino, logo ACIMA do minimapa e alinhada a esquerda dele.
 	// So aparece enquanto o minimapa esta sendo desenhado (retangulo publicado por game/sprite2d.cpp) e a regra do motorista permite.
 	void DrawLocationTag(ImGuiRenderer* r, const ImVec2& screen, float S)
@@ -806,6 +840,7 @@ void HudInfo::draw(ImGuiRenderer* r)
 
 	DrawMiniTv(r, screen);           // efeito de TV ligando quando o minimapa aparece (entrar no veiculo)
 	DrawLocationTag(r, screen, S);   // nome do local acima do minimapa (so motorista no veiculo)
+	DrawCoords(r, screen, S);        // /coord: X Y Z A na tela
 
 	// ------------------------------------------------------------------ logo
 	{

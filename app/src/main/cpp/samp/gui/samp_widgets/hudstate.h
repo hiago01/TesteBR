@@ -69,5 +69,10 @@ namespace Hud
 
 	// Comando de teste do chat: "/hud ..." -> texto de resposta.
 	std::string DebugCommand(const std::string& args);
+
+	// Coordenadas na tela (comando /coord): X Y Z e angulo do jogador local, para conferir posicoes por print.
+	inline std::atomic<bool> gCoords{false};
+	// false = sem jogador. x,y,z = posicao; ang = angulo no padrao GetPlayerFacingAngle (0 = norte, 90 = oeste); veh = esta num veiculo
+	bool CoordsGet(float& x, float& y, float& z, float& ang, bool& veh);
 }
 
