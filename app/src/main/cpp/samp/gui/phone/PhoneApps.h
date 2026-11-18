@@ -29,18 +29,19 @@ namespace Phone
 			NavResult nv = DrawNavBar(cv, m, content, m_screen == 0 ? "Ajustes" : "Tamanho do celular", m_screen == 0 ? "" : "Ajustes", "", true, m_press == 100, false);
 			m_back = nv.back;
 			const Rect body = nv.body;
-			float y = m.px(8);
-			const float rowH = m.px(46), mx = m.px(16);
-			auto row = [&](int id, const std::string& label, const std::string& value, bool first, bool last, bool toggleOn, bool isToggle, const Color& dot, float valueW = 0)
+			float y = m.px(6);
+			const float rowH = m.px(44);
+			// lista de LARGURA TOTAL no estilo iOS: icone pequeno colorido (glifo branco), texto regular 17, setas claras
+			auto row = [&](int id, const char* icon, const std::string& label, const std::string& value, bool first, bool last, bool toggleOn, bool isToggle, const Color& bg, float valueW = 0)
 			{
-				const Rect r = m_scroll.itemRect(y, rowH).inset(0, 0);
-				const Rect rr{ body.x + mx, r.y, body.w - 2 * mx, rowH };
+				const Rect r = m_scroll.itemRect(y, rowH);
+				const Rect rr{ body.x, r.y, body.w, rowH };
 				m_rows.push_back({ id, rr });
 				if (m_scroll.visible(rr))
 				{
-					RowStyle st; st.first = first; st.last = last; st.chevron = !isToggle && m_screen == 0; st.pressed = (m_press == id); st.valueW = valueW;
-					DrawRow(cv, m, rr, label, isToggle ? std::string() : value, st, &dot);
-					if (isToggle) DrawToggleIos(cv, m, { rr.right() - m.px(66), rr.y + (rr.h - m.px(30)) * 0.5f, m.px(50), m.px(30) }, toggleOn);
+					IosRowStyle st; st.first = first; st.last = last; st.chevron = !isToggle && m_screen == 0; st.pressed = (m_press == id); st.valueW = valueW; st.icon = icon; st.iconBg = bg;
+					DrawIosRow(cv, m, rr, label, isToggle ? std::string() : value, st);
+					if (isToggle) DrawToggleIos(cv, m, { rr.right() - m.px(67), rr.y + (rr.h - m.px(31)) * 0.5f, m.px(51), m.px(31) }, toggleOn);
 				}
 				y += rowH;
 			};
@@ -49,41 +50,41 @@ namespace Phone
 			if (m_screen == 0)
 			{
 				const PhoneSettings& s = m_c->settings;
-				row(1, "Modo avião", "", true, false, s.airplane, true, PC::Orange);
-				row(2, "Wi-Fi", "", false, false, s.wifi, true, PC::Blue);
-				row(3, "Som", "", false, false, s.sound, true, PC::Red);
-				row(4, "Notificações", "", false, false, s.notif, true, PC::Red);
-				row(5, "Ligação sem apertar", "", false, true, s.handsFree, true, PC::Green);
-				y += m.px(22);
+				row(1, "aviao", "Modo avião", "", true, false, s.airplane, true, PC::IosOrange);
+				row(2, "wifi", "Wi-Fi", "", false, false, s.wifi, true, PC::IosBlue);
+				row(3, "som", "Som e Tato", "", false, false, s.sound, true, PC::IosRed);
+				row(4, "notif", "Notificações", "", false, false, s.notif, true, PC::IosRed);
+				row(5, "maos", "Ligação sem apertar", "", false, true, s.handsFree, true, PC::IosGreen);
+				y += m.px(30);
 				char buf[16]; std::snprintf(buf, sizeof(buf), "%d%%", s.sizePct);
-				row(10, "Tamanho do celular", buf, true, false, false, false, PC::Purple);
-				row(12, "Papel de parede", "", false, true, false, false, PC::Blue);
-				y += m.px(22);
+				row(10, "tamanho", "Tamanho do celular", buf, true, false, false, false, PC::IosBlue);
+				row(12, "papel", "Papel de parede", "", false, true, false, false, PC::IosBlue);
+				y += m.px(30);
 				const StatusInfo st = m_c->status ? m_c->status() : StatusInfo();
-				row(20, "Sobre", "Maximo RP", true, false, false, false, PC::Gray);
-				row(22, "Meu número", m_c->myNumber.empty() ? std::string("Sem chip") : Data::FormatNumber(m_c->myNumber), false, false, false, false, PC::Gray);
-				row(23, "IMEI", m_c->imei.empty() ? std::string("—") : Store::FormatImei(m_c->imei), false, false, false, false, PC::Gray, 190);
+				row(20, "sobre", "Sobre", "Maximo RP", true, false, false, false, PC::IosGray);
+				row(22, "numero", "Meu número", m_c->myNumber.empty() ? std::string("Sem chip") : Data::FormatNumber(m_c->myNumber), false, false, false, false, PC::IosGreen);
+				row(23, "imei", "IMEI", m_c->imei.empty() ? std::string("—") : Store::FormatImei(m_c->imei), false, false, false, false, PC::IosGray, 190);
 				if (!m_c->myNumber.empty())
 				{
 					const bool showMsg = !m_c->chipMsg.empty() && m_c->nowMs - m_c->chipMsgAt < 5000;
-					row(24, m_confirmChip ? "Toque de novo: remover chip" : "Remover chip", showMsg ? m_c->chipMsg : std::string(), false, false, false, false, m_confirmChip ? PC::Red : PC::Gray, showMsg ? 170 : 0);
+					row(24, "chip", m_confirmChip ? "Toque de novo: remover chip" : "Remover chip", showMsg ? m_c->chipMsg : std::string(), false, false, false, false, m_confirmChip ? PC::IosRed : PC::IosGray, showMsg ? 170 : 0);
 				}
-				else if (!m_c->chipMsg.empty() && m_c->nowMs - m_c->chipMsgAt < 5000) row(24, "Chip", m_c->chipMsg, false, false, false, false, PC::Gray, 190);
-				row(21, "Hora", st.clock, false, true, false, false, PC::Gray);
+				else if (!m_c->chipMsg.empty() && m_c->nowMs - m_c->chipMsgAt < 5000) row(24, "chip", "Chip", m_c->chipMsg, false, false, false, false, PC::IosGray, 190);
+				row(21, "hora", "Hora", st.clock, false, true, false, false, PC::IosGray);
 			}
 			else
 			{
-				DrawTextAs(cv, FontDisplaySemibold, m_scroll.itemRect(y, m.px(22)).moved(m.px(20), 0), "ESCALA DO APARELHO", PC::DimL, m.font(12));
-				y += m.px(26);
+				DrawTextAs(cv, FontText, m_scroll.itemRect(y, m.px(22)).moved(m.px(16), 0), "ESCALA DO APARELHO", PC::IosValue, m.font(13));
+				y += m.px(28);
 				const int opts[3] = { 75, 100, 125 };
 				for (int i = 0; i < 3; ++i)
 				{
 					const Rect r = m_scroll.itemRect(y, rowH);
-					const Rect rr{ body.x + mx, r.y, body.w - 2 * mx, rowH };
+					const Rect rr{ body.x, r.y, body.w, rowH };
 					m_rows.push_back({ 30 + i, rr });
-					RowStyle st; st.first = i == 0; st.last = i == 2; st.chevron = false; st.pressed = (m_press == 30 + i);
+					IosRowStyle st; st.first = i == 0; st.last = i == 2; st.chevron = false; st.pressed = (m_press == 30 + i); st.check = (m_c->settings.sizePct == opts[i]);
 					char b[16]; std::snprintf(b, sizeof(b), "%d%%", opts[i]);
-					DrawRow(cv, m, rr, b, m_c->settings.sizePct == opts[i] ? "OK" : "", st);
+					DrawIosRow(cv, m, rr, b, std::string(), st);
 					y += rowH;
 				}
 			}
@@ -131,7 +132,7 @@ namespace Phone
 	private:
 		static void DrawToggleIos(Canvas& cv, const Metrics&, const Rect& r, bool on)
 		{
-			cv.fillRect(r, on ? PC::Green : Color(200, 200, 205), r.h * 0.5f);
+			cv.fillRect(r, on ? PC::IosGreen : Color(229, 229, 234), r.h * 0.5f);
 			cv.fillCircle({ on ? r.right() - r.h * 0.5f : r.x + r.h * 0.5f, r.y + r.h * 0.5f }, r.h * 0.43f, Color(255, 255, 255));
 		}
 		struct RowRef { int id; Rect rect; };
