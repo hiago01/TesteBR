@@ -355,7 +355,7 @@ namespace OrgPanel
 			case H_MEM_ROLE: toast("Você só promove/rebaixa quem tem cargo abaixo do seu (e precisa da permissão).", true); break;
 			case H_MEM_KICK: toast("Você só expulsa quem tem cargo abaixo do seu (e precisa da permissão).", true); break;
 			case H_WITHDRAW: toast("Seu cargo não tem permissão para sacar do cofre.", true); break;
-			case H_DELIVER: toast("O farm deste grupo ainda não foi configurado.", true); break;
+			case H_DELIVER: toast("A coleta deste grupo ainda não foi configurada.", true); break;
 			case H_GPS: toast("A sede deste grupo ainda não tem GPS definido.", true); break;
 			default: break;
 			}
@@ -445,11 +445,56 @@ namespace OrgPanel
 			cv.line({ m.x + h * 0.8f, m.y - h * 0.8f }, { m.x - h * 0.8f, m.y + h * 0.8f }, c, t);
 			cv.fillCircle({ m.x - h * 0.8f, m.y - h * 0.8f }, t * 0.9f, c); cv.fillCircle({ m.x + h * 0.8f, m.y - h * 0.8f }, t * 0.9f, c);
 		}
+		// reciclagem (aba Coleta): simbolo "setas de reciclar" (versao cheia da sua imagem), vetorizado em triangulos - sem textura/IMG/texdb, cor do tema
+		void IcoRecycle(Canvas& cv, const Rect& r, Color c) const
+		{
+			static const float kTri[] = {
+			-0.598f, 0.375f, -0.091f, 0.367f, -0.091f, 0.837f, -0.598f, 0.375f, -0.091f, 0.837f, -0.5f, 0.837f,
+			-0.598f, 0.375f, -0.5f, 0.837f, -0.598f, 0.799f, -0.598f, 0.375f, -0.598f, 0.799f, -0.682f, 0.693f,
+			-0.598f, 0.375f, -0.682f, 0.693f, -0.697f, 0.58f, -0.697f, 0.58f, -0.674f, 0.504f, -0.598f, 0.375f,
+			0.909f, 0.337f, 0.644f, 0.784f, 0.538f, 0.837f, 0.909f, 0.337f, 0.538f, 0.837f, 0.273f, 0.837f,
+			0.273f, 0.837f, 0.258f, 0.943f, 0.091f, 0.595f, 0.273f, 0.837f, 0.091f, 0.595f, 0.265f, 0.261f,
+			0.273f, 0.837f, 0.265f, 0.261f, 0.273f, 0.367f, 0.273f, 0.837f, 0.273f, 0.367f, 0.833f, 0.367f,
+			0.273f, 0.837f, 0.833f, 0.367f, 0.909f, 0.337f, -0.947f, -0.277f, -0.553f, -0.239f, -0.356f, 0.08f,
+			-0.947f, -0.277f, -0.356f, 0.08f, -0.439f, 0.034f, -0.947f, -0.277f, -0.439f, 0.034f, -0.462f, 0.049f,
+			-0.712f, 0.466f, -0.75f, 0.602f, -0.977f, 0.201f, -0.462f, 0.049f, -0.712f, 0.466f, -0.977f, 0.201f,
+			-0.462f, 0.049f, -0.977f, 0.201f, -1.0f, 0.125f, -0.462f, 0.049f, -1.0f, 0.125f, -0.985f, 0.011f,
+			-0.462f, 0.049f, -0.985f, 0.011f, -0.856f, -0.208f, -0.462f, 0.049f, -0.856f, -0.208f, -0.947f, -0.277f,
+			0.78f, -0.352f, 0.985f, -0.011f, 1.0f, 0.14f, 0.78f, -0.352f, 1.0f, 0.14f, 0.962f, 0.223f,
+			0.78f, -0.352f, 0.962f, 0.223f, 0.864f, 0.299f, 0.78f, -0.352f, 0.864f, 0.299f, 0.629f, 0.314f,
+			0.629f, 0.314f, 0.379f, -0.11f, 0.78f, -0.352f, -0.326f, -0.936f, -0.22f, -0.936f, -0.136f, -0.898f,
+			-0.326f, -0.936f, -0.136f, -0.898f, -0.083f, -0.845f, -0.326f, -0.936f, -0.083f, -0.845f, -0.008f, -0.708f,
+			-0.326f, -0.936f, -0.008f, -0.708f, -0.242f, -0.269f, -0.326f, -0.936f, -0.242f, -0.269f, -0.659f, -0.496f,
+			-0.326f, -0.936f, -0.659f, -0.496f, -0.455f, -0.852f, -0.455f, -0.852f, -0.409f, -0.898f, -0.326f, -0.936f,
+			-0.121f, -0.943f, 0.402f, -0.936f, 0.515f, -0.852f, -0.121f, -0.943f, 0.515f, -0.852f, 0.644f, -0.633f,
+			0.644f, -0.633f, 0.735f, -0.678f, 0.508f, -0.36f, -0.121f, -0.943f, 0.644f, -0.633f, 0.508f, -0.36f,
+			0.508f, -0.36f, 0.129f, -0.352f, 0.227f, -0.413f, 0.508f, -0.36f, 0.227f, -0.413f, -0.015f, -0.837f,
+			0.508f, -0.36f, -0.015f, -0.837f, -0.121f, -0.943f,
+			};
+			const Vec2 m = r.center(); const float h = std::min(r.w, r.h) * 0.5f * 1.12f;
+			for (size_t i = 0; i + 5 < sizeof(kTri) / sizeof(kTri[0]); i += 6)
+				cv.fillTriangle({ m.x + kTri[i] * h, m.y + kTri[i + 1] * h }, { m.x + kTri[i + 2] * h, m.y + kTri[i + 3] * h }, { m.x + kTri[i + 4] * h, m.y + kTri[i + 5] * h }, c);
+		}
+		// cofre (aba Cofre): cofre em linhas da sua imagem (corpo, porta, disco com raios, puxador e pes), desenhado por primitivas na cor do tema
 		void IcoVault(Canvas& cv, const Rect& r, Color c) const
 		{
-			const Vec2 m = r.center(); const float h = std::min(r.w, r.h) * 0.5f, t = std::max(1.5f, h * 0.16f);
-			cv.strokeRect({ m.x - h, m.y - h, h * 2, h * 2 }, c, h * 0.4f, t);
-			cv.strokeCircle(m, h * 0.5f, c, t); cv.fillCircle(m, h * 0.16f, c);
+			const float sz = std::min(r.w, r.h) * 1.08f; const Vec2 m = r.center();
+			const float x0 = m.x - sz * 0.5f, y0 = m.y - sz * 0.5f;
+			auto P = [&](float u, float v) { return Vec2{ x0 + u * sz, y0 + v * sz }; };
+			const float t = std::max(1.3f, sz * 0.075f);
+			// corpo e porta
+			cv.strokeRect({ x0 + 0.04f * sz, y0 + 0.07f * sz, 0.88f * sz, 0.84f * sz }, c, sz * 0.12f, t);
+			cv.strokeRect({ x0 + 0.13f * sz, y0 + 0.22f * sz, 0.70f * sz, 0.52f * sz }, c, sz * 0.09f, t);
+			// puxador (barra que sai da porta)
+			cv.strokeRect({ x0 + 0.72f * sz, y0 + 0.39f * sz, 0.26f * sz, 0.14f * sz }, c, 0.0f, t);
+			// disco: aro, raios e miolo
+			const Vec2 d = P(0.585f, 0.47f);
+			cv.strokeCircle(d, sz * 0.135f, c, t);
+			for (int k = 0; k < 8; ++k) { const float a = 0.3927f + k * 0.7853982f; cv.line({ d.x + std::cos(a) * sz * 0.05f, d.y + std::sin(a) * sz * 0.05f }, { d.x + std::cos(a) * sz * 0.11f, d.y + std::sin(a) * sz * 0.11f }, c, std::max(1.0f, t * 0.6f)); }
+			cv.fillCircle(d, std::max(1.2f, sz * 0.025f), c);
+			// pes
+			cv.fillRect({ x0 + 0.13f * sz, y0 + 0.915f * sz, 0.17f * sz, 0.07f * sz }, c, 0);
+			cv.fillRect({ x0 + 0.68f * sz, y0 + 0.915f * sz, 0.17f * sz, 0.07f * sz }, c, 0);
 		}
 		void IcoSearch(Canvas& cv, const Rect& r, Color c) const
 		{
@@ -657,7 +702,7 @@ namespace OrgPanel
 
 		void drawTabs(Canvas& cv)
 		{
-			struct TabDef { const char* label; int icon; } defs[4] = { { "Início", 0 }, { "Membros", 1 }, { "Farm", 2 }, { "Cofre", 3 } };
+			struct TabDef { const char* label; int icon; } defs[4] = { { "Início", 0 }, { "Membros", 1 }, { "Coleta", 2 }, { "Cofre", 3 } };
 			float xs[4], ws[4]; float x = 25;
 			cv.setFont(FontTextSemibold);
 			for (int i = 0; i < 4; ++i) { ws[i] = 46 + cv.measure(defs[i].label, FSB(14)).x / std::max(0.01f, m_u); xs[i] = x; x += ws[i] + 14; }
@@ -672,7 +717,7 @@ namespace OrgPanel
 				const Color col = Color::mix(Pal::Text, Pal::Dark, act);
 				if (act < 0.98f) { cv.strokeRect(R(xs[i], 123, ws[i], 36), Color(220, 235, 255, (int)(130 * (1.0f - act))), S(18), std::max(1.0f, S(1.2f))); }
 				const Rect ic = R(xs[i] + 13, 132.5f, 17, 17);
-				if (i == 0) IcoHome(cv, ic, col); else if (i == 1) IcoPeople(cv, ic, col); else if (i == 2) IcoTools(cv, ic, col); else IcoVault(cv, ic, col);
+				if (i == 0) IcoHome(cv, ic, col); else if (i == 1) IcoPeople(cv, ic, col); else if (i == 2) IcoRecycle(cv, ic, col); else IcoVault(cv, ic, col);
 				TB(cv, xs[i] + 36, 123, ws[i] - 40, 36, defs[i].label, 14, col, Align::Left);
 				addHit(R(xs[i] - 4, 119, ws[i] + 8, 44), H_TAB, i, true);          // area de toque maior que a pilula
 			}
@@ -684,10 +729,10 @@ namespace OrgPanel
 			const Home& h = m_home;
 			// --- opcoes + mural ---
 			Card(cv, 32, 175, 389, 499, "OPÇÕES DO GRUPO");
-			T(cv, 12, 234, 136, 24, "Discord do grupo", 11.5f, Pal::Dim, Align::Center);
-			T(cv, 132, 234, 136, 24, "Rádio do grupo", 11.5f, Pal::Dim, Align::Center);
+			T(cv, 38, 234, 112, 24, "Discord do grupo", 11.5f, Pal::Dim, Align::Center);
+			T(cv, 144, 234, 136, 24, "Rádio do grupo", 11.5f, Pal::Dim, Align::Center);
 			T(cv, 290, 234, 112, 24, "Localização", 11.5f, Pal::Dim, Align::Center);
-			Pill(cv, 38, 262, 84, 32, "Copiar", H_COPY, 0, true);
+			Pill(cv, 46, 262, 80, 32, "Copiar", H_COPY, 0, true);
 			Pill(cv, 150, 262, 100, 32, "Conectar", H_RADIO, 0, true);
 			Pill(cv, 281, 262, 130, 32, "Marcar no GPS", H_GPS, 0, h.hasGps);
 			cv.fillRect(R(33, 359, 387, 1), Color(200, 225, 255, 50), 0);
@@ -739,7 +784,7 @@ namespace OrgPanel
 			// --- ranking ---
 			Card(cv, 842, 175, 389, 499, "RANKING");
 			cv.fillRect(R(855, 231, 362, 163), Pal::Inner, S(18)); cv.strokeRect(R(855, 231, 362, 163), Color(220, 235, 255, 80), S(18), std::max(1.0f, S(1.1f)));
-			T(cv, 869, 244, 200, 24, "Entrega de farm", 14.5f, Pal::Text, Align::Left, FontTextSemibold);
+			T(cv, 869, 244, 200, 24, "Entrega de coleta", 14.5f, Pal::Text, Align::Left, FontTextSemibold);
 			Pill(cv, 1117, 240, 87, 30, "Ver todos", H_SEEALL, 0, true, 11.5f);
 			{
 				const Rect r = R(869, 282, 334, 27); cv.fillRect(r, Pal::Row, r.h * 0.5f);
@@ -878,7 +923,7 @@ namespace OrgPanel
 			m_svFarm.setLayout(vp, pitch * idx.size()); m_svs.push_back(&m_svFarm);
 			const float pxName = ColPx(cv, m_farm, idx, [](const FarmRow& f) { return std::to_string(f.acct) + " | " + f.name; }, 10.5f, 168, FontTextSemibold);
 			cv.pushClip(vp);
-			if (!m_farmLoad.loaded) T(cv, 33, 440, 872, 30, m_farmLoad.failed ? "Não foi possível carregar o farm." : "Carregando...", 14, Pal::Dim, Align::Center);
+			if (!m_farmLoad.loaded) T(cv, 33, 440, 872, 30, m_farmLoad.failed ? "Não foi possível carregar a coleta." : "Carregando...", 14, Pal::Dim, Align::Center);
 			else if (idx.empty()) T(cv, 33, 440, 872, 30, "Nenhum membro encontrado.", 14, Pal::Dim, Align::Center);
 			for (size_t k = 0; k < idx.size(); ++k)
 			{
@@ -899,7 +944,7 @@ namespace OrgPanel
 			cv.popClip();
 			drawScrollbar(cv, m_svFarm);
 			// historico
-			Card(cv, 923, 172, 391, 493, "HISTÓRICO FARM");
+			Card(cv, 923, 172, 391, 493, "HISTÓRICO COLETA");
 			T(cv, 940, 232, 125, 20, "Data", 11, Pal::Dim); T(cv, 1070, 232, 112, 20, "Player", 11, Pal::Dim); T(cv, 1190, 232, 100, 20, "Qnt Itens", 11, Pal::Dim, Align::Right);
 			const Rect vp2 = R(924, 256, 389, 407); const float p2 = 34.0f * m_u;
 			m_svHist.setLayout(vp2, p2 * m_hist.size()); m_svs.push_back(&m_svHist);
