@@ -122,7 +122,7 @@ namespace CustomColNew
         return cm;
     }
 
-    inline void Run(const char* quando)
+    inline void RunExtra(const char* quando)
     {
         if (!g_pszStorage || !g_pszStorage[0]) return;
         const std::string root(g_pszStorage);
@@ -197,5 +197,73 @@ namespace CustomColNew
             }
         }
         std::fclose(lf);
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------------
+    // COLISAO DA CIDADE NOVA (FarWorld)  -   SAMP/city_cols.col  (+ desligar com SAMP/citycol.off)
+    // Os modelos SA-MP do terreno/estradas/pisos (ids 11693.., 18762, 18789.., 19529..19550) chegam ao jogo com um CColModel SEM
+    // triangulos (probe do log: tris=0 mesmo com a malha no allsampcols.col), entao nada colidia. Aqui, para cada entrada do
+    // arquivo cujo ModelInfo ja existe, a colisao atual e' trocada SE for mais fraca que a do arquivo (menos triangulos, ou so
+    // caixas/esferas a menos). Modelo com colisao igual/melhor e' mantido. Nunca marca Failed(): se algo falhar, o modelo fica como
+    // estava (a instancia nao e' descartada). Roda ANTES do IPL (mesmo ponto do RunExtra).
+    inline void RunCity(const char* quando)
+    {
+        static bool done = false;
+        if (done || !g_pszStorage || !g_pszStorage[0]) return;
+        std::string root(g_pszStorage); if (root.back() != '/') root.push_back('/');
+        if (FILE* off = std::fopen((root + "SAMP/citycol.off").c_str(), "r")) { std::fclose(off); done = true; FLog("[CITYCOL] desligado por SAMP/citycol.off"); return; }
+        FILE* f = std::fopen((root + "SAMP/city_cols.col").c_str(), "rb");
+        if (!f) return;   // sem arquivo: nada a fazer (tenta de novo no proximo ponto de chamada)
+        done = true;
+        std::vector<uint8_t> buf;
+        { uint8_t tmp[65536]; size_t r; while ((r = std::fread(tmp, 1, sizeof(tmp), f)) > 0) buf.insert(buf.end(), tmp, tmp + r); }
+        std::fclose(f);
+
+        static FindFn find = reinterpret_cast<FindFn>(CHook::getSym("_ZN10CModelInfo12GetModelInfoEPKcPi"));
+        static LoadFn ver3 = reinterpret_cast<LoadFn>(CHook::getSym("_ZN11CFileLoader22LoadCollisionModelVer3EPhjR9CColModelPKc"));
+        static CtorFn ctor = reinterpret_cast<CtorFn>(CHook::getSym("_ZN9CColModelC1Ev"));
+        static CtorFn calcPlanes = reinterpret_cast<CtorFn>(CHook::getSym("_ZN10CCollision23CalculateTrianglePlanesEP9CColModel"));
+        std::vector<Entry> es; std::string why;
+        if (!find || !ver3 || !ParseEntries(buf.data(), buf.size(), es, &why)) { FLog("[CITYCOL][%s] arquivo/simbolos invalidos (find=%d ver3=%d %s)", quando, find ? 1 : 0, ver3 ? 1 : 0, why.c_str()); return; }
+        FLog("[CITYCOL][%s] city_cols.col: %zu entrada(s)", quando, es.size());
+
+        int trocou = 0, manteve = 0, semModelo = 0, falhou = 0;
+        for (const Entry& e : es)
+        {
+            if (e.ver != 3 || e.dataLen < 52) { ++falhou; continue; }
+            int id = -1;
+            CBaseModelInfo* mi = find(e.name.c_str(), &id);
+            if (!mi || id < 0 || id >= (int)TOTAL_DFF_MODEL_IDS || CModelInfo::ms_modelInfoPtrs[id] != mi) { ++semModelo; continue; }
+            uint16_t fs = 0, fb = 0, ft = 0;
+            std::memcpy(&fs, buf.data() + e.dataOff + 40, 2); std::memcpy(&fb, buf.data() + e.dataOff + 42, 2); std::memcpy(&ft, buf.data() + e.dataOff + 44, 2);
+            if ((unsigned)fs + fb + ft == 0) { ++manteve; continue; }
+            CColModel* old = mi->m_pColModel;
+            unsigned oT = 0, oB = 0, oS = 0;
+            if (old) { oT = old->GetTriCount(); if (old->m_pColData) { oB = old->m_pColData->m_nNumBoxes; oS = old->m_pColData->m_nNumSpheres; } }
+            const bool fraca = !old || ft > oT || (ft == 0 && (unsigned)fb + fs > oB + oS);
+            if (!fraca) { ++manteve; continue; }
+
+            CColModel* cm = static_cast<CColModel*>(std::calloc(1, sizeof(CColModel)));
+            if (!cm) { ++falhou; continue; }
+            if (ctor) ctor(cm);
+            cm->m_nColSlot = 0;
+            ver3(buf.data() + e.dataOff, (uint32_t)e.dataLen, *cm, e.name.c_str());
+            if (!cm->m_pColData || (cm->GetTriCount() == 0 && cm->m_pColData->m_nNumBoxes == 0 && cm->m_pColData->m_nNumSpheres == 0))
+            { FLog("[CITYCOL] '%s' (id %d): carregador nao produziu dados - mantida a colisao anterior", e.name.c_str(), id); ++falhou; continue; }
+            if (cm->GetTriCount() > 0 && !cm->m_pColData->m_pTrianglePlanes && calcPlanes) calcPlanes(cm);
+            mi->m_pColModel = cm;
+            mi->bDoWeOwnTheColModel = 0;
+            ++trocou;
+            if (trocou <= 40)
+                FLog("[CITYCOL] '%s' (id %d): antes tris=%u caixas=%u esf=%u -> agora tris=%u caixas=%u esf=%u raio=%.1f", e.name.c_str(), id, oT, oB, oS,
+                     (unsigned)cm->GetTriCount(), (unsigned)cm->m_pColData->m_nNumBoxes, (unsigned)cm->m_pColData->m_nNumSpheres, cm->GetBoundRadius());
+        }
+        FLog("[CITYCOL] resumo: trocadas=%d mantidas=%d sem ModelInfo=%d falhas=%d", trocou, manteve, semModelo, falhou);
+    }
+
+    inline void Run(const char* quando)
+    {
+        RunExtra(quando);
+        RunCity(quando);
     }
 }
