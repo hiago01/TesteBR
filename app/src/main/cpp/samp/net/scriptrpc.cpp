@@ -16,6 +16,7 @@
 #include "../game/Weapskin.h"
 #include "../gui/samp_widgets/inventory.h"
 #include "../gui/samp_widgets/jobs.h"
+#include "../gui/samp_widgets/orgpanel.h"
 #include "../gui/samp_widgets/worldmap.h"
 #include "../gui/samp_widgets/phone.h"
 #include "../game/CustomAnimSync.h"
@@ -2126,6 +2127,7 @@ void ScrJobs(RPCParameters* rpcParams)
 	int iBitLength = rpcParams->numberOfBitsOfData;
 	if (!Data || iBitLength <= 0) return;
 	JobsUI::OnServerPacket(Data, (iBitLength + 7) / 8);
+	OrgPanelWidget::OnServerPacket(Data, (iBitLength + 7) / 8);     // ops 16/17/18 (Gerenciador de Grupo); as demais ops sao ignoradas la
 }
 
 // Avisos no canto + velocimetro: servidor -> client (RPC_VehHud = 247). Formato em gui/samp_widgets/vehhud.h.
@@ -2202,7 +2204,7 @@ void RegisterScriptRPCs(RakClientInterface *pRakClient)
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_PhoneEvent, ScrPhone);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_JobsEvent, ScrJobs);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_VehHud, ScrVehHud);
-	JobsUI::Reset();         // nova conexao: agencia fechada
+	JobsUI::Reset(); OrgPanelWidget::Reset();         // nova conexao: agencia fechada
 	VehHud::Reset();
 	PhoneWidget::Reset();    // nova conexao: celular sem numero/ligacao
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrGiroflex, ScrGiroflex);
@@ -2279,7 +2281,7 @@ void UnregisterScriptRPCs(RakClientInterface *pRakClient)
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_PhoneEvent);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_JobsEvent);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_VehHud);
-	JobsUI::Reset();
+	JobsUI::Reset(); OrgPanelWidget::Reset();
 	VehHud::Reset();
 	PhoneWidget::Reset();
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrGiroflex);

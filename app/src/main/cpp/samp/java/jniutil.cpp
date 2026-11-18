@@ -38,6 +38,9 @@ CJavaWrapper::CJavaWrapper(JNIEnv *env, jobject activity)
     s_showClothesUI = env->GetMethodID(clas, "showClothesUI", "()V");
     s_hideClothesUI = env->GetMethodID(clas, "hideClothesUI", "()V");
 
+    s_setClipboard = env->GetMethodID(clas, "setClipboardText", "(Ljava/lang/String;)V");
+    if (env->ExceptionCheck()) { env->ExceptionClear(); s_setClipboard = nullptr; }
+
     env->DeleteLocalRef(clas);
 }
 
@@ -81,6 +84,19 @@ void CJavaWrapper::SetLoadingStage(int stage)
     javaVM->GetEnv((void**)&p, JNI_VERSION_1_6);
     if (!p) return;
     p->CallVoidMethod(activity, s_setLoadingStage, (jint)stage);
+    EXCEPTION_CHECK(p);
+}
+
+void CJavaWrapper::SetClipboardString(const char* utf8)
+{
+    if (!s_setClipboard || !utf8) return;
+    JNIEnv* p = nullptr;
+    javaVM->GetEnv((void**)&p, JNI_VERSION_1_6);
+    if (!p) return;
+    jstring js = p->NewStringUTF(utf8);
+    if (!js) { if (p->ExceptionCheck()) p->ExceptionClear(); return; }
+    p->CallVoidMethod(activity, s_setClipboard, js);
+    p->DeleteLocalRef(js);
     EXCEPTION_CHECK(p);
 }
 

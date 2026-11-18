@@ -67,6 +67,7 @@ extern UI* pUI;
 extern CGame* pGame;
 extern CNetGame *pNetGame;
 bool InventoryIsOpenNow();   // gui/samp_widgets/inventory.cpp
+#include "../gui/samp_widgets/orgpanel.h"
 extern MaterialTextGenerator* pMaterialTextGenerator;
 
 // Clothing changes are queued by /testeclothes and applied only after the
@@ -689,7 +690,7 @@ void Render2dStuff()
 
     //((void (*)()) (g_libGTASA + 0x51CFF0))(); // CHud::DrawRadar
     //CHook::CallFunction<void>("_ZN4CHud14DrawScriptTextEh", true);
-    const bool hideHud = Hud::g.hideAll.load() || InventoryIsOpenNow() || GarageIsOpenNow();   // jogador congelado (cutscene): nenhuma HUD
+    const bool hideHud = Hud::g.hideAll.load() || InventoryIsOpenNow() || GarageIsOpenNow() || OrgPanelWidget::IsOpen();   // jogador congelado (cutscene): nenhuma HUD
     if (!hideHud)
     {
         if (!Hud::g.photoCam.load())   // Camera do celular aberta: sem radar/icones nativos (os botoes de toque continuam)
@@ -1093,6 +1094,14 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 			AND_TouchEvent(1, i, 0, 0);
 	}
 	if (Provador::HandleRawTouch(type, num, posX, posY))
+		return;
+	// Gerenciador de Grupo (/grupo, aberto pelo servidor): mesmo esquema; consome todos os toques enquanto aberto.
+	if (OrgPanelWidget::ConsumeFlushRequest())
+	{
+		for (int i = 0; i < 3; i++)
+			AND_TouchEvent(1, i, 0, 0);
+	}
+	if (OrgPanelWidget::HandleRawTouch(type, num, posX, posY))
 		return;
 	// Agencia de Empregos (aberta pelo servidor): mesmo esquema; consome todos os toques enquanto aberta.
 	if (JobsUI::ConsumeFlushRequest())

@@ -1167,6 +1167,18 @@ public abstract class NvEventQueueActivity extends AppCompatActivity implements 
         //postCleanup();
     }
 
+    // Gerenciador de Grupo: copia texto (link do Discord) para a area de transferencia. Chamado por JNI (CJavaWrapper::SetClipboardString).
+    public void setClipboardText(final String text)
+    {
+        if (text == null || mClipboardManager == null) return;
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                try { mClipboardManager.setPrimaryClip(ClipData.newPlainText("Maximo RP", text)); } catch (Throwable ignored) {}
+            }
+        });
+    }
+
     public byte[] getClipboardText()
     {
         String retn = " ";

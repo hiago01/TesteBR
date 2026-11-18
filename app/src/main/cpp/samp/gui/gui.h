@@ -35,6 +35,7 @@
 #include "samp_widgets/worldmap.h"
 #include "samp_widgets/provador.h"
 #include "samp_widgets/jobs.h"
+#include "samp_widgets/orgpanel.h"
 #include "samp_widgets/maximomenu.h"
 #include "samp_widgets/maximoos.h"
 #include "samp_widgets/phone.h"
@@ -131,6 +132,7 @@ private:
 	WorldMapWidget* m_worldmap = nullptr;
 	Provador* m_provador = nullptr;
 	JobsUI* m_jobs = nullptr;
+	OrgPanelWidget* m_orgpanel = nullptr;      // Gerenciador de Grupo (/grupo)
 	CelOfsPanel* m_celofs = nullptr;
 	Label* label;
     Label* label2;

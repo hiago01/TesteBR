@@ -17,6 +17,7 @@ public:
     ~CJavaWrapper() {};
     
     const char* GetClipboardString();
+    void SetClipboardString(const char* utf8);       // Gerenciador de Grupo: copiar o link do Discord
     void SetPauseState(bool pause);
     void ShowLoadingScreen();
     void HideLoadingScreen();
@@ -49,6 +50,7 @@ public:
 
     jobject activity;
     jmethodID s_setPauseState;
+    jmethodID s_setClipboard = nullptr;
     jmethodID s_showLoadingScreen;
     jmethodID s_hideLoadingScreen;
     jmethodID s_setLoadingStage;

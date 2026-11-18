@@ -167,6 +167,13 @@ bool UI::initialize()
 	m_jobs->setPosition(ImVec2(0.0f, 0.0f));
 	m_jobs->setVisible(true);
 
+	// Gerenciador de Grupo (/grupo, aberto pelo servidor: RPC 245 op 16). Toques em AND_TouchEvent_hook (OrgPanelWidget::HandleRawTouch).
+	m_orgpanel = new OrgPanelWidget();
+	this->addChild(m_orgpanel);
+	m_orgpanel->setFixedSize(size());
+	m_orgpanel->setPosition(ImVec2(0.0f, 0.0f));
+	m_orgpanel->setVisible(true);
+
 	// Menu "Maximo RP" (substitui o menu de pausa nativo). Ultimo filho = desenhado por cima.
 	// So desenha quando aberto (/menu ou botao Voltar); a captura de toque fica em AND_TouchEvent_hook.
 	m_maximoMenu = new MaximoMenu();
@@ -257,6 +264,16 @@ void UI::drawList()
 	{
 		// jogador congelado (cutscene): nenhuma HUD; so dialogos/teclado continuam (senao o jogador ficaria preso)
 		if (JobsUI::IsOpen() && m_jobs) m_jobs->draw(renderer());      // agencia aberta pelo servidor: desenha mesmo com o jogador congelado
+		if (OrgPanelWidget::IsOpen() && m_orgpanel) m_orgpanel->draw(renderer());
+		if (m_dialog && m_dialog->visible()) m_dialog->draw(renderer());
+		if (m_keyboard && m_keyboard->visible()) m_keyboard->draw(renderer());
+		return;
+	}
+
+	if (OrgPanelWidget::IsOpen() && m_orgpanel)
+	{
+		// Gerenciador de Grupo aberto: tela cheia, esconde TODO o HUD; so o painel + dialogo/teclado do jogo
+		m_orgpanel->draw(renderer());
 		if (m_dialog && m_dialog->visible()) m_dialog->draw(renderer());
 		if (m_keyboard && m_keyboard->visible()) m_keyboard->draw(renderer());
 		return;
