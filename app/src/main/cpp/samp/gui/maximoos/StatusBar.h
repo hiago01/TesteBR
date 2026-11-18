@@ -13,6 +13,7 @@ namespace MaximoOS
 		bool demo = false;       // true = valores ilustrativos da etapa 1
 		int  weekday = -1;       // 0 = domingo .. 6; -1 = desconhecido
 		int  day = 0, month = 0, year = 0;   // data do aparelho (month 1..12); 0 = desconhecida
+		int  hour = -1, minute = 0, second = 0;   // hora do aparelho (hour -1 = desconhecida): ponteiros do icone do Relogio
 	};
 
 	struct StatusBarResult { Rect bell; };

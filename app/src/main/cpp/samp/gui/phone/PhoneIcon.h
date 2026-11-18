@@ -25,6 +25,32 @@ namespace Phone
 			cv.fillRect({ q.x, q.y + q.h * 0.30f, q.w, q.h * 0.32f }, col, 0);
 			DrawGlyph(cv, id, q.inset(q.w * 0.22f), Color(255, 255, 255));
 		}
+		if (id == "relogio")
+		{
+			// mostrador sem ponteiros (atlas) + ponteiros da hora REAL do aparelho
+			const StatusInfo si = ctx.status ? ctx.status() : StatusInfo();
+			if (si.hour >= 0)
+			{
+				const Vec2 c = q.center(); const float W = q.w;
+				auto Hand = [&](float deg, float len, float tail, float th, Color col)
+				{
+					const float t = deg * 0.0174533f, sx = std::sin(t), sy = -std::cos(t);
+					const Vec2 a{ c.x - sx * tail, c.y - sy * tail }, b{ c.x + sx * len, c.y + sy * len };
+					cv.line(a, b, col, th);
+					cv.fillCircle(a, th * 0.5f, col); cv.fillCircle(b, th * 0.5f, col);   // pontas arredondadas
+				};
+				const float hDeg = ((si.hour % 12) + si.minute / 60.0f + si.second / 3600.0f) * 30.0f;
+				const float mDeg = (si.minute + si.second / 60.0f) * 6.0f;
+				const float sDeg = si.second * 6.0f;
+				const Color ink(28, 28, 30), orange(255, 149, 0);
+				Hand(hDeg, W * 0.27f, W * 0.04f, W * 0.048f, ink);
+				Hand(mDeg, W * 0.40f, W * 0.04f, W * 0.040f, ink);
+				cv.fillCircle(c, W * 0.036f, ink);
+				Hand(sDeg, W * 0.42f, W * 0.11f, std::max(1.0f, W * 0.014f), orange);
+				cv.fillCircle(c, W * 0.024f, orange);
+				cv.fillCircle(c, W * 0.009f, Color(250, 250, 250));
+			}
+		}
 		if (isCal)
 		{
 			const StatusInfo si = ctx.status ? ctx.status() : StatusInfo();

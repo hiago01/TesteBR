@@ -463,6 +463,18 @@ namespace Phone
 				x = b.x - m.px(8);
 			}
 			if (!m_ctx.settings.airplane && m_ctx.settings.wifi) { cv.fillCircle({ x - m.px(8), y0 + hh * 0.5f + m.px(3) }, m.px(2), fg); cv.strokeCircle({ x - m.px(8), y0 + hh * 0.5f + m.px(3) }, m.px(6), fg.alpha(0.8f), std::max(1.0f, m.px(1.4f))); x -= m.px(26); }
+			if (m_ctx.settings.airplane)
+			{
+				// modo aviao ligado: so o aviao no lugar do sinal
+				const float is = m.px(17);
+				DrawSettingsGlyph(cv, "aviao", { x - is, y0 + (hh - is) * 0.5f, is, is }, fg, fg);
+				return;
+			}
+			// modo aviao desligado: barras de sinal + "5G"
+			const float fs5 = m.font(13);
+			const float tw = cv.measure("5G", fs5).x;
+			DrawTextAs(cv, FontTextSemibold, { x - tw - m.px(2), y0, tw + m.px(4), hh }, "5G", fg, fs5, Align::Right);
+			x -= tw + m.px(6);
 			const float bw = m.px(3.6f), gap = m.px(1.8f), hmax = m.px(12);
 			x -= 4 * bw + 3 * gap;
 			for (int i = 0; i < 4; ++i) { const float h = hmax * (0.35f + 0.65f * i / 3.0f); cv.fillRect({ x + i * (bw + gap), y0 + (hh + hmax) * 0.5f - h, bw, h }, i < st.signal ? fg : fg.alpha(0.3f), m.px(0.8f)); }

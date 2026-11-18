@@ -178,7 +178,7 @@ namespace
 			{
 				StatusInfo st; time_t t = time(nullptr); struct tm lt; localtime_r(&t, &lt);
 				char b[8]; snprintf(b, sizeof(b), "%02d:%02d", lt.tm_hour, lt.tm_min);
-				st.clock = b; st.weekday = lt.tm_wday; st.day = lt.tm_mday; st.month = lt.tm_mon + 1; st.year = lt.tm_year + 1900;
+				st.clock = b; st.hour = lt.tm_hour; st.minute = lt.tm_min; st.second = lt.tm_sec; st.weekday = lt.tm_wday; st.day = lt.tm_mday; st.month = lt.tm_mon + 1; st.year = lt.tm_year + 1900;
 				st.signal = 4; st.battery = -1;                         // bateria do Android nao e lida (oculta; nada inventado)
 				return st;
 			};
