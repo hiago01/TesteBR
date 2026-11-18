@@ -159,16 +159,11 @@ namespace
 			if (m_blip && pGame) pGame->DisableMarker(m_blip);
 			m_blip = 0;
 		}
-		// marcacoes 3D do jogador (waypoint3d.cpp guarda a lista que o servidor manda; o mapa so le e pede a criacao)
+		// marcacoes 3D do jogador (waypoint3d.cpp guarda a lista que o servidor manda; o mapa so le) + o destino 3D exclusivo
 		int  pinCount() override { return Waypoint3D::Count(); }
 		bool pinAt(int i, float& x, float& y, std::string& label) override { return Waypoint3D::Get(i, x, y, label); }
-		void createPin(float x, float y, float z, const std::string& name) override
-		{
-			if (!pNetGame || name.empty() || !Waypoint3D::ServerSupports()) return;      // servidor sem o org.pwn novo: nao manda comando desconhecido
-			char b[220];
-			std::snprintf(b, sizeof(b), "/marcarmapa %.1f %.1f %.1f %s", x, y, z, name.c_str());
-			pNetGame->SendChatCommand(b);
-		}
+		void setDestMarker(float x, float y, float z, const std::string& name) override { Waypoint3D::SetDest(x, y, z, name); }   // marcacao 3D unica do destino (so cliente)
+		void clearDestMarker() override { Waypoint3D::ClearDest(); }
 		void sendCommand(const char* cmd) override { if (pNetGame && g_serverSupports.load()) pNetGame->SendChatCommand(cmd); }
 		int64_t nowMs() override { return NowMsReal(); }
 		int tilesLoaded() override { return m_loaded; }

@@ -23,6 +23,9 @@ namespace Waypoint3D
 	// leitura para o MAPA ABERTO (worldmap.cpp): as marcacoes visiveis que o servidor mandou (sem a sede). Qualquer thread.
 	int  Count();
 	bool Get(int i, float& x, float& y, std::string& label);   // label = nome como o jogador digitou
-	bool ServerSupports();                   // true depois que o servidor mandou a lista (o org.pwn com /marcarmapa esta ativo)
+	// DESTINO do mapa aberto: UMA marcacao 3D exclusiva (so cliente, nao salva). Cada toque no mapa substitui a anterior; "limpar GPS"/chegada apagam.
+	// Divide o mesmo lugar da sede do grupo (op 21): quem foi marcado por ultimo vale. z <= -900 = ao nivel do chao.
+	void SetDest(float x, float y, float z, const std::string& label);
+	void ClearDest();
 	void Draw(ImGuiRenderer* r, float k);    // k = altura da tela / 540
 }

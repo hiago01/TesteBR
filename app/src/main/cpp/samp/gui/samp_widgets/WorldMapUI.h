@@ -44,8 +44,9 @@ namespace WorldMap
 		// ---- marcacoes 3D do jogador (servidor org.pwn: /marcar; o cliente guarda a lista em waypoint3d.cpp) ----
 		virtual int  pinCount() { return 0; }
 		virtual bool pinAt(int i, float& x, float& y, std::string& label) { (void)i; (void)x; (void)y; (void)label; return false; }
-		// toque no mapa/local: pede ao servidor que crie a marcacao 3D (z = -1000: o cliente acha o chao). So faz algo se o servidor suporta.
-		virtual void createPin(float x, float y, float z, const std::string& name) { (void)x; (void)y; (void)z; (void)name; }
+		// marcacao 3D do DESTINO (exclusiva: so existe uma; um novo toque substitui a anterior; nao e salva). z = -1000: o cliente acha o chao.
+		virtual void setDestMarker(float x, float y, float z, const std::string& name) { (void)x; (void)y; (void)z; (void)name; }
+		virtual void clearDestMarker() {}
 	};
 
 	class Ui
@@ -316,6 +317,7 @@ namespace WorldMap
 	inline void Ui::ClearGps(bool notify)
 	{
 		if (m_gps.on) P->clearGps();
+		P->clearDestMarker();
 		m_gps = Gps();
 		m_route.clear(); ClearLocalRoute();
 		m_selLoc = -1;
@@ -349,7 +351,7 @@ namespace WorldMap
 		P->setGps(l.x, l.y, l.z);
 		if (fromList) CenterOn(m_view, l.x, l.y);
 		Cmd("/mapax sel %d", l.id);
-		P->createPin(l.x, l.y, l.z, ClipUtf8(l.name, 24));                    // e a marcacao 3D com o nome do local
+		P->setDestMarker(l.x, l.y, l.z, ClipUtf8(l.name, 24));                // marcacao 3D (unica) com o nome do local
 		Toast("GPS: " + l.name);
 	}
 
@@ -378,7 +380,8 @@ namespace WorldMap
 		P->setGps(wx, wy, 0.0f);
 		Cmd("/mapax pos %d %d", (int)std::lround(wx), (int)std::lround(wy));
 		std::string nm = label.empty() ? ZoneLabel(wx, wy) : label;
-		if (create) P->createPin(wx, wy, -1000.0f, ClipUtf8(nm.empty() ? std::string("Marcacao") : nm, 24));      // marcacao 3D com o nome do lugar clicado
+		if (create) P->setDestMarker(wx, wy, -1000.0f, ClipUtf8(nm.empty() ? std::string("Destino") : nm, 24));      // marcacao 3D (unica) com o nome do lugar clicado
+		else P->clearDestMarker();                                                                                 // GPS numa marcacao salva: ela ja tem o proprio 3D
 		Toast(nm.empty() ? std::string("GPS marcado") : "GPS marcado: " + nm);
 	}
 
@@ -1078,7 +1081,7 @@ namespace WorldMap
 			auto hot = [&](int id) { for (const Finger& f : m_f) if (f.down && f.region == 3 && f.btn == id) return true; return false; };
 			DrawButton(r, L.closeA, L.closeB, "FECHAR", blue, 13.0f * k, hot(BTN_CLOSE));
 			if (m_gps.on) DrawButton(r, L.clrA, L.clrB, "LIMPAR GPS", btn, 12.0f * k, hot(BTN_CLEAR));
-			const char* hint = "Arraste para mover | pinca para zoom | toque para marcar o GPS e a marcacao 3D";
+			const char* hint = "Arraste para mover | pinca para zoom | toque para marcar o GPS (e o 3D)";
 			const ImVec2 ts = r->calculateTextSize(hint, 11.0f * k);
 			r->drawText(ImVec2(L.panB.x - L.pad - ts.x, L.barY + (L.barH - ts.y) * 0.5f), mute, hint, false, 11.0f * k);
 		}

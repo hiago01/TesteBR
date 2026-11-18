@@ -28,9 +28,8 @@ namespace
 	constexpr int kMax = 12;
 
 	struct Pin { float x = 0, y = 0, z = 0; std::string name, label; };
-	std::atomic<bool> g_seen{false};
 	std::mutex       g_mtx;
-	Pin              g_sede; bool g_sedeOn = false;      // marcacao temporaria do servidor (op 21): "SEDE (grupo)"
+	Pin              g_sede; bool g_sedeOn = false; int g_sedeSrc = 0;     // src: 1 = sede (servidor, op 21), 2 = destino do mapa aberto (cliente)      // marcacao temporaria do servidor (op 21): "SEDE (grupo)"
 	std::vector<Pin> g_pins;            // escrito pela thread de rede, lido pela de desenho (copia por quadro)
 
 	// nome em MAIUSCULAS (UTF-8): ASCII e letras latinas acentuadas (U+00E0..U+00FE, exceto o sinal de divisao) como no HUD de referencia
@@ -111,7 +110,6 @@ void Waypoint3D::OnPacket(RakNet::BitStream& bs)
 	}
 	std::lock_guard<std::mutex> l(g_mtx);
 	g_pins = std::move(v);
-	g_seen.store(true);
 }
 
 void Waypoint3D::OnSede(RakNet::BitStream& bs)
@@ -125,16 +123,15 @@ void Waypoint3D::OnSede(RakNet::BitStream& bs)
 	p.name = Upper(p.name);
 	if (p.name.empty()) p.name = "SEDE";
 	std::lock_guard<std::mutex> l(g_mtx);
-	g_sedeOn = on != 0;
-	if (g_sedeOn) g_sede = std::move(p);
+	if (on) { g_sedeOn = true; g_sedeSrc = 1; g_sede = std::move(p); }
+	else if (g_sedeSrc == 1) g_sedeOn = false;                           // o servidor so apaga o que ele mesmo criou (nao o destino do mapa)
 }
 
 void Waypoint3D::Reset()
 {
 	std::lock_guard<std::mutex> l(g_mtx);
 	g_pins.clear();
-	g_sedeOn = false;
-	g_seen.store(false);
+	g_sedeOn = false; g_sedeSrc = 0;
 }
 
 int Waypoint3D::Count() { std::lock_guard<std::mutex> l(g_mtx); return (int)g_pins.size(); }
@@ -145,7 +142,20 @@ bool Waypoint3D::Get(int i, float& x, float& y, std::string& label)
 	x = g_pins[i].x; y = g_pins[i].y; label = g_pins[i].label;
 	return true;
 }
-bool Waypoint3D::ServerSupports() { return g_seen.load(); }
+void Waypoint3D::SetDest(float x, float y, float z, const std::string& label)
+{
+	if (!(std::fabs(x) < 100000.0f && std::fabs(y) < 100000.0f && std::fabs(z) < 100000.0f)) return;
+	Pin p; p.x = x; p.y = y; p.z = z;
+	p.label = label.empty() ? std::string("Destino") : label;
+	p.name = Upper(p.label);
+	std::lock_guard<std::mutex> l(g_mtx);
+	g_sede = std::move(p); g_sedeOn = true; g_sedeSrc = 2;
+}
+void Waypoint3D::ClearDest()
+{
+	std::lock_guard<std::mutex> l(g_mtx);
+	if (g_sedeSrc == 2) g_sedeOn = false;
+}
 
 void Waypoint3D::Draw(ImGuiRenderer* r, float k)
 {
