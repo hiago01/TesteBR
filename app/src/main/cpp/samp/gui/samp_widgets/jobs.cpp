@@ -16,6 +16,7 @@
 #include "jobs.h"
 #include "garagepanel.h"
 #include "carinteract.h"
+#include "waypoint3d.h"
 #include "maximomenu.h"
 
 #include <algorithm>
@@ -192,6 +193,7 @@ void JobsUI::Reset()
 	{ std::lock_guard<std::mutex> l(g_mkMutex); g_mkNetA.clear(); g_mkNetB.clear(); g_mkNetC.clear(); g_mkNetD.clear(); g_mkNet.clear(); }
 	g_scFolded.store(false);
 	CarInteract::Reset();
+	Waypoint3D::Reset();
 	ChatSetAllowed(false);
 	ProvadorSetAllowed(false);
 	g_mkVer.fetch_add(1);
@@ -250,6 +252,7 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	if (op == 3) { Close(false); return; }
 	if (op == 2) { uint8_t c = 0; if (bs.Read(c)) g_resultCode.store(c); return; }
 	if (op == 13) { GaragePanel::OnList(bs); g_garage.store(true); if (!g_open.exchange(true)) { g_flush.store(true); g_resetView.store(true); } return; }   // lista da garagem: abre a tela
+	if (op == 20) { Waypoint3D::OnPacket(bs); return; }   // marcacoes 3D de GPS do jogador (servidor org.pwn /marcar)
 	if (op == 15) { CarInteract::OnPacket(bs); return; }   // interacao com o proprio carro (chave): ponto "Abrir interacao"
 	if (op == 14) { if (g_garage.load()) JobsUI::Close(false); return; }                                                                 // o servidor fecha a garagem (carro retirado)
 	if (op == 12) { uint8_t a = 0; if (bs.Read(a)) ProvadorSetAllowed(a != 0); return; }   // u8: libera o /provador
@@ -371,6 +374,9 @@ void JobsUI::draw(ImGuiRenderer* r)
 	// ---- marcadores no mundo (anel no chao, circulo com icone, seta, texto sobre o NPC) ----
 	if (!g_open.load()) DrawMarkers(r, k, now);
 	else g_mkHit.clear();
+
+	// ---- marcacoes 3D de GPS do jogador (pino + nome + distancia); a tela aberta (agencia/garagem) cobre o mundo ----
+	if (!g_open.load()) Waypoint3D::Draw(r, k);
 
 	// ---- interacao com o proprio carro (chave): ponto "Abrir interacao" + menu Trancar/Destrancar; o toque dele vem antes dos demais ----
 	if (!g_open.load())
