@@ -7,6 +7,16 @@
 #include "../log.h"
 #include "../vendor/armhook/patch.h"
 #include "Renderer.h"
+#include <set>
+#include <vector>
+#include <cmath>
+#include <ctime>
+#include <algorithm>
+#include "Pools.h"
+#include "Streaming.h"
+#include "game/Models/ModelInfo.h"
+#include "game/Collision/ColModel.h"
+#include "game/Entity/Building.h"
 
 namespace
 {
@@ -48,6 +58,65 @@ namespace
     static int      s_nDone = 0;
     static unsigned s_logTick = 0;
 
+
+    // --- Sonda de diagnostico: a cada ~6 s, com a camera fora de +-3000, loga o estado dos predios proximos ----------------
+    static const float* s_camPos = nullptr;   // CRenderer::ms_vecCameraPosition (nativo)
+
+    static std::string Ids(const std::set<int>& st)
+    {
+        std::string r; int n = 0;
+        for (int id : st) { if (n++ >= 10) { r += "..."; break; } char b[40]; CBaseModelInfo* mi = CModelInfo::ms_modelInfoPtrs[id];
+            snprintf(b, sizeof b, "%d(%s) ", id, mi ? mi->m_modelName : "?"); r += b; }
+        return r;
+    }
+
+    static void Probe()
+    {
+        static unsigned logged = 0; static time_t last = 0;
+        if (!s_camPos || logged >= 30) return;
+        const time_t now = time(nullptr);
+        if (now - last < 6) return;
+        last = now; ++logged;
+        const float cx = s_camPos[0], cy = s_camPos[1], cz = s_camPos[2];
+        auto* pool = CPools::ms_pBuildingPool;
+        if (!pool) return;
+        int total = 0, far_ = 0, perto = 0, semRw = 0;
+        std::set<int> semCol, naoCarregado, comRwNulo;
+        struct Near { float d; CBuilding* b; };
+        std::vector<Near> nearest;
+        const int n = pool->GetSize();
+        for (int i = 0; i < n; i++)
+        {
+            if (pool->IsFreeSlotAtIndex(i)) continue;
+            CBuilding* b = pool->GetAt(i);
+            if (!b) continue;
+            ++total;
+            const CVector& p = b->GetPosition();
+            if (std::fabs(p.x) > 3000.0f || std::fabs(p.y) > 3000.0f) ++far_;
+            const float d = std::hypot(p.x - cx, p.y - cy);
+            if (d > 400.0f) continue;
+            ++perto;
+            const int id = b->m_nModelIndex;
+            CBaseModelInfo* mi = (id >= 0 && id < CModelInfo::NUM_MODEL_INFOS) ? CModelInfo::ms_modelInfoPtrs[id] : nullptr;
+            if (!mi) continue;
+            if (!mi->m_pColModel) semCol.insert(id);
+            if (!CStreaming::IsModelLoaded(id)) naoCarregado.insert(id);
+            else if (!b->m_pRwObject) { ++semRw; comRwNulo.insert(id); }
+            nearest.push_back({d, b});
+        }
+        std::sort(nearest.begin(), nearest.end(), [](const Near& a, const Near& b2) { return a.d < b2.d; });
+        FLog("[FARWORLD] sonda #%u camera=(%.0f,%.0f,%.0f) predios no pool=%d (fora de +-3000=%d) | a <400 m=%d | modelos SEM colisao: %zu [%s] | NAO carregados: %zu [%s] | carregado mas sem RW: %d [%s]",
+             logged, cx, cy, cz, total, far_, perto, semCol.size(), Ids(semCol).c_str(), naoCarregado.size(), Ids(naoCarregado).c_str(), semRw, Ids(comRwNulo).c_str());
+        for (size_t k = 0; k < nearest.size() && k < 8; k++)
+        {
+            CBuilding* b = nearest[k].b; const int id = b->m_nModelIndex; CBaseModelInfo* mi = CModelInfo::ms_modelInfoPtrs[id];
+            FLog("[FARWORLD]   perto #%zu: id=%d '%s' dist=%.0f draw=%.0f stream=%d(1=ok) rw=%p col=%p tris=%u usaColisao=%d visivel=%d lod=%d",
+                 k, id, mi->m_modelName, nearest[k].d, mi->m_fDrawDistance, (int)CStreaming::GetInfo(id).m_nLoadState, (void*)b->m_pRwObject,
+                 (void*)mi->m_pColModel, mi->m_pColModel ? (unsigned)mi->m_pColModel->GetTriCount() : 0u,
+                 (int)b->m_bUsesCollision, (int)b->m_bIsVisible, (int)b->m_nLodIndex);
+        }
+    }
+
     static void h_ScanSectorList(int x, int y)
     {
         o_ScanSectorList(x, y);
@@ -64,6 +133,7 @@ namespace
         if (s_nDone < 96) s_done[s_nDone++] = key; else return;
 
         o_ScanSectorList(cx, cy);
+        if (s_nDone == 1) Probe();   // 1x por varredura
 
         if ((++s_logTick % 600u) == 1u)
             FLog("[FARWORLD] setor fora da grade (%d,%d) -> borda (%d,%d); setores de borda varridos neste quadro=%d, visiveis=%d",
@@ -98,6 +168,7 @@ void FarWorld::Install()
     }
     if (!a) return;
 
+    s_camPos = reinterpret_cast<const float*>(CHook::getSymSoft("_ZN9CRenderer20ms_vecCameraPositionE"));
     s_scanCode = reinterpret_cast<const volatile uint16_t*>(g_libGTASA + 0xC18350);   // CWorld::ms_nCurrentScanCode
     const uintptr_t p = CHook::getSymSoft("_ZN9CRenderer14ScanSectorListEii");
     if (!p) { FLog("[FARWORLD] simbolo ScanSectorList nao encontrado: predios ficam registrados mas o renderer NAO varre a borda"); return; }
