@@ -23,6 +23,7 @@
 #include <string>
 #include "../../game/camerazoom.h"
 #include "../../game/CustomAnimTest.h"
+#include "../../game/ReAnimTest.h"
 #include "../../game/CarryTuner.h"
 #include "../../game/CustomDiag.h"
 #include "../../game/movemode.h"
@@ -423,6 +424,14 @@ if (input == "/carregarhud")
         {
             CarryTuner::Toggle();
             addDebugMessage(CarryTuner::IsOpen() ? "[CARREGAR] painel de ajuste aberto (/carregarhud fecha)" : "[CARREGAR] painel fechado");
+            return;
+        }
+if (input == "/reanim" || input.rfind("/reanim ", 0) == 0)
+        {
+            // teste das animacoes do Re Anims sem trocar o ped.ifp oficial (game/ReAnimTest.h)
+            std::string args = input.size() > 7 ? input.substr(8) : std::string();
+            std::string reply = ReAnimTest::Command(args);
+            addDebugMessage("%s", reply.c_str());
             return;
         }
 if (input == "/ifp" || input.rfind("/ifp ", 0) == 0)

@@ -49,6 +49,7 @@ static bool ParseAnp23(Reader& r, bool isAnp3, Pack& out, std::string& err) {
     int nAnims = r.get<int32_t>();
     if (!r.ok || nAnims < 0 || nAnims > 2000) { err = "cabecalho ANP invalido"; return false; }
     out.anims.resize(nAnims);
+    int nCompressedSeqs = 0;   // um unico log por arquivo (o ped.ifp tem ~9000 sequencias comprimidas)
     for (auto& a : out.anims) {
         r.str(a.name, sizeof(a.name), 24);
         int nSeq = r.get<int32_t>();
@@ -76,9 +77,10 @@ static bool ParseAnp23(Reader& r, bool isAnp3, Pack& out, std::string& err) {
                 default: err = "tipo de sequencia desconhecido"; return false;
                 }
             }
-            if (type >= 3) FLog("[IFP] AVISO: %s/%s usa keyframes comprimidos (tempo lido como absoluto)", a.name, s.name);
+            if (type >= 3) ++nCompressedSeqs;
         }
     }
+    if (nCompressedSeqs) FLog("[IFP] AVISO: %d sequencia(s) com keyframes comprimidos (tempo lido como absoluto, 1/60 s)", nCompressedSeqs);
     return r.ok;
 }
 
