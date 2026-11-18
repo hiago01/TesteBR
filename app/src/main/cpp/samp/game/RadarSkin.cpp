@@ -66,8 +66,8 @@ namespace
 		return tex;
 	}
 
-	// size = 0: tamanho do arquivo; senao reduz para size x size (media de area)
-	RwTexture* LoadTile(int idx, int size)
+	// size = 0: tamanho do arquivo; senao reduz para size x size (media de area). water = so a INTERFACE do mapa aberto: agua azul quase transparente
+	RwTexture* LoadTile(int idx, int size, bool water = false)
 	{
 		if (idx < 0 || idx >= kCount || g_missing[idx]) return nullptr;
 		const std::string path = TilePath(idx);
@@ -76,6 +76,7 @@ namespace
 		if (!px) { g_missing[idx] = true; if (++g_failed == 1) FLog("[RADARSKIN] tile ausente/invalido: %s (usa o nativo)", path.c_str()); return nullptr; }
 		char nm[24]; std::snprintf(nm, sizeof(nm), "radarskin%02d", idx);
 		RwTexture* t = nullptr;
+		if (water) RadarSkin::WaterAlpha(px, w, h);
 		if (size > 0 && (w != size || h != size))
 		{
 			std::vector<uint8_t> small;
@@ -132,6 +133,48 @@ namespace
 		if (!t) { g_dbMissing[idx] = true; return nullptr; }
 		++t->refCount;                                    // igual ao radar nativo; RemoveMapSection/RwTextureDestroy devolve
 		++g_dbHit;
+		return t;
+	}
+
+	// ---- banco texdb "mapaui" (texdb/mapaui/mapaui.{txt,etc|dxt.*}): os MESMOS tiles do mapa, mas so para a interface do mapa aberto e com a AGUA AZUL quase
+	// transparente (alfa 1/15). ETC -> RGBA4444, DXT -> DXT5. O radar/minimapa nativo continua com o banco "mapa" (opaco). Gerado por tools/mapa_agua_texdb.py.
+	int  g_uiDbState = 0;
+	bool g_uiDbMissing[kCount] = {};
+	int  g_uiDbHit = 0;
+
+	void InitUiDb()
+	{
+		if (g_uiDbState != 0) return;
+		g_uiDbState = -1;
+		const std::string d = g_pszStorage ? std::string(g_pszStorage) + "texdb/mapaui/" : std::string();
+		if (d.empty() || !FileExists(d + "mapaui.txt")) return;
+		TextureDatabaseRuntime* ref = TextureDatabaseRuntime::GetDatabase("gta3");
+		if (!ref) return;
+		const TextureDatabaseFormat fmt = ref->loadedFormat;
+		const char* ext = fmt == DF_ETC ? "etc" : fmt == DF_DXT ? "dxt" : nullptr;
+		if (!ext) { FLog("[RADARSKIN] mapaui: formato do aparelho (%d) nao gerado (so etc/dxt)", (int)fmt); return; }
+		for (const char* e : { "dat", "toc" })
+			if (!FileExists(d + "mapaui." + ext + "." + e)) { FLog("[RADARSKIN] mapaui: falta mapaui.%s.%s", ext, e); return; }
+		if (!TextureDatabaseRuntime::GetDatabase("mapaui") && !TextureDatabaseRuntime::Load("mapaui", true, fmt)) { FLog("[RADARSKIN] Load(mapaui) falhou: agua opaca"); return; }
+		if (!TextureDatabaseRuntime::GetDatabase("mapaui")) return;
+		g_uiDbState = 1;
+		FLog("[RADARSKIN] banco texdb mapaui carregado (%s): agua azul transparente no mapa aberto", ext);
+	}
+
+	RwTexture* LoadTileUiDb(int idx)
+	{
+		if (idx < 0 || idx >= kCount || g_uiDbMissing[idx]) return nullptr;
+		InitUiDb();
+		if (g_uiDbState != 1) return nullptr;
+		TextureDatabaseRuntime* db = TextureDatabaseRuntime::GetDatabase("mapaui");
+		if (!db) return nullptr;
+		char nm[16]; std::snprintf(nm, sizeof(nm), "gui%03d", idx);
+		TextureDatabaseRuntime::Register(db);
+		RwTexture* t = TextureDatabaseRuntime::GetTexture(nm);
+		TextureDatabaseRuntime::Unregister(db);
+		if (!t) { g_uiDbMissing[idx] = true; return nullptr; }
+		++t->refCount;
+		++g_uiDbHit;
 		return t;
 	}
 
@@ -263,7 +306,7 @@ namespace RadarSkin
 		}
 		if (args == "reload")
 		{
-			std::memset(g_missing, 0, sizeof(g_missing)); std::memset(g_uiMissing, 0, sizeof(g_uiMissing)); std::memset(g_dbMissing, 0, sizeof(g_dbMissing));
+			std::memset(g_missing, 0, sizeof(g_missing)); std::memset(g_uiMissing, 0, sizeof(g_uiMissing)); std::memset(g_dbMissing, 0, sizeof(g_dbMissing)); std::memset(g_uiDbMissing, 0, sizeof(g_uiDbMissing));
 			g_loaded = g_failed = 0;
 			LoadIni();
 			if (g_enabled.load()) PatchOcean(true);
@@ -271,8 +314,8 @@ namespace RadarSkin
 			return "[RADARSKIN] recarregado";
 		}
 		char b[300];
-		std::snprintf(b, sizeof(b), "[RADARSKIN] %s | PNG=%d banco=%s(%d) | streamRadar=%d carregados=%d ausentes=%d | oceano=%d,%d,%d | use /radarskin on|off|reload",
-			g_enabled.load() ? "ligado" : "desligado", (int)FileExists(TilePath(0)), g_dbState == 1 ? g_dbFmt : (g_dbState < 0 ? "indisp" : "?"), g_dbHit, g_streamCalls, g_loaded, g_failed, g_ocean[0], g_ocean[1], g_ocean[2]);
+		std::snprintf(b, sizeof(b), "[RADARSKIN] %s | PNG=%d banco=%s(%d) mapaui=%d(%d) | streamRadar=%d carregados=%d ausentes=%d | oceano=%d,%d,%d | use /radarskin on|off|reload",
+			g_enabled.load() ? "ligado" : "desligado", (int)FileExists(TilePath(0)), g_dbState == 1 ? g_dbFmt : (g_dbState < 0 ? "indisp" : "?"), g_dbHit, g_uiDbState, g_uiDbHit, g_streamCalls, g_loaded, g_failed, g_ocean[0], g_ocean[1], g_ocean[2]);
 		return b;
 	}
 
@@ -286,17 +329,35 @@ namespace RadarSkin
 			g_uiLru.erase(it->second.it); g_uiLru.push_front(idx); it->second.it = g_uiLru.begin();
 			return it->second.tex->raster;
 		}
-		RwTexture* t = LoadTileDb(idx);
-		if (!t) t = LoadTile(idx, 256);
+		RwTexture* t = LoadTileUiDb(idx);                    // 1o: banco mapaui (agua transparente)
+		if (!t) t = LoadTileDb(idx);                         // 2o: banco mapa (opaco)
+		if (!t) t = LoadTile(idx, 256, true);                // 3o: PNG, com a agua transparente feita na CPU
 		if (!t) { g_uiMissing[idx] = true; return nullptr; }
 		g_uiLru.push_front(idx);
 		g_ui[idx] = { t, g_uiLru.begin() };
-		while ((int)g_ui.size() > (g_dbState == 1 ? kCount : kUiMaxResident))   // banco: 144 x 32 KB cabe inteiro; PNG: 48 x 256 KB
+		while ((int)g_ui.size() > (g_dbState == 1 || g_uiDbState == 1 ? kCount : kUiMaxResident))   // banco: 144 tiles cabem inteiros (ja estao na memoria do banco); PNG: 48 x 256 KB
 		{
 			const int old = g_uiLru.back(); g_uiLru.pop_back();
 			auto o = g_ui.find(old);
 			if (o != g_ui.end()) { if (RwTextureDestroy) RwTextureDestroy(o->second.tex); g_ui.erase(o); }
 		}
 		return t->raster;
+	}
+
+	// agua azul -> quase transparente (alfa 1/15 = 7%); terra/estrada/parque ficam opacos; a borda da costa degrada suave. Mesma formula do tools/mapa_agua_texdb.py.
+	void WaterAlpha(unsigned char* rgba, int w, int h)
+	{
+		if (!rgba || w <= 0 || h <= 0) return;
+		const size_t n = (size_t)w * (size_t)h;
+		for (size_t i = 0; i < n; ++i)
+		{
+			unsigned char* p = rgba + i * 4;
+			float f = ((float)p[2] - (float)p[0] - 12.0f) / 92.0f;
+			f = f < 0.0f ? 0.0f : (f > 1.0f ? 1.0f : f);
+			const float a = 1.0f - f * (1.0f - 1.0f / 15.0f);
+			const int q = (int)(a * 15.0f + 0.5f);
+			const int v = (q * 255 + 7) / 15;
+			if (v < (int)p[3]) p[3] = (unsigned char)v;
+		}
 	}
 }

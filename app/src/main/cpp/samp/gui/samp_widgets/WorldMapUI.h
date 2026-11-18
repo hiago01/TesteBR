@@ -238,7 +238,7 @@ namespace WorldMap
 	{
 		const ImColor dim(0, 0, 0, 105);            // escurece o jogo por tras (o mundo continua aparecendo)
 		const ImColor panel(20, 22, 28, 232);
-		const ImColor mapBg(16, 18, 22, 150);       // fundo translucido (sem moldura preta)
+		const ImColor mapBg(16, 18, 22, 0);         // sem fundo: a agua azul do mapa e quase transparente e deixa o jogo (escurecido) aparecer
 		const ImColor border(255, 255, 255, 70);
 		const ImColor glass(8, 10, 14, 150);        // vidro escuro da lista e dos botoes
 		const ImColor hqCol(176, 120, 255, 255);    // sedes de grupos (roxo)
@@ -976,7 +976,7 @@ namespace WorldMap
 		const ImTextureID full = P->fullMap();
 		if (full)
 		{
-			r->drawImage(S(kWorldMin, kWorldMax), S(kWorldMax, kWorldMin), full, ImColor(255, 255, 255, 224));   // levemente translucido
+			r->drawImage(S(kWorldMin, kWorldMax), S(kWorldMax, kWorldMin), full);
 			tilesDrawn = 1;
 		}
 		else

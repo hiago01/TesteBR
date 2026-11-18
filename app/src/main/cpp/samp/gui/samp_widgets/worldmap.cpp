@@ -143,6 +143,7 @@ namespace
 			int w = 0, h = 0, ch = 0;
 			unsigned char* px = stbi_load(path.c_str(), &w, &h, &ch, 4);
 			if (!px) return 0;                 // sem arquivo = usa os tiles
+			RadarSkin::WaterAlpha(px, w, h);   // agua azul quase transparente (so no mapa aberto)
 			m_full = MakeRaster(px, w, h);
 			stbi_image_free(px);
 			FLog("[MAPA] mapa.png %dx%d %s", w, h, m_full ? "ok" : "falhou");

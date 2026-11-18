@@ -28,4 +28,6 @@ namespace RadarSkin
 	std::string Command(const std::string& args);   // /radarskin ...
 	// textura reduzida (256x256) para a interface do mapa aberto; nullptr = usar o tile nativo. So a thread de desenho.
 	void* UiTileRaster(int idx);
+	// interface do mapa: agua azul quase transparente (alfa 7%) numa imagem RGBA8888 (usado nos PNG e no mapa.png). Terra/estradas ficam como estao.
+	void WaterAlpha(unsigned char* rgba, int w, int h);
 }
