@@ -7,6 +7,7 @@
 #include "../../vendor/stb/stb_image.h"   // implementacao (STB_IMAGE_IMPLEMENTATION) esta em game/sprite2d.cpp
 #include "hudatlas.h"
 #include "ZoneNames.h"
+#include "MiniCity.h"
 #include "minimaptap_logic.h"
 #include "worldmap.h"
 #include "../../game/stamina.h"
@@ -693,6 +694,7 @@ namespace
 				{
 					const CVector p = pp->m_pPed->GetPosition();
 					ZoneNames::Describe(p.x, p.y, p.z, s_txt, sizeof(s_txt));
+					if (MiniCity::gInCity.load()) std::snprintf(s_txt, sizeof(s_txt), "Cidade Nova");   // dentro da cidade nova (fora do mapa original)
 					// direcao do VEICULO (motorista): GetHeading = atan2(-frente.x, frente.y), anti-horario como no jogo -> rumo horario
 					const float hd = (pp->m_pPed->pVehicle ? pp->m_pPed->pVehicle->GetHeading() : pp->m_pPed->m_fCurrentRotation) * 57.2957795f;
 					s_bearing = std::fmod(std::fmod(-hd, 360.0f) + 360.0f, 360.0f);

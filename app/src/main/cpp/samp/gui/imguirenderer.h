@@ -28,6 +28,8 @@ public:
 	void drawImage(const ImVec2& a, const ImVec2& b, ImTextureID texture);
 	void drawImage(const ImVec2& a, const ImVec2& b, ImTextureID texture, const ImColor& tint,
 		const ImVec2& uv_a = ImVec2(0.0f, 0.0f), const ImVec2& uv_b = ImVec2(1.0f, 1.0f));
+	// poligono CONVEXO texturizado (n >= 3, pontos em ordem) - usado pelo minimapa da cidade (quadrilateros girados ja recortados)
+	void drawTexPoly(const ImVec2* points, const ImVec2* uvs, int num_points, ImTextureID texture, const ImColor& tint = ImColor(255, 255, 255, 255));
 
 	void pushClipRect(const ImVec2& min, const ImVec2& max, bool intersect = false);
 	void popClipRect();

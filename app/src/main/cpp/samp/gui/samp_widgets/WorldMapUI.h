@@ -12,6 +12,7 @@
 #include "MapLines.h"
 #include "RoadGraph.h"
 #include "MiniRoute.h"
+#include "MiniCity.h"
 #include "ZoneNames.h"
 
 #include <algorithm>
@@ -247,6 +248,7 @@ namespace WorldMap
 		void DrawRoads(ImGuiRenderer* r, const ImVec2& origin, float k);
 		void PublishMiniRoute();                       // minimapa: publica a rota (mundo) para o hook do radar
 		void DrawMiniRoute(ImGuiRenderer* r);          // minimapa: desenha a rota ja convertida para pixels
+		void DrawMiniCity(ImGuiRenderer* r);           // minimapa: imagem da cidade nova por cima do radar (so dentro da cidade)
 		void DrawRouteLine(ImGuiRenderer* r, const std::vector<Vec2>& rt, const ImVec2& origin, float k, bool havePlayer, float plx, float ply);
 		void Cmd(const char* fmt, int a = 0, int b = 0)
 		{
@@ -995,6 +997,88 @@ namespace WorldMap
 		MiniRoute::PublishWorld(wp, straight);
 	}
 
+	inline void Ui::DrawMiniCity(ImGuiRenderer* r)
+	{
+		if (!m_zoneCity || !MiniCity::gEnabled.load()) return;
+		MiniCity::Xf t;
+		if (!MiniCity::GetXf(t, P->nowMs())) return;
+		const float wpp = MiniCity::WorldPerPx(t);                              // metros por pixel na tela
+		if (!(wpp > 0.0f) || !Finite(wpp)) return;
+		std::vector<ImVec2> pts; std::vector<ImVec2> uvs;
+		std::vector<MiniCity::V> quad, clipped;
+		// retangulo do mundo [x0,x1] x [y0,y1] com a imagem tex (v=0 no NORTE) -> quadrilatero girado, recortado na mascara do radar
+		auto drawRect = [&](float x0, float y0, float x1, float y1, ImTextureID tex)
+		{
+			quad.clear();
+			quad.push_back({ MiniCity::Apply(t, x0, y1), { 0.0f, 0.0f } });
+			quad.push_back({ MiniCity::Apply(t, x1, y1), { 1.0f, 0.0f } });
+			quad.push_back({ MiniCity::Apply(t, x1, y0), { 1.0f, 1.0f } });
+			quad.push_back({ MiniCity::Apply(t, x0, y0), { 0.0f, 1.0f } });
+			for (const auto& q : quad) if (!Finite(q.p.x) || !Finite(q.p.y)) return;
+			MiniCity::ClipTex(quad, t.poly, clipped);
+			if (clipped.size() < 3) return;
+			pts.clear(); uvs.clear();
+			for (const auto& q : clipped) { pts.push_back(ImVec2(q.p.x, q.p.y)); uvs.push_back(ImVec2(q.uv.x, q.uv.y)); }
+			r->drawTexPoly(pts.data(), uvs.data(), (int)pts.size(), tex);
+		};
+		// fundo: o disco inteiro azul-agua (cor do "fora do mundo" dos tiles), para a imagem nao flutuar sobre o vazio do jogo
+		{
+			std::vector<ImVec2> bg;
+			for (const Vec2& p : t.poly) bg.push_back(ImVec2(p.x, p.y));
+			r->drawConvexPolyFilled(bg.data(), (int)bg.size(), ImColor(143, 189, 240, 255));
+		}
+		float ix0, iy0, ix1, iy1; P->cityImageRect(ix0, iy0, ix1, iy1);
+		const ImTextureID ov = P->cityOverview();
+		if (ov && ix1 > ix0 && iy1 > iy0) drawRect(ix0, iy0, ix1, iy1, ov);
+		// detalhe: os tiles (1,6 m/px) que tocam o disco visivel, so se o zoom do radar pede (senao a imagem geral basta)
+		float gx0, gy1, tileM; int cols, rows; P->cityGrid(gx0, gy1, tileM, cols, rows);
+		if (wpp < 3.2f && tileM > 0.0f && cols > 0 && rows > 0)
+		{
+			const float R = t.rad * wpp * 1.25f;
+			const int c0 = std::max(0, (int)std::floor((t.wx - R - gx0) / tileM)), c1 = std::min(cols - 1, (int)std::floor((t.wx + R - gx0) / tileM));
+			const int r0 = std::max(0, (int)std::floor((gy1 - (t.wy + R)) / tileM)), r1 = std::min(rows - 1, (int)std::floor((gy1 - (t.wy - R)) / tileM));
+			int guard = 0;
+			for (int rr = r0; rr <= r1 && guard < 9; rr++)
+				for (int cc = c0; cc <= c1 && guard < 9; cc++)
+				{
+					const ImTextureID tex = P->cityTile(cc, rr);
+					if (!tex) continue;
+					guard++;
+					const float tx0 = gx0 + cc * tileM, ty1 = gy1 - rr * tileM;
+					drawRect(tx0, ty1 - tileM, tx0 + tileM, ty1, tex);
+				}
+		}
+		// destino do GPS (a rota em si e a linha do DrawMiniRoute)
+		if (m_gps.on)
+		{
+			const Vec2 g = MiniCity::Apply(t, m_gps.x, m_gps.y);
+			if (MiniCity::InsideConvex(t.poly, g.x, g.y))
+			{
+				const float pr = Clampf(t.rad * 0.06f, 3.0f, 9.0f);
+				r->drawRoundedRect(ImVec2(g.x - pr - 1.5f, g.y - pr - 1.5f), ImVec2(g.x + pr + 1.5f, g.y + pr + 1.5f), ImColor(255, 255, 255, 255), pr + 1.5f, true);
+				r->drawRoundedRect(ImVec2(g.x - pr, g.y - pr), ImVec2(g.x + pr, g.y + pr), ImColor(20, 20, 20, 255), pr, true);
+			}
+		}
+		// seta do jogador (o radar nativo a desenhou por baixo da imagem): ponta para o rumo do veiculo
+		{
+			float dx = t.hdx, dy = t.hdy;
+			const float dl = std::hypot(dx, dy);
+			if (dl > 0.001f) { dx /= dl; dy /= dl; } else { dx = 0.0f; dy = -1.0f; }   // sem rumo: aponta para cima
+			const float sz = Clampf(t.rad * 0.11f, 6.0f, 16.0f);
+			const ImVec2 tip(t.cx + dx * sz * 1.25f, t.cy + dy * sz * 1.25f);
+			const ImVec2 l(t.cx - dx * sz * 0.8f - dy * sz * 0.75f, t.cy - dy * sz * 0.8f + dx * sz * 0.75f);
+			const ImVec2 rr(t.cx - dx * sz * 0.8f + dy * sz * 0.75f, t.cy - dy * sz * 0.8f - dx * sz * 0.75f);
+			const ImVec2 n(t.cx - dx * sz * 0.35f, t.cy - dy * sz * 0.35f);
+			ImVec2 outer[4] = { tip, l, n, rr };
+			r->drawConvexPolyFilled(outer, 4, ImColor(15, 15, 15, 255));
+			const float k = 0.72f;
+			const ImVec2 tip2(t.cx + dx * sz * 1.25f * k, t.cy + dy * sz * 1.25f * k);
+			const ImVec2 l2(t.cx + (l.x - t.cx) * k, t.cy + (l.y - t.cy) * k), r2(t.cx + (rr.x - t.cx) * k, t.cy + (rr.y - t.cy) * k), n2(t.cx + (n.x - t.cx) * k, t.cy + (n.y - t.cy) * k);
+			ImVec2 inner[4] = { tip2, l2, n2, r2 };
+			r->drawConvexPolyFilled(inner, 4, ImColor(255, 255, 255, 255));
+		}
+	}
+
 	inline void Ui::DrawMiniRoute(ImGuiRenderer* r)
 	{
 		std::vector<std::vector<Vec2>> runs;
@@ -1127,6 +1211,7 @@ namespace WorldMap
 		if (m_sendClose.exchange(false)) P->sendCommand("/mapax close");
 		DrainPending();
 		{ float zx = 0, zy = 0, zh = 0; const bool zp = P->player(zx, zy, zh); UpdateZone(zp, zx, zy, false); }
+		MiniCity::gInCity.store(m_zoneCity);      // o hook do radar (hooks.cpp) e o nome do local (hud.cpp) leem isto
 		TickGps();
 
 		// animacao de TV: liga (sobe) quando abre, desliga (desce) quando fecha; o mapa segue desenhado ate apagar
@@ -1140,6 +1225,7 @@ namespace WorldMap
 		if (closing && m_vis <= 0.0f)
 		{
 			PublishMiniRoute();     // mapa fechado: a rota aparece no minimapa (radar nativo)
+			DrawMiniCity(r);        // cidade nova: imagem no minimapa (por baixo da rota)
 			DrawMiniRoute(r);
 			ResetDrawState();
 			return;

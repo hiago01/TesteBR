@@ -20,6 +20,7 @@
 #include "../gui/samp_widgets/minimaptap_logic.h"
 #include "../gui/samp_widgets/worldmap.h"
 #include "../gui/samp_widgets/MiniRoute.h"
+#include "../gui/samp_widgets/MiniCity.h"
 #include "RW/RenderWare.h"
 #include "RW/RwHelper.h"
 #include <chrono>
@@ -519,7 +520,8 @@ typedef void (*MiniXformFn)(MiniV2* out, const MiniV2* in);
 
 static void MiniRoute_AfterRadar()
 {
-    if (!MiniRoute::gEnabled.load()) { MiniRoute::ClearScreen(); return; }
+    const bool routeOn = MiniRoute::gEnabled.load();   // a linha da rota pode estar desligada (/mapa minimapa off) e a cidade continuar
+    if (!routeOn) MiniRoute::ClearScreen();
     static bool resolved = false;
     static MiniXformFn toRadar = nullptr, toScreen = nullptr;
     if (!resolved)
@@ -532,11 +534,7 @@ static void MiniRoute_AfterRadar()
         }
         FLog("[MINIMAPA] rota: TransformRealWorldPointToRadarSpace=%p TransformRadarPointToScreenSpace=%p", (void*)toRadar, (void*)toScreen);
     }
-    if (!toRadar || !toScreen) return;
-
-    std::vector<MiniRoute::Vec2> world;
-    bool straight = false;
-    if (!MiniRoute::GetWorld(world, straight)) { MiniRoute::ClearScreen(); return; }
+    if (!toRadar || !toScreen) { MiniCity::ClearXf(); return; }
 
     auto fRadar  = [&](MiniRoute::Vec2 w) { MiniV2 in{ w.x, w.y }, out{ 0, 0 }; toRadar(&out, &in); return MiniRoute::Vec2{ out.x, out.y }; };
     auto fScreen = [&](MiniRoute::Vec2 r) { MiniV2 in{ r.x, r.y }, out{ 0, 0 }; toScreen(&out, &in); return MiniRoute::Vec2{ out.x, out.y }; };
@@ -544,11 +542,45 @@ static void MiniRoute_AfterRadar()
     // disco do radar em pixels: centro = (0,0) do espaco do radar; raio = distancia ate (1,0)
     const MiniRoute::Vec2 c = fScreen({ 0.0f, 0.0f }), e = fScreen({ 1.0f, 0.0f });
     const float radiusPx = std::sqrt((e.x - c.x) * (e.x - c.x) + (e.y - c.y) * (e.y - c.y));
-    if (!std::isfinite(radiusPx) || radiusPx < 8.0f || radiusPx > 2000.0f) { MiniRoute::ClearScreen(); return; }
+    const bool radiusOk = std::isfinite(radiusPx) && radiusPx >= 8.0f && radiusPx <= 2000.0f;
+    // recorte no formato real da mascara (quadrado arredondado); sem mascara valida, no disco (raio 0,965 do radar)
+    const std::vector<MiniRoute::Vec2> poly = radiusOk ? MiniRoute::MaskPolygon(MiniRoute::GetMask(), c.x, c.y, radiusPx, 0.97f) : std::vector<MiniRoute::Vec2>();
+
+    // ---- CIDADE NOVA no minimapa: mede como o mundo vira pixels no radar (transformacao afim) e publica para a interface desenhar a imagem ----
+    MiniCity::ClearXf();
+    if (radiusOk && MiniCity::gEnabled.load() && MiniCity::gInCity.load() && pNetGame && pNetGame->GetPlayerPool())
+    {
+        CLocalPlayer* lp = pNetGame->GetPlayerPool()->GetLocalPlayer();
+        CPlayerPed* pp = lp ? lp->GetPlayerPed() : nullptr;
+        if (pp && pp->m_pPed)
+        {
+            const CVector pv = pp->m_pPed->GetPosition();
+            const float d = 100.0f;
+            const MiniRoute::Vec2 s0 = fScreen(fRadar({ pv.x, pv.y })), sx = fScreen(fRadar({ pv.x + d, pv.y })), sy = fScreen(fRadar({ pv.x, pv.y + d }));
+            MiniCity::Xf xf = MiniCity::Make(pv.x, pv.y, s0, sx, sy, d);
+            const float ok = xf.ax + xf.ay + xf.bx + xf.by + xf.sx + xf.sy;
+            if (std::isfinite(ok) && MiniCity::WorldPerPx(xf) > 0.0f)
+            {
+                xf.cx = c.x; xf.cy = c.y; xf.rad = radiusPx;
+                if (!poly.empty()) xf.poly = poly;
+                else { for (int i = 0; i < 32; i++) { const float a = (float)i * 6.2831853f / 32.0f; xf.poly.push_back({ c.x - std::sin(a) * radiusPx * 0.965f, c.y + std::cos(a) * radiusPx * 0.965f }); } }
+                // rumo do veiculo (motorista) ou do jogador a pe: GetHeading = atan2(-frente.x, frente.y) -> frente = (-sin h, cos h) no mundo
+                const float h = pp->m_pPed->pVehicle ? pp->m_pPed->pVehicle->GetHeading() : pp->m_pPed->m_fCurrentRotation;
+                const float fx = -std::sin(h) * d, fy = std::cos(h) * d;
+                const MiniRoute::Vec2 sf = fScreen(fRadar({ pv.x + fx, pv.y + fy }));
+                const float hl = std::hypot(sf.x - s0.x, sf.y - s0.y);
+                if (std::isfinite(hl) && hl > 0.001f) { xf.hdx = (sf.x - s0.x) / hl; xf.hdy = (sf.y - s0.y) / hl; }
+                using namespace std::chrono;
+                MiniCity::PublishXf(std::move(xf), duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
+            }
+        }
+    }
+
+    std::vector<MiniRoute::Vec2> world;
+    bool straight = false;
+    if (!routeOn || !radiusOk || !MiniRoute::GetWorld(world, straight)) { MiniRoute::ClearScreen(); return; }
 
     std::vector<std::vector<MiniRoute::Vec2>> runs;
-    // recorte no formato real da mascara (quadrado arredondado); sem mascara valida, no disco (raio 0,965 do radar)
-    const std::vector<MiniRoute::Vec2> poly = MiniRoute::MaskPolygon(MiniRoute::GetMask(), c.x, c.y, radiusPx, 0.97f);
     static int s_logged = 0;
     if (s_logged < 3) { s_logged++; FLog("[MINIMAPA] centro=(%.1f,%.1f) raio=%.1f px, recorte=%s", c.x, c.y, radiusPx, poly.empty() ? "circulo" : "mascara"); }
     if (!poly.empty()) MiniRoute::BuildPoly(world, fRadar, fScreen, poly, runs);
@@ -561,7 +593,7 @@ void CHud__DrawRadar_hook()
 {
     // minimapa so para o MOTORISTA dentro de um veiculo (Hud::g.mapOnlyDriving): fora disso o radar nem e desenhado
     // (o retangulo do minimapa para de ser publicado: o toque que abre o /mapa e o nome do local tambem somem)
-    if (!Hud::MapAllowed()) { MiniRoute::ClearScreen(); return; }
+    if (!Hud::MapAllowed()) { MiniRoute::ClearScreen(); MiniCity::ClearXf(); return; }
 
     RadarScreenRect* radarRect = nullptr;
     uintptr_t transformState = 0;

@@ -423,6 +423,12 @@ std::string WorldMapWidget::DebugCommand(const std::string& args)
 		std::snprintf(b, sizeof(b), "[MAPA] camada de ruas %s (grafo: %s). Aberta so com o mapa aberto (/mapa)", on ? "LIGADA" : "desligada", g_plat.roadStateName());
 		return b;
 	}
+	if (args.rfind("minicidade", 0) == 0)                   // /mapa minicidade on|off  (imagem da cidade nova no minimapa; padrao: ligada)
+	{
+		const bool on = args.find("off") == std::string::npos && (args.find("on") != std::string::npos || !MiniCity::gEnabled.load());
+		MiniCity::gEnabled.store(on);
+		return on ? "[MAPA] cidade no minimapa LIGADA" : "[MAPA] cidade no minimapa desligada";
+	}
 	if (args.rfind("minimapa", 0) == 0)                     // /mapa minimapa on|off  (linha da rota no minimapa)
 	{
 		const bool on = args.find("off") == std::string::npos && (args.find("on") != std::string::npos || !MiniRoute::gEnabled.load());

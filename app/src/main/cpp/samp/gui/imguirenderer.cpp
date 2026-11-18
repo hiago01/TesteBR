@@ -299,3 +299,15 @@ void ImGuiRenderer::popClipRect()
 {
 	m_drawList->PopClipRect();
 }
+
+void ImGuiRenderer::drawTexPoly(const ImVec2* points, const ImVec2* uvs, int n, ImTextureID texture, const ImColor& tint)
+{
+	if (!points || !uvs || n < 3 || !texture) return;
+	const ImU32 col = ImGui::ColorConvertFloat4ToU32(tint.Value);
+	m_drawList->PushTextureID(texture);
+	const unsigned int base = m_drawList->_VtxCurrentIdx;
+	m_drawList->PrimReserve((n - 2) * 3, n);
+	for (int i = 0; i < n; i++) m_drawList->PrimWriteVtx(points[i], uvs[i], col);
+	for (int i = 1; i + 1 < n; i++) { m_drawList->PrimWriteIdx((ImDrawIdx)base); m_drawList->PrimWriteIdx((ImDrawIdx)(base + i)); m_drawList->PrimWriteIdx((ImDrawIdx)(base + i + 1)); }
+	m_drawList->PopTextureID();
+}

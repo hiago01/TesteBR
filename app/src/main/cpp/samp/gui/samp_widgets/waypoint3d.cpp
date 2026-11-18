@@ -131,7 +131,7 @@ void Waypoint3D::OnSede(RakNet::BitStream& bs)
 void Waypoint3D::OnHq(RakNet::BitStream& bs)
 {
 	uint8_t n = 0;
-	if (!bs.Read(n) || n > 40) return;
+	if (!bs.Read(n) || n > 80) return;
 	std::vector<Pin> v;
 	for (int i = 0; i < n; i++)
 	{
