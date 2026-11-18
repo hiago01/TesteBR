@@ -30,6 +30,7 @@ namespace
 	struct Pin { float x = 0, y = 0, z = 0; std::string name, label; };
 	std::mutex       g_mtx;
 	Pin              g_sede; bool g_sedeOn = false; int g_sedeSrc = 0;     // src: 1 = sede (servidor, op 21), 2 = destino do mapa aberto (cliente)      // marcacao temporaria do servidor (op 21): "SEDE (grupo)"
+	std::vector<Pin> g_hq;              // sedes dos grupos (op 22); so o mapa aberto le
 	std::vector<Pin> g_pins;            // escrito pela thread de rede, lido pela de desenho (copia por quadro)
 
 	// nome em MAIUSCULAS (UTF-8): ASCII e letras latinas acentuadas (U+00E0..U+00FE, exceto o sinal de divisao) como no HUD de referencia
@@ -127,10 +128,39 @@ void Waypoint3D::OnSede(RakNet::BitStream& bs)
 	else if (g_sedeSrc == 1) g_sedeOn = false;                           // o servidor so apaga o que ele mesmo criou (nao o destino do mapa)
 }
 
+void Waypoint3D::OnHq(RakNet::BitStream& bs)
+{
+	uint8_t n = 0;
+	if (!bs.Read(n) || n > 40) return;
+	std::vector<Pin> v;
+	for (int i = 0; i < n; i++)
+	{
+		Pin p; uint8_t len = 0;
+		if (!bs.Read(p.x) || !bs.Read(p.y) || !bs.Read(p.z) || !bs.Read(len)) return;      // pacote quebrado: mantem a lista atual
+		if (!(std::fabs(p.x) < 100000.0f && std::fabs(p.y) < 100000.0f && std::fabs(p.z) < 100000.0f)) return;
+		p.name.assign(len, '\0');
+		if (len && !bs.Read(&p.name[0], (unsigned)len)) return;
+		for (char& ch : p.name) if ((unsigned char)ch < 32) ch = ' ';
+		p.label = p.name;
+		if (p.label.empty()) p.label = "Grupo";
+		v.push_back(std::move(p));
+	}
+	std::lock_guard<std::mutex> l(g_mtx);
+	g_hq = std::move(v);
+}
+int Waypoint3D::HqCount() { std::lock_guard<std::mutex> l(g_mtx); return (int)g_hq.size(); }
+bool Waypoint3D::HqGet(int i, float& x, float& y, float& z, std::string& name)
+{
+	std::lock_guard<std::mutex> l(g_mtx);
+	if (i < 0 || i >= (int)g_hq.size()) return false;
+	x = g_hq[i].x; y = g_hq[i].y; z = g_hq[i].z; name = g_hq[i].label;
+	return true;
+}
+
 void Waypoint3D::Reset()
 {
 	std::lock_guard<std::mutex> l(g_mtx);
-	g_pins.clear();
+	g_pins.clear(); g_hq.clear();
 	g_sedeOn = false; g_sedeSrc = 0;
 }
 

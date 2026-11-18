@@ -164,6 +164,9 @@ namespace
 		bool pinAt(int i, float& x, float& y, std::string& label) override { return Waypoint3D::Get(i, x, y, label); }
 		void setDestMarker(float x, float y, float z, const std::string& name) override { Waypoint3D::SetDest(x, y, z, name); }   // marcacao 3D unica do destino (so cliente)
 		void clearDestMarker() override { Waypoint3D::ClearDest(); }
+		// sedes de todos os grupos (op 22 do servidor): categoria "Grupos" da lista e icones no mapa
+		int  hqCount() override { return Waypoint3D::HqCount(); }
+		bool hqAt(int i, float& x, float& y, float& z, std::string& name) override { return Waypoint3D::HqGet(i, x, y, z, name); }
 		void sendCommand(const char* cmd) override { if (pNetGame && g_serverSupports.load()) pNetGame->SendChatCommand(cmd); }
 		int64_t nowMs() override { return NowMsReal(); }
 		int tilesLoaded() override { return m_loaded; }

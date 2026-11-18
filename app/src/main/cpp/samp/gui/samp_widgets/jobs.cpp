@@ -252,6 +252,7 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	if (op == 3) { Close(false); return; }
 	if (op == 2) { uint8_t c = 0; if (bs.Read(c)) g_resultCode.store(c); return; }
 	if (op == 13) { GaragePanel::OnList(bs); g_garage.store(true); if (!g_open.exchange(true)) { g_flush.store(true); g_resetView.store(true); } return; }   // lista da garagem: abre a tela
+	if (op == 22) { Waypoint3D::OnHq(bs); return; }   // sedes de todos os grupos (categoria "Grupos" do mapa aberto)
 	if (op == 21) { Waypoint3D::OnSede(bs); return; }   // marcacao temporaria "SEDE (grupo)" (org.pwn, /grupo > Marcar no GPS)
 	if (op == 20) { Waypoint3D::OnPacket(bs); return; }   // marcacoes 3D de GPS do jogador (servidor org.pwn /marcar)
 	if (op == 15) { CarInteract::OnPacket(bs); return; }   // interacao com o proprio carro (chave): ponto "Abrir interacao"

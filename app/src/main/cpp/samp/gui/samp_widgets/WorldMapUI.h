@@ -47,6 +47,9 @@ namespace WorldMap
 		// marcacao 3D do DESTINO (exclusiva: so existe uma; um novo toque substitui a anterior; nao e salva). z = -1000: o cliente acha o chao.
 		virtual void setDestMarker(float x, float y, float z, const std::string& name) { (void)x; (void)y; (void)z; (void)name; }
 		virtual void clearDestMarker() {}
+		// ---- sedes de TODOS os grupos (servidor org.pwn op 22; GPS da /orgcfg, senao o 1o /orgspawn): categoria "Grupos" da lista ----
+		virtual int  hqCount() { return 0; }
+		virtual bool hqAt(int i, float& x, float& y, float& z, std::string& name) { (void)i; (void)x; (void)y; (void)z; (void)name; return false; }
 	};
 
 	class Ui
@@ -141,7 +144,7 @@ namespace WorldMap
 		struct Layout
 		{
 			float k = 1, pad = 10;
-			ImVec2 scr, panA, panB, mapA, mapB, listA, listB;
+			ImVec2 scr, panA, panB, mapA, mapB, listA, listB, cntA, cntB;
 			float rowH = 30, barY = 0, barH = 34;
 			ImVec2 closeA, closeB, clrA, clrB, zinA, zinB, zoutA, zoutB, ctrA, ctrB;
 		};
@@ -160,6 +163,11 @@ namespace WorldMap
 
 		// estado (so a thread de desenho)
 		std::vector<Location> m_locs;
+		// lista lateral em CATEGORIAS recolhiveis: cada linha e um cabecalho (kind 0, idx = categoria), um local do servidor (1), a sede de um grupo (2) ou uma marcacao salva (3)
+		struct Row { int kind; int idx; int cat; };
+		std::vector<Row> m_rows;
+		bool m_catOpen[6] = { true, true, false, false, false, false };
+		static constexpr int kCats = 6;
 		std::vector<Vec2> m_route;           // rota que o SERVIDOR mandou (RPC 204 op 4); tem prioridade
 		std::vector<Vec2> m_routeDraw;       // m_route com cantos arredondados (cache para desenho)
 		uint64_t m_routeDrawKey = 0;
@@ -194,6 +202,12 @@ namespace WorldMap
 		void ProcessEvents();
 		void OnTap(float x, float y);
 		void SelectLocation(int idx, bool fromList);
+		void BuildRows();
+		bool RowPos(const Row& rw, float& x, float& y, std::string& name) const;
+		void SelectRow(const Row& rw);
+		int  NearestHq(float rx, float ry, float radiusPx, float& wx, float& wy, std::string& name) const;
+		static const char* CatName(int c) { static const char* n[kCats] = { "Meus locais", "Grupos", "Saude e servicos", "Trabalho", "Lojas", "Outros" }; return n[c]; }
+		static int CatOfIcon(int icon) { return (icon == 2 || icon == 3 || icon == 9) ? 2 : (icon == 4 ? 3 : (icon == 7 ? 4 : 5)); }
 		void SetFreeGps(float wx, float wy, bool create = true, const std::string& label = std::string());
 		int  NearestPin(float rx, float ry, float radiusPx, float& wx, float& wy, std::string& label) const;
 		void ClearGps(bool notify);
@@ -222,15 +236,18 @@ namespace WorldMap
 	// =================================================================================================
 	namespace ui_colors
 	{
-		const ImColor dim(0, 0, 0, 125);
+		const ImColor dim(0, 0, 0, 105);            // escurece o jogo por tras (o mundo continua aparecendo)
 		const ImColor panel(20, 22, 28, 232);
-		const ImColor mapBg(16, 18, 22, 255);
-		const ImColor border(70, 78, 92, 255);
+		const ImColor mapBg(16, 18, 22, 150);       // fundo translucido (sem moldura preta)
+		const ImColor border(255, 255, 255, 70);
+		const ImColor glass(8, 10, 14, 150);        // vidro escuro da lista e dos botoes
+		const ImColor hqCol(176, 120, 255, 255);    // sedes de grupos (roxo)
+		const ImColor pinCol(64, 164, 255, 255);    // marcacoes salvas (azul)
 		const ImColor text(236, 238, 244, 255);
 		const ImColor mute(150, 156, 170, 255);
-		const ImColor blue(30, 110, 232, 255);
+		const ImColor blue(30, 110, 232, 235);
 		const ImColor blueD(24, 84, 180, 255);
-		const ImColor btn(44, 48, 58, 240);
+		const ImColor btn(14, 16, 22, 175);
 		const ImColor red(235, 70, 70, 255);
 		const ImColor gps(255, 205, 40, 255);
 		const ImColor route(60, 160, 255, 255);
@@ -244,23 +261,28 @@ namespace WorldMap
 		L.k = std::max(0.5f, L.scr.y / 540.0f);
 		const float k = L.k;
 		L.pad = 10.0f * k;
-		L.panA = ImVec2(L.scr.x * 0.04f, L.scr.y * 0.06f);
-		L.panB = ImVec2(L.scr.x * 0.96f, L.scr.y * 0.94f);
-		const float listW = Clampf(L.scr.x * 0.21f, 170.0f * k, 270.0f * k);
+		// mapa em tela quase cheia, sem painel preto: so uma margem fina e um contorno claro
+		L.panA = ImVec2(L.scr.x * 0.012f, L.scr.y * 0.025f);
+		L.panB = ImVec2(L.scr.x * 0.988f, L.scr.y * 0.975f);
+		L.mapA = L.panA; L.mapB = L.panB;
+		const float listW = Clampf(L.scr.x * 0.22f, 180.0f * k, 280.0f * k);
 		L.barH = 34.0f * k;
 		L.barY = L.panB.y - L.pad - L.barH;
-		L.mapA = ImVec2(L.panA.x + L.pad, L.panA.y + L.pad);
-		L.mapB = ImVec2(L.panB.x - L.pad * 2 - listW, L.barY - L.pad * 0.6f);
-		L.listA = ImVec2(L.mapB.x + L.pad, L.mapA.y);
-		L.listB = ImVec2(L.panB.x - L.pad, L.mapB.y);
-		L.rowH = 30.0f * k;
-		const float bx = L.panA.x + L.pad;
-		L.closeA = ImVec2(bx, L.barY);                    L.closeB = ImVec2(bx + 110.0f * k, L.barY + L.barH);
-		L.clrA = ImVec2(L.closeB.x + 8.0f * k, L.barY);   L.clrB = ImVec2(L.clrA.x + 130.0f * k, L.barY + L.barH);
-		const float zs = 34.0f * k, zx = L.mapB.x - zs - 8.0f * k;
-		L.zinA = ImVec2(zx, L.mapA.y + 8.0f * k);                   L.zinB = ImVec2(zx + zs, L.zinA.y + zs);
-		L.zoutA = ImVec2(zx, L.zinB.y + 6.0f * k);                  L.zoutB = ImVec2(zx + zs, L.zoutA.y + zs);
-		L.ctrA = ImVec2(zx, L.zoutB.y + 6.0f * k);                  L.ctrB = ImVec2(zx + zs, L.ctrA.y + zs);
+		L.rowH = 28.0f * k;
+		// lista flutuante sobre o mapa (canto direito): so cresce ate o que cabe, com o contador embaixo
+		const float cntH = 20.0f * k;
+		const float maxB = L.barY - cntH - 10.0f * k;
+		L.listA = ImVec2(L.mapB.x - L.pad - listW, L.mapA.y + L.pad);
+		const float want = L.listA.y + std::max(1.0f, (float)m_rows.size()) * L.rowH + 8.0f * k;
+		L.listB = ImVec2(L.mapB.x - L.pad, std::min(maxB, want));
+		L.cntA = ImVec2(L.listB.x - 70.0f * k, L.listB.y + 5.0f * k); L.cntB = ImVec2(L.listB.x, L.cntA.y + cntH - 4.0f * k);
+		// botoes em pilula, canto inferior esquerdo: FECHAR | - | + | O | LIMPAR GPS
+		const float bx = L.mapA.x + L.pad, zs = L.barH, g = 6.0f * k;
+		L.closeA = ImVec2(bx, L.barY);                     L.closeB = ImVec2(bx + 104.0f * k, L.barY + L.barH);
+		L.zoutA = ImVec2(L.closeB.x + g, L.barY);          L.zoutB = ImVec2(L.zoutA.x + zs, L.barY + L.barH);
+		L.zinA = ImVec2(L.zoutB.x + g, L.barY);            L.zinB = ImVec2(L.zinA.x + zs, L.barY + L.barH);
+		L.ctrA = ImVec2(L.zinB.x + g, L.barY);             L.ctrB = ImVec2(L.ctrA.x + zs, L.barY + L.barH);
+		L.clrA = ImVec2(L.ctrB.x + g, L.barY);             L.clrB = ImVec2(L.clrA.x + 124.0f * k, L.barY + L.barH);
 		return L;
 	}
 
@@ -370,6 +392,63 @@ namespace WorldMap
 		return best;
 	}
 
+	inline int Ui::NearestHq(float rx, float ry, float radiusPx, float& wx, float& wy, std::string& name) const
+	{
+		int best = -1; float bestD = radiusPx;
+		const int n = P->hqCount();
+		for (int i = 0; i < n; i++)
+		{
+			float x = 0, y = 0, z = 0; std::string nm;
+			if (!P->hqAt(i, x, y, z, nm)) continue;
+			const Vec2 s = ToScreen(m_view, x, y);
+			const float d = Dist(s.x, s.y, rx, ry);
+			if (d <= bestD) { bestD = d; best = i; wx = x; wy = y; name = nm; }
+		}
+		return best;
+	}
+
+	// monta a lista em categorias: Meus locais (marcacoes salvas), Grupos (sedes), depois os locais do servidor por tipo; categoria vazia nao aparece
+	inline void Ui::BuildRows()
+	{
+		std::vector<Row> items[kCats];
+		const int np = P->pinCount();
+		for (int i = 0; i < np; i++) items[0].push_back({ 3, i, 0 });
+		const int nh = P->hqCount();
+		for (int i = 0; i < nh; i++) items[1].push_back({ 2, i, 1 });
+		for (size_t i = 0; i < m_locs.size(); i++) { const int c = CatOfIcon(m_locs[i].icon); items[c].push_back({ 1, (int)i, c }); }
+		m_rows.clear();
+		for (int c = 0; c < kCats; c++)
+		{
+			if (items[c].empty()) continue;
+			m_rows.push_back({ 0, c, c });
+			if (m_catOpen[c]) m_rows.insert(m_rows.end(), items[c].begin(), items[c].end());
+		}
+	}
+
+	inline bool Ui::RowPos(const Row& rw, float& x, float& y, std::string& name) const
+	{
+		float z = 0;
+		switch (rw.kind)
+		{
+			case 1: if (rw.idx < 0 || rw.idx >= (int)m_locs.size()) return false; x = m_locs[rw.idx].x; y = m_locs[rw.idx].y; name = m_locs[rw.idx].name; return true;
+			case 2: return P->hqAt(rw.idx, x, y, z, name);
+			case 3: return P->pinAt(rw.idx, x, y, name);
+		}
+		return false;
+	}
+
+	// toque numa linha da lista: cabecalho abre/fecha; local = GPS do servidor; sede = GPS + marcacao 3D; marcacao salva = GPS (ela ja tem o proprio 3D)
+	inline void Ui::SelectRow(const Row& rw)
+	{
+		if (rw.kind == 0) { if (rw.idx >= 0 && rw.idx < kCats) m_catOpen[rw.idx] = !m_catOpen[rw.idx]; BuildRows(); return; }
+		if (rw.kind == 1) { SelectLocation(rw.idx, true); return; }
+		float x = 0, y = 0; std::string nm;
+		if (!RowPos(rw, x, y, nm)) return;
+		CenterOn(m_view, x, y);
+		if (rw.kind == 2) SetFreeGps(x, y, true, ClipUtf8("SEDE " + nm, 24));
+		else SetFreeGps(x, y, false, nm);
+	}
+
 	inline void Ui::SetFreeGps(float wx, float wy, bool create, const std::string& label)
 	{
 		wx = Clampf(wx, kWorldMin, kWorldMax);
@@ -403,20 +482,21 @@ namespace WorldMap
 	inline void Ui::OnTap(float x, float y)
 	{
 		const Layout& L = m_L;
-		if (In(x, y, L.mapA, L.mapB))
+		if (In(x, y, L.listA, L.listB))      // a lista flutua sobre o mapa: ela tem prioridade
+		{
+			const int i = (int)std::floor((y - L.listA.y + m_listScroll - 4.0f * L.k) / L.rowH);
+			if (i >= 0 && i < (int)m_rows.size()) { const Row rw = m_rows[i]; SelectRow(rw); }
+		}
+		else if (In(x, y, L.mapA, L.mapB))
 		{
 			const float rx = x - L.mapA.x, ry = y - L.mapA.y;
 			const int hit = NearestLocation(m_view, m_locs, rx, ry, 26.0f * L.k);
 			if (hit >= 0) { SelectLocation(hit, false); return; }
 			float pwx = 0, pwy = 0; std::string pnm;
+			if (NearestHq(rx, ry, 24.0f * L.k, pwx, pwy, pnm) >= 0) { CenterOn(m_view, pwx, pwy); SetFreeGps(pwx, pwy, true, ClipUtf8("SEDE " + pnm, 24)); return; }       // toque numa sede de grupo
 			if (NearestPin(rx, ry, 26.0f * L.k, pwx, pwy, pnm) >= 0) { SetFreeGps(pwx, pwy, false, pnm); return; }       // toque numa marcacao: GPS ate ela (sem criar outra)
 			const Vec2 w = ToWorld(m_view, rx, ry);
 			SetFreeGps(w.x, w.y);
-		}
-		else if (In(x, y, L.listA, L.listB))
-		{
-			const int i = (int)std::floor((y - L.listA.y + m_listScroll) / L.rowH);
-			if (i >= 0 && i < (int)m_locs.size()) SelectLocation(i, true);
 		}
 	}
 
@@ -435,8 +515,8 @@ namespace WorldMap
 				f.down = true; f.sx = f.x = e.x; f.sy = f.y = e.y; f.t0 = P->nowMs();
 				const int b = ButtonAt(e.x, e.y);
 				if (b != BTN_NONE) { f.region = 3; f.btn = b; }
-				else if (In(e.x, e.y, L.mapA, L.mapB)) { f.region = 1; }
 				else if (In(e.x, e.y, L.listA, L.listB)) { f.region = 2; f.scroll0 = m_listScroll; }
+				else if (In(e.x, e.y, L.mapA, L.mapB)) { f.region = 1; }
 				else f.region = 0;
 				int mapFingers = 0;
 				for (const Finger& o : m_f) if (o.down && o.region == 1) mapFingers++;
@@ -478,7 +558,7 @@ namespace WorldMap
 				}
 				else if (f.region == 2 && f.moved)
 				{
-					const float total = (float)m_locs.size() * L.rowH, viewH = L.listB.y - L.listA.y;
+					const float total = (float)m_rows.size() * L.rowH + 8.0f * L.k, viewH = L.listB.y - L.listA.y;
 					m_listScroll = ClampScroll(f.scroll0 - (f.y - f.sy), total, viewH);
 				}
 			}
@@ -594,7 +674,8 @@ namespace WorldMap
 
 	inline void Ui::DrawButton(ImGuiRenderer* r, const ImVec2& a, const ImVec2& b, const char* label, const ImColor& bg, float fs, bool hot) const
 	{
-		r->drawRoundedRect(a, b, hot ? ui_colors::blueD : bg, 5.0f * m_L.k, true);
+		r->drawRoundedRect(a, b, hot ? ui_colors::blueD : bg, (b.y - a.y) * 0.5f, true);      // pilula (circulo nos botoes quadrados)
+		r->drawRoundedRect(a, b, ImColor(255, 255, 255, 60), (b.y - a.y) * 0.5f, false, 1.0f);
 		const ImVec2 ts = r->calculateTextSize(label, fs);
 		r->drawText(ImVec2(a.x + ((b.x - a.x) - ts.x) * 0.5f, a.y + ((b.y - a.y) - ts.y) * 0.5f), ui_colors::text, label, false, fs);
 	}
@@ -803,7 +884,7 @@ namespace WorldMap
 		if (m_resetReq.exchange(false))
 		{
 			if (m_gps.on) P->clearGps();
-			m_gps = Gps(); m_locs.clear(); m_route.clear(); ClearLocalRoute(); m_selLoc = -1; m_listScroll = 0; ResetDrawState();
+			m_gps = Gps(); m_locs.clear(); m_rows.clear(); m_route.clear(); ClearLocalRoute(); m_selLoc = -1; m_listScroll = 0; ResetDrawState();
 		}
 		if (m_sendClose.exchange(false)) P->sendCommand("/mapax close");
 		DrainPending();
@@ -826,6 +907,7 @@ namespace WorldMap
 		}
 		MiniRoute::ClearWorld();    // mapa aberto (ou apagando): sem linha no minimapa
 
+		BuildRows();
 		m_L = MakeLayout();
 		const Layout& L = m_L;
 		const float k = L.k;
@@ -853,7 +935,7 @@ namespace WorldMap
 			}
 		}
 		Clamp(m_view);
-		m_listScroll = ClampScroll(m_listScroll, (float)m_locs.size() * L.rowH, L.listB.y - L.listA.y);
+		m_listScroll = ClampScroll(m_listScroll, (float)m_rows.size() * L.rowH + 8.0f * k, L.listB.y - L.listA.y);
 
 		float plx = 0, ply = 0, plh = 0;
 		const bool havePlayer = P->player(plx, ply, plh);
@@ -884,8 +966,7 @@ namespace WorldMap
 		}
 
 		// ---- fundo e painel ----
-		r->drawRect(ImVec2(0, 0), L.scr, dim, true);
-		r->drawRoundedRect(L.panA, L.panB, panel, 10.0f * k, true);
+		r->drawRect(ImVec2(0, 0), L.scr, dim, true);      // sem painel preto: o jogo aparece escurecido por tras do mapa
 
 		// ---- mapa ----
 		r->pushClipRect(L.mapA, L.mapB, true);
@@ -895,7 +976,7 @@ namespace WorldMap
 		const ImTextureID full = P->fullMap();
 		if (full)
 		{
-			r->drawImage(S(kWorldMin, kWorldMax), S(kWorldMax, kWorldMin), full);
+			r->drawImage(S(kWorldMin, kWorldMax), S(kWorldMax, kWorldMin), full, ImColor(255, 255, 255, 224));   // levemente translucido
 			tilesDrawn = 1;
 		}
 		else
@@ -963,6 +1044,23 @@ namespace WorldMap
 			DrawIcon(r, l.icon, c, s * 0.8f, text);
 			if (labels || sel)
 				r->drawText(ImVec2(c.x + s + 5 * k, c.y - 6.5f * k), text, l.name, true, 11.0f * k);
+		}
+
+		// ---- sedes dos grupos (roxo): sempre visiveis, tambem na categoria "Grupos" ----
+		{
+			const int nh = P->hqCount();
+			for (int i = 0; i < nh; i++)
+			{
+				float wx = 0, wy = 0, wz = 0; std::string nm;
+				if (!P->hqAt(i, wx, wy, wz, nm)) continue;
+				const ImVec2 c = S(wx, wy);
+				if (c.x < L.mapA.x - 20 || c.x > L.mapB.x + 20 || c.y < L.mapA.y - 20 || c.y > L.mapB.y + 20) continue;
+				const bool sel = m_gps.on && Dist(m_gps.x, m_gps.y, wx, wy) < 2.0f;
+				const float hs = (sel ? 9.0f : 7.0f) * k;
+				r->drawRoundedRect(ImVec2(c.x - hs - 2 * k, c.y - hs - 2 * k), ImVec2(c.x + hs + 2 * k, c.y + hs + 2 * k), sel ? gps : ImColor(10, 12, 16, 230), hs + 2 * k, true);
+				DrawIcon(r, 1, c, hs * 0.8f, hqCol);
+				if (labels || sel) r->drawText(ImVec2(c.x + hs + 5 * k, c.y - 6.5f * k), text, ClipUtf8(nm, 24), true, 11.0f * k);
+			}
 		}
 
 		// ---- marcacoes 3D do jogador: pino azul + nome ----
@@ -1041,49 +1139,98 @@ namespace WorldMap
 		r->popClipRect();
 		r->drawRect(L.mapA, L.mapB, border, false, 1.0f);
 
-		// ---- lista de locais (nome alinhado a direita + icone) ----
+		// ---- lista em categorias (vidro escuro flutuante; nome alinhado a direita + icone; selecionado = pilula branca) ----
 		{
+			r->drawRoundedRect(L.listA, L.listB, glass, 9.0f * k, true);
 			r->pushClipRect(L.listA, L.listB, true);
-			r->drawRect(L.listA, L.listB, ImColor(14, 16, 20, 200), true);
 			const float fs = 12.5f * k;
-			for (size_t i = 0; i < m_locs.size(); i++)
+			const float off = 4.0f * k;
+			int selNo = 0, itemNo = 0;
+			for (size_t i = 0; i < m_rows.size(); i++)
 			{
-				const float y = L.listA.y + (float)i * L.rowH - m_listScroll;
-				if (y + L.rowH < L.listA.y || y > L.listB.y) continue;
-				const bool sel = (int)i == m_selLoc;
-				if (sel) r->drawRect(ImVec2(L.listA.x, y), ImVec2(L.listB.x, y + L.rowH), ImColor(30, 110, 232, 110), true);
-				else if (i % 2 == 0) r->drawRect(ImVec2(L.listA.x, y), ImVec2(L.listB.x, y + L.rowH), ImColor(255, 255, 255, 8), true);
-				const float is = 8.0f * k;
-				const ImVec2 ic(L.listB.x - 16.0f * k, y + L.rowH * 0.5f);
-				DrawIcon(r, m_locs[i].icon, ic, is, sel ? gps : text);
-				std::string nm = m_locs[i].name;
-				const float maxW = (L.listB.x - L.listA.x) - 44.0f * k;
+				const Row& rw = m_rows[i];
+				const float y = L.listA.y + off + (float)i * L.rowH - m_listScroll;
+				if (rw.kind != 0) itemNo++;
+				if (y + L.rowH < L.listA.y || y > L.listB.y) { float x0, y0; std::string n0; if (rw.kind != 0 && RowPos(rw, x0, y0, n0) && m_gps.on && Dist(m_gps.x, m_gps.y, x0, y0) < 2.0f) selNo = itemNo; continue; }
+				const float ax = L.listA.x + 5.0f * k, bx2 = L.listB.x - 5.0f * k, ay = y + 2.0f * k, by = y + L.rowH - 2.0f * k;
+				if (rw.kind == 0)
+				{
+					// cabecalho da categoria: seta (aberta/fechada) + NOME + quantidade
+					int cnt = 0;
+					for (size_t j = i + 1; j < m_rows.size() && m_rows[j].kind != 0; j++) cnt++;
+					if (!m_catOpen[rw.idx])
+					{
+						if (rw.idx == 0) cnt = P->pinCount();
+						else if (rw.idx == 1) cnt = P->hqCount();
+						else { cnt = 0; for (const Location& l : m_locs) if (CatOfIcon(l.icon) == rw.idx) cnt++; }
+					}
+					const float cy = y + L.rowH * 0.5f, ts2 = 5.0f * k, cx = ax + 10.0f * k;
+					ImVec2 tri[3];
+					if (m_catOpen[rw.idx]) { tri[0] = ImVec2(cx - ts2, cy - ts2 * 0.6f); tri[1] = ImVec2(cx + ts2, cy - ts2 * 0.6f); tri[2] = ImVec2(cx, cy + ts2 * 0.7f); }
+					else                   { tri[0] = ImVec2(cx - ts2 * 0.6f, cy - ts2); tri[1] = ImVec2(cx - ts2 * 0.6f, cy + ts2); tri[2] = ImVec2(cx + ts2 * 0.8f, cy); }
+					r->drawConvexPolyFilled(tri, 3, mute);
+					std::string nm = CatName(rw.idx);
+					for (char& ch : nm) if (ch >= 'a' && ch <= 'z') ch = (char)(ch - 32);
+					const ImVec2 tsz = r->calculateTextSize(nm, 11.5f * k);
+					r->drawText(ImVec2(cx + 12.0f * k, y + (L.rowH - tsz.y) * 0.5f), mute, nm, false, 11.5f * k);
+					char cb[16]; std::snprintf(cb, sizeof(cb), "%d", cnt);
+					const ImVec2 csz = r->calculateTextSize(cb, 11.0f * k);
+					r->drawText(ImVec2(bx2 - 6.0f * k - csz.x, y + (L.rowH - csz.y) * 0.5f), mute, cb, false, 11.0f * k);
+					continue;
+				}
+				float wx = 0, wy = 0; std::string nm;
+				if (!RowPos(rw, wx, wy, nm)) continue;
+				const bool sel = m_gps.on && (rw.kind == 1 ? (int)rw.idx == m_selLoc : Dist(m_gps.x, m_gps.y, wx, wy) < 2.0f);
+				if (sel) { selNo = itemNo; r->drawRoundedRect(ImVec2(ax, ay), ImVec2(bx2, by), ImColor(244, 246, 250, 235), (by - ay) * 0.5f, true); }
+				const float is = 7.5f * k;
+				const ImVec2 ic(bx2 - 14.0f * k, y + L.rowH * 0.5f);
+				const ImColor icol = rw.kind == 2 ? hqCol : (rw.kind == 3 ? pinCol : text);
+				DrawIcon(r, rw.kind == 1 ? m_locs[rw.idx].icon : (rw.kind == 2 ? 1 : 0), ic, is, sel ? ImColor(20, 22, 28, 255) : icol);
+				const float maxW = (bx2 - ax) - 44.0f * k;
 				while (nm.size() > 3 && r->calculateTextSize(nm, fs).x > maxW) nm.resize(nm.size() - 1);
 				const ImVec2 ts = r->calculateTextSize(nm, fs);
-				r->drawText(ImVec2(ic.x - is - 8.0f * k - ts.x, y + (L.rowH - ts.y) * 0.5f), text, nm, false, fs);
+				r->drawText(ImVec2(ic.x - is - 8.0f * k - ts.x, y + (L.rowH - ts.y) * 0.5f), sel ? ImColor(20, 22, 28, 255) : text, nm, false, fs);
 			}
-			if (m_locs.empty())
-				r->drawText(ImVec2(L.listA.x + 12 * k, L.listA.y + 14 * k), mute, "Sem locais", false, 12.0f * k);
-			const float total = (float)m_locs.size() * L.rowH, viewH = L.listB.y - L.listA.y;
+			if (m_rows.empty())
+				r->drawText(ImVec2(L.listA.x + 12 * k, L.listA.y + 10 * k), mute, "Sem locais", false, 12.0f * k);
+			const float total = (float)m_rows.size() * L.rowH + 8.0f * k, viewH = L.listB.y - L.listA.y;
 			if (total > viewH)
 			{
 				const float th = std::max(24.0f * k, viewH * viewH / total);
 				const float ty = L.listA.y + (viewH - th) * (m_listScroll / (total - viewH));
-				r->drawRect(ImVec2(L.listB.x - 3 * k, L.listA.y), ImVec2(L.listB.x, L.listB.y), ImColor(255, 255, 255, 22), true);
-				r->drawRect(ImVec2(L.listB.x - 3 * k, ty), ImVec2(L.listB.x, ty + th), ImColor(255, 255, 255, 140), true);
+				r->drawRect(ImVec2(L.listB.x - 3 * k, L.listA.y + 6 * k), ImVec2(L.listB.x - k, L.listB.y - 6 * k), ImColor(255, 255, 255, 22), true);
+				r->drawRect(ImVec2(L.listB.x - 3 * k, ty), ImVec2(L.listB.x - k, ty + th), ImColor(255, 255, 255, 140), true);
 			}
 			r->popClipRect();
-			r->drawRect(L.listA, L.listB, border, false, 1.0f);
+			// contador "selecionado/total" (como "33/39" do GTA V)
+			const int totalItems = P->pinCount() + P->hqCount() + (int)m_locs.size();
+			char cb[24];
+			if (m_gps.on && selNo > 0) std::snprintf(cb, sizeof(cb), "%d/%d", selNo, totalItems); else std::snprintf(cb, sizeof(cb), "%d", totalItems);
+			const ImVec2 csz = r->calculateTextSize(cb, 11.0f * k);
+			r->drawRoundedRect(ImVec2(L.listB.x - csz.x - 16.0f * k, L.cntA.y), ImVec2(L.listB.x, L.cntB.y), glass, (L.cntB.y - L.cntA.y) * 0.5f, true);
+			r->drawText(ImVec2(L.listB.x - csz.x - 8.0f * k, L.cntA.y + ((L.cntB.y - L.cntA.y) - csz.y) * 0.5f), text, cb, false, 11.0f * k);
 		}
 
-		// ---- barra inferior ----
+		// ---- barra inferior: botoes em pilula + escala e nome da zona (estilo do mapa do GTA V) ----
 		{
 			auto hot = [&](int id) { for (const Finger& f : m_f) if (f.down && f.region == 3 && f.btn == id) return true; return false; };
 			DrawButton(r, L.closeA, L.closeB, "FECHAR", blue, 13.0f * k, hot(BTN_CLOSE));
 			if (m_gps.on) DrawButton(r, L.clrA, L.clrB, "LIMPAR GPS", btn, 12.0f * k, hot(BTN_CLEAR));
-			const char* hint = "Arraste para mover | pinca para zoom | toque para marcar o GPS (e o 3D)";
-			const ImVec2 ts = r->calculateTextSize(hint, 11.0f * k);
-			r->drawText(ImVec2(L.panB.x - L.pad - ts.x, L.barY + (L.barH - ts.y) * 0.5f), mute, hint, false, 11.0f * k);
+			// escala: barra com o maior valor "redondo" que cabe em ~110 px
+			static const float nice[] = { 50, 100, 200, 500, 1000, 2000, 5000 };
+			float meters = nice[0];
+			for (float nv : nice) if (nv * m_view.scale <= 110.0f * k) meters = nv;
+			const float wpx = meters * m_view.scale;
+			const float sx = L.mapA.x + L.pad + 2.0f * k, sy = L.barY - 12.0f * k;
+			r->drawLine(ImVec2(sx, sy), ImVec2(sx + wpx, sy), ImColor(0, 0, 0, 200), 4.0f * k);
+			r->drawLine(ImVec2(sx, sy), ImVec2(sx + wpx, sy), ImColor(255, 255, 255, 235), 2.0f * k);
+			r->drawLine(ImVec2(sx, sy - 4.0f * k), ImVec2(sx, sy + 4.0f * k), ImColor(255, 255, 255, 235), 2.0f * k);
+			r->drawLine(ImVec2(sx + wpx, sy - 4.0f * k), ImVec2(sx + wpx, sy + 4.0f * k), ImColor(255, 255, 255, 235), 2.0f * k);
+			char sb[24]; if (meters >= 1000.0f) std::snprintf(sb, sizeof(sb), "%d km", (int)(meters / 1000.0f)); else std::snprintf(sb, sizeof(sb), "%d m", (int)meters);
+			r->drawText(ImVec2(sx + wpx + 8.0f * k, sy - 7.0f * k), text, sb, true, 11.0f * k);
+			// nome da zona no centro do mapa (ex.: "Chinatown")
+			const std::string zn = ZoneLabel(m_view.cx, m_view.cy);
+			if (!zn.empty()) r->drawText(ImVec2(sx, sy - 28.0f * k), text, zn, true, 16.0f * k);
 		}
 
 		// ---- TV: brilho + linhas de varredura sobre a area acesa, depois solta o recorte ----
