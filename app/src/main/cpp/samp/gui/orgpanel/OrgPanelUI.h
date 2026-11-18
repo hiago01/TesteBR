@@ -610,7 +610,7 @@ namespace OrgPanel
 
 		void drawBackground(Canvas& cv)
 		{
-			cv.fillGradientV({ 0, 0, m_sw, m_sh }, Pal::BgTop.alpha(0.97f), Pal::BgBot.alpha(0.98f));
+			cv.fillGradientV({ 0, 0, m_sw, m_sh }, Pal::BgTop.alpha(0.84f), Pal::BgBot.alpha(0.86f));      // um pouco transparente: da para ver o jogo atras
 			// luzes suaves (efeito de desfoque do original, sem shader)
 			cv.fillCircle({ m_ox + S(250), m_oy + S(120) }, S(360), Color(90, 150, 230, 16));
 			cv.fillCircle({ m_ox + S(1150), m_oy + S(640) }, S(420), Color(70, 120, 210, 14));
@@ -643,6 +643,7 @@ namespace OrgPanel
 			else drawBank(cv);
 			m_oy = oy2;
 			cv.setAlpha(1.0f);
+			drawLogoThumb(cv);
 			if (m_modalA > 0.01f) drawModal(cv);
 			m_oy = baseOy;
 			if (m_kbShow) m_kb.draw(cv, m_km, m_kbRect);
@@ -893,7 +894,6 @@ namespace OrgPanel
 			}
 			cv.popClip();
 			drawScrollbar(cv, m_svMem);
-			drawBrand(cv);
 		}
 
 
@@ -912,28 +912,21 @@ namespace OrgPanel
 			if (c < 4900) { const float k = (c - 4200.0f) / 700.0f; return 1.0f - 0.9f * k * k * (3.0f - 2.0f * k); }   // apaga suave
 			return 0.10f;
 		}
-		void drawBrand(Canvas& cv)
+		// miniatura do logo no canto inferior direito da TELA (todas as abas), com o mesmo neon que acende e apaga
+		void drawLogoThumb(Canvas& cv)
 		{
 			if (!m_logo) return;
 			const float g = NeonLevel(m_now - m_t0);
-			const Rect plate = R(921, 288, 414, 377);
-			cv.fillRect(plate, Color(6, 16, 44, 150), S(22));
-			cv.pushClip(plate);
-			const Vec2 c = { plate.x + plate.w * 0.5f, plate.y + plate.h * 0.47f };
-			const float base = std::min(plate.w, plate.h);
-			for (int i = 0; i < 16; ++i)       // brilho de fundo: camadas suaves (azul por fora, ciano no miolo)
+			const float sz = std::max(56.0f, 86.0f * m_u);
+			const Rect r = { m_sw - sz - 14.0f * m_u, m_sh - sz - 10.0f * m_u, sz, sz };
+			const Vec2 c = r.center();
+			for (int i = 0; i < 10; ++i)       // brilho suave atras (azul por fora, ciano no miolo)
 			{
-				const float k = 1.0f - i / 16.0f; const float rad = base * (0.20f + 0.50f * k);
-				cv.fillCircle(c, rad, Color(i < 9 ? 30 : 70, i < 9 ? 110 : 200, 255, (int)(g * (i < 9 ? 11 : 9))));
+				const float k = 1.0f - i / 10.0f; const float rad = sz * (0.22f + 0.46f * k);
+				cv.fillCircle(c, rad, Color(i < 6 ? 30 : 70, i < 6 ? 110 : 200, 255, (int)(g * (i < 6 ? 12 : 10))));
 			}
-			cv.popClip();
-			// contorno neon da placa (acende/apaga junto)
-			cv.strokeRect(plate, Color(46, 150, 255, (int)(60 + 195 * g)), S(22), std::max(1.5f, S(2.0f)));
-			if (g > 0.3f) cv.strokeRect(plate.inset(-S(3), -S(3)), Color(46, 150, 255, (int)(60 * g)), S(25), std::max(1.0f, S(3.0f)));
-			// logo (apagado = escurece, como letreiro desligado)
-			const float lg = base * 0.80f;
 			cv.setAlpha(0.45f + 0.55f * g);
-			cv.image({ c.x - lg * 0.5f, c.y - lg * 0.5f, lg, lg }, m_logo);
+			cv.image(r, m_logo);
 			cv.setAlpha(1.0f);
 		}
 
