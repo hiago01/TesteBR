@@ -6,6 +6,7 @@
 #include "PhoneInput.h"
 #include "PhoneStore.h"
 #include "PhoneUI.h"
+#include "PhoneIcon.h"
 #include "../maximoos/Navigation.h"
 #include "../maximoos/NotificationCenter.h"
 #include <ctime>
@@ -518,32 +519,7 @@ namespace Phone
 			const float k = pressed ? 0.92f : 1.0f; const Vec2 c = q.center();
 			q = { c.x - q.w * 0.5f * k, c.y - q.h * 0.5f * k, q.w * k, q.h * k };
 			const Color col = d ? d->color : Colors::Accent;
-			const float rad = q.w * 0.23f;
-			cv.fillRect(q.moved(0, q.h * 0.03f), Color(0, 0, 0, 60), rad);
-			uint64_t itex = 0; Vec2 iuv0{ 0, 0 }, iuv1{ 1, 1 };
-			const bool isCal = d && d->id == "calendario";
-			if (d && m_ctx.appIcon && m_ctx.appIcon(d->id, itex, iuv0, iuv1) && itex)
-				cv.image(q, itex, iuv0, iuv1);         // icone como imagem (atlas embutido)
-			else if (isCal)
-				cv.fillRect(q, Color(244, 244, 244), rad);   // sem atlas: cartao branco liso (a data e desenhada abaixo)
-			else
-			{
-				cv.fillRect(q, Color::mix(col, Color(0, 0, 0), 0.30f), rad);
-				cv.fillRect({ q.x, q.y, q.w, q.h * 0.62f }, col, rad);
-				cv.fillRect({ q.x, q.y + q.h * 0.30f, q.w, q.h * 0.32f }, col, 0);
-				DrawGlyph(cv, d ? d->id : std::string(), q.inset(q.w * 0.22f), Color(255, 255, 255));
-			}
-			if (isCal)
-			{
-				// icone vivo: dia da semana (vermelho) e dia do mes (grande) da data real do aparelho
-				const StatusInfo si = m_ctx.status ? m_ctx.status() : StatusInfo();
-				static const char* kWd[7] = { "Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb" };
-				if (si.weekday >= 0 && si.weekday < 7 && si.day >= 1 && si.day <= 31)
-				{
-					DrawTextAs(cv, FontTextSemibold, { q.x, q.y + q.h * 0.105f, q.w, q.h * 0.21f }, std::string(kWd[si.weekday]), Color(255, 55, 60), q.h * 0.19f, Align::Center);
-					DrawTextAs(cv, FontText, { q.x, q.y + q.h * 0.34f, q.w, q.h * 0.54f }, std::to_string(si.day), Color(38, 38, 40), q.h * 0.58f, Align::Center);
-				}
-			}
+			DrawAppIcon(cv, m_ctx, d ? d->id : std::string(), q, col, true);
 			if (badge > 0)
 			{
 				const float br = q.w * 0.19f; const Vec2 bc{ q.right() - br * 0.3f, q.y + br * 0.3f };
@@ -565,7 +541,7 @@ namespace Phone
 				auto L = [k](float a2, float b) { return a2 + (b - a2) * k; };
 				const Rect r{ L(from.x, to.x), L(from.y, to.y), L(from.w, to.w), L(from.h, to.h) };
 				cv.fillRect(r, d.light ? PC::Light : PC::Dark, L(from.w * 0.23f, m.screenRadius));
-				DrawGlyph(cv, d.id, Rect{ r.center().x - m.px(24), r.center().y - m.px(24), m.px(48), m.px(48) }, d.light ? d.color : Color(255, 255, 255, 230));
+				DrawAppIcon(cv, m_ctx, d.id, Rect{ r.center().x - m.px(30), r.center().y - m.px(30), m.px(60), m.px(60) }, d.color, false);
 				return;
 			}
 			if (!d.seeThrough) cv.fillRect(m.screen, d.light ? PC::Light : PC::Dark, 0);
@@ -603,7 +579,7 @@ namespace Phone
 				cv.strokeRect(c, Color(255, 255, 255, 60), m.px(22), std::max(1.0f, m.px(1)));
 				if (d)
 				{
-					DrawGlyph(cv, d->id, Rect{ c.center().x - m.px(34), c.center().y - m.px(44), m.px(68), m.px(68) }, d->color);
+					DrawAppIcon(cv, m_ctx, d->id, Rect{ c.center().x - m.px(40), c.center().y - m.px(56), m.px(80), m.px(80) }, d->color, true);
 					DrawTextAs(cv, FontTextMedium, { c.x, c.center().y + m.px(34), c.w, m.px(28) }, d->title, d->light ? PC::LabelL : Colors::Text, m.font(17), Align::Center);
 				}
 			}
@@ -624,8 +600,8 @@ namespace Phone
 			cv.fillRect(b, Color(250, 250, 252, 245), m.px(22));
 			const PhoneAppDef* d = n->appId.empty() ? nullptr : def(n->appId);
 			const float is = m.px(34);
-			cv.fillRect({ b.x + m.px(12), b.y + (b.h - is) * 0.5f, is, is }, d ? d->color : PC::Blue, m.px(8));
-			if (d) DrawGlyph(cv, d->id, Rect{ b.x + m.px(12), b.y + (b.h - is) * 0.5f, is, is }.inset(is * 0.2f), Color(255, 255, 255));
+			if (d) DrawAppIcon(cv, m_ctx, d->id, Rect{ b.x + m.px(12), b.y + (b.h - is) * 0.5f, is, is }, d->color, false);
+			else cv.fillRect({ b.x + m.px(12), b.y + (b.h - is) * 0.5f, is, is }, PC::Blue, m.px(8));
 			DrawTextAs(cv, FontTextSemibold, { b.x + m.px(56), b.y + m.px(8), b.w - m.px(68), m.px(22) }, n->title, PC::LabelL, m.font(14));
 			DrawTextIn(cv, { b.x + m.px(56), b.y + m.px(30), b.w - m.px(68), m.px(24) }, n->text, PC::DimL, m.font(13));
 		}

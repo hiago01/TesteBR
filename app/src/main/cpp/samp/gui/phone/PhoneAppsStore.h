@@ -3,18 +3,14 @@
 // sem servico ou sem resposta o app avisa de forma honesta; nada e simulado.
 #include "PhoneAppsGram.h"
 #include "PhoneStore.h"
+#include "PhoneIcon.h"
 
 namespace Phone
 {
-	// icone quadrado arredondado estilo iOS (igual ao da tela inicial, so que menor)
-	inline void DrawAppIconTile(Canvas& cv, const Metrics& m, const Rect& q, const std::string& id, Color col)
+	// icone do app na lista da Loja: o mesmo desenho da tela inicial (imagem do atlas; Calendario com a data de hoje)
+	inline void DrawAppIconTile(Canvas& cv, PhoneContext& ctx, const Rect& q, const std::string& id, Color col)
 	{
-		const float rad = q.w * 0.23f;
-		cv.fillRect(q, Color::mix(col, Color(0, 0, 0), 0.30f), rad);
-		cv.fillRect({ q.x, q.y, q.w, q.h * 0.62f }, col, rad);
-		cv.fillRect({ q.x, q.y + q.h * 0.30f, q.w, q.h * 0.32f }, col, 0);
-		DrawGlyph(cv, id, q.inset(q.w * 0.22f), Color(255, 255, 255));
-		(void)m;
+		DrawAppIcon(cv, ctx, id, q, col, false);
 	}
 
 	// ------------------------------------------------------------------------------------------------ Loja
@@ -71,7 +67,7 @@ namespace Phone
 				const Rect rr{ body.x + mx, r.y, cw, rowH - m.px(6) };
 				cv.fillRect(rr, PC::White, m.px(12));
 				const float is = m.px(46);
-				DrawAppIconTile(cv, m, { rr.x + m.px(10), rr.y + (rr.h - is) * 0.5f, is, is }, a.id, Color((a.color >> 16) & 255, (a.color >> 8) & 255, a.color & 255));
+				DrawAppIconTile(cv, *m_c, { rr.x + m.px(10), rr.y + (rr.h - is) * 0.5f, is, is }, a.id, Color((a.color >> 16) & 255, (a.color >> 8) & 255, a.color & 255));
 				const bool known = !m_c->appExists || m_c->appExists(a.id);
 				const float bx = rr.x + m.px(10) + is + m.px(10);
 				const float bw = installed ? m.px(128) : m.px(74);
