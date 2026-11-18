@@ -8,6 +8,9 @@
 #include "CustomAnim.h"
 #include "IfpLoader.h"
 
+#include "game/Animation/AnimBlendAssociation.h"
+#include "game/Plugins/RpAnimBlendPlugin/RpAnimBlend.h"
+#include "game/Animation/AnimAssocAnimations.h"
 #include <sstream>
 #include <vector>
 #include <cstdlib>
@@ -119,6 +122,26 @@ std::string Command(const std::string& args) {
         return "[REANIM] armas (IWP): " + std::to_string(ok) + " blocos ok, " + std::to_string(fail) + " falharam" + (bad.empty() ? "" : ":" + bad) + ". /reanim lista iwp_ar15 | /reanim tocar iwp_ar15:AR15_fire";
     }
 
+    // Diagnostico: quais animacoes PADRAO do jogo estao tocando no ped local (busca por ID, so funcoes nativas seguras).
+    // Serve para descobrir qual anim (ex.: run_armed / idle_armed parcial) prende um braco durante a corrida.
+    if (c == "ativas")
+    {
+        CPedGTA* p = LocalPed(); if (!p || !p->m_pRwClump) return "[REANIM] ped local indisponivel";
+        const int n = (int)(sizeof(aStdAnimations) / sizeof(aStdAnimations[0]));
+        std::string o = "[ATIVAS] arma slot=" + std::to_string((int)p->m_nActiveWeaponSlot);
+        if ((int)p->m_nActiveWeaponSlot >= 0 && (int)p->m_nActiveWeaponSlot < 13) o += " tipo=" + std::to_string((int)p->m_aWeapons[(int)p->m_nActiveWeaponSlot].dwType);
+        o += " grupoAnd=" + std::to_string(*(int*)((uintptr_t)p + 0x630)) + " |";
+        int shown = 0;
+        for (int id = 0; id < n; id++)
+        {
+            CAnimBlendAssociation* a = RpAnimBlendClumpGetAssociation(p->m_pRwClump, (uint32_t)id);
+            if (!a || !a->IsRunning() || a->m_fBlendAmount < 0.02f) continue;
+            char b[96]; snprintf(b, sizeof(b), " %d:%s w=%.2f%s", id, aStdAnimations[id], a->m_fBlendAmount, a->IsPartial() ? " P" : "");
+            o += b; if (++shown >= 14) { o += " ..."; break; }
+        }
+        FLog("%s", o.c_str());
+        return o;
+    }
     if (c == "parar") { CPedGTA* p = LocalPed(); if (!p) return "[REANIM] ped local indisponivel"; CustomAnim::StopAll(p); return "[REANIM] parado"; }
 
     if (c == "oficial") {
