@@ -9,6 +9,7 @@
 #include "IfpLoader.h"
 
 #include "game/Animation/AnimBlendAssociation.h"
+#include "game/Animation/AnimBlendHierarchy.h"
 #include "game/Plugins/RpAnimBlendPlugin/RpAnimBlend.h"
 #include "game/Animation/AnimAssocAnimations.h"
 #include <sstream>
@@ -136,7 +137,8 @@ std::string Command(const std::string& args) {
         {
             CAnimBlendAssociation* a = RpAnimBlendClumpGetAssociation(p->m_pRwClump, (uint32_t)id);
             if (!a || !a->IsRunning() || a->m_fBlendAmount < 0.02f) continue;
-            char b[96]; snprintf(b, sizeof(b), " %d:%s w=%.2f%s", id, aStdAnimations[id], a->m_fBlendAmount, a->IsPartial() ? " P" : "");
+            char b[96]; snprintf(b, sizeof(b), " [slot %d=%s] g=%d h=%08X w=%.2f%s", id, aStdAnimations[id], (int)a->m_nAnimGroup,
+                     a->m_pHierarchy ? (unsigned)a->m_pHierarchy->m_hashKey : 0u, a->m_fBlendAmount, a->IsPartial() ? " P" : "");
             o += b; if (++shown >= 14) { o += " ..."; break; }
         }
         FLog("%s", o.c_str());
