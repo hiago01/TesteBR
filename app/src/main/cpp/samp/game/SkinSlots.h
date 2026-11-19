@@ -120,6 +120,11 @@ namespace SkinSlots
         // invisivel) existe so para o slot funcionar no provador/rede. Cor 1 = RAIZ, cor 2 = PONTAS (gradiente). Pasta hair/6, variante =
         // comprimento (1 ombro / 2 meio das costas / 3 cintura).
         { "hair6",    "fantasy_m_hair6",    "hair/6",    1, 0xFF1E1A1Au, 0xFF5A3A2Cu },
+        // cabelo masculino "DISFARCADO CARIOCA" v2 (low/mid fade real + topo cacheado texturizado): DUAS cascas 3D no skin.dff (material fantasy_m_hair7,
+        // 92o do skin.dff): A = base rente com o degrade (barbinha -> pele) e B = topo com volume e borda recortada; peso 100% no osso da cabeca.
+        // Preto natural EMBUTIDO na textura, sem cor RGBA (tint 0). Pasta hair/07 (NAO hair/7: 'hair_7_1' colide em 16 bits com 'necklace_1_21' no banco),
+        // variantes: 1 = low fade, 2 = mid fade, 3 = mid-alto.
+        { "hair7",    "fantasy_m_hair7",    "hair/07",   1 },
     };
     static constexpr int kCount = (int)(sizeof(kSlots) / sizeof(kSlots[0]));
 
@@ -256,7 +261,7 @@ namespace SkinSlots
         "clock1,clock2",
         "ear1,ear2,ear3,ear4",
         "glasse1,glasse2",
-        "hair1,hair2,hair3,hair4,hair5,hair6",
+        "hair1,hair2,hair3,hair4,hair5,hair6,hair7",
         "head1,head2,head3,head4,head5",
         "mask1,mask2",
         "pants1,pants2,pants3,pants4,short1,short2,short3",
@@ -314,7 +319,7 @@ namespace SkinSlots
 
     static const UiCategory kUiCategories[] = {
         { "ROUPAS",    "torso1,torso2,torso3,torso4,pants1,pants2,pants3,pants4,short1,short2,short3,underwear" },
-        { "CABELO",    "hair1,hair2,hair3,hair4,hair5,hair6" },
+        { "CABELO",    "hair1,hair2,hair3,hair4,hair5,hair6,hair7" },
         { "ROSTO",     "head1,head2,head3,head4,head5" },
         { "PELE",      "skin_torso,skin_leg,skin_feet" },     // tom de pele: so skin_torso aparece (muda corpo + rosto juntos)
         { "ACESSÓRIOS","glasse1,glasse2,ear1,ear2,ear3,ear4,clock1,clock2,mask1,mask2,necklace1,hat1" },

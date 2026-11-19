@@ -119,6 +119,7 @@ namespace
 	std::string SlotLabel(const char* name)
 	{
 		if (std::strcmp(name, "hair5") == 0) return "Cabelo 5 · Disfarçado";
+		if (std::strcmp(name, "hair7") == 0) return "Cabelo 7 · Disfarçado Carioca";
 		struct Lbl { const char* prefix; const char* label; };
 		static const Lbl kLbl[] = {
 			{ "torso", "Camisa" }, { "pants", "Calça" }, { "short", "Bermuda" }, { "underwear", "Roupa íntima" },

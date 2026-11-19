@@ -10,11 +10,11 @@ struct BS { std::vector<uint8_t> d; size_t p=0;
 int fails=0; void chk(bool c,const char*m){ if(!c){printf("FALHOU: %s\n",m);fails++;} else printf("ok: %s\n",m); }
 int main(){
   using namespace SkinSlots;
-  chk(kCount==63,"kCount==63");
+  chk(kCount==64,"kCount==64");
   const Slot& h=kSlots[61];
   chk(std::string(h.name)=="hair5","id62 = hair5");
   chk(IsColorable(h),"hair5 colorivel");
-  int ncol=0; for(int i=0;i<kCount;++i) ncol+=IsColorable(kSlots[i]); chk(ncol==2,"hair5 e hair6 coloriveis");
+  int ncol=0; for(int i=0;i<kCount;++i) ncol+=IsColorable(kSlots[i]); chk(ncol==2,"so hair5 e hair6 coloriveis (hair7 nao)");
   chk(h.tint==0xFFFFFFFFu,"tint padrao");
   chk(PackArgb(10,20,30,5)==PackArgb(10,20,30,kColorMinA),"A minimo aplicado");
   chk(ArgbA(PackArgb(1,2,3,255))==255 && ArgbR(PackArgb(1,2,3,255))==1,"pack/unpack");
@@ -83,5 +83,26 @@ int main(){
     ProvadorModel::Put(t6,63,1,0,0xFFE95151u,0xFF2ECC40u); chk(t6[63].argb==0&&t6[63].argb2==0,"est1 limpa as 2 cores");
     std::vector<LookSlots::St> sn6; LookSlots::St q{}; q.id=63;q.est=2;q.var=1;q.argb=0xFFE95151u;q.argb2=0xFF2ECC40u; sn6.push_back(q);
     ProvadorModel::SrvTable t7=ProvadorModel::FromSnapshot(sn6); chk(t7[63].argb2==0xFF2ECC40u,"FromSnapshot hair6 2a cor");
+  }
+  // ---- hair7 (disfarcado carioca, 2 cascas no skin.dff, sem cor) ----
+  { const Slot& h7=kSlots[63];
+    chk(std::string(h7.name)=="hair7" && std::string(h7.texture)=="fantasy_m_hair7" && std::string(h7.folder)=="hair/07","id64 = hair7 (material/pasta hair/07)");
+    chk(!IsColorable(h7)&&!IsDualColor(h7)&&h7.tint==0,"hair7 sem cor RGBA (preto natural na textura)");
+    chk(GroupOf("hair7")==GroupOf("hair5") && GroupOf("hair7")==GroupOf("hair6") && GroupOf("hair7")>=0,"hair7 no mesmo grupo exclusivo do cabelo");
+    chk(Find("hair7")==&kSlots[63],"Find(hair7)");
+    BS g; g.W<uint16_t>(7); g.W<uint8_t>(1); g.W<uint8_t>(0); g.W<uint8_t>(1);
+    g.W<uint8_t>(64); g.W<uint8_t>(2); g.W<uint16_t>(3);
+    g.W<uint8_t>(1); g.W<uint8_t>(64); g.W<uint32_t>(0xFFE95151u);        // cor para slot sem cor: ignorada
+    uint16_t pid2; std::vector<LookSlots::St> s7; std::string er2;
+    chk(LookSlots::Parse(g,pid2,s7,er2)&&s7.size()==1&&s7[0].id==64&&s7[0].est==2&&s7[0].var==3&&s7[0].argb==0,"Parse hair7 var3, cor ignorada");
+    std::vector<LookSlots::Op> o7; LookSlots::Plan(s7,o7); bool ok7=false; for(auto&o:o7) if(o.slot==64) ok7=(o.kind==LookSlots::kPack&&o.rel=="hair/07/3.png"&&o.argb==0); chk(ok7,"Plan hair7 pack hair/07/3");
+    // id|0x80 de slot de 1 cor/sem cor tambem ignorado
+    BS g2; g2.W<uint16_t>(7); g2.W<uint8_t>(1); g2.W<uint8_t>(0); g2.W<uint8_t>(1); g2.W<uint8_t>(64); g2.W<uint8_t>(2); g2.W<uint16_t>(1);
+    g2.W<uint8_t>(1); g2.W<uint8_t>(64|0x80); g2.W<uint32_t>(0xFF2ECC40u);
+    chk(LookSlots::Parse(g2,pid2,s7,er2)&&s7.size()==1&&s7[0].argb2==0,"2a cor ignorada em hair7");
+    ProvadorModel::SrvTable t8=ProvadorModel::NewTable(); ProvadorModel::Put(t8,64,2,2,0xFFE95151u,0xFF2ECC40u);
+    chk(t8[64].est==2&&t8[64].var==2&&t8[64].argb==0&&t8[64].argb2==0,"Put hair7: sem cores");
+    // exclusividade real do servidor/cliente: ligar hair7 nao pode ficar junto de hair5/hair6 (mesmo grupo)
+    int g5=GroupOf("hair5"); int n=0; for(int i=0;i<kCount;++i) if(GroupOf(kSlots[i].name)==g5) ++n; chk(n==7,"grupo cabelo = hair1..hair7 (7 slots)");
   }
   printf(fails?"FALHAS %d\n":"TUDO OK\n",fails); return fails; }
