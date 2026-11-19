@@ -799,6 +799,9 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
             uint32_t argb = 0;
             if (it->second != hideTex) { auto ca = overArgb.find(keys[i]); if (ca != overArgb.end()) argb = ca->second; }   // peca ocultada depois: sem cor
             en.swaps.push_back({mats[i], it->second, nullptr, argb, RwRGBA{}});
+            if (argb)   // diagnostico (cor RGBA do provador): mostra a cor do material ANTES da troca; compare com o visual no jogo
+                FLog("[CORPTEX] jogador %d: material '%s' recebe cor ARGB=%08X (cor atual do material %u,%u,%u,%u)", (int)id, keys[i].c_str(), (unsigned)argb,
+                     (unsigned)mats[i]->color.red, (unsigned)mats[i]->color.green, (unsigned)mats[i]->color.blue, (unsigned)mats[i]->color.alpha);
         }
     }
 

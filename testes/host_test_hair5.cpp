@@ -15,7 +15,7 @@ int main(){
   chk(std::string(h.name)=="hair5","id62 = hair5");
   chk(IsColorable(h),"hair5 colorivel");
   int ncol=0; for(int i=0;i<kCount;++i) ncol+=IsColorable(kSlots[i]); chk(ncol==1,"so hair5 colorivel");
-  chk(h.tint==0xFF282321u,"tint padrao");
+  chk(h.tint==0xFFFFFFFFu,"tint padrao");
   chk(PackArgb(10,20,30,5)==PackArgb(10,20,30,kColorMinA),"A minimo aplicado");
   chk(ArgbA(PackArgb(1,2,3,255))==255 && ArgbR(PackArgb(1,2,3,255))==1,"pack/unpack");
   chk(CleanArgb(0)==0,"clean 0");

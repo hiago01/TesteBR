@@ -29,7 +29,7 @@ namespace SkinSlots
         const char* folder;
         int         ev;
         // COR RGBA (provador): 0 = slot sem cor (so textura). != 0 = slot COLORIVEL; o valor e a tinta PADRAO (ARGB: 0xAARRGGBB)
-        // usada enquanto o jogador nao escolheu outra. A tinta MULTIPLICA a textura (que, nesses slots, e neutra/clara).
+        // usada enquanto o jogador nao escolheu outra. A tinta MULTIPLICA a textura (hair5 v3: textura escura = preto natural; branco = natural, outras cores so ESCURECEM/matizam).
         // So hair5 usa hoje; o servidor (maximo_look.inc, Look_SlotColorable) precisa concordar.
         uint32_t    tint = 0;
     };
@@ -110,8 +110,9 @@ namespace SkinSlots
                           "tattoo/legs_top", 0 },
         // ---- ids novos SEMPRE no fim (id de rede = indice + 1; nunca renumerar) ----
         // cabelo masculino "disfarcado carioca" (low/mid fade): casca 3D propria (material fantasy_m_hair5, 90o material do skin.dff),
-        // pasta hair/5 (3 variantes: medio / baixo / alto) e cor RGBA. Tinta padrao = preto natural (0xFF282321).
-        { "hair5",    "fantasy_m_hair5",    "hair/5",    1, 0xFF282321u },
+        // pasta hair/5 (3 variantes: medio / baixo / alto) e cor RGBA. v3: o PRETO NATURAL esta EMBUTIDO na textura (o motor nao garante
+        // aplicar a cor do material em peds); a tinta padrao = branco = 'sem tinta'; cores escolhidas MULTIPLICAM a textura escura.
+        { "hair5",    "fantasy_m_hair5",    "hair/5",    1, 0xFFFFFFFFu },
     };
     static constexpr int kCount = (int)(sizeof(kSlots) / sizeof(kSlots[0]));
 

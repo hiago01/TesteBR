@@ -69,7 +69,7 @@ namespace
 	bool                 g_afterPrepare = false;    // o "refresh" em andamento veio do botao PREPARAR (/skin7 apply)
 	// COR RGBA (so slots coloriveis, hoje hair5): valores dos 4 controles (R,G,B,A 0..255). Enquanto o dedo arrasta (ou ha envio pendente)
 	// valem os locais; senao a tela mostra a cor REAL publicada pelo CCustomSkin (UiSlot::argb), entao CANCELAR/erro/eco do servidor repintam certo.
-	int                  g_rgba[4] = { 40, 35, 33, 255 };
+	int                  g_rgba[4] = { 255, 255, 255, 255 };
 	bool                 g_rgbaDirty = false;       // valor mudou e ainda nao foi pedido ("ui color")
 	int64_t              g_rgbaSendAt = 0;
 	std::string          g_toast;
