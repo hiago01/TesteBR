@@ -67,18 +67,11 @@ namespace
 	int64_t              g_inflightAt = 0;
 	std::string          g_okToast;                 // mostrada se o pedido em andamento der certo
 	bool                 g_afterPrepare = false;    // o "refresh" em andamento veio do botao PREPARAR (/skin7 apply)
-	// COR RGBA (so slots coloriveis, hoje hair5): valores dos 4 controles (R,G,B,A 0..255). Enquanto o dedo arrasta (ou ha envio pendente)
-	// valem os locais; senao a tela mostra a cor REAL publicada pelo CCustomSkin (UiSlot::argb), entao CANCELAR/erro/eco do servidor repintam certo.
-	int                  g_rgba[4] = { 255, 255, 255, 255 };
-	bool                 g_rgbaDirty = false;       // valor mudou e ainda nao foi pedido ("ui color")
-	int64_t              g_rgbaSendAt = 0;
-	int                  g_colorTab = 0;            // slot de 2 cores (hair6): 0 = RAIZ (cor 1), 1 = PONTA (cor 2)
 	std::string          g_toast;
 	bool                 g_toastErr   = false;
 	int64_t              g_toastUntil = 0;
 
-	enum Kind { K_NONE = 0, K_CAT, K_ROW, K_VAR, K_PREV, K_NEXT, K_TOGGLE, K_APPLY, K_CANCEL, K_BACK, K_PREPARE, K_EXIT_SAVE, K_EXIT_DISCARD, K_EXIT_STAY,
-	                  K_SLIDER /* idx 0..3 = R,G,B,A */, K_COLOR_DEF, K_COLOR_TAB /* idx 0 = RAIZ, 1 = PONTA */ };
+	enum Kind { K_NONE = 0, K_CAT, K_ROW, K_VAR, K_PREV, K_NEXT, K_TOGGLE, K_APPLY, K_CANCEL, K_BACK, K_PREPARE, K_EXIT_SAVE, K_EXIT_DISCARD, K_EXIT_STAY };
 
 	struct Hit { int kind = K_NONE; int idx = -1; };
 
@@ -118,8 +111,6 @@ namespace
 	// "hair2" -> "Cabelo 2". O nome real do slot aparece no rodape; slot desconhecido mostra o proprio nome.
 	std::string SlotLabel(const char* name)
 	{
-		if (std::strcmp(name, "hair5") == 0) return "Cabelo 5 · Disfarçado";
-		if (std::strcmp(name, "hair7") == 0) return "Cabelo 7 · Disfarçado Carioca";
 		struct Lbl { const char* prefix; const char* label; };
 		static const Lbl kLbl[] = {
 			{ "torso", "Camisa" }, { "pants", "Calça" }, { "short", "Bermuda" }, { "underwear", "Roupa íntima" },
@@ -213,7 +204,6 @@ namespace
 			case kCovered:  s += "  -  coberto por outra peça"; break;
 			default:        s += u->variants.empty() ? "  -  sem variantes no pack" : "  -  padrão, nada equipado (" + std::to_string(u->variants.size()) + " variantes)"; break;
 		}
-		if (u->colorable && u->state == kEquipped) { char cb[24]; std::snprintf(cb, sizeof(cb), "  -  cor #%02X%02X%02X", SkinSlots::ArgbR(u->argb), SkinSlots::ArgbG(u->argb), SkinSlots::ArgbB(u->argb)); s += cb; }
 		if (u->previewed) s += "  -  PRÉVIA";
 		else if (u->srvKnown) s += std::string("  -  servidor: ") + ProvadorModel::SrvWord(ProvadorModel::Srv{true, (uint8_t)u->srvEst, (uint16_t)u->srvVar}) + (u->srvEst == 2 ? " " + std::to_string(u->varMod > 0 ? u->srvVar % u->varMod : u->srvVar) : std::string());
 		return s;
@@ -406,19 +396,7 @@ void Provador::draw(ImGuiRenderer* r)
 	const float listBot = top + (bot - top) * 0.52f;
 	const float varTitleY = listBot + 4.0f * k;
 	const float varTop  = varTitleY + titleH;
-	// painel de COR RGBA (so item colorivel): ocupa o fim do painel direito; a grade de variantes encolhe
-	const bool  showColor = ready && selU && selU->hasMaterial && selU->colorable;
-	const bool  dual2     = showColor && selU->dual;                               // 2 cores (hair6): abas RAIZ / PONTA
-	const int   colTab    = dual2 ? std::clamp(g_colorTab, 0, 1) : 0;
-	const uint32_t shownArgb = colTab == 1 ? selU->argb2 : (showColor ? selU->argb : 0u);   // cor real da aba atual
-	const char* colorCmd  = colTab == 1 ? "color2 " : "color ";
-	const float colorH    = showColor ? 156.0f * k : 0.0f;
-	const float varBot  = bot - colorH;
-	const float colorTop = varBot;
-	const float slRowH  = 24.0f * k;
-	const float slY0    = colorTop + 24.0f * k;
-	const float slX0    = panX + pad + 20.0f * k, slX1 = panX + panW - pad - 40.0f * k;
-	const float defY    = slY0 + 4.0f * slRowH + 2.0f * k;
+	const float varBot  = bot;
 	const float rowH    = 30.0f * k;
 
 	const int   cols    = 5;
@@ -480,20 +458,6 @@ void Provador::draw(ImGuiRenderer* r)
 	const ImVec2 bkA(caB.x + gap, rowCY),         bkB(cx1, rowCY + rowCH);
 	const ImVec2 prepA(cx0, rowBY),               prepB(cx1, rowBY + rowBH);
 
-	const bool sliderDrag = g_drag.finger >= 0 && g_drag.hit.kind == K_SLIDER;
-	if (showColor && !sliderDrag && !g_rgbaDirty && g_inflight == 0)       // mostra a cor real (escolhida ou padrao do item)
-	{
-		g_rgba[0] = SkinSlots::ArgbR(shownArgb); g_rgba[1] = SkinSlots::ArgbG(shownArgb);
-		g_rgba[2] = SkinSlots::ArgbB(shownArgb); g_rgba[3] = SkinSlots::ArgbA(shownArgb);
-	}
-	const bool colorOn = showColor && selU->state == kEquipped && !busy;   // so com variante aplicada (o servidor so guarda cor com variante)
-	auto sliderSet = [&](int which, float x) {
-		const float t = std::clamp((x - slX0) / std::max(1.0f, slX1 - slX0), 0.0f, 1.0f);
-		const int lo = (which == 3) ? SkinSlots::kColorMinA : 0;
-		const int v = lo + (int)std::lround(t * (float)(255 - lo));
-		if (g_rgba[which] != v) { g_rgba[which] = v; g_rgbaDirty = true; }
-	};
-
 	// pergunta de saida (so desenhada/tocavel com previa nao salva)
 	const float exW = std::min(scr.x * 0.7f, 460.0f * k), exH = 132.0f * k;
 	const float exX0 = (scr.x - exW) * 0.5f, exY0 = (scr.y - exH) * 0.5f;
@@ -537,19 +501,6 @@ void Provador::draw(ImGuiRenderer* r)
 		{
 			const int i = (int)((y - top) / (catH + catGap));
 			if (i >= 0 && i < SkinSlots::kUiCategoryCount) { h.kind = K_CAT; h.idx = i; return h; }
-		}
-		if (showColor && ready && inRect(x, y, panX, colorTop, panX + panW, bot))
-		{
-			if (dual2 && y >= colorTop && y < slY0)   // abas RAIZ | PONTA (no cabecalho do painel de cor)
-			{
-				const float tw = 54.0f * k, tx0 = panX + pad + 82.0f * k;
-				if (x >= tx0 && x < tx0 + tw) { h.kind = K_COLOR_TAB; h.idx = 0; return h; }
-				if (x >= tx0 + tw + 4.0f * k && x < tx0 + 2.0f * tw + 4.0f * k) { h.kind = K_COLOR_TAB; h.idx = 1; return h; }
-				return h;
-			}
-			if (y >= slY0 && y < slY0 + 4.0f * slRowH && x >= slX0 - 10.0f * k && x <= slX1 + 10.0f * k) { h.kind = K_SLIDER; h.idx = (int)((y - slY0) / slRowH); return h; }
-			if (y >= defY && y <= defY + 28.0f * k && x >= panX + pad && x <= panX + panW - pad) { h.kind = K_COLOR_DEF; return h; }
-			return h;
 		}
 		if (inRect(x, y, panX, listTop, panX + panW, listBot))
 		{
@@ -655,16 +606,6 @@ void Provador::draw(ImGuiRenderer* r)
 				if (!pending || busy) break;
 				Request("cancel", "Prévia cancelada");
 				break;
-			case K_COLOR_TAB:
-				if (!dual2 || busy) break;
-				if (g_colorTab != h.idx) { g_colorTab = h.idx; g_rgbaDirty = false; }   // a tela repinta com a cor REAL da outra aba
-				break;
-			case K_COLOR_DEF:
-				if (!showColor || g_sel < 0) break;
-				if (!colorOn) { Toast(busy ? "Aguarde..." : "Escolha uma variante do cabelo antes de mudar a cor", true); break; }
-				g_rgbaDirty = false;
-				Request(std::string(colorCmd) + SlotAt(g_sel).name + " off", colTab == 1 ? "Cor da ponta padrão" : "Cor padrão");
-				break;
 		}
 		return false;
 	};
@@ -687,15 +628,9 @@ void Provador::draw(ImGuiRenderer* r)
 			g_drag.region = region;
 			g_drag.sy = e.y;
 			g_drag.scroll0 = (region == 1) ? g_scrollList : g_scrollVar;
-			if (g_drag.hit.kind == K_SLIDER)
-			{
-				if (colorOn) sliderSet(g_drag.hit.idx, e.x);
-				else { Toast(busy ? "Aguarde..." : "Escolha uma variante do cabelo antes de mudar a cor", true); g_drag.hit = Hit(); }
-			}
 		}
 		else if (e.num == g_drag.finger && e.type == 3)          // move
 		{
-			if (g_drag.hit.kind == K_SLIDER && colorOn) sliderSet(g_drag.hit.idx, e.x);
 			if (g_drag.region != 0)
 			{
 				if (std::fabs(e.y - g_drag.sy) > 10.0f * k) g_drag.scrolling = true;
@@ -708,7 +643,6 @@ void Provador::draw(ImGuiRenderer* r)
 		}
 		else if (e.num == g_drag.finger && e.type == 1)          // pop / cancel
 		{
-			if (g_drag.hit.kind == K_SLIDER && colorOn && !e.cancel) sliderSet(g_drag.hit.idx, e.x);
 			const bool ok = !e.cancel && !g_drag.scrolling && g_drag.hit.kind != K_NONE;
 			Hit up; int reg2 = 0;
 			if (ok) up = hitTest(e.x, e.y, reg2);
@@ -718,17 +652,6 @@ void Provador::draw(ImGuiRenderer* r)
 			if (same && doAction(act)) return;                   // fechou: nao desenha mais neste frame
 		}
 		// toques de outros dedos: consumidos e ignorados
-	}
-
-	// ---- cor RGBA: pede a previa (no maximo 1 pedido a cada ~110 ms; o ultimo valor sempre vai) ----
-	if (g_rgbaDirty)
-	{
-		if (!showColor || g_sel < 0) g_rgbaDirty = false;
-		else if (g_inflight == 0 && !awaiting && NowMs() - g_rgbaSendAt >= 110)
-		{
-			g_rgbaDirty = false; g_rgbaSendAt = NowMs();
-			Request(std::string(colorCmd) + SlotAt(g_sel).name + " " + std::to_string((unsigned)SkinSlots::PackArgb(g_rgba[0], g_rgba[1], g_rgba[2], g_rgba[3])), nullptr);
-		}
 	}
 
 	// ---- pintura ----
@@ -845,46 +768,6 @@ void Provador::draw(ImGuiRenderer* r)
 		}
 	}
 	r->popClipRect();
-
-	// painel de COR RGBA (item colorivel): R, G, B, A + amostra + COR PADRAO
-	if (showColor)
-	{
-		r->drawRect(ImVec2(panX, colorTop - 2.0f * k), ImVec2(panX + panW, colorTop - 1.0f * k), cLine, true);
-		r->drawText(ImVec2(panX + pad, colorTop + 4.0f * k), cBlue, dual2 ? "COR" : "COR (RGBA)", false, fsS);
-		if (dual2)    // abas: RAIZ (cor 1) | PONTA (cor 2)
-		{
-			const float tw = 54.0f * k, tx0 = panX + pad + 82.0f * k, ty0 = colorTop + 2.0f * k, ty1 = colorTop + 22.0f * k;
-			for (int t2 = 0; t2 < 2; ++t2)
-			{
-				const float x0 = tx0 + t2 * (tw + 4.0f * k);
-				const bool on = (colTab == t2);
-				r->drawRect(ImVec2(x0, ty0), ImVec2(x0 + tw, ty1), on ? cBlueBg : cPanel2, true);
-				r->drawRect(ImVec2(x0, ty0), ImVec2(x0 + tw, ty1), on ? cBlue : cLine, false);
-				const char* tn = t2 == 0 ? "RAIZ" : "PONTA";
-				const ImVec2 ts = r->calculateTextSize(std::string(tn), fsS);
-				r->drawText(ImVec2(x0 + (tw - ts.x) * 0.5f, ty0 + (ty1 - ty0 - ts.y) * 0.5f), on ? cText : cDim, tn, false, fsS);
-			}
-		}
-		const float swS = 16.0f * k, swX = panX + panW - pad - swS, swY = colorTop + 3.0f * k;
-		r->drawRect(ImVec2(swX, swY), ImVec2(swX + swS, swY + swS), ImColor(g_rgba[0], g_rgba[1], g_rgba[2], g_rgba[3]), true);
-		r->drawRect(ImVec2(swX, swY), ImVec2(swX + swS, swY + swS), cLine, false);
-		static const char* const kCh[4] = { "R", "G", "B", "A" };
-		const ImColor kFill[4] = { ImColor(232, 92, 84, 255), ImColor(86, 200, 110, 255), ImColor(70, 140, 235, 255), ImColor(190, 196, 205, 255) };
-		for (int c = 0; c < 4; ++c)
-		{
-			const float ry = slY0 + c * slRowH, my = ry + slRowH * 0.5f;
-			const int lo = (c == 3) ? SkinSlots::kColorMinA : 0;
-			const float t = std::clamp((float)(g_rgba[c] - lo) / (float)(255 - lo), 0.0f, 1.0f);
-			const float kx = slX0 + t * (slX1 - slX0);
-			r->drawText(ImVec2(panX + pad, my - fsS * 0.5f), colorOn ? cText : cDim, kCh[c], false, fsS);
-			r->drawRect(ImVec2(slX0, my - 3.0f * k), ImVec2(slX1, my + 3.0f * k), cOff, true);
-			r->drawRect(ImVec2(slX0, my - 3.0f * k), ImVec2(kx, my + 3.0f * k), colorOn ? kFill[c] : cLine, true);
-			r->drawRect(ImVec2(kx - 4.0f * k, my - 8.0f * k), ImVec2(kx + 4.0f * k, my + 8.0f * k), colorOn ? cText : cDim, true);
-			const std::string vs = std::to_string(g_rgba[c]);
-			r->drawText(ImVec2(slX1 + 8.0f * k, my - fsS * 0.5f), cDim, vs, false, fsS);
-		}
-		button(ImVec2(panX + pad, defY), ImVec2(panX + panW - pad, defY + 28.0f * k), "COR PADRÃO", colorOn, false, fsS);
-	}
 
 	// barra inferior (centro): estado, variante atual, navegacao e botoes
 	r->drawRect(ImVec2(cx0, barY - 2.0f * k), ImVec2(cx1, bot), cPanel, true);

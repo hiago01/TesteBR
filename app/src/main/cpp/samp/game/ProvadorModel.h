@@ -81,12 +81,10 @@ namespace ProvadorModel
         bool     known = false;
         uint8_t  est   = 0;
         uint16_t var   = 0;
-        uint32_t argb  = 0;      // cor RGBA (0xAARRGGBB) do slot colorivel; 0 = nenhuma escolhida. So vale com est==2/1 (visivel)
-        uint32_t argb2 = 0;      // 2a cor (pontas) do slot de duas cores (hair6); idem
         bool operator==(const Srv& o) const
         {
             if (known != o.known) return false;
-            return !known || (est == o.est && var == o.var && argb == o.argb && argb2 == o.argb2);
+            return !known || (est == o.est && var == o.var);
         }
         bool operator!=(const Srv& o) const { return !(*this == o); }
     };
@@ -95,8 +93,7 @@ namespace ProvadorModel
     inline SrvTable NewTable() { return SrvTable((size_t)SkinSlots::kCount + 1); }
 
     // = Look_PutSlot do servidor. est 255 (LOOK_UNSET_WIRE) volta ao padrão.
-    // argb: so e gravada em slot colorivel visivel (= Look_PutSlot do servidor); nos demais casos fica 0.
-    inline void Put(SrvTable& t, int id, int est, int var, uint32_t argb = 0, uint32_t argb2 = 0)
+    inline void Put(SrvTable& t, int id, int est, int var)
     {
         if (id < 1 || id > SkinSlots::kCount) return;
         if (t.size() < (size_t)SkinSlots::kCount + 1) t.resize((size_t)SkinSlots::kCount + 1);
@@ -112,18 +109,16 @@ namespace ProvadorModel
             }
         }
         Srv n; n.known = true; n.est = (uint8_t)est; n.var = (uint16_t)(est == 2 ? var : 0);
-        if (est == 2 && SkinSlots::IsColorable(SkinSlots::kSlots[id - 1])) n.argb = SkinSlots::CleanArgb(argb);
-        if (est == 2 && SkinSlots::IsDualColor(SkinSlots::kSlots[id - 1])) n.argb2 = SkinSlots::CleanArgb(argb2);
         t[(size_t)id] = n;
     }
 
-    struct Op { int slotId; int est; int var; uint32_t argb = 0; uint32_t argb2 = 0; };
+    struct Op { int slotId; int est; int var; };
 
     // O que o servidor terá DEPOIS de processar `ops` em ordem, partindo de `before`.
     inline SrvTable Simulate(const SrvTable& before, const std::vector<Op>& ops)
     {
         SrvTable t = before;
-        for (const Op& o : ops) Put(t, o.slotId, o.est, o.var, o.argb, o.argb2);
+        for (const Op& o : ops) Put(t, o.slotId, o.est, o.var);
         return t;
     }
 
@@ -136,8 +131,6 @@ namespace ProvadorModel
         {
             if (s.id < 1 || s.id > SkinSlots::kCount) continue;
             Srv n; n.known = true; n.est = (uint8_t)s.est; n.var = (uint16_t)(s.est == 2 ? s.var : 0);
-            n.argb  = (s.est == 2) ? SkinSlots::CleanArgb(s.argb)  : 0u;
-            n.argb2 = (s.est == 2) ? SkinSlots::CleanArgb(s.argb2) : 0u;
             t[(size_t)s.id] = n;
         }
         return t;

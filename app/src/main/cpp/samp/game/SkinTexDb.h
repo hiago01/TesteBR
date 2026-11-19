@@ -29,7 +29,6 @@
 
 #include "../main.h"          // g_pszStorage
 #include "SkinTexDbCore.h"
-#include "SafeTexDb.h"      // carga protegida (SIGSEGV contido em SortEntries) - o banco skins NAO pode derrubar a abertura
 #include "Textures/TextureDatabaseRuntime.h"
 #include "../util/CUtil.h"
 
@@ -79,17 +78,8 @@ namespace SkinTexDb
         }
         const size_t n = Idx().Parse(text);
         if (n == 0) { Msg_() = "skins.idx vazio ou ilegivel; banco ignorado"; return false; }
-        // 1) confere os arquivos ANTES: o Load nativo faz SIGSEGV (SortEntries) com .toc/.tmb/.dat inconsistentes
-        const std::string bad = SkinTexDbCore::CheckBankFiles(d, kDbName, n);
-        if (!bad.empty())
-        {
-            FLog("[SKINTEXDB] banco skins INCONSISTENTE, NAO carregado: %s", bad.c_str());
-            Msg_() = "banco ignorado (arquivos inconsistentes): " + bad + " | copie TODOS os arquivos de texdb/skins juntos (inclusive o .dat)";
-            return false;
-        }
-        // 2) carga protegida (SafeTexDb: handler de SIGSEGV por tentativa, memoria entre aberturas, rollback das listas do motor)
-        TextureDatabaseRuntime* db = SafeTexDb::Load(kDbName, false, TextureDatabaseFormat::DF_Default);
-        if (!db) { Msg_() = "TextureDatabaseRuntime::Load(\"skins\") FALHOU (veja [TEXDB] no log; confira os arquivos .dat/.tmb/.toc do formato da GPU)"; return false; }
+        TextureDatabaseRuntime* db = TextureDatabaseRuntime::Load(kDbName, false, TextureDatabaseFormat::DF_Default);
+        if (!db) { Msg_() = "TextureDatabaseRuntime::Load(\"skins\") FALHOU (confira os arquivos .dat/.tmb/.toc do formato da GPU)"; return false; }
         Ready_() = true;
         Msg_() = std::to_string(n) + " texturas no banco skins";
         return true;

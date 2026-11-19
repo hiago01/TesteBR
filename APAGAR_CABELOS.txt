@@ -1,0 +1,4 @@
+Opcional (nao entram na compilacao do jogo): pode apagar do repositorio
+  testes/host_test_hair5.cpp  testes/host_test_haircloth.cpp  testes/host_test_hairphysics.cpp  testes/host_test_skinbank.cpp
+  tools/aplicar_hair6_cliente.py
+Os 5 arquivos neutralizados (HairCloth.cpp/.h, HairClothMesh.h, HairPhysics.cpp/.h em app/src/main/cpp/samp/game/) tambem podem ser apagados; vazios nao fazem mal.

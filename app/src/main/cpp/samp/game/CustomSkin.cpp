@@ -6,8 +6,6 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
-#include <cctype>
-#include <cstdlib>
 #include <cerrno>
 #include <cstring>
 #include <ctime>
@@ -132,7 +130,7 @@ namespace
 
     // [LOOKX-STATE-BEGIN] ---- sincronização com o servidor (/lookx set|reset) -----------------------------
     // Só a thread do jogo mexe. O envio acontece em LookFlush (1x por frame, no máx. 1 comando a cada 300 ms).
-    struct LookOp { int slotId; int est; int var; uint32_t argb = 0; uint32_t argb2 = 0; };   // est: 0 oculto | 1 textura original | 2 variante do pack | argb: cor RGBA (so est 2, slot colorivel; 0 = nenhuma)
+    struct LookOp { int slotId; int est; int var; };       // est: 0 oculto | 1 textura original | 2 variante do pack
     std::vector<LookOp>       s_lookQ;                     // a enviar (1 por slot: o pedido mais recente vence)
     std::vector<LookOp>       s_lookPrevQ;                 // prévia do /provador: só vai ao servidor no "commit"
     bool                      s_lookResetQ   = false;      // enviar "/lookx reset"
@@ -146,11 +144,6 @@ namespace
     RpClump*                    s_installed = nullptr;  // clump-molde instalado por nós
     std::vector<RwTexture*>     s_enabledTex;           // 1 ref nossa por material (textura "ligada")
     std::vector<uint8_t>        s_origAlpha;
-    // COR RGBA do provador (slots coloriveis, hoje so hair5). s_origRgb = cor ORIGINAL (0xRRGGBB) de cada material no DFF (= tinta padrao do slot);
-    // s_matArgb = cor ESCOLHIDA por material (indice -> 0xAARRGGBB; ausente = original). Absoluta: RGB do material = RGB da tinta, alfa = A.
-    std::vector<uint32_t>       s_origRgb;
-    std::unordered_map<int, uint32_t> s_matArgb;
-    std::unordered_map<int, uint32_t> s_matArgb2;   // 2a cor (PONTAS) do slot de duas cores (hair6): so para a rede e para o HairCloth (o material usa so a 1a)
     RwTexture*                  s_hiddenTex = nullptr;  // textura transparente (1 ref nossa, permanente)
     std::vector<std::pair<RwTexture*, uint64_t>> s_graveyard;   // texturas a soltar com atraso
 
@@ -165,8 +158,6 @@ namespace
         std::vector<uint8_t>                 hidden;
         std::map<int, std::string>           matPack;
         std::unordered_map<std::string, int> slotVar;
-        std::unordered_map<int, uint32_t>    matArgb;           // cor RGBA escolhida por material
-        std::unordered_map<int, uint32_t>    matArgb2;          // 2a cor (pontas)
         std::vector<RwTexture*>              tex;               // 1 ref extra por material (nullptr = sem textura)
     } s_bak;
 
@@ -386,8 +377,6 @@ namespace
     }
     uint8_t    MatAlpha(RpMaterial* m)                { return m->color.alpha; }
     void       SetMatAlpha(RpMaterial* m, uint8_t a)  { m->color.alpha = a; }
-    uint32_t   MatRgb(RpMaterial* m)                  { return ((uint32_t)m->color.red << 16) | ((uint32_t)m->color.green << 8) | (uint32_t)m->color.blue; }
-    void       SetMatRgb(RpMaterial* m, uint32_t rgb) { m->color.red = (uint8_t)(rgb >> 16); m->color.green = (uint8_t)(rgb >> 8); m->color.blue = (uint8_t)rgb; }
 
     void TexAddRef(RwTexture* t)  { if (t) t->refCount++; }          // refCount em +0x64 (conferido em RpMaterialSetTexture)
     void TexRelease(RwTexture* t) { if (t) RwTextureDestroy(t); }
@@ -521,8 +510,6 @@ namespace
     }
     uint8_t MatAlpha(RpMaterial* m) { return m->color.alpha; }
     void SetMatAlpha(RpMaterial* m, uint8_t a) { m->color.alpha = a; }
-    uint32_t MatRgb(RpMaterial* m) { return ((uint32_t)m->color.red << 16) | ((uint32_t)m->color.green << 8) | (uint32_t)m->color.blue; }
-    void SetMatRgb(RpMaterial* m, uint32_t rgb) { m->color.red = (uint8_t)(rgb >> 16); m->color.green = (uint8_t)(rgb >> 8); m->color.blue = (uint8_t)rgb; }
     std::string TexName(RwTexture* t) { return t ? std::string(t->name) : std::string("NULL"); }
     bool TexHasRaster(RwTexture* t) { return t && t->raster; }
 
@@ -614,18 +601,7 @@ namespace
         RwTexture* want = visible ? s_enabledTex[(size_t)i] : EnsureHiddenTex();
         if (!visible && !want) return;                       // sem textura transparente: não dá para ocultar
         SetMatTexture(m, want);
-        if (!visible) { SetMatAlpha(m, 0); return; }         // oculto: só alfa 0 (a cor fica como está)
-        // visível: cor escolhida (RGB = tinta; alfa = alfa original x A/255) ou, sem escolha, a cor ORIGINAL do DFF
-        const auto ca = s_matArgb.find(i);
-        if (ca != s_matArgb.end() && ca->second && (size_t)i < s_origAlpha.size())
-        {
-            const uint32_t c = ca->second;
-            SetMatRgb(m, (uint32_t)(c & 0xFFFFFFu));
-            SetMatAlpha(m, (uint8_t)(((uint32_t)s_origAlpha[(size_t)i] * (uint32_t)SkinSlots::ArgbA(c) + 127u) / 255u));
-            return;
-        }
-        if ((size_t)i < s_origRgb.size()) SetMatRgb(m, s_origRgb[(size_t)i]);
-        SetMatAlpha(m, s_origAlpha[(size_t)i]);
+        SetMatAlpha(m, visible ? s_origAlpha[(size_t)i] : (uint8_t)0);
     }
 
     // Texturiza o clump (ainda não instalado ou já instalado). reload=true: troca as refs antigas com atraso.
@@ -637,8 +613,6 @@ namespace
         {
             s_enabledTex.assign(n, nullptr);
             s_origAlpha.assign(n, 255);
-            s_origRgb.assign(n, 0xFFFFFFu);
-            s_matArgb.clear(); s_matArgb2.clear();                  // molde novo = DFF puro: nenhuma cor escolhida
         }
 
         std::unordered_map<std::string, RwTexture*> cache;      // caminho -> textura (ref de criação nossa)
@@ -714,7 +688,6 @@ namespace
                 TexAddRef(cur);
                 s_enabledTex[i] = cur;
                 s_origAlpha[i] = MatAlpha(mats[i]);
-                s_origRgb[i]   = MatRgb(mats[i]);
             }
         }
 
@@ -1325,8 +1298,6 @@ namespace
     }
 
     // [LOOKX-FUNCS-BEGIN] ---- fila de pedidos /lookx --------------------------------------------------------
-    std::string HexArgb(uint32_t v) { char b[16]; std::snprintf(b, sizeof(b), "%08X", (unsigned)v); return b; }
-
     void LookQueue(const LookOp& op)
     {
         for (LookOp& q : s_lookQ) if (q.slotId == op.slotId) { q = op; return; }     // mesmo slot: o último vence
@@ -1357,8 +1328,6 @@ namespace
                     return " | lookx: caminho avulso, não sincronizado";
                 }
                 op.est = 2; op.var = n;
-                if (SkinSlots::IsColorable(sl)) { const auto ca = s_matArgb.find(idx[0]); if (ca != s_matArgb.end()) op.argb = ca->second; }   // cor RGBA (so variante)
-                if (SkinSlots::IsDualColor(sl))  { const auto cb = s_matArgb2.find(idx[0]); if (cb != s_matArgb2.end()) op.argb2 = cb->second; }   // 2a cor (pontas)
             }
         }
         if (s_lookInPrev)
@@ -1369,8 +1338,7 @@ namespace
         }
         LookQueue(op);
         return " | lookx: na fila (slot " + std::to_string(slotId) + " estado " + std::to_string(op.est) +
-               (op.est == 2 ? " var " + std::to_string(op.var) : std::string()) +
-               (op.argb ? " cor #" + HexArgb(op.argb) : std::string()) + (op.argb2 ? " ponta #" + HexArgb(op.argb2) : std::string()) + ")";
+               (op.est == 2 ? " var " + std::to_string(op.var) : std::string()) + ")";
     }
 
     void LookCommitPrev()                       // "ui commit": a prévia confirmada passa para a fila de envio
@@ -1414,7 +1382,7 @@ namespace
         const uint64_t now = NowMs();
         if (s_lookLastSendMs && now - s_lookLastSendMs < kLookDebounceMs) return;
 
-        char buf[96];
+        char buf[64];
         if (s_lookResetQ)
         {
             s_lookResetQ = false;
@@ -1424,11 +1392,8 @@ namespace
         {
             const LookOp op = s_lookQ.front();
             s_lookQ.erase(s_lookQ.begin());
-            if (op.est == 2 && (op.argb || op.argb2))   // cor RGBA: "/lookx set <slot> 2 <variante> <RGB 24 bits decimal> <A 0..255> [<RGB2> <A2>]" (A=0 = "sem cor"; servidor antigo ignora o que sobra)
-                std::snprintf(buf, sizeof(buf), "/lookx set %d 2 %d %u %u %u %u", op.slotId, op.var, (unsigned)(op.argb & 0xFFFFFFu), (unsigned)SkinSlots::ArgbA(op.argb),
-                              (unsigned)(op.argb2 & 0xFFFFFFu), (unsigned)SkinSlots::ArgbA(op.argb2));
-            else if (op.est == 2) std::snprintf(buf, sizeof(buf), "/lookx set %d 2 %d", op.slotId, op.var);
-            else                  std::snprintf(buf, sizeof(buf), "/lookx set %d %d", op.slotId, op.est);
+            if (op.est == 2) std::snprintf(buf, sizeof(buf), "/lookx set %d 2 %d", op.slotId, op.var);
+            else             std::snprintf(buf, sizeof(buf), "/lookx set %d %d", op.slotId, op.est);
         }
         SendChat(buf);
         s_lookLastSendMs = now;
@@ -1507,57 +1472,6 @@ namespace
         SetInfo(name + " = " + note + lk + (exN ? " | categoria: " + std::to_string(exN) + " material(is) de outros slots ocultados" : std::string()) +
                 (cvN ? " | cobertura: " + std::to_string(cvN) + " parte(s) do corpo ajustada(s)" : std::string()) +
                 (sl->ev == 0 ? " | HIPOTESE de mapeamento: confira no jogo" : ""));
-    }
-
-    // ---- /skin7 slotcolor <slot> <argb | #AARRGGBB | off> : cor RGBA do slot COLORIVEL (hoje hair5) -------------------------------
-    // argb: inteiro decimal 0xAARRGGBB (ou "#AARRGGBB" em hexa); 0/off = volta a cor ORIGINAL do material (= tinta padrao do slot).
-    // Absoluta: RGB do material = RGB, alfa = alfa original x A/255 (A minimo SkinSlots::kColorMinA). So vale em slot com SkinSlots::IsColorable.
-    // Vai ao servidor junto com o pedido do slot (LookNoteSlot -> "/lookx set <slot> 2 <var> <rgb> <a>"), pelo MESMO caminho de previa/commit.
-    bool ParseArgb(const std::string& a, uint32_t& out)
-    {
-        if (a == "off" || a == "padrao") { out = 0; return true; }
-        if (a.empty()) return false;
-        int base = 10; size_t p = 0;
-        if (a[0] == '#') { base = 16; p = 1; }
-        if (p >= a.size()) return false;
-        for (size_t i = p; i < a.size(); ++i)
-        {
-            const unsigned char c = (unsigned char)a[i];
-            if (!(base == 16 ? std::isxdigit(c) : std::isdigit(c))) return false;
-        }
-        if (a.size() - p > (base == 16 ? 8u : 10u)) return false;
-        const unsigned long long v = std::strtoull(a.c_str() + p, nullptr, base);
-        if (v > 0xFFFFFFFFull) return false;
-        out = (uint32_t)v;
-        return true;
-    }
-
-    void DoSlotColor(const std::string& rest, bool second = false)       // second = 2a cor (pontas, so slot de duas cores)
-    {
-        if (!s_loadedOk && !DoLoad(false)) return;
-        std::istringstream in(rest);
-        std::string name, arg;
-        in >> name >> arg;
-        if (name.empty() || arg.empty()) { SetInfo("uso: /skin7 slotcolor <slot> <argb | #AARRGGBB | off>   (so slots com cor: hair5)"); return; }
-        const SkinSlots::Slot* sl = SkinSlots::Find(name.c_str());
-        if (!sl) { SetInfo("slot desconhecido: '" + name + "' (veja /skin7 slots)"); return; }
-        if (!(second ? SkinSlots::IsDualColor(*sl) : SkinSlots::IsColorable(*sl))) { SetInfo("o slot '" + name + (second ? "' nao tem 2a cor (so hair6)" : "' nao tem cor RGBA (so textura)")); return; }
-        uint32_t v = 0;
-        if (!ParseArgb(arg, v)) { SetInfo("cor invalida: '" + arg + "' (use inteiro 0xAARRGGBB em decimal, #AARRGGBB ou off)"); return; }
-        v = SkinSlots::CleanArgb(v);                                 // alfa minimo; 0 continua 0 (= cor original)
-        const std::vector<int> idx = SlotMaterials(*sl);
-        if (idx.empty()) { SetInfo("o DFF carregado nao tem o material do slot '" + name + "' (" + sl->texture + ")"); return; }
-        if (!InstalledOurs()) { SetInfo("ERRO: nosso molde nao esta instalado (use /skin7 apply primeiro)"); return; }
-        bool anyVisible = false;
-        for (int i : idx) if (!((size_t)i < s_hidden.size() && s_hidden[(size_t)i])) anyVisible = true;
-        auto& cm = second ? s_matArgb2 : s_matArgb;
-        for (int i : idx) { if (v) cm[i] = v; else cm.erase(i); }
-        std::string note; ApplyHiddenToTemplate(note);               // repinta (HidePass -> SetMaterialVisible)
-        std::string lk;
-        if (!anyVisible) lk = " | slot oculto: cor guardada (ligue o slot para ver)";
-        else if (s_matPack.find(idx[0]) == s_matPack.end()) lk = " | cor so local: o servidor so guarda cor com uma variante do pack aplicada";
-        else lk = LookNoteSlot(*sl, idx, false);
-        SetInfo(name + (second ? " ponta" : "") + (v ? " cor #" + HexArgb(v) : std::string(" cor original")) + " | " + note + lk);
     }
 
     // ---- /skin7 set <lista de materiais> <pasta/arquivo> : teste livre (confirma/refuta hipóteses) -----
@@ -1764,8 +1678,6 @@ namespace
         s_bak.hidden  = s_hidden;
         s_bak.matPack = s_matPack;
         s_bak.slotVar = s_slotVar;
-        s_bak.matArgb = s_matArgb;
-        s_bak.matArgb2 = s_matArgb2;
         s_bak.tex     = s_enabledTex;
         for (RwTexture* t : s_bak.tex) TexAddRef(t);
         return true;
@@ -1798,8 +1710,6 @@ namespace
         s_hidden  = s_bak.hidden;
         s_matPack = s_bak.matPack;
         s_slotVar = s_bak.slotVar;
-        s_matArgb2 = s_bak.matArgb2;
-        s_matArgb = s_bak.matArgb;                        // cor RGBA escolhida na prévia volta ao que era (ApplyHiddenToTemplate repinta)
         DiscardBackup();                                 // solta as refs extras das texturas que não mudaram
         RecountHidden();
         ApplyHiddenToTemplate(note);                     // religa texturas/alfa de cada material conforme s_hidden
@@ -1933,10 +1843,6 @@ namespace
             if (!v.known) continue;
             const SkinSlots::Slot& sl = SkinSlots::kSlots[id - 1];
             if (SlotMaterials(sl).empty()) continue;
-            if (SkinSlots::IsColorable(sl))                      // cor RGBA gravada no servidor: entra ANTES do DoSlot (ApplyPack repinta com ela)
-                for (int i : SlotMaterials(sl)) { if (v.argb) s_matArgb[i] = v.argb; else s_matArgb.erase(i); }
-            if (SkinSlots::IsDualColor(sl))
-                for (int i : SlotMaterials(sl)) { if (v.argb2) s_matArgb2[i] = v.argb2; else s_matArgb2.erase(i); }
             std::string what = v.est == 0 ? "off" : (v.est == 1 ? "on" : std::to_string((int)v.var));
             DoSlot(std::string(sl.name) + " " + what);
             const std::vector<int> idx = SlotMaterials(sl);
@@ -1955,7 +1861,7 @@ namespace
         s_varCacheOn = false;
         s_defHide.clear();
         std::fill(s_hidden.begin(), s_hidden.end(), 0);   // molde novo = DFF puro (DoApply reaproveitaria o oculto antigo)
-        s_matPack.clear(); s_slotVar.clear(); s_matArgb.clear(); s_matArgb2.clear();
+        s_matPack.clear(); s_slotVar.clear();
         DoApply();
         if (!InstalledOurs())
         {
@@ -2146,34 +2052,6 @@ namespace
             u.variants  = SlotVariants(sl);
             u.varMod    = SkinSlots::IsHeadSlot(sl) ? SkinSlots::kHeadVarBase : 0;
             u.variant   = variant >= 0 ? variant : -1;
-            if (SkinSlots::IsColorable(sl))
-            {
-                const auto ca = s_matArgb.find(idx[0]);
-                u.colorable   = true;
-                u.argbChosen  = ca != s_matArgb.end() && ca->second;
-                u.argb        = u.argbChosen ? ca->second : sl.tint;       // o que esta na tela: a escolhida ou a tinta padrao do slot
-                u.srvArgb     = sv.argb;
-                if (s_bak.active)
-                {
-                    const auto cb = s_bak.matArgb.find(idx[0]);
-                    const uint32_t before = cb != s_bak.matArgb.end() ? cb->second : 0u;
-                    if (before != (u.argbChosen ? ca->second : 0u)) u.previewed = true;
-                }
-            }
-            if (SkinSlots::IsDualColor(sl))
-            {
-                const auto c2 = s_matArgb2.find(idx[0]);
-                u.dual         = true;
-                u.argb2Chosen  = c2 != s_matArgb2.end() && c2->second;
-                u.argb2        = u.argb2Chosen ? c2->second : sl.tint2;
-                u.srvArgb2     = sv.argb2;
-                if (s_bak.active)
-                {
-                    const auto cb = s_bak.matArgb2.find(idx[0]);
-                    const uint32_t before = cb != s_bak.matArgb2.end() ? cb->second : 0u;
-                    if (before != (u.argb2Chosen ? c2->second : 0u)) u.previewed = true;
-                }
-            }
         }
         {
             std::lock_guard<std::mutex> lock(s_uiMutex);
@@ -2182,7 +2060,7 @@ namespace
         ++s_uiVersion;
     }
 
-    // "ui <id> <refresh | prepare | sync | prev <slot> <n|on|off> | color|color2 <slot> <argb|off> | commit | cancel>"  (só chega aqui via CCustomSkin::UiRequest)
+    // "ui <id> <refresh | prepare | sync | prev <slot> <n|on|off> | commit | cancel>"  (só chega aqui via CCustomSkin::UiRequest)
     void DoUi(const std::string& rest)
     {
         std::istringstream in(rest);
@@ -2239,41 +2117,6 @@ namespace
                 }
             }
         }
-        else if (op == "color" || op == "color2")         // "ui <id> color|color2 <slot> <argb | #AARRGGBB | off>": cor RGBA do cabelo novo / 2a cor = pontas (previa, vai ao servidor no commit)
-        {
-            const bool second = (op == "color2");
-            std::string name, arg;
-            in >> name >> arg;
-            const SkinSlots::Slot* sl = SkinSlots::Find(name.c_str());
-            uint32_t want = 0;
-            std::string why;
-            if (!sl || !(second ? SkinSlots::IsDualColor(*sl) : SkinSlots::IsColorable(*sl)) || !ParseArgb(arg, want)) fail("pedido inválido");
-            else if (s_await.active)                     fail("aguardando o servidor confirmar o pedido anterior");
-            else if (!EnsurePrepared(false, why))        fail(why.empty() ? std::string("skin não preparada") : why);
-            else if (!InstalledOurs())                   fail("skin não instalada: use PREPARAR");
-            else
-            {
-                want = SkinSlots::CleanArgb(want);
-                const std::vector<int> idx = SlotMaterials(*sl);
-                bool anyHidden = false;
-                for (int i : idx) if ((size_t)i < s_hidden.size() && s_hidden[(size_t)i]) anyHidden = true;
-                if (idx.empty())                         fail(std::string("o DFF não tem o material de ") + sl->name);
-                else if (anyHidden)                      fail("escolha uma variante do cabelo antes de mudar a cor");
-                else if (s_matPack.find(idx[0]) == s_matPack.end()) fail("escolha uma variante do cabelo antes de mudar a cor");
-                else if (!BeginBackup())                 fail("não consegui guardar o estado atual para a prévia");
-                else
-                {
-                    s_lookInPrev = true;                 // prévia: só vai ao servidor no commit (mesma fila do slot)
-                    DoSlotColor(name + " " + std::to_string((unsigned)want), second);
-                    s_lookInPrev = false;
-                    const auto& cm = second ? s_matArgb2 : s_matArgb;
-                    const auto ca = cm.find(idx[0]);
-                    const uint32_t now = ca != cm.end() ? ca->second : 0u;
-                    if (now == want) { s_bak.changed = true; PreviewSuspend(true); }
-                    else fail(LastInfo());
-                }
-            }
-        }
         else if (op == "commit")
         {
             if (s_await.active) fail("aguardando o servidor confirmar");
@@ -2283,7 +2126,7 @@ namespace
             {
                 LookCommitPrev();                        // /lookx do que foi confirmado -> fila de envio (debounce em LookFlush)
                 s_await = Awaiting();
-                for (const LookOp& q : s_lookQ) s_await.ops.push_back(ProvadorModel::Op{q.slotId, q.est, q.var, q.argb, q.argb2});
+                for (const LookOp& q : s_lookQ) s_await.ops.push_back(ProvadorModel::Op{q.slotId, q.est, q.var});
                 if (s_await.ops.empty())                 // nada que o protocolo carregue (ex.: caminho avulso): fica só local
                 {
                     DiscardBackup();
@@ -2334,8 +2177,6 @@ namespace
         else if (cmd == "texdb")  DoTexdb(rest);
         else if (cmd == "slots")  DoSlots();
         else if (cmd == "slot")   DoSlot(rest);
-        else if (cmd == "slotcolor") DoSlotColor(rest);        // cor RGBA do slot colorivel (provador)
-        else if (cmd == "slotcolor2") DoSlotColor(rest, true);  // 2a cor (pontas) do cabelo de tecido
         else if (cmd == "set")    DoSet(rest);
         else if (cmd == "save")   DoSave(rest);
         else if (cmd == "autoexec") RunAutoexec();

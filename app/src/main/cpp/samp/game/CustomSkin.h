@@ -108,17 +108,6 @@ public:
         bool             srvKnown    = false;
         int              srvEst      = 0;      // 0 oculto | 1 original | 2 variante
         int              srvVar      = 0;
-        // COR RGBA (so slots coloriveis, hoje hair5): argb = a cor EM USO (escolhida ou a tinta padrao), argbChosen = foi escolhida,
-        // srvArgb = a que o servidor gravou (0 = nenhuma). Formato 0xAARRGGBB.
-        bool             colorable   = false;
-        bool             argbChosen  = false;
-        uint32_t         argb        = 0;
-        uint32_t         srvArgb     = 0;
-        // 2a COR (pontas; so slot de duas cores = hair6): mesmos campos da 1a.
-        bool             dual        = false;
-        bool             argb2Chosen = false;
-        uint32_t         argb2       = 0;
-        uint32_t         srvArgb2    = 0;
     };
     struct UiState
     {

@@ -3,9 +3,6 @@
 //   Rede (servidor -> cliente), igual ao maximo_look.inc:
 //     uint16 playerid | uint8 version(=1) | uint8 flags (bit0 = limpar tudo) | uint8 n |
 //     n x [ uint8 slotId | uint8 estado | (se estado==2) uint16 variante ]
-//     [ OPCIONAL, depois dos n slots: uint8 nCores | nCores x [ uint8 slotId | uint32 ARGB ] ]   <- cor RGBA do provador (hair5, hair6).
-//       slotId com o bit 7 ligado (id | 0x80) = 2a cor (pontas) do slot de duas cores (hair6).
-//       Pacote SEM esse trecho (servidor antigo) = nenhuma cor escolhida (vale a tinta padrao do slot). Cliente antigo ignora o resto.
 //     estado: 0 = oculto | 1 = textura original | 2 = variante do pack (pack/<pasta>/<variante>.png)
 //   slotId = indice em SkinSlots::kSlots + 1 (estavel). Slot ausente do snapshot = NAO TOCAR (padrao do molde).
 //
@@ -33,13 +30,10 @@ namespace LookSlots
         uint8_t  id  = 0;
         uint8_t  est = 0;
         uint16_t var = 0;
-        uint32_t argb = 0;     // cor RGBA escolhida (0xAARRGGBB; 0 = nenhuma). So slots colorveis (SkinSlots::IsColorable)
-        uint32_t argb2 = 0;    // 2a cor (pontas; so slots SkinSlots::IsDualColor). Na rede: entrada do trecho de cores com id | 0x80
-        bool operator==(const St& o) const { return id == o.id && est == o.est && var == o.var && argb == o.argb && argb2 == o.argb2; }
+        bool operator==(const St& o) const { return id == o.id && est == o.est && var == o.var; }
     };
 
-    // rel = "pasta/n.png" (kPack). argb != 0: cor EFETIVA (escolhida ou tinta padrao) a aplicar no material (so slot colorivel visivel)
-    struct Op { std::string mat; int slot = 0; int kind = kHide; std::string rel; uint32_t argb = 0; };
+    struct Op { std::string mat; int slot = 0; int kind = kHide; std::string rel; };   // rel = "pasta/n.png" (kPack)
 
     inline std::string Lower(std::string s) { for (char& c : s) c = (char)std::tolower((unsigned char)c); return s; }
 
@@ -77,22 +71,6 @@ namespace LookSlots
             for (St& s : out) if (s.id == id) { s.est = est; s.var = (est == 2) ? var : 0; dup = true; break; }
             if (!dup) out.push_back(St{id, est, (uint16_t)(est == 2 ? var : 0)});
         }
-        // cores (opcional): ausente/incompleto = nenhuma cor escolhida. Slot nao colorivel ou sem estado visivel ignora a cor.
-        uint8_t nc = 0;
-        if (bs.Read(nc) && nc <= kMaxSlots)
-        {
-            for (int i = 0; i < nc; ++i)
-            {
-                uint8_t cid = 0; uint32_t cv = 0;
-                if (!bs.Read(cid) || !bs.Read(cv)) break;
-                const bool second = (cid & 0x80u) != 0;           // bit 7 = 2a cor (pontas)
-                cid = (uint8_t)(cid & 0x7Fu);
-                if (cid < 1 || cid > SkinSlots::kCount) continue;
-                const SkinSlots::Slot& cs = SkinSlots::kSlots[cid - 1];
-                if (!(second ? SkinSlots::IsDualColor(cs) : SkinSlots::IsColorable(cs))) continue;
-                for (St& s : out) if (s.id == cid && s.est == 2) { (second ? s.argb2 : s.argb) = SkinSlots::CleanArgb(cv); break; }
-            }
-        }
         if (flags & 1) out.clear();                                                      // limpar tudo
         std::sort(out.begin(), out.end(), [](const St& a, const St& b) { return a.id < b.id; });
         return true;
@@ -111,7 +89,6 @@ namespace LookSlots
                 if      (s.est == 0) o.kind = kHide;
                 else if (s.est == 1) o.kind = kOrig;
                 else { o.kind = kPack; o.rel = SkinSlots::VariantRel(sl, (int)s.var) + ".png"; }
-                if (s.est != 0) o.argb = SkinSlots::EffectiveArgb(sl, s.argb);      // 0 se o slot nao tem cor
                 ops.push_back(std::move(o));
             }
         }
