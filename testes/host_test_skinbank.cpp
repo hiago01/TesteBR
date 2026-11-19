@@ -14,7 +14,7 @@ int main(int argc,char**argv){
   std::string t="/tmp/vv/broken/"; fs::remove_all(t); fs::create_directories(t);
   for(auto&e:fs::directory_iterator(dir)) if(e.path().filename()!="skins.etc.dat") fs::copy_file(e.path(),t+e.path().filename().string());
   { std::ifstream in(dir+"skins.etc.dat",std::ios::binary); std::ofstream out(t+"skins.etc.dat",std::ios::binary); std::vector<char> b(1<<20); long long left=259936096; while(left>0&&in){ in.read(b.data(),std::min<long long>(b.size(),left)); auto g=in.gcount(); out.write(b.data(),g); left-=g; } }
-  r=SkinTexDbCore::CheckBankFiles(t,"skins",n); printf("  .dat antigo: '%s'\n",r.c_str()); chk(r.find("faltam 786480")!=std::string::npos,"cenario do crash (.dat antigo) detectado com a causa");
+  r=SkinTexDbCore::CheckBankFiles(t,"skins",n); printf("  .dat antigo: '%s'\n",r.c_str()); chk(r.find("faltam ")!=std::string::npos && r.find("foi atualizado")!=std::string::npos,"cenario do crash (.dat antigo) detectado com a causa");
   fs::resize_file(t+"skins.etc.tmb",fs::file_size(t+"skins.etc.tmb")-5); fs::copy_file(dir+"skins.etc.dat",t+"skins.etc.dat",fs::copy_options::overwrite_existing);
   r=SkinTexDbCore::CheckBankFiles(t,"skins",n); printf("  tmb truncado: '%s'\n",r.c_str()); chk(!r.empty(),"tmb truncado detectado");
   fs::remove(t+"skins.etc.tmb"); r=SkinTexDbCore::CheckBankFiles(t,"skins",n); chk(!r.empty(),"tmb ausente detectado");

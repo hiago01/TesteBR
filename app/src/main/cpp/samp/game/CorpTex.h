@@ -45,9 +45,13 @@ void ClearAll();                           // nova conexao
 // Thread-safe (escrito pela thread de rede, lido pela thread do jogo). `ver` muda a cada snapshot recebido e na nova conexao.
 // Retorna false enquanto o servidor nunca mandou o snapshot desta sessao (o provador nao pode afirmar o que esta salvo).
 // out = (id, estado, variante) dos slots COM registro (slot ausente = padrao).
-struct LocalSlot { uint8_t id; uint8_t est; uint16_t var; uint32_t argb = 0; };
+struct LocalSlot { uint8_t id; uint8_t est; uint16_t var; uint32_t argb = 0; uint32_t argb2 = 0; };
 bool LocalSlots(std::vector<LocalSlot>& out, uint32_t& ver);
 void SetLocalPreview(bool on);              // /provador: true enquanto há prévia (o ped local ignora os slots do servidor)
+bool LocalPreview();                        // true enquanto ha previa do /provador (thread-safe)
+// Slot RECEBIDO do servidor para o jogador `id` (RPC 232). So a thread do jogo. false = sem registro desse slot.
+struct SlotView { uint8_t est = 0; uint16_t var = 0; uint32_t argb = 0, argb2 = 0; };
+bool PlayerSlot(PLAYERID id, int slotId, SlotView& out);
 
 void OnPlayerStreamIn(PLAYERID id);        // depois de WorldPlayerAdd (o Process tambem reaplica sozinho)
 void OnPlayerStreamOut(PLAYERID id);       // ANTES de destruir o ped: solta a corp e o cache do slot

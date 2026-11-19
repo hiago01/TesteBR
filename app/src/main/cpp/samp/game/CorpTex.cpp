@@ -939,7 +939,7 @@ void ScrLookSlots(RPCParameters* rpcParams)
         {
             std::lock_guard<std::mutex> g(s_srvMutex);
             s_srvSlots.clear();
-            for (const LookSlots::St& x : st) s_srvSlots.push_back(LocalSlot{x.id, x.est, x.var, x.argb});
+            for (const LookSlots::St& x : st) s_srvSlots.push_back(LocalSlot{x.id, x.est, x.var, x.argb, x.argb2});
             s_srvHave = true;
             ++s_srvVer;
         }
@@ -959,6 +959,15 @@ void Unregister(RakClientInterface* rak)
 }
 
 void SetLocalPreview(bool on) { s_localPreview.store(on); }
+bool LocalPreview() { return s_localPreview.load(); }
+
+bool PlayerSlot(PLAYERID id, int slotId, SlotView& out)
+{
+    if (id >= MAX_PLAYERS) return false;
+    for (const LookSlots::St& x : s_look[id].slots)
+        if (x.id == slotId) { out.est = x.est; out.var = x.var; out.argb = x.argb; out.argb2 = x.argb2; return true; }
+    return false;
+}
 
 bool LocalSlots(std::vector<LocalSlot>& out, uint32_t& ver)
 {

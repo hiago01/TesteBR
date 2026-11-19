@@ -10,11 +10,11 @@ struct BS { std::vector<uint8_t> d; size_t p=0;
 int fails=0; void chk(bool c,const char*m){ if(!c){printf("FALHOU: %s\n",m);fails++;} else printf("ok: %s\n",m); }
 int main(){
   using namespace SkinSlots;
-  chk(kCount==62,"kCount==62");
+  chk(kCount==63,"kCount==63");
   const Slot& h=kSlots[61];
   chk(std::string(h.name)=="hair5","id62 = hair5");
   chk(IsColorable(h),"hair5 colorivel");
-  int ncol=0; for(int i=0;i<kCount;++i) ncol+=IsColorable(kSlots[i]); chk(ncol==1,"so hair5 colorivel");
+  int ncol=0; for(int i=0;i<kCount;++i) ncol+=IsColorable(kSlots[i]); chk(ncol==2,"hair5 e hair6 coloriveis");
   chk(h.tint==0xFFFFFFFFu,"tint padrao");
   chk(PackArgb(10,20,30,5)==PackArgb(10,20,30,kColorMinA),"A minimo aplicado");
   chk(ArgbA(PackArgb(1,2,3,255))==255 && ArgbR(PackArgb(1,2,3,255))==1,"pack/unpack");
@@ -57,4 +57,31 @@ int main(){
   Put(t,1,2,1,0xFF102030u); chk(t[1].argb==0,"slot nao colorivel sem argb");
   std::vector<LookSlots::St> sn; sn.push_back(LookSlots::St{62,2,1,0xFF102030u}); sn.push_back(LookSlots::St{1,1,0,0});
   SrvTable t2=FromSnapshot(sn); chk(t2[62].argb==0xFF102030u&&t2[1].argb==0,"FromSnapshot argb");
+  // ---- hair6 (cabelo de tecido, 2 cores) ----
+  { const Slot& h6=kSlots[62];
+    chk(std::string(h6.name)=="hair6" && std::string(h6.texture)=="fantasy_m_hair6" && std::string(h6.folder)=="hair/6","id63 = hair6 (material/pasta)");
+    chk(IsColorable(h6)&&IsDualColor(h6)&&!IsDualColor(h),"hair6 2 cores; hair5 so 1");
+    chk(h6.tint==0xFF1E1A1Au && h6.tint2==0xFF5A3A2Cu,"hair6 tintas padrao raiz/ponta");
+    chk(GroupOf("hair6")==GroupOf("hair5") && GroupOf("hair6")!=0,"hair6 no mesmo grupo exclusivo do cabelo");
+    chk(EffectiveArgb2(h6,0)==h6.tint2 && EffectiveArgb2(h6,0x80112233u)==CleanArgb(0x80112233u) && EffectiveArgb2(h,0x80112233u)==0,"EffectiveArgb2");
+    BS g; g.W<uint16_t>(7); g.W<uint8_t>(1); g.W<uint8_t>(0); g.W<uint8_t>(1);
+    g.W<uint8_t>(63); g.W<uint8_t>(2); g.W<uint16_t>(3);
+    g.W<uint8_t>(2); g.W<uint8_t>(63); g.W<uint32_t>(0xFFE95151u); g.W<uint8_t>(63|0x80); g.W<uint32_t>(0xFF2ECC40u);
+    uint16_t pid2; std::vector<LookSlots::St> s6; std::string er2;
+    chk(LookSlots::Parse(g,pid2,s6,er2)&&s6.size()==1&&s6[0].id==63&&s6[0].var==3,"Parse hair6");
+    chk(s6[0].argb==0xFFE95151u && s6[0].argb2==0xFF2ECC40u,"hair6 raiz + ponta (id|0x80)");
+    std::vector<LookSlots::Op> o6; LookSlots::Plan(s6,o6); bool ok6=false; for(auto&o:o6) if(o.slot==63) ok6=(o.kind==LookSlots::kPack&&o.rel=="hair/6/3.png"&&o.argb==0xFFE95151u); chk(ok6,"Plan hair6 pack hair/6/3 + cor raiz");
+    BS g2; g2.W<uint16_t>(7); g2.W<uint8_t>(1); g2.W<uint8_t>(0); g2.W<uint8_t>(1); g2.W<uint8_t>(62); g2.W<uint8_t>(2); g2.W<uint16_t>(1);
+    g2.W<uint8_t>(1); g2.W<uint8_t>(62|0x80); g2.W<uint32_t>(0xFF2ECC40u);
+    chk(LookSlots::Parse(g2,pid2,s6,er2)&&s6.size()==1&&s6[0].argb2==0,"ponta ignorada em slot de 1 cor (hair5)");
+    BS g3; g3.W<uint16_t>(7); g3.W<uint8_t>(1); g3.W<uint8_t>(0); g3.W<uint8_t>(1); g3.W<uint8_t>(63); g3.W<uint8_t>(1);
+    g3.W<uint8_t>(2); g3.W<uint8_t>(63); g3.W<uint32_t>(0xFFE95151u); g3.W<uint8_t>(63|0x80); g3.W<uint32_t>(0xFF2ECC40u);
+    chk(LookSlots::Parse(g3,pid2,s6,er2)&&s6.size()==1&&s6[0].argb==0&&s6[0].argb2==0,"cores ignoradas com est=1 (hair6)");
+    ProvadorModel::SrvTable t6=ProvadorModel::NewTable(); ProvadorModel::Put(t6,63,2,2,0xFFE95151u,0xFF2ECC40u);
+    chk(t6[63].argb==0xFFE95151u&&t6[63].argb2==0xFF2ECC40u&&t6[63].est==2,"Put hair6 guarda as 2 cores");
+    ProvadorModel::Put(t6,62,2,1,0xFF102030u,0xFF2ECC40u); chk(t6[62].argb2==0,"hair5 nao guarda 2a cor");
+    ProvadorModel::Put(t6,63,1,0,0xFFE95151u,0xFF2ECC40u); chk(t6[63].argb==0&&t6[63].argb2==0,"est1 limpa as 2 cores");
+    std::vector<LookSlots::St> sn6; LookSlots::St q{}; q.id=63;q.est=2;q.var=1;q.argb=0xFFE95151u;q.argb2=0xFF2ECC40u; sn6.push_back(q);
+    ProvadorModel::SrvTable t7=ProvadorModel::FromSnapshot(sn6); chk(t7[63].argb2==0xFF2ECC40u,"FromSnapshot hair6 2a cor");
+  }
   printf(fails?"FALHAS %d\n":"TUDO OK\n",fails); return fails; }
