@@ -59,6 +59,7 @@ namespace WorldMap
 		virtual ImTextureID cityTile(int col, int row) { (void)col; (void)row; return 0; }   // tile de detalhe (0 = nao existe / ainda carregando)
 		virtual void cityGrid(float& x0, float& y1, float& tileM, int& cols, int& rows) { x0 = 0; y1 = 0; tileM = 0; cols = 0; rows = 0; }   // canto noroeste da grade de tiles
 		virtual void cityImageRect(float& x0, float& y0, float& x1, float& y1) { x0 = y0 = x1 = y1 = 0; }                                    // area coberta pela imagem geral
+		virtual void drawLocationTagOver(ImGuiRenderer* r) { (void)r; }         // jogo: etiqueta do local + bussola da HUD, redesenhadas POR CIMA da imagem da cidade no minimapa
 		virtual int  cityPlaceCount() { return 0; }
 		virtual bool cityPlaceAt(int i, int& icon, float& x, float& y, float& z, std::string& name) { (void)i; (void)icon; (void)x; (void)y; (void)z; (void)name; return false; }
 	};
@@ -255,6 +256,7 @@ namespace WorldMap
 		void DrawMiniRoute(ImGuiRenderer* r);          // minimapa: desenha a rota ja convertida para pixels
 		void DrawMiniLink(ImGuiRenderer* r);           // minimapa: rodovia de saida (continuacao SA <-> cidade nova)
 		void DrawMiniCity(ImGuiRenderer* r);           // minimapa: imagem da cidade nova por cima do radar (so dentro da cidade)
+		void DrawMiniArrow(ImGuiRenderer* r);          // minimapa (cidade): seta do jogador, por cima da imagem, da rodovia e da rota
 		void DrawRouteLine(ImGuiRenderer* r, const std::vector<Vec2>& rt, const ImVec2& origin, float k, bool havePlayer, float plx, float ply);
 		void Cmd(const char* fmt, int a = 0, int b = 0)
 		{
@@ -1033,17 +1035,19 @@ namespace WorldMap
 	inline void Ui::DrawExitLink(ImGuiRenderer* r, const ImVec2& origin, float k)
 	{
 		if (!m_city.ok) return;
-		static const float kPts[][2] = {
-			{ -3000.0f, 1967.09f }, { -2950.0f, 1967.09f }, { -2836.0f, 1967.09f }, { -2741.5f, 1968.5f }, { -2704.3f, 1982.1f },
-			{ -2671.7f, 2004.7f }, { -2645.0f, 2034.2f }, { -2625.6f, 2068.9f }, { -2615.1f, 2107.4f }, { -2615.1f, 2276.0f } };
-		const int n = (int)(sizeof(kPts) / sizeof(kPts[0]));
+		// Eixo REAL da rodovia de saida (o mesmo do minimapa: MiniRoute::LinkWorld(), tirado das pecas mx_rod150 / mx_curva15 / MSaidaBayside do IPL).
+		// Mapa de SA: so o trecho de x >= -3000 (o mapa original nao tem o resto). Mapa da cidade: a rodovia INTEIRA, da cidade ate Bayside.
+		const std::vector<Vec2>& axis = MiniRoute::LinkWorld();
 		std::vector<ImVec2> pts;
-		pts.reserve(n);
-		for (int i = 0; i < n; i++)
+		pts.reserve(axis.size());
+		for (const Vec2& a : axis)
 		{
-			const Vec2 sp = ToScreen(m_view, kPts[i][0], kPts[i][1]);
+			if (!m_zoneCity && a.x < -3000.0f - 0.01f) continue;
+			const Vec2 sp = ToScreen(m_view, a.x, a.y);
 			pts.push_back(ImVec2(origin.x + sp.x, origin.y + sp.y));
 		}
+		const int n = (int)pts.size();
+		if (n < 2) return;
 		const float w = Clampf(14.0f * m_view.scale, 2.5f * k, 8.0f * k);
 		r->drawPolyline(pts.data(), n, ImColor(255, 255, 255, 235), false, w + 2.5f * k);
 		r->drawPolyline(pts.data(), n, ImColor(255, 205, 70, 255), false, w);
@@ -1124,7 +1128,15 @@ namespace WorldMap
 				r->drawRoundedRect(ImVec2(g.x - pr, g.y - pr), ImVec2(g.x + pr, g.y + pr), ImColor(20, 20, 20, 255), pr, true);
 			}
 		}
-		// seta do jogador (o radar nativo a desenhou por baixo da imagem): ponta para o rumo do veiculo
+	}
+
+	// Seta do jogador no minimapa da cidade (o radar nativo a desenhou por baixo da imagem). Fica em funcao propria para ser desenhada DEPOIS da rodovia
+	// marcada e da rota GPS: assim a linha amarela nao passa por cima dela.
+	inline void Ui::DrawMiniArrow(ImGuiRenderer* r)
+	{
+		if (!m_zoneCity || !MiniCity::gEnabled.load()) return;
+		MiniCity::Xf t;
+		if (!MiniCity::GetXf(t, P->nowMs())) return;
 		{
 			float dx = t.hdx, dy = t.hdy;
 			const float dl = std::hypot(dx, dy);
@@ -1146,7 +1158,7 @@ namespace WorldMap
 
 	inline void Ui::DrawMiniLink(ImGuiRenderer* r)
 	{
-		if (!m_city.ok || m_zoneCity) return;      // dentro da cidade a rodovia ja esta na imagem do minimapa
+		if (!m_city.ok) return;      // cidade nova nao instalada: sem ligacao. Dentro da cidade a rodovia tambem e' marcada (contorno branco + amarelo) POR CIMA da imagem
 		std::vector<std::vector<Vec2>> runs;
 		float rad = 0;
 		if (!MiniRoute::GetLink(runs, rad, P->nowMs())) return;
@@ -1311,8 +1323,10 @@ namespace WorldMap
 		{
 			PublishMiniRoute();     // mapa fechado: a rota aparece no minimapa (radar nativo)
 			DrawMiniCity(r);        // cidade nova: imagem no minimapa (por baixo da rota)
-			DrawMiniLink(r);        // rodovia de saida (continuacao nos dois lados)
+			DrawMiniLink(r);        // rodovia de saida (continuacao nos dois lados; na cidade, marcada por cima da imagem)
 			DrawMiniRoute(r);
+			DrawMiniArrow(r);       // cidade: seta do jogador por cima da rodovia e da rota
+			if (m_zoneCity) P->drawLocationTagOver(r);      // cidade: etiqueta do local + bussola da HUD (a imagem acima as cobriria)
 			ResetDrawState();
 			return;
 		}

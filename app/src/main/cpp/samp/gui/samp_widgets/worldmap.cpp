@@ -9,6 +9,8 @@
 #include "../../vendor/stb/stb_image.h"   // implementacao em game/sprite2d.cpp
 #include "worldmap.h"
 #include "WorldMapUI.h"
+
+void HudDrawLocationTagOver(ImGuiRenderer* r);   // hud.cpp
 #include "MapIcons.h"
 #include "waypoint3d.h"
 #include "../../game/MapTeleport.h"
@@ -187,6 +189,7 @@ namespace
 		bool hqAt(int i, float& x, float& y, float& z, std::string& name, std::string& cats, std::string& area) override { return Waypoint3D::HqGet(i, x, y, z, name, cats, area); }
 		void sendCommand(const char* cmd) override { if (pNetGame && g_serverSupports.load()) pNetGame->SendChatCommand(cmd); }
 		int64_t nowMs() override { return NowMsReal(); }
+		void drawLocationTagOver(ImGuiRenderer* r) override { HudDrawLocationTagOver(r); }   // etiqueta do local + bussola por cima da imagem da cidade (hud.cpp)
 		int tilesLoaded() override { return m_loaded; }
 		int mapDim() override { return RadarSkin::Enabled() ? 0 : 70; }
 

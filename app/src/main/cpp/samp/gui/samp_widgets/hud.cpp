@@ -846,7 +846,9 @@ void HudInfo::draw(ImGuiRenderer* r)
 	const float fs = kFont * S;
 
 	DrawMiniTv(r, screen);           // efeito de TV ligando quando o minimapa aparece (entrar no veiculo)
-	DrawLocationTag(r, screen, S);   // nome do local acima do minimapa (so motorista no veiculo)
+	// nome do local acima do minimapa (so motorista no veiculo). Dentro da CIDADE NOVA a imagem do minimapa e' desenhada pelo mapa (WorldMapUI,
+	// que vem DEPOIS da HUD na ordem dos widgets) e cobriria a etiqueta e a bussola: la ela e' redesenhada por HudDrawLocationTagOver(), por cima.
+	if (!(MiniCity::gInCity.load() && !MiniCity::gMapOpen.load())) DrawLocationTag(r, screen, S);
 	DrawCoords(r, screen, S);        // /xyz: X Y Z A na tela
 
 	// ------------------------------------------------------------------ logo
@@ -967,4 +969,18 @@ void HudInfo::draw(ImGuiRenderer* r)
 			x += bl.pillW + kItemGap * S;
 		}
 	}
+}
+
+// Chamada por Ui::Draw (WorldMapUI.h) logo depois de desenhar a imagem da cidade no minimapa: mesma etiqueta (local + bussola) e mesmas regras de
+// visibilidade de HudInfo::draw, so que POR CIMA da imagem. Fora da cidade nao e' chamada (a HUD desenha a etiqueta normalmente).
+void HudDrawLocationTagOver(ImGuiRenderer* r)
+{
+	if (!Hud::g.visible.load()) return;
+	if (!NativeHudEnabled()) return;
+	if (pUI && pUI->spawn() && pUI->spawn()->visible()) return;
+	float hp = 0.0f, armour = 0.0f;
+	if (!GetLocalVitals(hp, armour)) return;
+	const ImVec2 screen = ImGui::GetIO().DisplaySize;
+	const float S = (screen.y / 941.0f) * Hud::g.scale.load();
+	DrawLocationTag(r, screen, S);
 }
