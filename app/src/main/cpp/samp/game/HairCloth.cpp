@@ -32,6 +32,9 @@
 //  A fisica (HairPhysics) e a geometria (HairClothMesh) sao modulos PUROS testados no PC; aqui fica so a cola com o jogo.
 // =====================================================================================
 
+extern CGame*    pGame;       // definidos em main.cpp (mesmo padrao do Flag.cpp / IdCard3D.cpp)
+extern CNetGame* pNetGame;
+
 static_assert(sizeof(MxHair::DrawVertex) == sizeof(RxObjSpace3DVertex), "layout Im3D");
 static_assert(offsetof(MxHair::DrawVertex, nx) == offsetof(RxObjSpace3DVertex, objNormal), "layout Im3D");
 static_assert(offsetof(MxHair::DrawVertex, color) == offsetof(RxObjSpace3DVertex, color), "layout Im3D");
