@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <map>
 #include <set>
+#include <sys/stat.h>
 #include <string>
 #include <vector>
 
@@ -158,4 +159,82 @@ namespace SkinTexDbCore
         std::map<std::string, std::string> m_map;   // rel minusculo -> nome no banco
         std::vector<std::string> m_all;             // rels em ordem
     };
+    // ------------------------------------------------------------------------------------------------------------------
+    // CONFERENCIA DOS ARQUIVOS DO BANCO antes de entregar ao TextureDatabaseRuntime::Load do libGTASA.
+    // O Load nativo faz SIGSEGV em SortEntries se o indice estiver truncado/inconsistente (caso real: .toc/.tmb novos com o
+    // .dat antigo, depois de acrescentar texturas). Aqui so se le o .toc (4 bytes por textura) e o .tmb (~90 KB), nunca o .dat.
+    //   .toc : uint32 tamanhoDoDat | uint32 offset[N]                      (tamanhoDoDat == tamanho real do .dat)
+    //   .tmb : N registros  <HHHHII> hash16,fmt,w,h,tam+4,rle + dados      (tamanho do registro = 12 + campo tam+4)
+    // Devolve "" se esta tudo certo; senao a descricao do problema (para o log e para o jogador).
+    // ------------------------------------------------------------------------------------------------------------------
+    inline long long FileSize(const std::string& p)
+    {
+        struct stat st {};
+        return ::stat(p.c_str(), &st) == 0 ? (long long)st.st_size : -1LL;
+    }
+    inline bool ReadFileAll(const std::string& p, std::vector<uint8_t>& out)
+    {
+        out.clear();
+        FILE* f = std::fopen(p.c_str(), "rb");
+        if (!f) return false;
+        uint8_t b[8192]; size_t n;
+        while ((n = std::fread(b, 1, sizeof(b), f)) > 0) out.insert(out.end(), b, b + n);
+        std::fclose(f);
+        return true;
+    }
+    inline uint32_t Rd32(const uint8_t* p) { return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24); }
+    // conta os registros de um .tmb; -1 se o arquivo nao fecha exatamente em registros inteiros
+    inline long long CountTmbRecords(const std::vector<uint8_t>& t)
+    {
+        size_t pos = 0; long long n = 0;
+        while (pos < t.size())
+        {
+            if (pos + 16 > t.size()) return -1;
+            const uint32_t sz = Rd32(&t[pos + 8]);
+            if (sz < 4 || sz > (64u << 20)) return -1;
+            pos += 12 + (size_t)sz;
+            if (pos > t.size()) return -1;
+            ++n;
+        }
+        return n;
+    }
+    // dir = ".../texdb/skins/"; nTex = linhas do skins.idx. Confere cada formato que existe (dxt/etc/pvr) + skins.unc.tmb.
+    inline std::string CheckBankFiles(const std::string& dir, const std::string& name, size_t nTex)
+    {
+        int formats = 0;
+        for (const char* k : { "dxt", "etc", "pvr" })
+        {
+            const std::string base = dir + name + "." + k;
+            const long long dsz = FileSize(base + ".dat");
+            if (dsz < 0) continue;                                         // formato ausente: o motor escolhe outro
+            ++formats;
+            std::vector<uint8_t> toc, tmb;
+            if (!ReadFileAll(base + ".toc", toc) || toc.size() < 8 || (toc.size() % 4) != 0)
+                return name + "." + k + ".toc ausente ou truncado";
+            const long long total = (long long)Rd32(&toc[0]);
+            const size_t n = toc.size() / 4 - 1;
+            if (total != dsz)
+                return name + "." + k + ".dat tem " + std::to_string(dsz) + " bytes mas o .toc espera " + std::to_string(total) +
+                       " (faltam " + std::to_string(total - dsz) + "): o .dat nao foi atualizado junto com o .toc/.tmb";
+            if (n != nTex)
+                return name + "." + k + ".toc tem " + std::to_string(n) + " texturas e o " + name + ".idx tem " + std::to_string(nTex);
+            for (size_t i = 0; i < n; ++i)
+            {
+                const long long o = (long long)Rd32(&toc[4 + i * 4]);
+                if (o + 16 > dsz) return name + "." + k + ".toc: offset " + std::to_string(o) + " fora do .dat";
+            }
+            if (!ReadFileAll(dir + name + "." + k + ".tmb", tmb))
+                return name + "." + k + ".tmb ausente";
+            const long long c = CountTmbRecords(tmb);
+            if (c != (long long)n) return name + "." + k + ".tmb tem " + (c < 0 ? std::string("registros truncados") : std::to_string(c) + " registros") + " mas o .toc tem " + std::to_string(n);
+        }
+        if (formats == 0) return "nenhum " + name + ".{dxt,etc,pvr}.dat encontrado";
+        std::vector<uint8_t> unc;
+        if (ReadFileAll(dir + name + ".unc.tmb", unc))
+        {
+            const long long c = CountTmbRecords(unc);
+            if (c != (long long)nTex) return name + ".unc.tmb tem " + (c < 0 ? std::string("registros truncados") : std::to_string(c) + " registros") + " mas o " + name + ".idx tem " + std::to_string(nTex);
+        }
+        return {};
+    }
 }
