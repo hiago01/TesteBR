@@ -15,6 +15,7 @@
 // ---------------------------------------------------------------------------
 
 #include <cctype>
+#include <cstdint>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -27,6 +28,10 @@ namespace SkinSlots
         const char* texture;
         const char* folder;
         int         ev;
+        // COR RGBA (provador): 0 = slot sem cor (so textura). != 0 = slot COLORIVEL; o valor e a tinta PADRAO (ARGB: 0xAARRGGBB)
+        // usada enquanto o jogador nao escolheu outra. A tinta MULTIPLICA a textura (que, nesses slots, e neutra/clara).
+        // So hair5 usa hoje; o servidor (maximo_look.inc, Look_SlotColorable) precisa concordar.
+        uint32_t    tint = 0;
     };
 
     static const Slot kSlots[] = {
@@ -103,6 +108,10 @@ namespace SkinSlots
         { "tat_legs",     "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,"
                           "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5",
                           "tattoo/legs_top", 0 },
+        // ---- ids novos SEMPRE no fim (id de rede = indice + 1; nunca renumerar) ----
+        // cabelo masculino "disfarcado carioca" (low/mid fade): casca 3D propria (material fantasy_m_hair5, 90o material do skin.dff),
+        // pasta hair/5 (3 variantes: medio / baixo / alto) e cor RGBA. Tinta padrao = preto natural (0xFF282321).
+        { "hair5",    "fantasy_m_hair5",    "hair/5",    1, 0xFF282321u },
     };
     static constexpr int kCount = (int)(sizeof(kSlots) / sizeof(kSlots[0]));
 
@@ -198,6 +207,29 @@ namespace SkinSlots
     }
 
     // ---------------------------------------------------------------------------------------------------
+    // COR RGBA dos slots colorveis (so hair5). Empacotado em uint32 ARGB (0xAARRGGBB); 0 = "sem cor escolhida" (usa a tinta padrao).
+    // Alfa minimo kColorMinA: abaixo disso o cabelo some (e isso ja existe: DESLIGAR), entao nao vale como cor.
+    // ---------------------------------------------------------------------------------------------------
+    static constexpr int kColorMinA = 40;
+    inline bool IsColorable(const Slot& sl) { return sl.tint != 0; }
+    inline uint32_t PackArgb(int r, int g, int b, int a)
+    {
+        auto c = [](int v) { return (uint32_t)(v < 0 ? 0 : (v > 255 ? 255 : v)); };
+        if (a < kColorMinA) a = kColorMinA;
+        return (c(a) << 24) | (c(r) << 16) | (c(g) << 8) | c(b);
+    }
+    inline int ArgbA(uint32_t v) { return (int)((v >> 24) & 255u); }
+    inline int ArgbR(uint32_t v) { return (int)((v >> 16) & 255u); }
+    inline int ArgbG(uint32_t v) { return (int)((v >> 8) & 255u); }
+    inline int ArgbB(uint32_t v) { return (int)(v & 255u); }
+    // valor da rede -> valor valido (0 continua 0; senao alfa >= kColorMinA)
+    inline uint32_t CleanArgb(uint32_t v) { return v ? PackArgb(ArgbR(v), ArgbG(v), ArgbB(v), ArgbA(v)) : 0u; }
+    // cor EFETIVA do slot: a escolhida; sem escolha (0) = tinta padrao do slot; slot sem cor = 0
+    inline uint32_t EffectiveArgb(const Slot& sl, uint32_t chosen) { return !IsColorable(sl) ? 0u : (chosen ? CleanArgb(chosen) : sl.tint); }
+    // A cor e ABSOLUTA no material: RGB do material = RGB da tinta e alfa do material = A (a textura do slot e clara/neutra e o material
+    // a multiplica). O material hair5 do skin.dff ja vem com a tinta padrao, entao "sem cor escolhida" = sem mexer no material.
+
+    // ---------------------------------------------------------------------------------------------------
     // Exclusividade por categoria (/skin7 slot): só UMA variante visível por grupo.
     // Cada grupo lista slots que existem em kSlots acima (nomes conferidos; slot inexistente é ignorado).
     // Calçados: tênis (boot*) e chinelo (slipper*) são UM grupo só: com tênis não se usa chinelo (e vice-versa).
@@ -214,7 +246,7 @@ namespace SkinSlots
         "clock1,clock2",
         "ear1,ear2,ear3,ear4",
         "glasse1,glasse2",
-        "hair1,hair2,hair3,hair4",
+        "hair1,hair2,hair3,hair4,hair5",
         "head1,head2,head3,head4,head5",
         "mask1,mask2",
         "pants1,pants2,pants3,pants4,short1,short2,short3",
@@ -272,7 +304,7 @@ namespace SkinSlots
 
     static const UiCategory kUiCategories[] = {
         { "ROUPAS",    "torso1,torso2,torso3,torso4,pants1,pants2,pants3,pants4,short1,short2,short3,underwear" },
-        { "CABELO",    "hair1,hair2,hair3,hair4" },
+        { "CABELO",    "hair1,hair2,hair3,hair4,hair5" },
         { "ROSTO",     "head1,head2,head3,head4,head5" },
         { "PELE",      "skin_torso,skin_leg,skin_feet" },     // tom de pele: so skin_torso aparece (muda corpo + rosto juntos)
         { "ACESSÓRIOS","glasse1,glasse2,ear1,ear2,ear3,ear4,clock1,clock2,mask1,mask2,necklace1,hat1" },

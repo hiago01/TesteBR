@@ -198,7 +198,8 @@ std::mutex  s_infoMutex;
 std::string s_info = "nada aplicado (use /corp, /rosto, /cabelo, /pele)";
 
 // ---- so a thread do jogo daqui para baixo --------------------------------------------------
-struct Swap  { RpMaterial* mat; RwTexture* repl; RwTexture* saved; };
+// argb != 0: troca tambem a COR do material (cor RGBA do provador, so slots coloriveis): RGB = tinta, alfa = A; restaurada no EndRender.
+struct Swap  { RpMaterial* mat; RwTexture* repl; RwTexture* saved; uint32_t argb = 0; RwRGBA savedColor{}; };
 struct Entry { PLAYERID id; void* ent; RpClump* clump; Look look; std::vector<Swap> swaps; bool swapped; uint32_t renders; };
 struct Corp  { std::unordered_map<std::string, RwTexture*> tex; uint64_t lastUse; };
 struct Tried { void* ent = nullptr; RpClump* clump = nullptr; Look look; bool valid = false; };
@@ -622,6 +623,7 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
     if (byIndex && !hideTex) FLog("[CORPTEX] AVISO: nao consegui criar a textura transparente: nada sera ocultado");
 
     std::unordered_map<std::string, RwTexture*> over;   // nome do DFF (minusculo) -> textura a usar
+    std::unordered_map<std::string, uint32_t> overArgb; // nome do DFF -> cor ARGB do slot colorivel (so onde a peca esta VISIVEL)
     std::vector<const Box*> visible;                    // pecas da Corp visiveis (para a regra de cobertura)
     int nCorp = 0, nHidden = 0, nApp = 0;
 
@@ -755,6 +757,7 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
                 if (model == kCorpModel && op.mat.find("underwear") != std::string::npos) continue;   // 271: sem roupa intima
                 if (!t) { if (op.kind != LookSlots::kOrig) ++nSlotMiss; continue; }
                 over[op.mat] = t; ++nSlot;
+                if (op.argb && op.kind != LookSlots::kHide) overArgb[op.mat] = op.argb;
             }
         }
     }
@@ -792,7 +795,11 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
     for (size_t i = 0; i < mats.size(); ++i) {
         if (keys[i].empty() || !mats[i]) continue;
         auto it = over.find(keys[i]);
-        if (it != over.end()) en.swaps.push_back({mats[i], it->second, nullptr});
+        if (it != over.end()) {
+            uint32_t argb = 0;
+            if (it->second != hideTex) { auto ca = overArgb.find(keys[i]); if (ca != overArgb.end()) argb = ca->second; }   // peca ocultada depois: sem cor
+            en.swaps.push_back({mats[i], it->second, nullptr, argb, RwRGBA{}});
+        }
     }
 
     FLog("[CORPTEX] jogador %d modelo=%d corp='%s' tom=%d rosto=%d cabelo=%d/%d bota=%d/%d calca=%d/%d camisa=%d/%d intima=%d: %zu material(is) trocado(s) de %zu (modo %s) | corp=%d aparencia=%d ocultos=%d",
@@ -929,7 +936,7 @@ void ScrLookSlots(RPCParameters* rpcParams)
         {
             std::lock_guard<std::mutex> g(s_srvMutex);
             s_srvSlots.clear();
-            for (const LookSlots::St& x : st) s_srvSlots.push_back(LocalSlot{x.id, x.est, x.var});
+            for (const LookSlots::St& x : st) s_srvSlots.push_back(LocalSlot{x.id, x.est, x.var, x.argb});
             s_srvHave = true;
             ++s_srvVer;
         }
@@ -1038,7 +1045,16 @@ bool BeginRender(void* entity)
     for (Entry& en : s_entries) {
         if (en.ent != entity) continue;
         if (e->m_pRwClump != en.clump) return false;        // clump trocado desde o ultimo Process: nao toca em ponteiros velhos
-        for (Swap& s : en.swaps) { s.saved = s.mat->texture; s.mat->texture = s.repl; }
+        for (Swap& s : en.swaps) {
+            s.saved = s.mat->texture; s.mat->texture = s.repl;
+            if (s.argb) {   // cor RGBA do provador: absoluta (RGB = tinta, alfa = A), desfeita no EndRender
+                s.savedColor = s.mat->color;
+                s.mat->color.red   = (RwUInt8)SkinSlots::ArgbR(s.argb);
+                s.mat->color.green = (RwUInt8)SkinSlots::ArgbG(s.argb);
+                s.mat->color.blue  = (RwUInt8)SkinSlots::ArgbB(s.argb);
+                s.mat->color.alpha = (RwUInt8)SkinSlots::ArgbA(s.argb);
+            }
+        }
         en.swapped = true;
         ++s_totalRenders;
         if (en.renders++ == 0) FLog("[CORPTEX] render do jogador %d interceptado (%zu troca(s))", (int)en.id, en.swaps.size());
@@ -1051,7 +1067,7 @@ void EndRender(void* entity)
 {
     for (Entry& en : s_entries) {
         if (en.ent != entity || !en.swapped) continue;
-        for (Swap& s : en.swaps) s.mat->texture = s.saved;
+        for (Swap& s : en.swaps) { s.mat->texture = s.saved; if (s.argb) s.mat->color = s.savedColor; }
         en.swapped = false;
         return;
     }

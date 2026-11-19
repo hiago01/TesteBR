@@ -45,7 +45,7 @@ void ClearAll();                           // nova conexao
 // Thread-safe (escrito pela thread de rede, lido pela thread do jogo). `ver` muda a cada snapshot recebido e na nova conexao.
 // Retorna false enquanto o servidor nunca mandou o snapshot desta sessao (o provador nao pode afirmar o que esta salvo).
 // out = (id, estado, variante) dos slots COM registro (slot ausente = padrao).
-struct LocalSlot { uint8_t id; uint8_t est; uint16_t var; };
+struct LocalSlot { uint8_t id; uint8_t est; uint16_t var; uint32_t argb = 0; };
 bool LocalSlots(std::vector<LocalSlot>& out, uint32_t& ver);
 void SetLocalPreview(bool on);              // /provador: true enquanto há prévia (o ped local ignora os slots do servidor)
 
