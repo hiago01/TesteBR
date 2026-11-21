@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <string>
 
 // =====================================================================================
 //  Central da Cidade (scoreboard Maximo RP): lista todos os cidadaos online. Cada jogador escolhe o MODELO DE FUNDO da sua
@@ -26,4 +27,5 @@ public:
 
 	virtual void draw(ImGuiRenderer* renderer) override;
 	virtual void touchEvent(const ImVec2& pos, TouchType type) override { (void)pos; (void)type; }
+	virtual void keyboardEvent(const std::string& input) override;     // texto da caixa de pesquisa (Keyboard::show)
 };

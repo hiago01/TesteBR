@@ -5,6 +5,7 @@
 #include "../../net/playerpool.h"
 #include "../../vendor/raknet/BitStream.h"
 #include "../../vendor/raknet/SAMP/SAMPRPC.h"
+#include "../../vendor/encoding/encoding.h"
 #include "central.h"
 #include "central_logic.h"
 #include "avatar.h"
@@ -43,19 +44,25 @@ namespace
 
 	bool Connected() { return pNetGame && pNetGame->GetGameState() == GAMESTATE_CONNECTED && pNetGame->GetRakClient(); }
 
+	// cliente -> servidor pelo comando oculto "/cenx ..." (SendChatCommand), o MESMO caminho do "/invx" do inventario (comprovado).
+	// op 1 = pedir a lista | op 2 = escolher o modelo de fundo (arg). O RPC 254 do servidor continua aceito, mas o cliente nao o usa.
 	void SendReq(uint8_t op, int arg = -1)
 	{
 		if (!Connected()) return;
-		RakNet::BitStream bs;
-		bs.Write(op);
-		if (arg >= 0) bs.Write((uint8_t)arg);
-		pNetGame->GetRakClient()->RPC(&RPC_CentralOut, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
+		char cmd[32];
+		if (op == 2 && arg >= 0) snprintf(cmd, sizeof(cmd), "/cenx style %d", arg);
+		else snprintf(cmd, sizeof(cmd), "/cenx req");
+		pNetGame->SendChatCommand(cmd);
 	}
 
 	// ---- estado da tela (thread de desenho) ----
 	bool    g_settings = false;      // painel de modelos de fundo aberto
 	float   g_scroll = 0.0f;
 	int64_t g_lastReq = 0;
+	int64_t g_openT = 0;                 // quando abriu (para avisar se o servidor nao responde)
+	std::string g_query;                 // texto da pesquisa (bytes cp1251 do teclado); protegido por g_m
+	std::string g_lastQuery;
+	CentralUI*  s_self = nullptr;        // o teclado (Keyboard::show) devolve o texto por keyboardEvent do widget
 	struct Fing { int num = -1; float sx = 0, sy = 0, s0 = 0; int kind = 0; bool moved = false; } g_f;   // kind: 1 lista, 2 botao/celula, 3 fora, 4 painel
 
 	ImColor C(const uint8_t* c, int a = 255) { return ImColor((int)c[0], (int)c[1], (int)c[2], a); }
@@ -131,6 +138,53 @@ namespace
 		(void)h;
 	}
 
+	void Disc(ImGuiRenderer* r, float x, float y, float rr, const ImColor& col)
+	{
+		constexpr int N = 20; ImVec2 p[N];
+		for (int i = 0; i < N; i++) { const float an = 6.2831853f * i / N; p[i] = ImVec2(x + std::cos(an) * rr, y + std::sin(an) * rr); }
+		r->drawConvexPolyFilled(p, N, col);
+	}
+	void Circ(ImGuiRenderer* r, float x, float y, float rr, const ImColor& col, float th)
+	{
+		constexpr int N = 24; ImVec2 p[N];
+		for (int i = 0; i < N; i++) { const float an = 6.2831853f * i / N; p[i] = ImVec2(x + std::cos(an) * rr, y + std::sin(an) * rr); }
+		r->drawPolyline(p, N, col, true, th);
+	}
+	// icones das organizacoes e da pesquisa, so com primitivas (s = meio-tamanho)
+	void IconShield(ImGuiRenderer* r, float cx, float cy, float s, const ImColor& col, float th)      // PM
+	{
+		ImVec2 p[5] = { ImVec2(cx - s * 0.8f, cy - s * 0.85f), ImVec2(cx + s * 0.8f, cy - s * 0.85f), ImVec2(cx + s * 0.8f, cy + s * 0.1f), ImVec2(cx, cy + s * 1.0f), ImVec2(cx - s * 0.8f, cy + s * 0.1f) };
+		r->drawPolyline(p, 5, col, true, th);
+		Disc(r, cx, cy - s * 0.1f, s * 0.22f, col);
+	}
+	void IconTools(ImGuiRenderer* r, float cx, float cy, float s, const ImColor& col, float th)       // MEC: chave e martelo cruzados
+	{
+		r->drawLine(ImVec2(cx - s * 0.8f, cy + s * 0.8f), ImVec2(cx + s * 0.7f, cy - s * 0.7f), col, th * 1.2f);
+		r->drawLine(ImVec2(cx - s * 0.8f, cy - s * 0.8f), ImVec2(cx + s * 0.7f, cy + s * 0.7f), col, th * 1.2f);
+		Disc(r, cx + s * 0.78f, cy - s * 0.78f, s * 0.3f, col);
+		r->drawRect(ImVec2(cx - s * 1.0f, cy - s * 1.0f), ImVec2(cx - s * 0.55f, cy - s * 0.55f), col, true);
+	}
+	void IconMed(ImGuiRenderer* r, float cx, float cy, float s, const ImColor& col, float th)         // SAMU: maleta com cruz
+	{
+		r->drawRoundedRect(ImVec2(cx - s, cy - s * 0.8f), ImVec2(cx + s, cy + s * 0.9f), col, s * 0.25f, false, th);
+		r->drawLine(ImVec2(cx - s * 0.45f, cy + s * 0.05f), ImVec2(cx + s * 0.45f, cy + s * 0.05f), col, th);
+		r->drawLine(ImVec2(cx, cy - s * 0.4f), ImVec2(cx, cy + s * 0.5f), col, th);
+		r->drawLine(ImVec2(cx - s * 0.35f, cy - s * 0.8f), ImVec2(cx - s * 0.35f, cy - s * 1.05f), col, th);
+		r->drawLine(ImVec2(cx + s * 0.35f, cy - s * 0.8f), ImVec2(cx + s * 0.35f, cy - s * 1.05f), col, th);
+	}
+	void IconPeople(ImGuiRenderer* r, float cx, float cy, float s, const ImColor& col)                // jogadores online
+	{
+		Disc(r, cx - s * 0.4f, cy - s * 0.35f, s * 0.33f, col);
+		Disc(r, cx - s * 0.4f, cy + s * 0.7f, s * 0.55f, col);
+		Disc(r, cx + s * 0.5f, cy - s * 0.2f, s * 0.28f, ImColor(col.Value.x, col.Value.y, col.Value.z, col.Value.w * 0.75f));
+		Disc(r, cx + s * 0.5f, cy + s * 0.75f, s * 0.48f, ImColor(col.Value.x, col.Value.y, col.Value.z, col.Value.w * 0.75f));
+	}
+	void IconSearch(ImGuiRenderer* r, float cx, float cy, float s, const ImColor& col, float th)
+	{
+		Circ(r, cx - s * 0.15f, cy - s * 0.15f, s * 0.62f, col, th);
+		r->drawLine(ImVec2(cx + s * 0.3f, cy + s * 0.3f), ImVec2(cx + s * 0.85f, cy + s * 0.85f), col, th * 1.2f);
+	}
+
 	void Icon(ImGuiRenderer* r, float cx, float cy, float rad, const ImColor& col)     // silhueta simples (cabeca + ombros)
 	{
 		auto disc = [&](float x, float y, float rr) { constexpr int N = 20; ImVec2 p[N]; for (int i = 0; i < N; i++) { const float an = 6.2831853f * i / N; p[i] = ImVec2(x + std::cos(an) * rr, y + std::sin(an) * rr); } r->drawConvexPolyFilled(p, N, col); };
@@ -139,7 +193,14 @@ namespace
 	}
 }
 
-CentralUI::CentralUI() : Widget() {}
+CentralUI::CentralUI() : Widget() { s_self = this; }
+
+// texto da pesquisa vindo do teclado (cp1251/Latin-1); texto vazio limpa
+void CentralUI::keyboardEvent(const std::string& input)
+{
+	std::lock_guard<std::mutex> l(g_m);
+	g_query = CL::Trim(input).substr(0, 24);
+}
 
 bool CentralUI::IsOpen() { return g_open.load(); }
 
@@ -148,7 +209,8 @@ void CentralUI::Open()
 	if (g_open.load()) return;
 	{ std::lock_guard<std::mutex> l(g_m); g_ev.clear(); }
 	for (auto& c : g_claimed) c.store(false);
-	g_f = Fing(); g_scroll = 0.0f; g_settings = false; g_lastReq = 0;
+	g_f = Fing(); g_scroll = 0.0f; g_settings = false; g_lastReq = 0; g_openT = NowMs();
+	{ std::lock_guard<std::mutex> l(g_m); g_query.clear(); g_lastQuery.clear(); }
 	g_open.store(true);
 }
 
@@ -202,9 +264,11 @@ void CentralUI::OnServerPacket(const unsigned char* data, int bytes)
 	std::lock_guard<std::mutex> l(g_m);
 	if (op == 1)
 	{
-		uint16_t tot = 0, sl = 0, mins = 0, adm = 0; uint8_t st = 0;
+		uint16_t tot = 0, sl = 0, mins = 0, adm = 0, pm = 0, mec = 0, sa = 0; uint8_t st = 0;
 		if (!bs.Read(tot) || !bs.Read(sl) || !bs.Read(mins) || !bs.Read(st) || !bs.Read(adm)) return;
-		g_list.Header(tot, sl, mins, st, adm);
+		if (!bs.Read(pm) || !bs.Read(mec) || !bs.Read(sa)) { pm = mec = sa = 0; }     // servidor antigo: sem contagem de organizacoes
+		g_list.Header(tot, sl, mins, st, adm, pm, mec, sa);
+		FLog("[CENTRAL] lista: %u online, %u slots, pm=%u mec=%u samu=%u", (unsigned)tot, (unsigned)sl, (unsigned)pm, (unsigned)mec, (unsigned)sa);
 	}
 	else if (op == 2)
 	{
@@ -233,9 +297,11 @@ void CentralUI::draw(ImGuiRenderer* r)
 	const double  t = (double)now / 1000.0;
 	if (g_lastReq == 0 || now - g_lastReq > 3000) { g_lastReq = now; SendReq(1); }
 
-	CL::List L;
+	CL::List L; std::string query;
 	std::vector<Ev> evs;
-	{ std::lock_guard<std::mutex> l(g_m); L = g_list; evs.swap(g_ev); }
+	{ std::lock_guard<std::mutex> l(g_m); L = g_list; query = g_query; evs.swap(g_ev); }
+	if (query != g_lastQuery) { g_lastQuery = query; g_scroll = 0.0f; }
+	const std::vector<int> shown = CL::Filter(L, query);
 
 	const ImVec2 scr = pUI ? pUI->displaySize() : ImVec2(1920, 1080);
 	const float u  = std::min(scr.y / 720.0f, scr.x / 1100.0f);
@@ -245,9 +311,11 @@ void CentralUI::draw(ImGuiRenderer* r)
 	const ImVec2 pa(PX(430.0f), PY(36.0f)), pb(PX(850.0f), PY(684.0f));
 	const ImVec2 xa(PX(806.0f), PY(46.0f)), xb(PX(838.0f), PY(74.0f));            // X fechar
 	const ImVec2 ga(PX(796.0f), PY(104.0f)), gb(PX(834.0f), PY(142.0f));          // engrenagem
-	const ImVec2 va(PX(446.0f), PY(214.0f)), vb(PX(834.0f), PY(672.0f));          // area da lista
+	const ImVec2 sa(PX(446.0f), PY(212.0f)), sb(PX(834.0f), PY(244.0f));          // caixa de pesquisa
+	const ImVec2 sxa(PX(804.0f), PY(212.0f)), sxb(PX(834.0f), PY(244.0f));        // "x" que limpa a pesquisa
+	const ImVec2 va(PX(446.0f), PY(254.0f)), vb(PX(834.0f), PY(672.0f));          // area da lista
 	const float rowH = 44.0f * u, pitch = 50.0f * u;
-	const float content = (float)L.rows.size() * pitch;
+	const float content = (float)shown.size() * pitch;
 	auto In = [](float x, float y, const ImVec2& a, const ImVec2& b) { return x >= a.x && x <= b.x && y >= a.y && y <= b.y; };
 	auto cellA = [&](int i) { return ImVec2(PX(446.0f + (i % 3) * 130.0f), PY(262.0f + (i / 3) * 70.0f)); };
 	auto cellB = [&](int i) { const ImVec2 a = cellA(i); return ImVec2(a.x + 124.0f * u, a.y + 54.0f * u); };
@@ -262,7 +330,7 @@ void CentralUI::draw(ImGuiRenderer* r)
 		{
 			g_f = Fing(); g_f.num = e.num; g_f.sx = e.x; g_f.sy = e.y; g_f.s0 = g_scroll;
 			if (!In(e.x, e.y, pa, pb)) g_f.kind = 3;
-			else if (In(e.x, e.y, xa, xb) || In(e.x, e.y, ga, gb) || (g_settings && cellAt(e.x, e.y) >= 0)) g_f.kind = 2;
+			else if (In(e.x, e.y, xa, xb) || In(e.x, e.y, ga, gb) || (g_settings && cellAt(e.x, e.y) >= 0) || (!g_settings && In(e.x, e.y, sa, sb))) g_f.kind = 2;
 			else if (!g_settings && In(e.x, e.y, va, vb)) g_f.kind = 1;
 			else g_f.kind = 4;
 		}
@@ -283,6 +351,12 @@ void CentralUI::draw(ImGuiRenderer* r)
 			{
 				if (In(e.x, e.y, xa, xb) && In(f.sx, f.sy, xa, xb)) { Close(); return; }
 				if (In(e.x, e.y, ga, gb) && In(f.sx, f.sy, ga, gb)) { g_settings = !g_settings; g_scroll = 0.0f; continue; }
+				if (!g_settings && In(e.x, e.y, sa, sb) && In(f.sx, f.sy, sa, sb))
+				{
+					if (!query.empty() && In(e.x, e.y, sxa, sxb)) { std::lock_guard<std::mutex> l(g_m); g_query.clear(); }       // "x": limpa
+					else if (pUI && pUI->keyboard() && s_self) pUI->keyboard()->show(s_self);                                      // abre o teclado (o texto volta em keyboardEvent)
+					continue;
+				}
 				const int c0 = cellAt(f.sx, f.sy), c1 = cellAt(e.x, e.y);
 				if (g_settings && c0 >= 0 && c0 == c1) { SendReq(2, c0); g_lastReq = 0; }   // escolhe o modelo; a lista volta com ele aplicado
 			}
@@ -324,27 +398,56 @@ void CentralUI::draw(ImGuiRenderer* r)
 		{ constexpr int N = 24; ImVec2 p[N]; for (int i = 0; i < N; i++) { const float an = 6.2831853f * i / N; p[i] = ImVec2(gx + std::cos(an) * 7.0f * u, gy + std::sin(an) * 7.0f * u); } r->drawPolyline(p, N, cText, true, 2.0f * u); }
 	}
 
-	// faixa de numeros: online, admins e populacao
+	// faixa de numeros: organizacoes em servico (PM | MEC | SAMU) e populacao real (online/slots)
 	{
 		char buf[48];
-		const ImVec2 a1(PX(446.0f), PY(172.0f)), b1(PX(548.0f), PY(200.0f)), a2(PX(554.0f), PY(172.0f)), b2(PX(646.0f), PY(200.0f));
-		r->drawRoundedRect(a1, b1, ImColor(255, 255, 255, 14), 5.0f * u, true);
-		snprintf(buf, sizeof(buf), "%d online", (int)L.total);
-		ImVec2 ts = r->calculateTextSize(buf, 11.0f * u);
-		r->drawText(ImVec2((a1.x + b1.x - ts.x) * 0.5f, (a1.y + b1.y - ts.y) * 0.5f), cText, buf, false, 11.0f * u);
-		r->drawRoundedRect(a2, b2, ImColor(255, 255, 255, 14), 5.0f * u, true);
-		snprintf(buf, sizeof(buf), "%d admin", (int)L.admins);
-		ts = r->calculateTextSize(buf, 11.0f * u);
-		r->drawText(ImVec2((a2.x + b2.x - ts.x) * 0.5f, (a2.y + b2.y - ts.y) * 0.5f), cText, buf, false, 11.0f * u);
-		const ImVec2 a3(PX(654.0f), PY(172.0f)), b3(PX(834.0f), PY(200.0f));
-		r->drawRoundedRect(a3, b3, ImColor(255, 255, 255, 14), 5.0f * u, true);
-		const float fill = CL::PopFill(L.total, L.slots);
-		if (fill > 0.0f) r->drawRoundedRect(a3, ImVec2(a3.x + (b3.x - a3.x) * fill, b3.y), cPink, 5.0f * u, true);
-		snprintf(buf, sizeof(buf), "%d/%d", (int)L.total, (int)L.slots);
-		ts = r->calculateTextSize(buf, 11.0f * u);
-		r->drawText(ImVec2((a3.x + b3.x - ts.x) * 0.5f, (a3.y + b3.y - ts.y) * 0.5f), cText, buf, true, 11.0f * u);
+		const ImVec2 a1(PX(446.0f), PY(172.0f)), b1(PX(640.0f), PY(204.0f));
+		r->drawRoundedRect(a1, b1, ImColor(255, 255, 255, 14), 6.0f * u, true);
+		const float cw = (b1.x - a1.x) / 3.0f, cyy = (a1.y + b1.y) * 0.5f;
+		const int   cnt[3] = { (int)L.pm, (int)L.mec, (int)L.samu };
+		const ImColor ic[3] = { ImColor(96, 170, 255, 255), ImColor(255, 172, 72, 255), ImColor(255, 92, 104, 255) };
+		for (int i = 0; i < 3; i++)
+		{
+			const float ix = a1.x + cw * i + 16.0f * u;
+			if (i == 0) IconShield(r, ix, cyy, 7.5f * u, ic[0], 1.5f * u);
+			else if (i == 1) IconTools(r, ix, cyy, 7.5f * u, ic[1], 1.6f * u);
+			else IconMed(r, ix, cyy, 7.5f * u, ic[2], 1.5f * u);
+			snprintf(buf, sizeof(buf), "%d", cnt[i]);
+			const ImVec2 ts = r->calculateTextSize(buf, 12.0f * u);
+			r->drawText(ImVec2(ix + 12.0f * u, cyy - ts.y * 0.5f), cText, buf, false, 12.0f * u);
+			if (i < 2) r->drawLine(ImVec2(a1.x + cw * (i + 1), a1.y + 8.0f * u), ImVec2(a1.x + cw * (i + 1), b1.y - 8.0f * u), ImColor(255, 255, 255, 40), 1.0f);
+		}
+		// jogadores: barra rosa proporcional + "online/slots" (valores reais do servidor)
+		const ImVec2 a3(PX(650.0f), PY(172.0f)), b3(PX(834.0f), PY(204.0f));
+		r->drawRoundedRect(a3, b3, ImColor(255, 255, 255, 14), 6.0f * u, true);
+		const float fillW = std::max(34.0f * u, (b3.x - a3.x) * CL::PopFill(L.total, L.slots));
+		r->drawRoundedRect(a3, ImVec2(a3.x + fillW, b3.y), cPink, 6.0f * u, true);
+		IconPeople(r, a3.x + 17.0f * u, (a3.y + b3.y) * 0.5f, 7.5f * u, ImColor(255, 255, 255, 255));
+		char sn[16], ss[16]; snprintf(sn, sizeof(sn), "%d", (int)L.total); snprintf(ss, sizeof(ss), "/%d", (int)L.slots);
+		const ImVec2 t1 = r->calculateTextSize(sn, 12.0f * u), t2 = r->calculateTextSize(ss, 11.0f * u);
+		const float tx = b3.x - 10.0f * u - t1.x - t2.x, ty = (a3.y + b3.y) * 0.5f;
+		r->drawLine(ImVec2(tx - 8.0f * u, a3.y + 9.0f * u), ImVec2(tx - 8.0f * u, b3.y - 9.0f * u), ImColor(255, 255, 255, 70), 1.0f);
+		r->drawText(ImVec2(tx, ty - t1.y * 0.5f), ImColor(255, 255, 255, 255), sn, true, 12.0f * u);
+		r->drawText(ImVec2(tx + t1.x, ty - t2.y * 0.5f), ImColor(235, 235, 245, 170), ss, true, 11.0f * u);
 	}
-	r->drawLine(ImVec2(PX(446.0f), PY(208.0f)), ImVec2(PX(834.0f), PY(208.0f)), ImColor(255, 255, 255, 0), 1.0f);
+
+	// caixa de pesquisa (toque abre o teclado; filtra por nome ou ID da conta)
+	if (!g_settings)
+	{
+		const bool pr = g_f.num >= 0 && g_f.kind == 2 && In(g_f.sx, g_f.sy, sa, sb);
+		r->drawRoundedRect(sa, sb, pr ? ImColor(236, 40, 96, 40) : ImColor(255, 255, 255, 14), 6.0f * u, true);
+		r->drawRoundedRect(sa, sb, ImColor(255, 255, 255, 46), 6.0f * u, false, 1.0f);
+		IconSearch(r, sa.x + 16.0f * u, (sa.y + sb.y) * 0.5f, 7.0f * u, cMute, 1.5f * u);
+		const std::string shownTxt = query.empty() ? std::string("Pesquisar...") : Encoding::cp2utf(query);
+		const ImVec2 ts = r->calculateTextSize(shownTxt, 11.5f * u);
+		r->drawText(ImVec2(sa.x + 32.0f * u, (sa.y + sb.y - ts.y) * 0.5f), query.empty() ? cMute : cText, shownTxt, false, 11.5f * u);
+		if (!query.empty())
+		{
+			const float xx = (sxa.x + sxb.x) * 0.5f, xy = (sxa.y + sxb.y) * 0.5f, q = 4.5f * u;
+			r->drawLine(ImVec2(xx - q, xy - q), ImVec2(xx + q, xy + q), cMute, 1.6f * u);
+			r->drawLine(ImVec2(xx + q, xy - q), ImVec2(xx - q, xy + q), cMute, 1.6f * u);
+		}
+	}
 
 	if (g_settings)
 	{
@@ -364,20 +467,22 @@ void CentralUI::draw(ImGuiRenderer* r)
 	}
 
 	// lista
-	if (L.rows.empty())
+	if (shown.empty())
 	{
-		const char* msg = L.have ? "Ninguem online" : "Carregando...";
-		const ImVec2 ts = r->calculateTextSize(msg, 12.0f * u);
-		r->drawText(ImVec2((va.x + vb.x - ts.x) * 0.5f, va.y + 40.0f * u), cMute, msg, false, 12.0f * u);
+		const bool slow = !L.have && (now - g_openT) > 4500;
+		const char* msg = !L.have ? (slow ? "Sem resposta do servidor. Atualize o servidor (maximo_central.inc)." : "Carregando...")
+		                          : (L.rows.empty() ? "Ninguem online" : "Nenhum jogador encontrado");
+		const ImVec2 ts = r->calculateTextSize(msg, 11.5f * u);
+		r->drawText(ImVec2((va.x + vb.x - ts.x) * 0.5f, va.y + 40.0f * u), cMute, msg, false, 11.5f * u);
 		return;
 	}
 	const int localId = (pNetGame && pNetGame->GetPlayerPool()) ? (int)pNetGame->GetPlayerPool()->GetLocalPlayerID() : -1;
 	r->pushClipRect(va, vb, true);
-	for (size_t i = 0; i < L.rows.size(); i++)
+	for (size_t i = 0; i < shown.size(); i++)
 	{
 		const float y = va.y + (float)i * pitch - g_scroll;
 		if (y + rowH < va.y || y > vb.y) continue;
-		const CL::Row& row = L.rows[i];
+		const CL::Row& row = L.rows[shown[i]];
 		const ImVec2 a(va.x, y), b(vb.x - 8.0f * u, y + rowH);
 		DrawStyleBg(r, a, b, row.style, u, t);
 		const bool self = (int)row.pid == localId || (Avatar::AccountId() && row.acc == Avatar::AccountId());

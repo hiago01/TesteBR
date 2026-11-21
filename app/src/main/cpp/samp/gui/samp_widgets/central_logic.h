@@ -33,13 +33,13 @@ namespace CenLogic
 
 	struct List
 	{
-		uint16_t total = 0, slots = 0, myMin = 0, admins = 0; uint8_t myStyle = 0;
+		uint16_t total = 0, slots = 0, myMin = 0, admins = 0, pm = 0, mec = 0, samu = 0; uint8_t myStyle = 0;
 		bool have = false;
 		std::vector<Row> rows;
 
-		void Header(uint16_t tot, uint16_t sl, uint16_t mins, uint8_t st, uint16_t adm)
+		void Header(uint16_t tot, uint16_t sl, uint16_t mins, uint8_t st, uint16_t adm, uint16_t p = 0, uint16_t m = 0, uint16_t sa = 0)
 		{
-			rows.clear(); total = tot; slots = sl; myMin = mins; myStyle = (st < kStyles) ? st : 0; admins = adm; have = true;
+			rows.clear(); total = tot; slots = sl; myMin = mins; myStyle = (st < kStyles) ? st : 0; admins = adm; pm = p; mec = m; samu = sa; have = true;
 		}
 		bool Add(const Row& r)
 		{
@@ -57,4 +57,27 @@ namespace CenLogic
 	}
 	// fracao 0..1 da barra de populacao
 	inline float PopFill(int total, int slots) { return slots > 0 ? std::min(1.0f, std::max(0.0f, (float)total / (float)slots)) : 0.0f; }
+
+	// ---- pesquisa: trecho do nome (sem diferenciar maiusculas) ou do ID da conta ----
+	inline std::string Lower(const std::string& a) { std::string o = a; for (char& c : o) if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a'); return o; }
+	inline std::string Trim(const std::string& a)
+	{
+		size_t b = 0, e = a.size();
+		while (b < e && (unsigned char)a[b] <= ' ') b++;
+		while (e > b && (unsigned char)a[e - 1] <= ' ') e--;
+		return a.substr(b, e - b);
+	}
+	inline bool Match(const Row& r, const std::string& query)
+	{
+		const std::string q = Lower(Trim(query));
+		if (q.empty()) return true;
+		if (Lower(r.name).find(q) != std::string::npos) return true;
+		return std::to_string(r.acc).find(q) != std::string::npos;
+	}
+	inline std::vector<int> Filter(const List& l, const std::string& query)
+	{
+		std::vector<int> out; out.reserve(l.rows.size());
+		for (size_t i = 0; i < l.rows.size(); i++) if (Match(l.rows[i], query)) out.push_back((int)i);
+		return out;
+	}
 }
