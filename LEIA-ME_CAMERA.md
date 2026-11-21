@@ -4,7 +4,8 @@ Descompacte na raiz do projeto (sobrescreve): 3 arquivos novos + 2 alterados em 
   novos:      camguard.h, camguard.cpp, camguard_logic.h
   alterados:  hooks.cpp (+ #include "camguard.h" e + CamGuard::Init(); logo após CCameraZoom::Init();)
               camerazoom.cpp (+ comando /camera guard on|off|status)
-Base: Source-21hrs. Se o seu hooks.cpp for outro, aplique só essas 2 linhas nele em vez de sobrescrever.
+Base: Source-21hrs ORIGINAL (sem cabelo 5+; o hooks.cpp daqui = original + as 2 linhas da câmera, nada mais). Se o seu hooks.cpp for outro, aplique só essas 2 linhas nele em vez de sobrescrever.
+v3: a v2 enviada em 21/11 estava ERRADA (trazia chamadas HairCloth_*); apague-a e use esta.
 
 ## O que faz
 Hook em CCam::Process_FollowCar_SA e Process_FollowPed_SA (câmera de seguir). Depois do cálculo do jogo:

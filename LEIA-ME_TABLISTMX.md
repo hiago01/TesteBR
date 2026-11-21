@@ -1,12 +1,14 @@
 # Barra de abas /tablistmx (2 estilos)
 
+v2: a v1 enviada em 21/11 trazia um chat.cpp com código de cabelo e quebrava a compilação; apague-a e use esta.
+
 Descompacte na raiz do projeto (sobrescreve). Em app/src/main/cpp/samp/gui/:
   novos:      samp_widgets/tablistmx.h, tablistmx.cpp, tablistmx_logic.h, tablistmx_atlas.h (PNG dos seus 2 prints embutido, 1024x512)
   alterados:  gui.h        (+ #include "samp_widgets/tablistmx.h" e + membro m_tabListMX)
               gui.cpp      (+ bloco que cria o TabListMX, logo depois do JumpButton)
               samp_widgets/chat.cpp       (+ comando /tablistmx, logo antes de /roupas)
               samp_widgets/maximomenu.cpp (+ #include "tablistmx.h" e + 3 linhas no início de MaximoMenu::HandleRawTouch)
-Base dos 4 alterados: SourceAqui-21hrs (a com HairCloth). Se os seus forem outros, aplique só essas linhas. hooks.cpp NÃO é alterado.
+Base dos 4 alterados: Source-21hrs ORIGINAL (sem cabelo 5+; só as minhas linhas foram acrescentadas). Se os seus forem outros, aplique só essas linhas. hooks.cpp NÃO é alterado.
 
 ## Uso (chat)
   /tablistmx 1      estilo 1: pílula escura, aba escolhida levantada (print 1)

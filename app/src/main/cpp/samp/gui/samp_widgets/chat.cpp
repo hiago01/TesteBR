@@ -15,7 +15,6 @@
 #include "../../game/Trena.h"
 #include "../../game/IdCard3D.h"
 #include "../../game/Flag.h"
-#include "../../game/HairCloth.h"
 #include "../../game/Giroflex.h"
 #include "../../game/CustomSkin.h"
 #include "../../game/CorpTex.h"
@@ -276,15 +275,6 @@ if (input == "/bandeira" || input.rfind("/bandeira ", 0) == 0)
             // bandeira 3D com fisica de tecido: /bandeira criar | teste | lista | remover | vento | ... (ver BANDEIRA_MAXIMO.md)
             std::string args = input.size() > 9 ? input.substr(10) : std::string();
             std::string reply = Flag_Command(args);
-            addDebugMessage("%s", reply.c_str());
-
-            return;
-        }
-if (input == "/cabelo6" || input.rfind("/cabelo6 ", 0) == 0)
-        {
-            // cabelo de tecido caido (hair6): /cabelo6 teste 1-3 | cor RRGGBB RRGGBB | vento graus int | info | tune ... (ver HairCloth.h)
-            std::string args = input.size() > 7 ? input.substr(8) : std::string();
-            std::string reply = HairCloth_Command(args);
             addDebugMessage("%s", reply.c_str());
 
             return;
