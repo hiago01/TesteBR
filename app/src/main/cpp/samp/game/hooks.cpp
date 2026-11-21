@@ -15,6 +15,7 @@
 #include "game.h"
 #include "DamageRules.h"
 #include "camerazoom.h"
+#include "camguard.h"
 #include "../net/netgame.h"
 #include "../gui/gui.h"
 #include "../gui/samp_widgets/hudstate.h"
@@ -4072,6 +4073,8 @@ CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
 
     // Camera: desativa o zoom por pinca (2 dedos), guarda o nivel em settings.ini e habilita /camera
     CCameraZoom::Init();
+    // Camera: colisao com parede/chao na camera de seguir (a pe e veiculo); /camera guard on|off
+    CamGuard::Init();
 
     // Segurar o HUD (menu nativo de stats) -> abre /roupas ; soltar -> /roupas fechar
     CHook::InlineHook("_ZN4CPad20GetDisplayVitalStatsEP4CPed",

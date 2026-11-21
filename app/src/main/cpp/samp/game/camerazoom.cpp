@@ -5,6 +5,7 @@
 #include "../net/localplayer.h"
 #include "../vendor/inih/cpp/INIReader.h"
 #include "camerazoom.h"
+#include "camguard.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -217,10 +218,18 @@ std::string CCameraZoom::DebugCommand(const std::string& argsIn)
 				 g_pedLevel ? g_pedLevel : ZoomPed(), g_carLevel ? g_carLevel : ZoomCar(), g_pinch ? "ligada" : "desativada");
 		return std::string(buf);
 	};
-	const std::string usage = " | uso: /camera <1-3> | /camera pe <1-3> | /camera carro <1-3> | /camera pinca on|off";
+	const std::string usage = " | uso: /camera <1-3> | /camera pe <1-3> | /camera carro <1-3> | /camera pinca on|off | /camera guard on|off";
 
 	if (tok.empty() || tok[0] == "info" || tok[0] == "status")
 		return status() + usage;
+
+	if (tok[0] == "guard" || tok[0] == "colisao")
+	{
+		if (tok.size() >= 2 && (tok[1] == "on" || tok[1] == "1"))       CamGuard::SetEnabled(true);
+		else if (tok.size() >= 2 && (tok[1] == "off" || tok[1] == "0")) CamGuard::SetEnabled(false);
+		else if (tok.size() >= 2 && tok[1] != "status")                 return "[CAMERA] use: /camera guard on|off";
+		return CamGuard::Status();
+	}
 
 	if (tok[0] == "pinca" || tok[0] == "pinch")
 	{
