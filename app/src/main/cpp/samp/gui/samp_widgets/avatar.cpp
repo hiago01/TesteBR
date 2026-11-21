@@ -5,7 +5,8 @@
 #include "../../java/jniutil.h"
 #include "../../vendor/raknet/BitStream.h"
 #include "../../vendor/raknet/SAMP/SAMPRPC.h"
-#include "../../vendor/stb/stb_image.h"   // implementacao em game/sprite2d.cpp
+#include "avatar_jpeg.h"
+#include "avatar_default.h"
 #include "avatar.h"
 #include "avatar_logic.h"
 
@@ -69,28 +70,20 @@ namespace
 		}
 	}
 
-	// JPEG -> RwRaster 32 bits (mesmo caminho do atlas do inventario)
-	RwRaster* MakeRaster(const std::vector<uint8_t>& jpg)
+	// JPEG -> RwRaster 32 bits (mesmo caminho do atlas do inventario; o JPEG e decodificado por AvatarJpeg, ja que o stb do jogo e so PNG)
+	RwRaster* MakeRaster(const uint8_t* jpg, int jn)
 	{
-		int w = 0, h = 0, ch = 0;
-		unsigned char* px = stbi_load_from_memory(jpg.data(), (int)jpg.size(), &w, &h, &ch, 4);
-		if (!px) { FLog("[AVATAR] stbi falhou: %s", stbi_failure_reason()); return nullptr; }
-		if (w < 8 || h < 8 || w > 512 || h > 512) { stbi_image_free(px); return nullptr; }
-		if (!RwImageCreate || !RwImageAllocatePixels || !RwImageFindRasterFormat || !RwRasterCreate || !RwRasterSetFromImage)
-		{
-			stbi_image_free(px);
-			return nullptr;
-		}
+		std::vector<uint8_t> rgba; int w = 0, h = 0;
+		if (!AvatarJpeg::Decode(jpg, jn, rgba, w, h)) { FLog("[AVATAR] JPEG invalido"); return nullptr; }
+		if (!RwImageCreate || !RwImageAllocatePixels || !RwImageFindRasterFormat || !RwRasterCreate || !RwRasterSetFromImage) return nullptr;
 		RwImage* image = RwImageCreate(w, h, 32);
 		if (!image || !RwImageAllocatePixels(image))
 		{
 			if (image) RwImageDestroy(image);
-			stbi_image_free(px);
 			return nullptr;
 		}
 		for (int y = 0; y < h; ++y)
-			memcpy(image->cpPixels + (size_t)y * image->stride, px + (size_t)y * w * 4, (size_t)w * 4);
-		stbi_image_free(px);
+			memcpy(image->cpPixels + (size_t)y * image->stride, rgba.data() + (size_t)y * w * 4, (size_t)w * 4);
 
 		int rw = w, rh = h, rd = 32, rf = 0;
 		RwImageFindRasterFormat(image, rwRASTERTYPETEXTURE, &rw, &rh, &rd, &rf);
@@ -228,7 +221,7 @@ void Avatar::Tick()
 	if (doClear && g_raster) { if (RwRasterDestroy) RwRasterDestroy(g_raster); g_raster = nullptr; }
 	if (doDec)
 	{
-		if (RwRaster* nr = MakeRaster(dec))
+		if (RwRaster* nr = MakeRaster(dec.data(), (int)dec.size()))
 		{
 			if (g_raster && RwRasterDestroy) RwRasterDestroy(g_raster);
 			g_raster = nr;
@@ -236,7 +229,13 @@ void Avatar::Tick()
 	}
 }
 
-RwRaster* Avatar::Raster() { return g_raster; }
+RwRaster* Avatar::Raster()
+{
+	if (g_raster) return g_raster;
+	static RwRaster* s_def = nullptr; static bool s_defFailed = false;      // avatar padrao (logo Maximo RP) quando o jogador nao tem foto
+	if (!s_def && !s_defFailed) { s_def = MakeRaster(kAvatarDefaultJpg, kAvatarDefaultJpgSize); if (!s_def) s_defFailed = true; }
+	return s_def;
+}
 uint32_t  Avatar::AccountId() { return g_id.load(); }
 
 bool Avatar::PopMessage(std::string& out)

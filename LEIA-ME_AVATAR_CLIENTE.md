@@ -9,3 +9,8 @@ Arquivos alterados (a partir dos originais): SAMP.java, jniutil.h/.cpp, main.cpp
 gui/samp_widgets/inventory.cpp (base = Cliente-Inventario-Telas.zip, que ja deve estar aplicado).
 Precisa do servidor com maximo_avatar.inc (zip Servidor-Avatar). CMake usa GLOB_RECURSE: rode build limpo.
 NAO testado em aparelho nem compilado com o NDK (so verificacao de sintaxe com clang e teste da logica no PC).
+
+## v2 - correcao
+Causa de a foto nao aparecer: o stb_image do jogo e compilado so com PNG e nao decodificava o JPEG. Agora avatar_jpeg.cpp
+traz uma copia ESTATICA so-JPEG (mesmo truque do phonephotos.cpp). Sem foto, aparece o avatar padrao (logo Maximo RP,
+avatar_default.h, 256x256 JPEG) no mesmo circulo.
