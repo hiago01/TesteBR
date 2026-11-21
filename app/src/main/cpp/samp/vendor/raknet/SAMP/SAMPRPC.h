@@ -168,5 +168,7 @@ extern int RPC_VehHud;          // avisos + velocimetro (servidor -> cliente), g
 extern int RPC_JobsRequest;
 extern int RPC_AvatarIn;
 extern int RPC_AvatarOut;
+extern int RPC_CentralIn;
+extern int RPC_CentralOut;
 extern int RPC_ScrWeapSkin;
 extern int RPC_ScrFlag;

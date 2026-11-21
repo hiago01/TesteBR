@@ -18,6 +18,7 @@
 #include "../game/Weapskin.h"
 #include "../gui/samp_widgets/inventory.h"
 #include "../gui/samp_widgets/avatar.h"
+#include "../gui/samp_widgets/central.h"
 #include "../gui/samp_widgets/jobs.h"
 #include "../gui/samp_widgets/orgpanel.h"
 #include "../gui/samp_widgets/worldmap.h"
@@ -2137,6 +2138,14 @@ void ScrWeapSkin(RPCParameters* rpcParams)
 	Weapskin_OnServerPacket(pid, weapon, model);
 }
 
+// Central da Cidade Maximo RP: servidor -> client (RPC_CentralIn = 253). Formato em maximo_central.inc / central.h.
+void ScrCentral(RPCParameters* rpcParams)
+{
+	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
+	int iBitLength = rpcParams->numberOfBitsOfData;
+	CentralUI::OnServerPacket(Data, (iBitLength / 8) + 1);
+}
+
 // Avatar do jogador Maximo RP: servidor -> client (RPC_AvatarIn = 251). Formato em maximo_avatar.inc / avatar.h.
 void ScrAvatar(RPCParameters* rpcParams)
 {
@@ -2252,6 +2261,8 @@ void RegisterScriptRPCs(RakClientInterface *pRakClient)
 	IdCard3D_Reset();      // nova conexão: descarta cartões da sessão anterior
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrInventory, ScrInventory);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_AvatarIn, ScrAvatar);
+	pRakClient->RegisterAsRemoteProcedureCall(&RPC_CentralIn, ScrCentral);
+	CentralUI::Reset();    // nova conexao: central fechada e vazia
 	Avatar::Reset();       // nova conexao: sem avatar nem ID (o servidor manda no login)
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrMap, ScrMap);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_PhoneEvent, ScrPhone);
@@ -2334,6 +2345,8 @@ void UnregisterScriptRPCs(RakClientInterface *pRakClient)
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetIdCard);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrInventory);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_AvatarIn);
+	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_CentralIn);
+	CentralUI::Reset();
 	Avatar::Reset();
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrMap);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_PhoneEvent);

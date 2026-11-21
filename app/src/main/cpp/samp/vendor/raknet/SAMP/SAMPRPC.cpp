@@ -176,3 +176,6 @@ int RPC_JobsRequest = 246;
 // Avatar do jogador Maximo RP: servidor -> cliente (251: id da conta, avatar em pedacos, resultado) e cliente -> servidor (252: envio em pedacos, pedido, remover). Ver gui/samp_widgets/avatar.h e maximo_avatar.inc
 int RPC_AvatarIn = 251;
 int RPC_AvatarOut = 252;
+// Central da Cidade (scoreboard) Maximo RP: servidor -> cliente (253: cabecalho, linhas, abrir) e cliente -> servidor (254: pedir lista, escolher modelo de fundo). Ver gui/samp_widgets/central.h e maximo_central.inc
+int RPC_CentralIn = 253;
+int RPC_CentralOut = 254;

@@ -154,6 +154,13 @@ bool UI::initialize()
 	m_inventory->setPosition(ImVec2(0.0f, 0.0f));
 	m_inventory->setVisible(true);
 
+	// Central da Cidade (scoreboard): abre por /central (servidor) ou pela aba Perfil. So desenha quando aberta.
+	m_central = new CentralUI();
+	this->addChild(m_central);
+	m_central->setFixedSize(size());
+	m_central->setPosition(ImVec2(0.0f, 0.0f));
+	m_central->setVisible(true);
+
 	// Mapa aberto (/mapa, aba MAPA do menu ou servidor). So desenha quando aberto.
 	m_worldmap = new WorldMapWidget();
 	this->addChild(m_worldmap);

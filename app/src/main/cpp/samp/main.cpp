@@ -9,6 +9,7 @@
 #include "net/netgame.h"
 #include "gui/gui.h"
 #include "gui/samp_widgets/avatar.h"
+#include "gui/samp_widgets/central.h"
 #include "playertags.h"
 #include "audiostream.h"
 #include "java/jniutil.h"
@@ -386,6 +387,7 @@ extern "C" {
 		}
 		// So abre/fecha o menu quando o jogo esta pronto (UI criada); antes disso, engole o Voltar.
 		if (WorldMapWidget::OnBackPressed()) return JNI_TRUE;   // mapa aberto: Voltar fecha so ele
+		if (CentralUI::OnBackPressed()) return JNI_TRUE;     // Central da Cidade aberta: Voltar fecha so ela
 		if (InventoryUI::OnBackPressed()) return JNI_TRUE;   // inventário aberto: Voltar fecha só ele
 		if (OrgPanelWidget::OnBackPressed()) return JNI_TRUE;   // Gerenciador de Grupo aberto: Voltar fecha so ele
 		if (JobsUI::OnBackPressed()) return JNI_TRUE;        // agencia de empregos aberta: Voltar fecha so ela

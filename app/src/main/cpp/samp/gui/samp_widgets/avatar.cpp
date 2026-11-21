@@ -376,3 +376,19 @@ void Avatar::DrawBorder(ImGuiRenderer* r, int idx, float cx, float cy, float ar,
 	Ring(r, cx, cy, ar + 1.3f * u, 2.8f * u, ImColor(135, 135, 146, 255));
 	Ring(r, cx, cy, ar + 0.5f * u, 1.0f * u, ImColor(205, 205, 214, 150));
 }
+
+void Avatar::DrawPhoto(ImGuiRenderer* r, float cx, float cy, float ar)
+{
+	if (!r) return;
+	RwRaster* ras = Raster();
+	if (!ras) { Disc(r, cx, cy, ar, ImColor(190, 190, 200, 255)); return; }
+	constexpr int N = 40;
+	ImVec2 ap[N], au[N];
+	for (int i = 0; i < N; i++)
+	{
+		const float ang = 6.2831853f * (float)i / (float)N, cs = std::cos(ang), sn = std::sin(ang);
+		ap[i] = ImVec2(cx + cs * ar, cy + sn * ar);
+		au[i] = ImVec2(0.5f + cs * 0.5f, 0.5f + sn * 0.5f);
+	}
+	r->drawTexPoly(ap, au, N, (ImTextureID)ras);
+}

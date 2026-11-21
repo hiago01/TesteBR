@@ -25,6 +25,7 @@
 #include "samp_widgets/passengerbutton.h"
 #include "samp_widgets/jumpbutton.h"
 #include "samp_widgets/tablistmx.h"
+#include "samp_widgets/central.h"
 #include "samp_widgets/moderncontrols.h"
 #include "samp_widgets/controlsselector.h"
 #include "samp_widgets/playertablist.h"
@@ -123,6 +124,7 @@ private:
 	PassengerButton* m_passengerButton;
 	JumpButton* m_jumpButton = nullptr;
 	TabListMX* m_tabListMX = nullptr;
+	CentralUI* m_central = nullptr;
 	ModernControls* m_modernControls = nullptr;
 	ControlsSelector* m_controlsSelector = nullptr;
 	HudInfo* m_hud = nullptr;

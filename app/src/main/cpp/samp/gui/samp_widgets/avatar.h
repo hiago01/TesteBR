@@ -26,5 +26,7 @@ namespace Avatar
 	void SetBorder(int idx);                 // aplica na hora e avisa o servidor (RPC 252 op 5)
 	const char* BorderName(int idx);
 	// desenha a borda em volta de um avatar circular de raio ar (centro cx,cy); u = escala da tela; tsec = tempo em segundos (animacoes)
+	// foto do avatar (ou o avatar padrao) recortada em circulo
+	void DrawPhoto(ImGuiRenderer* r, float cx, float cy, float ar);
 	void DrawBorder(ImGuiRenderer* r, int idx, float cx, float cy, float ar, float u, double tsec);                                                // nova conexao / saiu do servidor
 }

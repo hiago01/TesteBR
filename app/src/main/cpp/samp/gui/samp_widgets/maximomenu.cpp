@@ -8,6 +8,7 @@
 #include "../../vendor/SimpleIni/SimpleIni.h"
 #include "maximomenu.h"
 #include "tablistmx.h"
+#include "central.h"
 #include "../gfxsettings.h"
 #include "worldmap.h"
 #include "controlmode.h"
@@ -364,6 +365,8 @@ bool MaximoMenu::HandleRawTouch(int type, int num, int x, int y)
 {
 	// Barra de abas (/tablistmx): ponto de entrada de toque compartilhado, sem mexer em hooks.cpp. Com o menu aberto ela esta
 	// oculta (nao reivindica toque novo) e libera o dedo que ja tinha; so reivindica o dedo que COMECA numa aba.
+	if (CentralUI::HandleRawTouch(type, num, x, y))      // Central da Cidade: aberta consome todos os toques
+		return true;
 	if (TabListMX::HandleRawTouch(type, num, x, y))
 		return true;
 
