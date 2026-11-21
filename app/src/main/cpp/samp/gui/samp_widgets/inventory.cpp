@@ -541,10 +541,11 @@ namespace
 	enum { B_NONE = 0, B_USE, B_DROP, B_TRADE, B_QTY, B_PICK, B_OFFER, B_CLOSE,
 		   B_ACCEPT, B_REFUSE, B_CONFIRM, B_CANCEL, B_REFRESH,
 		   B_TABINV, B_TABCRAFT, B_TABROUPAS, B_TABADESIVOS,
-		   B_AVATAR };   // B_AVATAR: toque no circulo do personagem abre a Galeria (Avatar::RequestPick)
+		   B_AVATAR, B_AVPHOTO, B_AVB0, B_AVB1, B_AVB2, B_AVB3, B_AVB4 };   // B_AVATAR: toque no circulo do personagem abre a Galeria (Avatar::RequestPick)
 	// abas do topo da tela PRINCIPAL (Craft/Roupas/Adesivos ainda nao existem: "Em breve")
 
 	struct Sel { int panel = 0; int idx = -1; } g_sel;      // idx: slot (inventario) ou posicao no vetor ground
+	bool    g_avPanel = false;                              // painel do avatar (escolher foto / borda) aberto na tela PRINCIPAL
 	bool    g_allQty = true;                                // false = 1 unidade, true = tudo
 	float   g_scroll[3] = {0, 0, 0};                        // [P_INV], [P_GROUND]
 	int64_t g_busyUntil = 0;                                // evita executar duas vezes o mesmo gesto
@@ -713,6 +714,12 @@ void InventoryUI::draw(ImGuiRenderer* r)
 			btns.push_back({B_TABCRAFT,     ImVec2(PX(148.0f), PY(16.0f)), ImVec2(PX(222.0f), PY(58.0f)), "", true});
 			btns.push_back({B_TABROUPAS,    ImVec2(PX(222.0f), PY(16.0f)), ImVec2(PX(302.0f), PY(58.0f)), "", true});
 			btns.push_back({B_TABADESIVOS,  ImVec2(PX(305.0f), PY(16.0f)), ImVec2(PX(395.0f), PY(58.0f)), "", true});
+			if (g_avPanel)
+			{
+				btns.push_back({B_AVPHOTO, ImVec2(PX(80.0f), PY(318.0f)), ImVec2(PX(382.0f), PY(346.0f)), "ESCOLHER FOTO DA GALERIA", true});
+				for (int k = 0; k < Avatar::kBorderCount; k++)
+					btns.push_back({B_AVB0 + k, ImVec2(PX(80.0f + k * 62.0f), PY(374.0f)), ImVec2(PX(80.0f + k * 62.0f + 56.0f), PY(452.0f)), "", true});
+			}
 			btns.push_back({B_AVATAR,       ImVec2(PX(294.0f) - 39.0f * u, PY(199.0f) - 39.0f * u), ImVec2(PX(294.0f) + 39.0f * u, PY(199.0f) + 39.0f * u), "", true});
 		}
 	}
@@ -819,9 +826,11 @@ void InventoryUI::draw(ImGuiRenderer* r)
 			{ std::lock_guard<std::mutex> l(g_dm); g_toastMsg = "Em breve"; g_toastType = 0; g_toastUntil = NowMs() + 1500; }
 			break;
 			case B_TABINV: break;
-			case B_AVATAR: Avatar::RequestPick(); break;       // abre a Galeria; o envio ao servidor e o toast saem por Avatar::Tick
+			case B_AVATAR: g_avPanel = !g_avPanel; break;                       // abre/fecha o painel do avatar (foto + borda)
+			case B_AVPHOTO: g_avPanel = false; Avatar::RequestPick(); break;    // abre a Galeria; o envio ao servidor e o toast saem por Avatar::Tick
+			case B_AVB0: case B_AVB1: case B_AVB2: case B_AVB3: case B_AVB4: Avatar::SetBorder(id - B_AVB0); break;   // escolhe a borda (servidor guarda por conta)
 		}
-		if (id != B_QTY && id != B_CLOSE && id != B_AVATAR && id != B_TABINV && id != B_TABCRAFT && id != B_TABROUPAS && id != B_TABADESIVOS) g_sel = Sel();
+		if (id != B_QTY && id != B_CLOSE && !(id >= B_TABINV && id <= B_AVB4)) g_sel = Sel();
 	};
 
 	// ---- toques acumulados ----
@@ -1227,7 +1236,9 @@ void InventoryUI::draw(ImGuiRenderer* r)
 				circle(acx, acy - ar * 0.22f, ar * 0.30f, ImColor(190, 190, 200, 255));                   // cabeca
 				circle(acx, acy + ar * 0.62f, ar * 0.48f, ImColor(190, 190, 200, 255));                   // ombros (cortados pelo contorno)
 			}
-			{   // selo "+" (toque troca a foto)
+			const double animT = (double)NowMs() / 1000.0;
+			Avatar::DrawBorder(r, Avatar::Border(), acx, acy, ar, u, animT);                              // borda escolhida pelo jogador (global: natural, guirlanda, noel, neon, arco-iris)
+			{   // selo "+" (toque abre o painel do avatar)
 				const float bx = acx + ar * 0.72f, by = acy + ar * 0.72f, br = 9.0f * u;
 				circle(bx, by, br, cPink);
 				r->drawLine(ImVec2(bx - br * 0.5f, by), ImVec2(bx + br * 0.5f, by), ImColor(255, 255, 255, 255), 1.6f * u);
@@ -1243,6 +1254,41 @@ void InventoryUI::draw(ImGuiRenderer* r)
 			else snprintf(idb, sizeof(idb), "ID -");
 			const ImVec2 is = r->calculateTextSize(idb, 11.0f * u);
 			r->drawText(ImVec2(acx - is.x * 0.5f, PY(281.0f)), cMute, idb, false, 11.0f * u);
+		}
+
+		// painel do avatar: escolher foto + borda
+		if (g_avPanel)
+		{
+			const double animT = (double)NowMs() / 1000.0;
+			const ImVec2 pa(PX(66.0f), PY(306.0f)), pb(PX(396.0f), PY(476.0f));
+			r->drawRect(pa, pb, ImColor(14, 14, 20, 235), true);
+			r->drawRect(pa, pb, cCellLn, false, 1.0f);
+			for (const Btn& b : btns)
+			{
+				const bool pr = g_t.finger >= 0 && g_t.kind == 3 && g_t.btn == b.id;
+				if (b.id == B_AVPHOTO)
+				{
+					r->drawRect(b.a, b.b, pr ? cPinkF : cCellBg, true);
+					r->drawRect(b.a, b.b, cCellLn, false, 1.0f);
+					const ImVec2 ts = r->calculateTextSize(b.label, 11.0f * u);
+					r->drawText(ImVec2((b.a.x + b.b.x - ts.x) * 0.5f, (b.a.y + b.b.y - ts.y) * 0.5f), cText, b.label, false, 11.0f * u);
+				}
+				else if (b.id >= B_AVB0 && b.id <= B_AVB4)
+				{
+					const int k = b.id - B_AVB0;
+					const bool selB = Avatar::Border() == k;
+					r->drawRect(b.a, b.b, pr ? cPinkF : cCellBg, true);
+					r->drawRect(b.a, b.b, selB ? cPink : cCellLn, false, selB ? 1.8f : 1.0f);
+					const float pcx = (b.a.x + b.b.x) * 0.5f, pcy = b.a.y + 30.0f * u, par = 14.0f * u;
+					circle(pcx, pcy, par, ImColor(190, 190, 200, 255));
+					Avatar::DrawBorder(r, k, pcx, pcy, par, u * 0.7f, animT);
+					const char* bn = Avatar::BorderName(k);
+					const ImVec2 ts = r->calculateTextSize(bn, 9.0f * u);
+					r->drawText(ImVec2((b.a.x + b.b.x - ts.x) * 0.5f, b.b.y - ts.y - 4.0f * u), selB ? cText : cMute, bn, false, 9.0f * u);
+				}
+			}
+			const char* hl = "Borda do avatar";
+			r->drawText(ImVec2(PX(80.0f), PY(354.0f)), cMute, hl, false, 10.0f * u);
 		}
 
 		// cartao do item selecionado
@@ -1317,7 +1363,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 	for (const Btn& b : btns)
 	{
 		const bool pressed = g_t.finger >= 0 && g_t.kind == 3 && g_t.btn == b.id;
-		if (b.id >= B_TABINV && b.id <= B_AVATAR) continue;      // as abas sao desenhadas no bloco da tela principal
+		if (b.id >= B_TABINV && b.id <= B_AVB4) continue;      // as abas sao desenhadas no bloco da tela principal
 		if (b.id == B_CLOSE)
 		{
 			const char* lab = "Para fechar";

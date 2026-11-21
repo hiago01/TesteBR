@@ -7,6 +7,10 @@
 #include "../../vendor/raknet/SAMP/SAMPRPC.h"
 #include "avatar_jpeg.h"
 #include "avatar_default.h"
+#include "avatar_borders.h"
+#include "../imguirenderer.h"
+#include "../../vendor/stb/stb_image.h"   // PNG das bordas (a implementacao do jogo e so PNG; o JPEG do avatar vai por avatar_jpeg.cpp)
+#include <cmath>
 #include "avatar.h"
 #include "avatar_logic.h"
 
@@ -23,6 +27,8 @@ namespace
 {
 	std::mutex g_m;
 	std::atomic<uint32_t> g_id{0};
+	std::atomic<int>      g_border{0};
+	int64_t               g_lastBorderSend = 0;
 	bool                  g_infoKnown = false;      // INFO do servidor ja chegou
 	AvatarLogic::Assembler g_asm;                   // avatar que o servidor esta mandando
 	std::vector<uint8_t>  g_decode;                 // bytes prontos para virar textura
@@ -71,10 +77,28 @@ namespace
 	}
 
 	// JPEG -> RwRaster 32 bits (mesmo caminho do atlas do inventario; o JPEG e decodificado por AvatarJpeg, ja que o stb do jogo e so PNG)
+	RwRaster* MakeRasterRGBA(const uint8_t* rgbaPx, int w, int h);
 	RwRaster* MakeRaster(const uint8_t* jpg, int jn)
 	{
 		std::vector<uint8_t> rgba; int w = 0, h = 0;
 		if (!AvatarJpeg::Decode(jpg, jn, rgba, w, h)) { FLog("[AVATAR] JPEG invalido"); return nullptr; }
+		return MakeRasterRGBA(rgba.data(), w, h);
+	}
+
+	// PNG (bordas) -> RwRaster; PNG usa o stb do jogo
+	RwRaster* MakeRasterPng(const unsigned char* png, int n)
+	{
+		int w = 0, h = 0, ch = 0;
+		unsigned char* px = stbi_load_from_memory(png, n, &w, &h, &ch, 4);
+		if (!px) { FLog("[AVATAR] PNG da borda invalido"); return nullptr; }
+		RwRaster* r = MakeRasterRGBA(px, w, h);
+		stbi_image_free(px);
+		return r;
+	}
+
+	RwRaster* MakeRasterRGBA(const uint8_t* rgbaPx, int w, int h)
+	{
+		const std::vector<uint8_t> rgba(rgbaPx, rgbaPx + (size_t)w * h * 4);
 		if (!RwImageCreate || !RwImageAllocatePixels || !RwImageFindRasterFormat || !RwRasterCreate || !RwRasterSetFromImage) return nullptr;
 		RwImage* image = RwImageCreate(w, h, 32);
 		if (!image || !RwImageAllocatePixels(image))
@@ -112,7 +136,7 @@ namespace
 void Avatar::Reset()
 {
 	std::lock_guard<std::mutex> l(g_m);
-	g_id.store(0); g_infoKnown = false; g_asm.Reset();
+	g_id.store(0); g_border.store(0); g_infoKnown = false; g_asm.Reset();
 	g_decode.clear(); g_decodePending = false; g_clear = true;
 	g_candidate.clear(); g_upload.clear(); g_uploadPending = false;
 	g_msg.clear(); g_msgPending = false; g_reqTries = 0; g_lastReq = 0;
@@ -127,8 +151,9 @@ void Avatar::OnServerPacket(const unsigned char* data, int bytes)
 	std::lock_guard<std::mutex> l(g_m);
 	if (op == 1)         // INFO: id da conta + tem avatar
 	{
-		uint32_t id = 0; uint8_t has = 0;
+		uint32_t id = 0; uint8_t has = 0, bd = 0;
 		if (!bs.Read(id) || !bs.Read(has)) return;
+		if (bs.Read(bd) && bd < kBorderCount) g_border.store(bd);        // borda escolhida (campo opcional, servidor novo)
 		g_id.store(id); g_infoKnown = true;
 		if (!has) g_clear = true;
 	}
@@ -244,4 +269,110 @@ bool Avatar::PopMessage(std::string& out)
 	if (!g_msgPending) return false;
 	out = g_msg; g_msgPending = false;
 	return true;
+}
+
+// ---------------------------------------------------------------------------------------------
+//  Bordas
+// ---------------------------------------------------------------------------------------------
+int Avatar::Border() { const int b = g_border.load(); return (b >= 0 && b < kBorderCount) ? b : 0; }
+
+void Avatar::SetBorder(int idx)
+{
+	if (idx < 0 || idx >= kBorderCount) return;
+	g_border.store(idx);                                         // aplica ja; o servidor confirma no INFO
+	if (!Connected()) return;
+	const int64_t now = NowMs();
+	if (now - g_lastBorderSend < 250) return;
+	g_lastBorderSend = now;
+	RakNet::BitStream bs; bs.Write((uint8_t)5); bs.Write((uint8_t)idx); SendBs(bs);
+}
+
+const char* Avatar::BorderName(int idx)
+{
+	static const char* n[kBorderCount] = { "Natural", "Guirlanda", "Noel", "Neon", "Arco-iris" };
+	return (idx >= 0 && idx < kBorderCount) ? n[idx] : "";
+}
+
+namespace
+{
+	void Ring(ImGuiRenderer* r, float cx, float cy, float rad, float th, const ImColor& col, int N = 48)
+	{
+		for (int i = 0; i < N; i++)
+		{
+			const float a0 = 6.2831853f * (float)i / (float)N, a1 = 6.2831853f * (float)(i + 1) / (float)N;
+			r->drawLine(ImVec2(cx + std::cos(a0) * rad, cy + std::sin(a0) * rad), ImVec2(cx + std::cos(a1) * rad, cy + std::sin(a1) * rad), col, th);
+		}
+	}
+	void Disc(ImGuiRenderer* r, float cx, float cy, float rad, const ImColor& col)
+	{
+		constexpr int N = 20; ImVec2 p[N];
+		for (int i = 0; i < N; i++) { const float a = 6.2831853f * (float)i / (float)N; p[i] = ImVec2(cx + std::cos(a) * rad, cy + std::sin(a) * rad); }
+		r->drawConvexPolyFilled(p, N, col);
+	}
+	RwRaster* BorderRaster(int idx)
+	{
+		static RwRaster* ras[2] = { nullptr, nullptr }; static bool failed[2] = { false, false };
+		if (idx != 1 && idx != 2) return nullptr;
+		const int k = idx - 1;
+		if (!ras[k] && !failed[k])
+		{
+			ras[k] = (idx == 1) ? MakeRasterPng(kBorderWreathPng, kBorderWreathPngSize) : MakeRasterPng(kBorderSantaPng, kBorderSantaPngSize);
+			if (!ras[k]) failed[k] = true;
+		}
+		return ras[k];
+	}
+	// raio interno do anel da imagem / metade da imagem (para o anel encostar na borda da foto)
+	constexpr float kInnerWreath = 192.0f / 277.0f, kInnerSanta = 212.0f / 277.0f;
+}
+
+void Avatar::DrawBorder(ImGuiRenderer* r, int idx, float cx, float cy, float ar, float u, double t)
+{
+	if (!r) return;
+	if (idx == 1 || idx == 2)
+	{
+		RwRaster* ras = BorderRaster(idx);
+		if (!ras) { Ring(r, cx, cy, ar + 1.2f * u, 2.6f * u, ImColor(150, 150, 160, 255)); return; }   // textura indisponivel: cai no natural
+		const float H = ar * 1.02f / (idx == 1 ? kInnerWreath : kInnerSanta);
+		r->drawImage(ImVec2(cx - H, cy - H), ImVec2(cx + H, cy + H), (ImTextureID)ras, ImColor(255, 255, 255, 255), ImVec2(0, 0), ImVec2(1, 1));
+		if (idx == 1)    // pisca-pisca: luzes coloridas alternando sobre a guirlanda
+		{
+			static const int col[4][3] = { { 255, 205, 70 }, { 255, 80, 80 }, { 100, 255, 130 }, { 100, 180, 255 } };
+			constexpr int N = 16;
+			const float rl = H * 0.83f;
+			const int phase = (int)(t * 2.4);
+			for (int i = 0; i < N; i++)
+			{
+				const float a = 6.2831853f * ((float)i + 0.5f) / (float)N;
+				const float lx = cx + std::cos(a) * rl, ly = cy + std::sin(a) * rl;
+				const bool on = ((phase + i) & 1) == 0;
+				const int* c = col[i & 3];
+				Disc(r, lx, ly, 4.6f * u, ImColor(c[0], c[1], c[2], on ? 70 : 0));
+				Disc(r, lx, ly, 2.8f * u, ImColor(c[0], c[1], c[2], on ? 170 : 35));
+				Disc(r, lx, ly, 1.4f * u, ImColor(255, 255, 255, on ? 255 : 70));
+			}
+		}
+		return;
+	}
+	if (idx == 3)        // neon azul pulsando
+	{
+		const float p = 0.55f + 0.45f * (float)std::sin(t * 2.6);
+		for (int k = 3; k >= 0; k--) Ring(r, cx, cy, ar + (1.6f + k * 1.5f) * u, (2.4f + k * 1.2f) * u, ImColor(40, 150, 255, (int)((70 - k * 14) * p)));
+		Ring(r, cx, cy, ar + 1.6f * u, 2.0f * u, ImColor(140, 215, 255, (int)(160 + 95 * p)));
+		return;
+	}
+	if (idx == 4)        // arco-iris girando
+	{
+		constexpr int N = 60;
+		const float rad = ar + 2.0f * u;
+		for (int i = 0; i < N; i++)
+		{
+			const float a0 = 6.2831853f * (float)i / (float)N, a1 = 6.2831853f * (float)(i + 1) / (float)N;
+			float h = (float)i / (float)N + (float)(t * 0.25); h -= std::floor(h);
+			r->drawLine(ImVec2(cx + std::cos(a0) * rad, cy + std::sin(a0) * rad), ImVec2(cx + std::cos(a1) * rad, cy + std::sin(a1) * rad), ImColor::HSV(h, 0.85f, 1.0f), 3.4f * u);
+		}
+		return;
+	}
+	// 0: natural cinza
+	Ring(r, cx, cy, ar + 1.3f * u, 2.8f * u, ImColor(135, 135, 146, 255));
+	Ring(r, cx, cy, ar + 0.5f * u, 1.0f * u, ImColor(205, 205, 214, 150));
 }

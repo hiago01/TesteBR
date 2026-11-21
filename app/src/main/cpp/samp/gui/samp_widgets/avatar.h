@@ -6,6 +6,7 @@
 #include <string>
 
 struct RwRaster;
+class ImGuiRenderer;
 
 namespace Avatar
 {
@@ -17,5 +18,13 @@ namespace Avatar
 	RwRaster* Raster();                                          // nullptr = sem avatar
 	uint32_t AccountId();                                        // 0 = ainda nao recebido
 	bool PopMessage(std::string& out);                           // aviso curto para o toast do inventario
-	void Reset();                                                // nova conexao / saiu do servidor
+	void Reset();
+
+	// ---- bordas do avatar (globais; cada jogador escolhe a sua, o servidor guarda por conta) ----
+	constexpr int kBorderCount = 5;          // 0 Natural (cinza) | 1 Guirlanda (pisca-pisca) | 2 Papai Noel | 3 Neon pulsante | 4 Arco-iris
+	int  Border();                           // borda escolhida (0..kBorderCount-1)
+	void SetBorder(int idx);                 // aplica na hora e avisa o servidor (RPC 252 op 5)
+	const char* BorderName(int idx);
+	// desenha a borda em volta de um avatar circular de raio ar (centro cx,cy); u = escala da tela; tsec = tempo em segundos (animacoes)
+	void DrawBorder(ImGuiRenderer* r, int idx, float cx, float cy, float ar, float u, double tsec);                                                // nova conexao / saiu do servidor
 }

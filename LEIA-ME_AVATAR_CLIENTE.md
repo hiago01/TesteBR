@@ -14,3 +14,9 @@ NAO testado em aparelho nem compilado com o NDK (so verificacao de sintaxe com c
 Causa de a foto nao aparecer: o stb_image do jogo e compilado so com PNG e nao decodificava o JPEG. Agora avatar_jpeg.cpp
 traz uma copia ESTATICA so-JPEG (mesmo truque do phonephotos.cpp). Sem foto, aparece o avatar padrao (logo Maximo RP,
 avatar_default.h, 256x256 JPEG) no mesmo circulo.
+
+## v3 - bordas de avatar
+Toque no circulo -> painel: "Escolher foto da galeria" + 5 bordas (cada jogador escolhe a sua; o servidor guarda por conta):
+0 Natural (cinza, padrao) | 1 Guirlanda (com pisca-pisca de luzes coloridas) | 2 Papai Noel | 3 Neon pulsante | 4 Arco-iris giratorio.
+As duas bordas de imagem (Guirlanda e Papai Noel) sao PNG 256x256 com alpha embutidos em avatar_borders.h.
+Arquivos novos desta versao: avatar_borders.h (alem de avatar_jpeg.*, avatar_default.h da v2). Precisa do Avatar-SERVIDOR v2.
