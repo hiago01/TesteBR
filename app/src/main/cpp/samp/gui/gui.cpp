@@ -87,6 +87,15 @@ bool UI::initialize()
 		m_jumpButton->setVisible(true);   // o proprio draw() decide quando aparece
 	}
 
+	// Barra de abas Dialogo|Inventario|Perfil|Tarefas|Ajuda, 2 estilos: /tablistmx 1|2|0 (o proprio draw() decide quando aparece)
+	{
+		m_tabListMX = new TabListMX();
+		this->addChild(m_tabListMX);
+		m_tabListMX->setFixedSize(TabListMX::SizeFor(size()));
+		m_tabListMX->setPosition(TabListMX::PosFor(size()));
+		m_tabListMX->setVisible(true);
+	}
+
 	// Controles MODERNOS (joystick analogico + botoes). So desenham/atuam com o modo moderno escolhido (ControlMode).
 	{
 		m_modernControls = new ModernControls();

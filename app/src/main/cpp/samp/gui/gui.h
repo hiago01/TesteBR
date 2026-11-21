@@ -24,6 +24,7 @@
 #include "samp_widgets/buttonpanel.h"
 #include "samp_widgets/passengerbutton.h"
 #include "samp_widgets/jumpbutton.h"
+#include "samp_widgets/tablistmx.h"
 #include "samp_widgets/moderncontrols.h"
 #include "samp_widgets/controlsselector.h"
 #include "samp_widgets/playertablist.h"
@@ -121,6 +122,7 @@ private:
 	WeaponBar* m_weaponBar;
 	PassengerButton* m_passengerButton;
 	JumpButton* m_jumpButton = nullptr;
+	TabListMX* m_tabListMX = nullptr;
 	ModernControls* m_modernControls = nullptr;
 	ControlsSelector* m_controlsSelector = nullptr;
 	HudInfo* m_hud = nullptr;

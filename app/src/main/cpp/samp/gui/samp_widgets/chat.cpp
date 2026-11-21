@@ -15,6 +15,7 @@
 #include "../../game/Trena.h"
 #include "../../game/IdCard3D.h"
 #include "../../game/Flag.h"
+#include "../../game/HairCloth.h"
 #include "../../game/Giroflex.h"
 #include "../../game/CustomSkin.h"
 #include "../../game/CorpTex.h"
@@ -279,6 +280,15 @@ if (input == "/bandeira" || input.rfind("/bandeira ", 0) == 0)
 
             return;
         }
+if (input == "/cabelo6" || input.rfind("/cabelo6 ", 0) == 0)
+        {
+            // cabelo de tecido caido (hair6): /cabelo6 teste 1-3 | cor RRGGBB RRGGBB | vento graus int | info | tune ... (ver HairCloth.h)
+            std::string args = input.size() > 7 ? input.substr(8) : std::string();
+            std::string reply = HairCloth_Command(args);
+            addDebugMessage("%s", reply.c_str());
+
+            return;
+        }
 if (input == "/mangueira" || input.rfind("/mangueira ", 0) == 0)
         {
             // mangueira de parede: /mangueira a | pegar | soltar | limpar | config ...
@@ -339,6 +349,16 @@ if (input == "/camera" || input.rfind("/camera ", 0) == 0 || input == "/cam" || 
             size_t sp = input.find(' ');
             std::string args = (sp == std::string::npos) ? std::string() : input.substr(sp + 1);
             std::string reply = CCameraZoom::DebugCommand(args);
+            addDebugMessage("%s", reply.c_str());
+
+            return;
+        }
+if (input == "/tablistmx" || input.rfind("/tablistmx ", 0) == 0)
+        {
+            // barra de abas (Dialogo|Inventario|Perfil|Tarefas|Ajuda): /tablistmx 1 | 2 | 0 | on | pos <6-96> | status
+            size_t sp = input.find(' ');
+            std::string args = (sp == std::string::npos) ? std::string() : input.substr(sp + 1);
+            std::string reply = TabListMX::DebugCommand(args);
             addDebugMessage("%s", reply.c_str());
 
             return;
