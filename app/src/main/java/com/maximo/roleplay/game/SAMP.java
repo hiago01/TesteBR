@@ -1,8 +1,16 @@
 package com.maximo.roleplay.game;
 
 import android.Manifest;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Matrix;
+import android.media.ExifInterface;
+import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -26,6 +34,8 @@ import com.maximo.roleplay.game.ui.dialog.DialogManager;
 import com.maximo.roleplay.launcher.util.SharedPreferenceCore;
 import com.maximo.roleplay.launcher.util.SignatureChecker;
 
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 @Obfuscate
@@ -192,6 +202,123 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
                 mAttachEdit.show();
             }
         });
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    //  Avatar do jogador: escolhe na Galeria, recorta quadrado 128x128 e manda como JPEG para o C++
+    //  (Avatar::OnPicked -> RPC 252 -> servidor grava scriptfiles/MaximoRP/Avatares/<id da conta>.jpg).
+    //  ACTION_GET_CONTENT nao exige permissao de armazenamento.
+    // ---------------------------------------------------------------------------------------------
+    private static final int AVATAR_REQ = 7251;
+    private static final int AVATAR_SIZE = 128;
+    private static final int AVATAR_MAX_BYTES = 20000;
+
+    public native void onAvatarPicked(byte[] jpg);
+    public native void onAvatarFailed();
+
+    private void pickAvatar()
+    {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+                    i.setType("image/*");
+                    i.addCategory(Intent.CATEGORY_OPENABLE);
+                    startActivityForResult(Intent.createChooser(i, "Escolher avatar"), AVATAR_REQ);
+                } catch (Throwable t) {
+                    Log.e(TAG, "pickAvatar", t);
+                    onAvatarFailed();
+                }
+            }
+        });
+    }
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data)
+    {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != AVATAR_REQ) return;
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) return;   // cancelou: nao faz nada
+        final Uri uri = data.getData();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                byte[] jpg = null;
+                try {
+                    jpg = buildAvatarJpeg(uri);
+                } catch (Throwable t) {
+                    Log.e(TAG, "buildAvatarJpeg", t);
+                }
+                if (jpg != null) onAvatarPicked(jpg); else onAvatarFailed();
+            }
+        }, "AvatarPick").start();
+    }
+
+    private byte[] buildAvatarJpeg(Uri uri) throws Exception
+    {
+        int rotation = 0;
+        InputStream ein = getContentResolver().openInputStream(uri);
+        if (ein != null) {
+            try {
+                int o = new ExifInterface(ein).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
+                if (o == ExifInterface.ORIENTATION_ROTATE_90) rotation = 90;
+                else if (o == ExifInterface.ORIENTATION_ROTATE_180) rotation = 180;
+                else if (o == ExifInterface.ORIENTATION_ROTATE_270) rotation = 270;
+            } catch (Throwable ignored) {
+            } finally {
+                ein.close();
+            }
+        }
+
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        InputStream bin = getContentResolver().openInputStream(uri);
+        if (bin == null) return null;
+        try { BitmapFactory.decodeStream(bin, null, bounds); } finally { bin.close(); }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null;
+
+        int sample = 1;
+        while (bounds.outWidth / (sample * 2) >= AVATAR_SIZE * 2 && bounds.outHeight / (sample * 2) >= AVATAR_SIZE * 2) sample *= 2;
+        BitmapFactory.Options opt = new BitmapFactory.Options();
+        opt.inSampleSize = sample;
+        opt.inPreferredConfig = Bitmap.Config.ARGB_8888;
+        Bitmap src;
+        InputStream din = getContentResolver().openInputStream(uri);
+        if (din == null) return null;
+        try { src = BitmapFactory.decodeStream(din, null, opt); } finally { din.close(); }
+        if (src == null) return null;
+
+        if (rotation != 0) {
+            Matrix m = new Matrix();
+            m.postRotate(rotation);
+            Bitmap r = Bitmap.createBitmap(src, 0, 0, src.getWidth(), src.getHeight(), m, true);
+            if (r != src) { src.recycle(); src = r; }
+        }
+
+        // recorte quadrado central -> 128x128 sobre fundo branco (PNG com transparencia vira JPEG sem fundo preto)
+        int side = Math.min(src.getWidth(), src.getHeight());
+        int x = (src.getWidth() - side) / 2, y = (src.getHeight() - side) / 2;
+        Bitmap sq = Bitmap.createBitmap(src, x, y, side, side);
+        Bitmap scaled = Bitmap.createScaledBitmap(sq, AVATAR_SIZE, AVATAR_SIZE, true);
+        Bitmap flat = Bitmap.createBitmap(AVATAR_SIZE, AVATAR_SIZE, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(flat);
+        c.drawColor(Color.WHITE);
+        c.drawBitmap(scaled, 0, 0, null);
+        if (sq != src) sq.recycle();
+        if (scaled != sq) scaled.recycle();
+        src.recycle();
+
+        byte[] out = null;
+        int[] qualities = { 88, 75, 60, 45, 30 };
+        for (int q : qualities) {
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            flat.compress(Bitmap.CompressFormat.JPEG, q, bos);
+            out = bos.toByteArray();
+            if (out.length <= AVATAR_MAX_BYTES) break;
+        }
+        flat.recycle();
+        return (out != null && out.length <= AVATAR_MAX_BYTES) ? out : null;
     }
 
     private void showClothesUI()

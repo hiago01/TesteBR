@@ -38,6 +38,9 @@ CJavaWrapper::CJavaWrapper(JNIEnv *env, jobject activity)
     s_showClothesUI = env->GetMethodID(clas, "showClothesUI", "()V");
     s_hideClothesUI = env->GetMethodID(clas, "hideClothesUI", "()V");
 
+    s_pickAvatar = env->GetMethodID(clas, "pickAvatar", "()V");
+    if (env->ExceptionCheck()) { env->ExceptionClear(); s_pickAvatar = nullptr; }
+
     s_setClipboard = env->GetMethodID(clas, "setClipboardText", "(Ljava/lang/String;)V");
     if (env->ExceptionCheck()) { env->ExceptionClear(); s_setClipboard = nullptr; }
 
@@ -251,5 +254,21 @@ void CJavaWrapper::HideClothesUI() {
     }
 
     env->CallVoidMethod(this->activity, this->s_hideClothesUI);
+    EXCEPTION_CHECK(env);
+}
+
+void CJavaWrapper::PickAvatar() {
+
+    if (!s_pickAvatar) return;
+    JNIEnv* env;
+    javaVM->GetEnv((void**)&env, JNI_VERSION_1_6);
+
+    if (!env)
+    {
+        FLog("No env");
+        return;
+    }
+
+    env->CallVoidMethod(this->activity, this->s_pickAvatar);
     EXCEPTION_CHECK(env);
 }

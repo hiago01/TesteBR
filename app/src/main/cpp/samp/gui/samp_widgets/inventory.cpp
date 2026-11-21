@@ -6,6 +6,7 @@
 #include "../../vendor/stb/stb_image.h"   // implementacao em game/sprite2d.cpp
 #include "inventory.h"
 #include "inventory_atlas.h"
+#include "avatar.h"
 #include "../../util/CUtil.h"
 #include "../../game/IconTexDb.h"
 #include "../../game/WeaponIconDb.h"
@@ -539,7 +540,9 @@ namespace
 	enum { P_INV = 1, P_GROUND = 2, P_HOT = 3 };
 	enum { B_NONE = 0, B_USE, B_DROP, B_TRADE, B_QTY, B_PICK, B_OFFER, B_CLOSE,
 		   B_ACCEPT, B_REFUSE, B_CONFIRM, B_CANCEL, B_REFRESH,
-		   B_TABINV, B_TABCRAFT, B_TABROUPAS, B_TABADESIVOS };   // abas do topo da tela PRINCIPAL (Craft/Roupas/Adesivos ainda nao existem: "Em breve")
+		   B_TABINV, B_TABCRAFT, B_TABROUPAS, B_TABADESIVOS,
+		   B_AVATAR };   // B_AVATAR: toque no circulo do personagem abre a Galeria (Avatar::RequestPick)
+	// abas do topo da tela PRINCIPAL (Craft/Roupas/Adesivos ainda nao existem: "Em breve")
 
 	struct Sel { int panel = 0; int idx = -1; } g_sel;      // idx: slot (inventario) ou posicao no vetor ground
 	bool    g_allQty = true;                                // false = 1 unidade, true = tudo
@@ -710,6 +713,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 			btns.push_back({B_TABCRAFT,     ImVec2(PX(148.0f), PY(16.0f)), ImVec2(PX(222.0f), PY(58.0f)), "", true});
 			btns.push_back({B_TABROUPAS,    ImVec2(PX(222.0f), PY(16.0f)), ImVec2(PX(302.0f), PY(58.0f)), "", true});
 			btns.push_back({B_TABADESIVOS,  ImVec2(PX(305.0f), PY(16.0f)), ImVec2(PX(395.0f), PY(58.0f)), "", true});
+			btns.push_back({B_AVATAR,       ImVec2(PX(294.0f) - 39.0f * u, PY(199.0f) - 39.0f * u), ImVec2(PX(294.0f) + 39.0f * u, PY(199.0f) + 39.0f * u), "", true});
 		}
 	}
 	auto btnAt = [&](float x, float y) -> const Btn* {
@@ -815,8 +819,9 @@ void InventoryUI::draw(ImGuiRenderer* r)
 			{ std::lock_guard<std::mutex> l(g_dm); g_toastMsg = "Em breve"; g_toastType = 0; g_toastUntil = NowMs() + 1500; }
 			break;
 			case B_TABINV: break;
+			case B_AVATAR: Avatar::RequestPick(); break;       // abre a Galeria; o envio ao servidor e o toast saem por Avatar::Tick
 		}
-		if (id != B_QTY && id != B_CLOSE && id != B_TABINV && id != B_TABCRAFT && id != B_TABROUPAS && id != B_TABADESIVOS) g_sel = Sel();
+		if (id != B_QTY && id != B_CLOSE && id != B_AVATAR && id != B_TABINV && id != B_TABCRAFT && id != B_TABROUPAS && id != B_TABADESIVOS) g_sel = Sel();
 	};
 
 	// ---- toques acumulados ----
@@ -1202,16 +1207,40 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		// personagem (avatar + nome + ID)
 		{
 			const float acx = PX(294.0f), acy = PY(199.0f), ar = 39.0f * u;
+			Avatar::Tick();                                                                               // textura, envio pendente e pedido ao servidor
+			{ std::string am; if (Avatar::PopMessage(am)) { std::lock_guard<std::mutex> l(g_dm); g_toastMsg = am; g_toastType = 0; g_toastUntil = NowMs() + 2200; } }
 			circle(acx, acy, ar, ImColor(236, 236, 240, 235));
-			circle(acx, acy - ar * 0.22f, ar * 0.30f, ImColor(190, 190, 200, 255));                       // cabeca
-			circle(acx, acy + ar * 0.62f, ar * 0.48f, ImColor(190, 190, 200, 255));                       // ombros (cortados pelo contorno)
+			if (RwRaster* avr = Avatar::Raster())
+			{
+				const int N = 40;                                                                          // foto recortada em circulo (poligono com UV)
+				ImVec2 ap[N], au[N];
+				for (int i = 0; i < N; i++)
+				{
+					const float ang = 6.2831853f * (float)i / (float)N, cs = std::cos(ang), sn = std::sin(ang);
+					ap[i] = ImVec2(acx + cs * ar, acy + sn * ar);
+					au[i] = ImVec2(0.5f + cs * 0.5f, 0.5f + sn * 0.5f);
+				}
+				r->drawTexPoly(ap, au, N, (ImTextureID)avr);
+			}
+			else
+			{
+				circle(acx, acy - ar * 0.22f, ar * 0.30f, ImColor(190, 190, 200, 255));                   // cabeca
+				circle(acx, acy + ar * 0.62f, ar * 0.48f, ImColor(190, 190, 200, 255));                   // ombros (cortados pelo contorno)
+			}
+			{   // selo "+" (toque troca a foto)
+				const float bx = acx + ar * 0.72f, by = acy + ar * 0.72f, br = 9.0f * u;
+				circle(bx, by, br, cPink);
+				r->drawLine(ImVec2(bx - br * 0.5f, by), ImVec2(bx + br * 0.5f, by), ImColor(255, 255, 255, 255), 1.6f * u);
+				r->drawLine(ImVec2(bx, by - br * 0.5f), ImVec2(bx, by + br * 0.5f), ImColor(255, 255, 255, 255), 1.6f * u);
+			}
 			const char* nm = (pNetGame && pNetGame->GetPlayerPool()) ? pNetGame->GetPlayerPool()->GetLocalPlayerName() : nullptr;
 			const std::string name = (nm && *nm) ? nm : "Jogador";
 			const float nfs = 13.0f * u;
 			const ImVec2 ns = r->calculateTextSize(name, nfs);
 			r->drawText(ImVec2(acx - ns.x * 0.5f, PY(262.0f)), cText, name, false, nfs);
 			char idb[16] = "";
-			if (pNetGame && pNetGame->GetPlayerPool()) snprintf(idb, sizeof(idb), "%d", (int)pNetGame->GetPlayerPool()->GetLocalPlayerID());
+			if (Avatar::AccountId()) snprintf(idb, sizeof(idb), "ID %u", (unsigned)Avatar::AccountId());     // ID da CONTA (campo id do .ini), vindo do servidor
+			else snprintf(idb, sizeof(idb), "ID -");
 			const ImVec2 is = r->calculateTextSize(idb, 11.0f * u);
 			r->drawText(ImVec2(acx - is.x * 0.5f, PY(281.0f)), cMute, idb, false, 11.0f * u);
 		}
@@ -1288,7 +1317,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 	for (const Btn& b : btns)
 	{
 		const bool pressed = g_t.finger >= 0 && g_t.kind == 3 && g_t.btn == b.id;
-		if (b.id >= B_TABINV && b.id <= B_TABADESIVOS) continue;      // as abas sao desenhadas no bloco da tela principal
+		if (b.id >= B_TABINV && b.id <= B_AVATAR) continue;      // as abas sao desenhadas no bloco da tela principal
 		if (b.id == B_CLOSE)
 		{
 			const char* lab = "Para fechar";

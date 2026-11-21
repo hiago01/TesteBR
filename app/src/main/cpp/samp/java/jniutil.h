@@ -47,6 +47,7 @@ public:
 
 	void ShowClothesUI();
 	void HideClothesUI();
+	void PickAvatar();   // abre a Galeria para escolher o avatar (SAMP.pickAvatar)
 
     jobject activity;
     jmethodID s_setPauseState;
@@ -66,4 +67,5 @@ public:
 	jmethodID s_hideEditObject;
 	jmethodID s_showClothesUI;
 	jmethodID s_hideClothesUI;
+	jmethodID s_pickAvatar = nullptr;
 };

@@ -1,5 +1,6 @@
 ﻿#include <jni.h>
 #include <pthread.h>
+#include <vector>
 #include <syscall.h>
 
 #include "main.h"
@@ -7,6 +8,7 @@
 #include "game/game.h"
 #include "net/netgame.h"
 #include "gui/gui.h"
+#include "gui/samp_widgets/avatar.h"
 #include "playertags.h"
 #include "audiostream.h"
 #include "java/jniutil.h"
@@ -356,6 +358,22 @@ extern "C" {
 			pUI->keyboard()->sendForGB(pEnv, thiz, str);
 		}
 	}
+	// Avatar do jogador: foto escolhida na Galeria, ja recortada 128x128 em JPEG (SAMP.java). Roda na thread Java; o envio ao servidor sai na thread de desenho (Avatar::Tick).
+	JNIEXPORT void JNICALL Java_com_maximo_roleplay_game_SAMP_onAvatarPicked(JNIEnv *pEnv, jobject thiz, jbyteArray jpg)
+	{
+		if(!jpg) { Avatar::OnPickFailed(); return; }
+		const jsize n = pEnv->GetArrayLength(jpg);
+		if(n <= 0 || n > 65536) { Avatar::OnPickFailed(); return; }
+		std::vector<uint8_t> tmp((size_t)n);
+		pEnv->GetByteArrayRegion(jpg, 0, n, reinterpret_cast<jbyte*>(tmp.data()));
+		Avatar::OnPicked(tmp.data(), (int)n);
+	}
+
+	JNIEXPORT void JNICALL Java_com_maximo_roleplay_game_SAMP_onAvatarFailed(JNIEnv *pEnv, jobject thiz)
+	{
+		Avatar::OnPickFailed();
+	}
+
 	// Retorna true quando o evento foi tratado pelo menu Maximo RP (abre/fecha o menu);
 	// o Java entao NAO repassa o Voltar ao jogo (evita o Pause nativo e o finish() da Activity).
 	JNIEXPORT jboolean JNICALL Java_com_maximo_roleplay_game_SAMP_onEventBackPressed(JNIEnv *pEnv, jobject thiz)

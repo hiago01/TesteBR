@@ -173,3 +173,6 @@ int RPC_PhoneEvent = 241;
 int RPC_JobsEvent = 245;
 int RPC_VehHud = 247;
 int RPC_JobsRequest = 246;
+// Avatar do jogador Maximo RP: servidor -> cliente (251: id da conta, avatar em pedacos, resultado) e cliente -> servidor (252: envio em pedacos, pedido, remover). Ver gui/samp_widgets/avatar.h e maximo_avatar.inc
+int RPC_AvatarIn = 251;
+int RPC_AvatarOut = 252;

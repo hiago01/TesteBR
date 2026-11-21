@@ -166,5 +166,7 @@ extern int RPC_PhoneEvent;
 extern int RPC_JobsEvent;
 extern int RPC_VehHud;          // avisos + velocimetro (servidor -> cliente), gui/samp_widgets/vehhud.h
 extern int RPC_JobsRequest;
+extern int RPC_AvatarIn;
+extern int RPC_AvatarOut;
 extern int RPC_ScrWeapSkin;
 extern int RPC_ScrFlag;
