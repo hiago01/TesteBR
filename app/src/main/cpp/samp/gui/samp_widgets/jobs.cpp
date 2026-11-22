@@ -18,6 +18,7 @@
 #include "notafiscal.h"
 #include "shoppanel.h"
 #include "perfilpanel.h"
+#include "avatar.h"
 #include "../../game/PerfilTexDb.h"
 #include "../../game/runstyle.h"
 #include "carinteract.h"
@@ -1086,6 +1087,14 @@ void* PerfilBannerTexture(int which)
 }
 
 // foto de perfil + moldura do Central da Cidade para o Menu Jogador (perfilpanel.cpp).
-// PENDENTE: o desenho do avatar fica no avatar.cpp/central.cpp (fora deste pacote de fontes); quando eles forem enviados, ligar aqui.
-// Devolve false = nao desenhou (o menu desenha o circulo com a inicial do nome).
-bool PerfilDrawAvatar(ImGuiRenderer*, float, float, float, int) { return false; }
+// Mesmo desenho do Central da Cidade (central.cpp): Avatar::DrawPhoto + Avatar::DrawBorder com a borda escolhida pela conta.
+// Devolve false so se nao houver renderer (o menu entao desenha o circulo com a inicial do nome).
+bool PerfilDrawAvatar(ImGuiRenderer* r, float cx, float cy, float radius, int alpha)
+{
+	(void)alpha;
+	if (!r || radius < 1.0f) return false;
+	Avatar::Tick();                                                               // textura da foto, envio pendente, pedido ao servidor (idempotente)
+	Avatar::DrawPhoto(r, cx, cy, radius);
+	Avatar::DrawBorder(r, Avatar::Border(), cx, cy, radius, radius / 28.0f * 0.8f, (double)NowMs() / 1000.0);
+	return true;
+}

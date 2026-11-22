@@ -5,6 +5,9 @@
 #include "../../game/IconTexDb.h"
 #include "../../game/RW/RenderWare.h"
 #include "garagepanel.h"
+#include "garagicons.h"
+#include <chrono>
+#include <random>
 
 #include <algorithm>
 #include <cmath>
@@ -32,6 +35,80 @@ namespace
 		if (!bs.Read(n)) return false;
 		out.assign(n, '\0');
 		return !n || bs.Read(&out[0], (unsigned)n);
+	}
+}
+
+
+// ---- icone do topo: silhuetas que mudam ao acaso com a tela aberta (garagicons.h) ----
+// A cada 1,8 a 3,4 s sorteia outra silhueta (nunca a mesma); transicao de 0,6 s: a antiga encolhe girando, a nova cresce com "pulinho".
+// Sem alfa de proposito (triangulos vizinhos com alfa deixariam emendas visiveis): so escala + rotacao + flutuacao.
+namespace
+{
+	int64_t HdrNowMs() { return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
+	struct HdrAnim { int cur = 0, prev = -1; int64_t t0 = 0, next = 0, lastDraw = 0; std::mt19937 rng{ std::random_device{}() }; } g_hdr;
+
+	template <class L>
+	void DrawIconLayers(ImGuiRenderer* r, const L* layers, int nLayers, ImVec2 c, float half, float ang, const ImColor& fg, const ImColor& bg)
+	{
+		const float k = half / 1000.0f, ca = std::cos(ang), sa = std::sin(ang);
+		for (int li = 0; li < nLayers; li++)
+		{
+			const ImColor& col = (layers[li].depth & 1) ? bg : fg;
+			const int16_t* a = layers[li].t;
+			for (int i = 0; i + 5 < layers[li].n; i += 6)
+			{
+				ImVec2 p[3];
+				for (int j = 0; j < 3; j++)
+				{
+					const float x = a[i + j * 2] * k, y = a[i + j * 2 + 1] * k;
+					p[j] = ImVec2(c.x + x * ca - y * sa, c.y + x * sa + y * ca);
+				}
+				r->drawConvexPolyFilled(p, 3, col);
+			}
+		}
+	}
+
+	void DrawHeaderIcon(ImGuiRenderer* r, ImVec2 c, float half, const ImColor& fg, const ImColor& bg)
+	{
+		using namespace GarageIcons;
+		const int64_t now = HdrNowMs();
+		if (g_hdr.lastDraw == 0 || now - g_hdr.lastDraw > 700)          // a tela acabou de abrir: comeca numa silhueta ao acaso, sem transicao
+		{
+			g_hdr.cur = (int)(g_hdr.rng() % (unsigned)kCount); g_hdr.prev = -1;
+			g_hdr.t0 = now; g_hdr.next = now + 1800 + (int)(g_hdr.rng() % 1600u);
+		}
+		g_hdr.lastDraw = now;
+		if (now >= g_hdr.next)
+		{
+			int n = (int)(g_hdr.rng() % (unsigned)(kCount - 1)); if (n >= g_hdr.cur) n++;   // nunca repete a atual
+			g_hdr.prev = g_hdr.cur; g_hdr.cur = n; g_hdr.t0 = now;
+			g_hdr.next = now + 1800 + (int)(g_hdr.rng() % 1600u);
+		}
+		const float T = std::min(1.0f, (float)(now - g_hdr.t0) / 600.0f);
+		float scale = 1.0f, ang = 0.0f; int icon = g_hdr.cur;
+		if (g_hdr.prev >= 0 && T < 0.40f)            // saindo: antiga encolhe e gira
+		{
+			const float p = T / 0.40f; icon = g_hdr.prev; scale = 1.0f - p * p; ang = p * 0.9f;
+		}
+		else if (g_hdr.prev >= 0)                    // entrando: nova cresce com overshoot (easeOutBack)
+		{
+			const float p = (T - 0.40f) / 0.60f, c1 = 1.70158f, c3 = c1 + 1.0f, q = p - 1.0f;
+			scale = 1.0f + c3 * q * q * q + c1 * q * q; ang = (1.0f - p) * -0.9f;
+		}
+		const float bob = std::sin((float)now * 0.004f) * 0.06f * half;       // flutua de leve
+		const float sc = std::max(0.0f, scale) * half;
+		if (sc < 0.5f) return;
+		const ImVec2 cc(c.x, c.y + bob);
+		switch (icon)
+		{
+			case 0: DrawIconLayers(r, k_moto_layers, (int)(sizeof(k_moto_layers) / sizeof(k_moto_layers[0])), cc, sc, ang, fg, bg); break;
+			case 1: DrawIconLayers(r, k_scooter_layers, (int)(sizeof(k_scooter_layers) / sizeof(k_scooter_layers[0])), cc, sc, ang, fg, bg); break;
+			case 2: DrawIconLayers(r, k_carro_layers, (int)(sizeof(k_carro_layers) / sizeof(k_carro_layers[0])), cc, sc, ang, fg, bg); break;
+			case 3: DrawIconLayers(r, k_patinete_layers, (int)(sizeof(k_patinete_layers) / sizeof(k_patinete_layers[0])), cc, sc, ang, fg, bg); break;
+			case 4: DrawIconLayers(r, k_bike_layers, (int)(sizeof(k_bike_layers) / sizeof(k_bike_layers[0])), cc, sc, ang, fg, bg); break;
+			case 5: DrawIconLayers(r, k_van_layers, (int)(sizeof(k_van_layers) / sizeof(k_van_layers[0])), cc, sc, ang, fg, bg); break;
+			default: DrawIconLayers(r, k_hoverboard_layers, (int)(sizeof(k_hoverboard_layers) / sizeof(k_hoverboard_layers[0])), cc, sc, ang, fg, bg); break;
+		}
 	}
 }
 
@@ -88,27 +165,21 @@ void GaragePanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 		return lines < maxLines ? lines : maxLines;
 	};
 
-	const ImColor cPink(250, 44, 92, 255), cText(246, 246, 248, 255), cSub(150, 150, 158, 255), cTrack(52, 44, 50, 255), cLine(120, 116, 124, 110), cAmber(247, 184, 28, 255), cRed(236, 70, 76, 255), cOff(40, 34, 40, 150);
+	const ImColor cAcc(38, 150, 255, 255), cText(246, 248, 252, 255), cSub(150, 166, 194, 255), cTrack(34, 48, 74, 255), cLine(110, 142, 196, 110), cAmber(247, 184, 28, 255), cRed(236, 70, 76, 255), cOff(26, 40, 66, 150);   // paleta AZUL (igual ao Menu Jogador)
 	std::vector<Hit> hits;
-	r->drawRect(ImVec2(0, 0), ImVec2(scrW, scrH), ImColor(40, 8, 18, 168), true);
+	r->drawRect(ImVec2(0, 0), ImVec2(scrW, scrH), ImColor(6, 14, 36, 172), true);
 
 	// ---- fechar (canto superior direito) ----
 	txtR(1212, 41, cSub, "Para fechar", 10.0f);
-	r->drawRoundedRect(V(1220, 30), V(1262, 58), ImColor(30, 24, 30, 200), 4.0f * u, true);
+	r->drawRoundedRect(V(1220, 30), V(1262, 58), ImColor(14, 26, 50, 200), 4.0f * u, true);
 	r->drawRoundedRect(V(1220, 30), V(1262, 58), cLine, 4.0f * u, false, 1.0f);
 	r->drawLine(V(1233, 38), V(1249, 50), cText, 2.0f);
 	r->drawLine(V(1249, 38), V(1233, 50), cText, 2.0f);
 	hits.push_back({V(1212, 24), V(1270, 64), H_CLOSE, 0});
 
 	// ---- cabecalho ----
-	r->drawRoundedRect(V(71, 45), V(113, 87), cPink, 7.0f * u, true);
-	{   // icone de carro
-		r->drawRoundedRect(V(78, 68), V(106, 76), cText, 2.0f * u, true);
-		ImVec2 cab[4] = {V(83, 68), V(88, 58), V(98, 58), V(103, 68)};
-		r->drawConvexPolyFilled(cab, 4, cText);
-		r->drawRoundedRect(V(81, 73), V(87, 79), cPink, 3.0f * u, true); r->drawRoundedRect(V(97, 73), V(103, 79), cPink, 3.0f * u, true);
-		r->drawRoundedRect(V(82, 74), V(86, 78), cText, 2.0f * u, true); r->drawRoundedRect(V(98, 74), V(102, 78), cText, 2.0f * u, true);
-	}
+	r->drawRoundedRect(V(71, 45), V(113, 87), cAcc, 7.0f * u, true);
+	DrawHeaderIcon(r, V(92, 66), 15.5f * u, cText, cAcc);   // silhuetas (moto, patinete, carro, bike, van, hoverboard) trocando ao acaso com a tela aberta
 	txt(124, 56, cText, "Garagem", 17.0f);
 
 	// ---- abas ----
@@ -116,7 +187,7 @@ void GaragePanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 	for (int i = 0; i < 3; i++)
 	{
 		const float x0 = 315.0f + i * 108.0f;
-		r->drawRoundedRect(V(x0, 45), V(x0 + 100, 78), g_tab == i ? cPink : cOff, 5.0f * u, true);
+		r->drawRoundedRect(V(x0, 45), V(x0 + 100, 78), g_tab == i ? cAcc : cOff, 5.0f * u, true);
 		txtC(x0, x0 + 100, 53, g_tab == i ? cText : cSub, tabName[i], 11.0f);
 		hits.push_back({V(x0, 45), V(x0 + 100, 78), H_TAB, i});
 	}
@@ -137,8 +208,8 @@ void GaragePanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 		const int slot = n - g_page * perPage;
 		const float cx = 315.0f + (slot % 4) * 153.0f, cy = 92.0f + (slot / 4) * 186.0f;
 		const bool sel = c.reg == g_sel;
-		r->drawRoundedRect(V(cx, cy), V(cx + 143, cy + 176), ImColor(28, 22, 28, 150), 4.0f * u, true);
-		r->drawRoundedRect(V(cx, cy), V(cx + 143, cy + 176), sel ? ImColor(250, 44, 92, 170) : cLine, 4.0f * u, false, 1.0f);
+		r->drawRoundedRect(V(cx, cy), V(cx + 143, cy + 176), ImColor(14, 26, 50, 160), 4.0f * u, true);
+		r->drawRoundedRect(V(cx, cy), V(cx + 143, cy + 176), sel ? ImColor(38, 150, 255, 190) : cLine, 4.0f * u, false, 1.0f);
 		std::string nm = c.name;
 		while (nm.size() > 3 && r->calculateTextSize(nm, 10.5f * u).x > 123.0f * u) nm.pop_back();
 		txt(cx + 10, cy + 10, cText, nm, 10.5f);
@@ -147,7 +218,7 @@ void GaragePanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 		// imagem do veiculo: carro/moto coberto de preto; VIP coberto de vermelho (texturas car_preto / car_vip do banco texdb/icones)
 		if (RwTexture* tex = IconTexDb::Texture(c.cat == 2 ? "car_vip" : "car_preto"); tex && tex->raster)
 			r->drawImage(V(cx + 8, cy + 56), V(cx + 135, cy + 120), (ImTextureID)tex->raster, ImColor(255, 255, 255, 255));
-		r->drawRoundedRect(V(cx + 10, cy + 137), V(cx + 133, cy + 166), sel ? cPink : ImColor(46, 38, 46, 220), 4.0f * u, true);
+		r->drawRoundedRect(V(cx + 10, cy + 137), V(cx + 133, cy + 166), sel ? cAcc : ImColor(28, 44, 76, 220), 4.0f * u, true);
 		txtC(cx + 10, cx + 133, cy + 144, sel ? cText : cSub, sel ? "Selecionado" : "Selecionar", 10.0f);
 		hits.push_back({V(cx, cy), V(cx + 143, cy + 176), H_CARD, c.reg});
 	}
@@ -177,14 +248,14 @@ void GaragePanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 
 	r->drawRoundedRect(V(71, 208), V(81, 218), cSub, 5.0f * u, false, 1.3f);
 	txt(90, 207, cText, "Especificações", 10.0f);
-	r->drawLine(V(184, 214), V(303, 214), ImColor(120, 116, 124, 90), 1.0f);
+	r->drawLine(V(184, 214), V(303, 214), ImColor(110, 142, 196, 90), 1.0f);
 	auto bar = [&](float y, const char* label, const std::string& val, int pct)
 	{
 		txt(74, y, cSub, label, 9.5f);
 		txtR(303, y, cText, val, 9.5f);
 		r->drawRoundedRect(V(71, y + 19), V(303, y + 23), cTrack, 2.0f * u, true);
 		const float w = 232.0f * std::clamp(pct, 0, 100) / 100.0f;
-		if (w > 0.5f) r->drawRoundedRect(V(71, y + 19), V(71 + w, y + 23), cPink, 2.0f * u, true);
+		if (w > 0.5f) r->drawRoundedRect(V(71, y + 19), V(71 + w, y + 23), cAcc, 2.0f * u, true);
 	};
 	char b1[24], b2[24], b3[32] = "-";
 	int fuel = 0, eng = 0;
@@ -198,21 +269,21 @@ void GaragePanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 	bar(271, "Motor", b2, eng);
 	txt(74, 309, cSub, "Milhas", 9.5f);
 	txtR(303, 309, cText, b3, 9.5f);
-	r->drawLine(V(71, 330), V(303, 330), ImColor(120, 116, 124, 60), 1.0f);
+	r->drawLine(V(71, 330), V(303, 330), ImColor(110, 142, 196, 60), 1.0f);
 
 	{   // aviso
 		ImVec2 tri[3] = {V(75, 343), V(80, 352), V(70, 352)};
 		r->drawTriangle(tri[0], tri[1], tri[2], cText, false, 1.3f);
 		txt(90, 343, cText, "Aviso", 10.0f);
-		r->drawLine(V(130, 350), V(303, 350), ImColor(120, 116, 124, 90), 1.0f);
+		r->drawLine(V(130, 350), V(303, 350), ImColor(110, 142, 196, 90), 1.0f);
 		wrap(71, 366, "Para realizar as ações selecione o veículo desejado e clique em uma das opções abaixo para realizar a ação desejada.", cSub, 9.0f, 232.0f, 4, 12.0f);
 	}
 
 	const bool canPull = selI >= 0 && g_cars[(size_t)selI].state == 0;
 	const char* pullTxt = selI < 0 ? "Retirar veículo" : (g_cars[(size_t)selI].state == 0 ? "Retirar veículo" : (g_cars[(size_t)selI].state == 1 ? "Veículo na rua" : "Veículo desmanchado"));
-	r->drawRoundedRect(V(71, 415), V(303, 448), canPull ? cPink : ImColor(36, 30, 36, 120), 4.0f * u, true);
+	r->drawRoundedRect(V(71, 415), V(303, 448), canPull ? cAcc : ImColor(22, 36, 64, 120), 4.0f * u, true);
 	if (!canPull) r->drawRoundedRect(V(71, 415), V(303, 448), cLine, 4.0f * u, false, 1.0f);
-	txtC(71, 303, 425, canPull ? cText : ImColor(90, 88, 94, 255), pullTxt, 10.5f);
+	txtC(71, 303, 425, canPull ? cText : ImColor(96, 110, 140, 255), pullTxt, 10.5f);
 	if (canPull) hits.push_back({V(71, 415), V(303, 448), H_PULL, 0});
 
 	// ---- toques ----
