@@ -64,7 +64,7 @@ static std::vector<uint8_t> Open(int seq, int ncat = 2, int ntab = 5, bool grp =
 {
 	std::vector<uint8_t> v; put16(v, (unsigned)seq);
 	putS(v, "Hiago Silva"); put32(v, 1004); putS(v, "(21) 99999-0001"); putS(v, "22/11/2026"); putS(v, "01/10/2026"); putS(v, "Nenhuma"); putS(v, "Entregador");
-	put32(v, 12500); put32(v, 340); put32(v, 2); put8(v, (unsigned)(grp ? 1 : 0));
+	put32(v, 12500); put32(v, 340); put32(v, 2); put8(v, (unsigned)(grp ? 1 : 0)); put16(v, 3);
 	put8(v, (unsigned)ncat); for (int i = 0; i < ncat; i++) put8(v, (unsigned)i);
 	static const char* T[] = { "Gravações e Denúncias", "Gerais", "Roleplay", "Comportamento", "Ações Ilegais" };
 	put8(v, (unsigned)ntab); for (int i = 0; i < ntab; i++) putS(v, T[i % 5]);
@@ -86,6 +86,7 @@ static std::vector<uint8_t> Rules(int seq, int tab, int n)
 	}
 	return v;
 }
+static const char* grp_label() { return "Cargo"; }
 static bool In(const std::vector<uint8_t>& v, int w) { RakNet::BitStream bs(v.data(), (int)v.size()); return w == 21 ? PerfilPanel::OnOpen(bs) : (w == 22 ? PerfilPanel::OnRank(bs) : PerfilPanel::OnRules(bs)); }
 static void Sleep(int ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); }
 static const float SW = 2400, SH = 1080;
@@ -121,7 +122,7 @@ int main()
 	// Inicio: pede nada, mostra dados e banners
 	PerfilPanel::Reset(); In(Open(10), 21); Settle();
 	Frame({}, true, "inicio_sem_banco");
-	check(g_avatarCalls > 0, "pede o avatar do Central"); check(Find("Hiago Silva").x > 0, "nome aparece"); check(Find("1004").x > 0, "RG aparece"); check(Find("R$ 12.500,00").x > 0, "dinheiro formatado");
+	check(Find("3 veículos").x > 0, "veiculos = chaves no inventario"); check(Find(grp_label()).x > 0, "rotulo Cargo no grupo"); check(g_avatarCalls > 0, "pede o avatar do Central"); check(Find("Hiago Silva").x > 0, "nome aparece"); check(Find("1004").x > 0, "RG aparece"); check(Find("R$ 12.500,00").x > 0, "dinheiro formatado");
 	check(Find("MB 340").x > 0, "MB Pontos aparece"); check(Find("MB Pontos").x > 0, "rotulo MB Pontos"); check(Find("Painel do Grupo").x > 0, "botao Painel do Grupo"); check(Find("acessar loja").x > 0, "botao acessar loja");
 	g_banner = true; Frame({}, true, "inicio_com_banco"); g_banner = false;
 	// banner grupos -> resposta 4
@@ -137,7 +138,7 @@ int main()
 
 	// sem grupo: banner some e o de loja sobe
 	PerfilPanel::Reset(); In(Open(16, 2, 5, false), 21); Settle(); Frame({}, true, "inicio_sem_grupo");
-	check(Find("Painel do Grupo").x < 0, "sem grupo: banner do grupo nao aparece"); check(Find("acessar loja").x > 0, "sem grupo: loja continua");
+	check(Find("Painel do Grupo").x < 0, "sem grupo: banner do grupo nao aparece"); check(Find("acessar loja").x > 0, "sem grupo: loja continua"); check(Find("Profissão").x > 0 && Find("Cargo").x < 0, "sem grupo: rotulo Profissão");
 
 	// Ranking
 	PerfilPanel::Reset(); In(Open(11), 21); Settle();

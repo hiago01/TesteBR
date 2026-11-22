@@ -1,0 +1,4 @@
+MENU JOGADOR - Veículos e Cargo (CLIENTE)
+- "Veículos" mostra quantas CHAVES DE VEÍCULO o jogador tem no inventário (ex.: "3 veículos").
+- Quem está em grupo (organização): o campo "Profissão" vira "Cargo" e mostra o cargo igual ao Gerenciador de Grupo, ex.: "Recruta (7)". Sem grupo continua "Profissão".
+Instale junto o zip do servidor (o pacote do menu mudou: +2 bytes de chaves). Descompacte na raiz. NÃO compilado com o NDK nem testado no aparelho.

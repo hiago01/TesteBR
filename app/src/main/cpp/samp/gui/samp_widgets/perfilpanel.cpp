@@ -26,7 +26,7 @@ namespace
 	struct Info
 	{
 		int seq = 0; std::string name, phone, last, since, org, job;
-		uint32_t rg = 0, pp = 0, vips = 0; int32_t money = 0; bool group = false;
+		uint32_t rg = 0, pp = 0, vips = 0; int32_t money = 0; bool group = false; uint32_t keys = 0;
 		std::vector<int> cats; std::vector<std::string> tabs;
 	};
 
@@ -165,8 +165,9 @@ bool PerfilPanel::OnOpen(RakNet::BitStream& bs)
 	Info d;
 	uint16_t seq = 0; uint8_t nc = 0, nt = 0;
 	if (!bs.Read(seq) || !RdStr(bs, d.name) || !bs.Read(d.rg) || !RdStr(bs, d.phone) || !RdStr(bs, d.last) || !RdStr(bs, d.since) || !RdStr(bs, d.org) || !RdStr(bs, d.job)) return false;
-	uint8_t grp = 0;
-	if (!bs.Read(d.money) || !bs.Read(d.pp) || !bs.Read(d.vips) || !bs.Read(grp) || !bs.Read(nc) || nc > 8) return false;
+	uint8_t grp = 0; uint16_t keys = 0;
+	if (!bs.Read(d.money) || !bs.Read(d.pp) || !bs.Read(d.vips) || !bs.Read(grp) || !bs.Read(keys) || !bs.Read(nc) || nc > 8) return false;
+	d.keys = keys;
 	d.group = grp != 0;
 	for (int i = 0; i < nc; i++) { uint8_t id = 0; if (!bs.Read(id)) return false; d.cats.push_back((int)id); }
 	if (!bs.Read(nt) || nt > 8) return false;
@@ -365,10 +366,11 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 		// cartao de dados
 		card(CX0, 208.0f, X1, 360.0f);
 		{
-			struct Cell { const char* label; std::string val; bool dim; };
+			struct Cell { std::string label; std::string val; bool dim; };
 			const Cell cells[6] = {
 				{ "Número de telefone", g_i.phone, false }, { "Última sessão", g_i.last, false }, { "Conta criada desde", g_i.since, false },
-				{ "Organização", g_i.org, false }, { "Profissão", g_i.job, false }, { "Veículos", "Em breve", true },
+				{ "Organização", g_i.org, false }, { g_i.group ? "Cargo" : "Profissão", g_i.job, false },     // no grupo: o CARGO (ex.: Recruta (7)); sem grupo: a profissão
+				{ "Veículos", g_i.keys == 1 ? "1 veículo" : (Dots(g_i.keys) + " veículos"), false },       // = chaves de veículo no inventário
 			};
 			const float colW = (CW - 36.0f) / 3.0f;
 			for (int k = 0; k < 6; k++)

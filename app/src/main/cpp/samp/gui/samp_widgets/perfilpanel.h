@@ -12,7 +12,7 @@ namespace RakNet { class BitStream; }
 //  Fica dentro da tela do jobs.cpp (como a loja, a nota fiscal e a garagem): mesmo canal de toques e mesmos RPCs.
 //   servidor -> cliente  RPC 245 op 21 (abre) / op 22 (ranking) / op 23 (regras) / op 24 (fecha)         (ver include maximo_perfil.inc)
 //        op 21: u16 numero | str nome | u32 rg | str telefone | str ultima_sessao | str conta_criada | str organizacao | str profissao |
-//               i32 dinheiro | u32 mbpontos | u32 vips | u8 emGrupo | u8 nCat + nCat x u8 idCategoria | u8 nAbas + nAbas x str nomeDaAba
+//               i32 dinheiro | u32 mbpontos | u32 vips | u8 emGrupo | u16 chaves(veiculos) | u8 nCat + nCat x u8 idCategoria | u8 nAbas + nAbas x str nomeDaAba
 //        op 22: u16 numero | u8 idCategoria | u8 n(<=20) + n x { u32 pos | str nome | u32 valor } | u32 minhaPos (0 = fora) | u32 meuValor
 //        op 23: u16 numero | u8 aba | u8 n(<=120) + n x { u8 estilo(0 texto,1 titulo,2 item,3 vazia,4 continuacao de item) | str linha }
 //   cliente -> servidor  RPC 246 op 20 + u16 numero (a tela abriu) | op 21 + u16 numero + u8 idCategoria | op 22 + u16 numero + u8 aba | op 23 + u16 numero (fechou)
