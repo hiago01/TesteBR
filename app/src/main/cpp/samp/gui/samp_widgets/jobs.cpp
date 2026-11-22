@@ -16,6 +16,7 @@
 #include "jobs.h"
 #include "garagepanel.h"
 #include "notafiscal.h"
+#include "shoppanel.h"
 #include "carinteract.h"
 #include "maximomenu.h"
 
@@ -46,6 +47,7 @@ namespace
 
 	std::atomic<bool> g_open{false}, g_flush{false}, g_resetView{false};
 	std::atomic<bool> g_garage{false};               // a tela aberta e a GARAGEM (RPC 245 op 13), nao a agencia
+	std::atomic<bool> g_shop{false};                 // a tela aberta e a LOJA com carrinho (RPC 245 op 18; shoppanel.cpp), nao a agencia
 	std::atomic<bool> g_invoice{false};              // a tela aberta e a NOTA FISCAL da loja (RPC 245 op 16; notafiscal.cpp), nao a agencia
 	std::atomic<bool> g_claimed[4] = {{false}, {false}, {false}, {false}};
 	std::atomic<uint32_t> g_ver{0}, g_mkVer{0};
@@ -99,7 +101,21 @@ namespace
 		FLog("[JOBS3D] Send op %d arg %d", op, arg);
 		RakNet::BitStream bs;
 		bs.Write((uint8_t)op);
-		if (op == 1 || op == 2 || op == 12 || op == 13 || (op >= 14 && op <= 16)) bs.Write((uint16_t)arg);   // 14/15/16 = nota fiscal: u16 numero da nota
+		if (op == 1 || op == 2 || op == 12 || op == 13 || (op >= 14 && op <= 17) || op == 19) bs.Write((uint16_t)arg);   // 14/15/16 = nota fiscal: u16 numero da nota; 17 = loja abriu | 19 = loja fechou: u16 numero da loja
+		pNetGame->GetRakClient()->RPC(&RPC_JobsRequest, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
+	}
+
+	// loja (RPC 246 op 18): u16 numero | u8 n | n x { u8 indice | u8 qtd }
+	void SendOrder(int seq, const std::vector<ShopLine>& order)
+	{
+		if (!pNetGame || pNetGame->GetGameState() != GAMESTATE_CONNECTED || !pNetGame->GetRakClient()) { FLog("[JOBS3D] pedido da loja NAO enviado (sem conexao)"); return; }
+		FLog("[JOBS3D] Send op 18 loja %d com %d linhas", seq, (int)order.size());
+		RakNet::BitStream bs;
+		bs.Write((uint8_t)18);
+		bs.Write((uint16_t)seq);
+		const int n = (int)std::min<size_t>(order.size(), 8);
+		bs.Write((uint8_t)n);
+		for (int i = 0; i < n; i++) { bs.Write((uint8_t)order[(size_t)i].idx); bs.Write((uint8_t)std::min(99, std::max(1, order[(size_t)i].qty))); }
 		pNetGame->GetRakClient()->RPC(&RPC_JobsRequest, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
 	}
 
@@ -184,6 +200,13 @@ void JobsUI::Close(bool notifyServer)
 	if (!g_open.exchange(false)) return;
 	g_confirm = 0; g_drag = Drag();
 	if (g_garage.exchange(false)) return;            // a garagem nao avisa o servidor: ele nao guarda estado dela
+	if (g_shop.exchange(false))                      // loja: voltar/fechar = Fechar (RPC 246 op 19)
+	{
+		const int sq = ShopPanel::Seq();
+		ShopPanel::Reset();
+		if (notifyServer && sq > 0) Send(19, sq);
+		return;
+	}
 	if (g_invoice.exchange(false))                   // nota fiscal: voltar/fechar sem tocar nos botoes = Cancelar (RPC 246 op 16)
 	{
 		const int sq = InvoicePanel::Seq();
@@ -194,10 +217,10 @@ void JobsUI::Close(bool notifyServer)
 	if (notifyServer) Send(4);
 }
 bool JobsUI_ScooterFolded() { return g_scFolded.load(); }
-bool GarageIsOpenNow() { return g_open.load() && (g_garage.load() || g_invoice.load()); }   // a nota fiscal esconde o HUD como a garagem
+bool GarageIsOpenNow() { return g_open.load() && (g_garage.load() || g_invoice.load() || g_shop.load()); }   // a nota fiscal esconde o HUD como a garagem
 void JobsUI::Reset()
 {
-	g_open.store(false); g_garage.store(false); g_invoice.store(false); GaragePanel::Reset(); InvoicePanel::Reset(); g_confirm = 0; g_drag = Drag(); g_tapReq.store(false); for (WorldTap& w : g_wt) w.valid = false;
+	g_open.store(false); g_garage.store(false); g_invoice.store(false); g_shop.store(false); GaragePanel::Reset(); InvoicePanel::Reset(); ShopPanel::Reset(); g_confirm = 0; g_drag = Drag(); g_tapReq.store(false); for (WorldTap& w : g_wt) w.valid = false;
 	{ std::lock_guard<std::mutex> l(g_mkMutex); g_mkNetA.clear(); g_mkNetB.clear(); g_mkNetC.clear(); g_mkNetD.clear(); g_mkNet.clear(); }
 	g_scFolded.store(false);
 	CarInteract::Reset();
@@ -262,12 +285,24 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	if (op == 16)      // nota fiscal da loja: abre a tela e confirma ao servidor (op 14) que este cliente a mostra
 	{
 		if (!InvoicePanel::OnShow(bs)) { FLog("[JOBS3D] nota fiscal (op 16) invalida (%d bytes)", bytes); return; }
-		if (g_open.load() && !g_invoice.load() && !g_garage.load()) Send(4);            // a agencia estava aberta: o servidor precisa saber que fechou
+		if (g_open.load() && !g_invoice.load() && !g_garage.load() && !g_shop.load()) Send(4);   // a agencia estava aberta: o servidor precisa saber que fechou
+		if (g_shop.exchange(false)) ShopPanel::Reset();                                  // Finalizar Compra da loja: a nota fiscal toma o lugar da loja
 		g_garage.store(false); g_invoice.store(true);
 		if (!g_open.exchange(true)) { g_flush.store(true); g_resetView.store(true); }
 		Send(14, InvoicePanel::Seq());
 		return;
 	}
+	if (op == 18)      // loja com carrinho: abre a tela e confirma ao servidor (op 17) que este cliente a mostra
+	{
+		if (!ShopPanel::OnShow(bs)) { FLog("[JOBS3D] loja (op 18) invalida (%d bytes)", bytes); return; }
+		if (g_open.load() && !g_shop.load() && !g_invoice.load() && !g_garage.load()) Send(4);   // a agencia estava aberta: o servidor precisa saber que fechou
+		g_garage.store(false); g_invoice.store(false); g_shop.store(true);
+		if (!g_open.exchange(true)) { g_flush.store(true); g_resetView.store(true); }
+		Send(17, ShopPanel::Seq());
+		return;
+	}
+	if (op == 19) { if (g_shop.load()) JobsUI::Close(false); return; }                    // o servidor fecha a loja (compra aceita, ou o cliente da loja tinha a tela antiga)
+	if (op == 20) { if (!ShopPanel::OnToast(bs)) FLog("[JOBS3D] aviso (op 20) invalido (%d bytes)", bytes); return; }   // aviso "Informacao" (compra feita / erro)
 	if (op == 17) { if (g_invoice.load()) JobsUI::Close(false); return; }                 // o servidor fecha a nota (ex.: o cliente da loja tinha a tela antiga por baixo)
 	if (op == 15) { CarInteract::OnPacket(bs); return; }   // interacao com o proprio carro (chave): ponto "Abrir interacao"
 	if (op == 14) { if (g_garage.load()) JobsUI::Close(false); return; }                                                                 // o servidor fecha a garagem (carro retirado)
@@ -386,6 +421,7 @@ void JobsUI::draw(ImGuiRenderer* r)
 	const ImVec2 scr = pUI ? pUI->displaySize() : ImVec2(1920, 1080);
 	const float  k   = scr.y / 540.0f;
 	const int64_t now = NowMs();
+	struct ToastGuard { ImGuiRenderer* r; float w, h; ~ToastGuard() { ShopPanel::DrawToast(r, w, h); } } toastGuard{r, scr.x, scr.y};   // o aviso "Informacao" sempre por cima, com a loja aberta ou fechada
 
 	// ---- marcadores no mundo (anel no chao, circulo com icone, seta, texto sobre o NPC) ----
 	if (!g_open.load()) DrawMarkers(r, k, now);
@@ -468,6 +504,21 @@ void JobsUI::draw(ImGuiRenderer* r)
 		GaragePanel::Draw(r, scr.x, scr.y, ge, closeReq, pull);
 		if (pull > 0) Send(12, pull);
 		if (closeReq) JobsUI::Close(false);
+		return;
+	}
+	if (g_shop.load())
+	{
+		std::vector<TouchEv> evs; std::vector<ShopTouch> se;
+		{ std::lock_guard<std::mutex> l(g_evMutex); evs.swap(g_events); }
+		for (const TouchEv& e : evs) se.push_back({e.type, e.num, e.x, e.y, e.cancel});
+		int answer = 0; std::vector<ShopLine> order;
+		ShopPanel::Draw(r, scr.x, scr.y, se, answer, order);
+		if (answer != 0)
+		{
+			const int sq = ShopPanel::Seq();
+			if (answer == 1 && sq > 0 && !order.empty()) { SendOrder(sq, order); return; }   // Finalizar Compra: a loja continua na tela ate o servidor responder (nota fiscal ou erro)
+			if (answer == 2) JobsUI::Close(true);                                              // Fechar: avisa o servidor (op 19)
+		}
 		return;
 	}
 	if (g_invoice.load())
@@ -965,4 +1016,10 @@ void JobsUI_RenderWorld()
 			}
 		}
 	}
+}
+
+// icone de produto da loja (shoppanel.cpp): o mesmo desenho dos icones do inventario
+void ShopDrawItemIcon(ImGuiRenderer* r, int icon, const float a[2], const float b[2], int alpha)
+{
+	InventoryUI::DrawHotbarIcon(r, icon, ImVec2(a[0], a[1]), ImVec2(b[0], b[1]), alpha);
 }

@@ -1,0 +1,175 @@
+// Teste de PC da nota fiscal (notafiscal.cpp): le o pacote RPC 245 op 16, desenha com um "renderer" falso que grava cada primitiva
+// (render.py transforma a gravacao em PNG) e confere os toques (Finalizar / Cancelar). NAO compila o cliente Android.
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
+#include <vector>
+#include <thread>
+#include <chrono>
+#include "gui/imguirenderer.h"
+#include "gui/samp_widgets/shoppanel.h"
+#include "vendor/raknet/BitStream.h"
+
+static FILE* g_out = nullptr;
+void ShopDrawItemIcon(ImGuiRenderer* r, int icon, const float a[2], const float b[2], int alpha) { r->drawRoundedRect(ImVec2(a[0] + 4, a[1] + 4), ImVec2(b[0] - 4, b[1] - 4), ImColor(200 - icon * 8, 150 + icon * 4, 90 + icon * 10, alpha), 6.0f, true); }
+static int g_clipN = 0;
+static std::vector<std::string> g_texts;       // "x y texto" de cada texto desenhado (para achar os botoes)
+static std::vector<ImVec4> g_textPos;
+#define RGBA(c) (int)((c).Value.x * 255.0f + 0.5f), (int)((c).Value.y * 255.0f + 0.5f), (int)((c).Value.z * 255.0f + 0.5f), (int)((c).Value.w * 255.0f + 0.5f)
+
+ImGuiRenderer::ImGuiRenderer(ImDrawList*, ImFont*) : m_drawList(nullptr), m_font(nullptr) {}
+void ImGuiRenderer::drawLine(const ImVec2& a, const ImVec2& b, const ImColor& c, float th) { if (g_out) fprintf(g_out, "L %.2f %.2f %.2f %.2f %.2f %d %d %d %d\n", a.x, a.y, b.x, b.y, th, RGBA(c)); }
+void ImGuiRenderer::drawRect(const ImVec2& a, const ImVec2& b, const ImColor& c, bool fill, float th) { if (g_out) fprintf(g_out, "R %.2f %.2f %.2f %.2f %d %d %d %d %d %.2f\n", a.x, a.y, b.x, b.y, RGBA(c), (int)fill, th); }
+void ImGuiRenderer::drawRoundedRect(const ImVec2& a, const ImVec2& b, const ImColor& c, float rd, bool fill, float th) { if (g_out) fprintf(g_out, "RR %.2f %.2f %.2f %.2f %d %d %d %d %.2f %d %.2f\n", a.x, a.y, b.x, b.y, RGBA(c), rd, (int)fill, th); }
+void ImGuiRenderer::drawRectFilledMulticolor(const ImVec2& a, const ImVec2& b, const ImColor& c1, const ImColor& c2, const ImColor& c3, const ImColor& c4)
+{ if (g_out) fprintf(g_out, "M %.2f %.2f %.2f %.2f %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d\n", a.x, a.y, b.x, b.y, RGBA(c1), RGBA(c2), RGBA(c3), RGBA(c4)); }
+void ImGuiRenderer::drawConvexPolyFilled(ImVec2* p, int n, const ImColor& c)
+{
+	if (!g_out) return;
+	fprintf(g_out, "P %d %d %d %d %d", n, RGBA(c));
+	for (int i = 0; i < n; i++) fprintf(g_out, " %.2f %.2f", p[i].x, p[i].y);
+	fprintf(g_out, "\n");
+}
+void ImGuiRenderer::drawPolyline(const ImVec2* p, int n, const ImColor& c, bool closed, float th)
+{
+	if (!g_out) return;
+	fprintf(g_out, "PL %d %d %.2f %d %d %d %d", n, (int)closed, th, RGBA(c));
+	for (int i = 0; i < n; i++) fprintf(g_out, " %.2f %.2f", p[i].x, p[i].y);
+	fprintf(g_out, "\n");
+}
+void ImGuiRenderer::pushClipRect(const ImVec2& a, const ImVec2& b, bool) { g_clipN++; if (g_out) fprintf(g_out, "CP %.2f %.2f %.2f %.2f\n", a.x, a.y, b.x, b.y); }
+void ImGuiRenderer::popClipRect() { if (g_out) fprintf(g_out, "CO\n"); }
+ImVec2 ImGuiRenderer::calculateTextSize(const std::string& s, float fs) { return ImVec2(0.48f * fs * (float)s.size(), fs * 1.15f); }
+void ImGuiRenderer::drawText(const ImVec2& pos, const ImColor& c, const std::string& s, bool, float fs)
+{
+	if (g_out) fprintf(g_out, "T %.2f %.2f %.2f %d %d %d %d %s\n", pos.x, pos.y, fs, RGBA(c), s.c_str());
+	g_texts.push_back(s); g_textPos.push_back(ImVec4(pos.x, pos.y, fs, (float)s.size()));
+}
+
+
+static int g_fail = 0, g_n = 0;
+static void check(bool ok, const char* msg) { g_n++; if (!ok) { g_fail++; printf("FALHOU: %s\n", msg); } }
+
+static void put8(std::vector<uint8_t>& v, unsigned x) { v.push_back((uint8_t)x); }
+static void put16(std::vector<uint8_t>& v, unsigned x) { v.push_back((uint8_t)x); v.push_back((uint8_t)(x >> 8)); }
+static void put32(std::vector<uint8_t>& v, unsigned x) { put16(v, x & 0xFFFF); put16(v, x >> 16); }
+static void putS(std::vector<uint8_t>& v, const std::string& s) { put8(v, (unsigned)s.size()); for (char c : s) v.push_back((uint8_t)c); }
+struct P { const char* name; const char* desc; unsigned price; int stock; int icon; int color; int q0; };
+static std::vector<uint8_t> Packet(int seq, const char* title, const char* sub, std::vector<P> ps)
+{
+	std::vector<uint8_t> v;
+	put16(v, (unsigned)seq); putS(v, title); putS(v, sub); put8(v, (unsigned)ps.size());
+	for (const P& p : ps) { putS(v, p.name); putS(v, p.desc); put32(v, p.price); put16(v, (unsigned)p.stock); put8(v, (unsigned)p.icon); put8(v, (unsigned)p.color); put8(v, (unsigned)p.q0); }
+	return v;
+}
+static bool Show(const std::vector<uint8_t>& v) { RakNet::BitStream bs(v.data(), (int)v.size()); return ShopPanel::OnShow(bs); }
+static bool Toast(int kind, const std::string& t) { std::vector<uint8_t> v; put8(v, (unsigned)kind); putS(v, t); RakNet::BitStream bs(v.data(), (int)v.size()); return ShopPanel::OnToast(bs); }
+
+static std::vector<P> Eletro()
+{
+	return {
+		{"Camera", "Um par de boas fotos vem a qualquer momento", 3500, 5, 11, 0, 0}, {"Telefone", "Smartphone", 1200, 9, 12, 1, 0},
+		{"Radio", "Contato rapido", 600, 4, 8, 2, 0}, {"GPS", "Usado para se localizar", 3500, 3, 13, 3, 0},
+		{"Pendrive virgem", "Usado para transferir arquivos", 150, 20, 11, 0, 0}, {"Tablet", "Eletronico", 2800, 0, 12, 4, 0},
+		{"Fone de ouvido", "Musica onde voce for", 400, 12, 8, 5, 0}, {"Carregador", "Energia para o seu aparelho", 90, 30, 13, 1, 0},
+	};
+}
+
+static ImVec2 FindNth(const char* s, int nth = 0)
+{
+	int k = 0;
+	for (size_t i = 0; i < g_texts.size(); i++) if (g_texts[i] == s) { if (k++ == nth) return ImVec2(g_textPos[i].x + 0.48f * g_textPos[i].z * g_textPos[i].w * 0.5f, g_textPos[i].y + g_textPos[i].z * 0.5f); }
+	return ImVec2(-1, -1);
+}
+
+static void Sleep(int ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); }
+static const float SW = 2400, SH = 1080;
+static ImGuiRenderer* R() { static ImGuiRenderer r(nullptr, nullptr); return &r; }
+static void Frame(const std::vector<ShopTouch>& ev, int& ans, std::vector<ShopLine>& ord, bool rec = false, const char* name = nullptr)
+{
+	g_texts.clear(); g_textPos.clear();
+	if (rec) { std::string path = std::string(getenv("SH_OUT") ? getenv("SH_OUT") : ".") + "/" + name + ".dump"; g_out = fopen(path.c_str(), "w"); fprintf(g_out, "SIZE %.0f %.0f\n", SW, SH); }
+	ShopPanel::Draw(R(), SW, SH, ev, ans, ord);
+	ShopPanel::DrawToast(R(), SW, SH);
+	if (rec) { fclose(g_out); g_out = nullptr; }
+}
+static void Settle(int ms = 260) { int a; std::vector<ShopLine> o; Frame({}, a, o); Sleep(ms); Frame({}, a, o); Frame({}, a, o); }
+static void Tap(float x, float y, int& ans, std::vector<ShopLine>& ord) { Frame({ {2, 0, x, y, false}, {1, 0, x, y, false} }, ans, ord); }
+
+int main()
+{
+	// pacotes invalidos
+	ShopPanel::Reset();
+	{ std::vector<uint8_t> v = Packet(9, "Loja", "x", Eletro()); v.resize(v.size() - 1); check(!Show(v), "pacote cortado recusado"); check(ShopPanel::Seq() == 0, "nada na tela depois do invalido"); }
+	check(!Show(Packet(0, "Loja", "x", Eletro())), "numero 0 recusado");
+	{ std::vector<uint8_t> v = Packet(5, "L", "s", {}); v[v.size() - 1] = 21; check(!Show(v), "mais de 20 produtos recusado"); }
+	check(Show(Packet(12, "Loja de eletronicos", "Gadgets e dispositivos eletronicos para facilitar sua vida.", Eletro())) && ShopPanel::Seq() == 12, "pacote valido");
+	check(!Toast(0, ""), "aviso vazio recusado");
+
+	// previas
+	{ int a; std::vector<ShopLine> o; ShopPanel::Reset(); Show(Packet(101, "Loja de eletronicos", "Gadgets e dispositivos eletronicos para facilitar sua vida.", Eletro())); Settle(); Frame({}, a, o, true, "loja_vazia"); }
+	{ int a; std::vector<ShopLine> o; ShopPanel::Reset(); auto e = Eletro(); e[1].q0 = 1; Show(Packet(102, "Loja de eletronicos", "Gadgets e dispositivos eletronicos para facilitar sua vida.", e)); Settle(); Frame({}, a, o, true, "loja_carrinho"); }
+	{ int a; std::vector<ShopLine> o; ShopPanel::Reset(); auto e = Eletro(); e[0].q0 = 2; e[2].q0 = 1; e[3].q0 = 3; e[4].q0 = 1; e[6].q0 = 5; e[7].q0 = 2; Show(Packet(103, "Mercado", "Alimentos e bebidas para o seu dia a dia.", e)); Settle(); Frame({}, a, o, true, "loja_cheia"); }
+	{ int a; std::vector<ShopLine> o; ShopPanel::Reset(); Show(Packet(104, "Lanchonete com um nome bem grande", "Lanches quentes.", Eletro())); Settle(); Toast(0, "3x Pizza inteira, 1x Batata frita"); Frame({}, a, o, true, "loja_aviso"); }
+	{ int a; std::vector<ShopLine> o; ShopPanel::Reset(); Settle(); Toast(1, "Dinheiro insuficiente."); Frame({}, a, o); Sleep(260); Frame({}, a, o, true, "aviso_erro"); }
+
+	// toques
+	{
+		ShopPanel::Reset(); Show(Packet(55, "Loja", "sub", Eletro()));
+		int ans = 0; std::vector<ShopLine> ord; Settle();
+		g_texts.clear(); Frame({}, ans, ord);
+		const ImVec2 add0 = FindNth("Adicionar ao carrinho", 0);
+		check(add0.x > 0, "achou o botao Adicionar");
+		Tap(add0.x, add0.y, ans, ord); check(ans == 0, "Adicionar nao fecha");
+		Sleep(260); Settle(10);
+		Frame({}, ans, ord);
+		const ImVec2 fin = FindNth("Finalizar Compra", 0);
+		check(fin.x > 0, "apareceu o Finalizar Compra depois de adicionar");
+		const ImVec2 add1 = FindNth("Adicionar ao carrinho", 0);
+		Tap(add1.x, add1.y, ans, ord); Tap(add1.x, add1.y, ans, ord);                 // mais 2 da camera (3 no total)
+		// + e -
+		Frame({}, ans, ord);
+		Tap(fin.x, fin.y, ans, ord);
+		check(ans == 1 && ord.size() == 1 && ord[0].idx == 0 && ord[0].qty == 3, "Finalizar Compra devolve o carrinho (camera x3)");
+		if (!(ans == 1 && ord.size() == 1)) printf("  ans=%d n=%d q=%d\n", ans, (int)ord.size(), ord.empty() ? -1 : ord[0].qty);
+		// Fechar
+		Frame({}, ans, ord);
+		const ImVec2 fe = FindNth("Fechar", 0);
+		Tap(fe.x, fe.y, ans, ord); check(ans == 2, "toque em Fechar");
+		// arrastar para fora nao conta
+		Frame({}, ans, ord);
+		Frame({ {2, 0, fe.x, fe.y, false}, {3, 0, 20, 20, false}, {1, 0, 20, 20, false} }, ans, ord); check(ans == 0, "arrastar para fora do botao nao conta");
+		Frame({ {2, 0, fe.x, fe.y, false}, {1, 0, fe.x, fe.y, true} }, ans, ord); check(ans == 0, "toque cancelado nao conta");
+		Tap(5, 5, ans, ord); check(ans == 0, "toque fora nao faz nada");
+		// rolagem nao adiciona
+		const ImVec2 a2 = FindNth("Adicionar ao carrinho", 2);
+		Frame({ {2, 0, a2.x, a2.y, false}, {3, 0, a2.x, a2.y - 120, false}, {1, 0, a2.x, a2.y - 120, false} }, ans, ord);
+		Frame({}, ans, ord);
+		const ImVec2 mm = FindNth("x3", 0);
+		check(mm.x > 0, "rolagem nao adicionou: carrinho continua com x3");
+	}
+	// - e + do carrinho, limite de estoque, esgotado
+	{
+		ShopPanel::Reset(); auto e = Eletro(); e[2].q0 = 1; Show(Packet(60, "Loja", "sub", e));
+		int ans = 0; std::vector<ShopLine> ord; Settle(300);
+		Frame({}, ans, ord);
+		const ImVec2 q = FindNth("x1", 0); check(q.x > 0, "linha do carrinho (x1)");
+		const ImVec2 plus(q.x + 24, q.y), minus(q.x - 30, q.y);
+		Tap(plus.x, plus.y, ans, ord); Frame({}, ans, ord);
+		check(FindNth("x2", 0).x > 0, "+ aumenta para x2");
+		for (int i = 0; i < 6; i++) { Frame({}, ans, ord); const ImVec2 q2 = FindNth(i == 0 ? "x2" : "x4", 0); (void)q2; }
+		Frame({}, ans, ord);
+		Tap(minus.x, minus.y, ans, ord); Frame({}, ans, ord);
+		check(FindNth("x1", 0).x > 0 || FindNth("x2", 0).x > 0, "- diminui");
+		// esgotado: botao sem toque
+		check(FindNth("Esgotado", 0).x > 0, "produto sem estoque mostra Esgotado");
+	}
+	{   // novo pacote com o mesmo numero preserva a rolagem; carrinho vem do servidor
+		ShopPanel::Reset(); auto e = Eletro(); e[0].q0 = 2; Show(Packet(70, "Loja", "sub", e));
+		int ans = 0; std::vector<ShopLine> ord; Settle(300); Frame({}, ans, ord);
+		check(FindNth("x2", 0).x > 0, "carrinho inicial do servidor (x2)");
+	}
+	printf("%d verificacoes, %d falhas\n", g_n, g_fail);
+	return g_fail ? 1 : 0;
+}

@@ -1,0 +1,22 @@
+LOJA COM CARRINHO (cliente) - Maximo RP
+
+ARQUIVOS (extraia na raiz do projeto; a pasta app/ ja esta no caminho certo)
+- app/src/main/cpp/samp/gui/samp_widgets/shoppanel.h / shoppanel.cpp   (NOVOS: a tela da loja e o aviso "Informacao")
+- app/src/main/cpp/samp/gui/samp_widgets/jobs.cpp                        (ALTERADO: liga a loja ao canal 245/246, igual a nota fiscal)
+- app/src/main/cpp/samp/testes/loja/                                      (teste de PC: gera as imagens de pre-visualizacao; nao entra no APK)
+O CMakeLists ja pega arquivos novos sozinho (GLOB). Nenhum IMG novo, nenhuma imagem nova: tudo desenhado por codigo; os icones dos produtos sao os do inventario.
+
+COMO FICA (copiado do video)
+- Painel escuro: icone + titulo da loja, subtitulo, botao Fechar com a tecla ESC, aba "Todos", cartoes em 2 colunas (ponto colorido, icone, nome, descricao colorida, preco, "Adicionar ao carrinho"), barra de rolagem.
+- Ao adicionar o primeiro produto o painel alarga e mostra a coluna Carrinho (icone + "Carrinho", linha divisoria, itens com preco e - x1 +, Total e "Finalizar Compra").
+- Aviso "Informacao" (circulo verde com $) com "Voce comprou ... com sucesso!"; erros aparecem como "Aviso" (circulo vermelho).
+- Toque: rolar a lista com o dedo; Voltar do celular fecha a loja.
+
+NAO FOI FEITO (precisa de outra etapa)
+- O balao "Pressione para interagir" no vendedor (no video e a tecla E): no Android seria um toque; hoje a loja abre com /comprar dentro da loja.
+- Varias abas de categoria (so existe "Todos", como no video).
+
+TESTADO / NAO TESTADO
+- Testado no PC: shoppanel.cpp compila com g++ e passa 20 verificacoes (pacotes validos/invalidos, toques, rolagem, +/-, Finalizar, Fechar). As imagens de pre-visualizacao foram geradas por um renderer falso (fonte diferente da do jogo).
+- NAO compilado com o NDK/Gradle e NAO testado no jogo. jobs.cpp so foi revisado por leitura (usa o mesmo caminho da nota fiscal).
+- Protocolo novo: RPC 245 ops 18/19/20 (servidor->cliente) e RPC 246 ops 17/18/19 (cliente->servidor); veja shoppanel.h.
