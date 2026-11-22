@@ -18,6 +18,7 @@
 #include "notafiscal.h"
 #include "shoppanel.h"
 #include "perfilpanel.h"
+#include "avatar.h"
 #include "../../game/PerfilTexDb.h"
 #include "carinteract.h"
 #include "maximomenu.h"
@@ -1082,7 +1083,13 @@ void* PerfilBannerTexture(int which)
 	return (t && t->raster) ? (void*)t->raster : nullptr;
 }
 
-// foto de perfil + moldura do Central da Cidade para o Menu Jogador (perfilpanel.cpp).
-// PENDENTE: o desenho do avatar fica no avatar.cpp/central.cpp (fora deste pacote de fontes); quando eles forem enviados, ligar aqui.
-// Devolve false = nao desenhou (o menu desenha o circulo com a inicial do nome).
-bool PerfilDrawAvatar(ImGuiRenderer*, float, float, float, int) { return false; }
+// foto de perfil + moldura do Central da Cidade para o Menu Jogador (perfilpanel.cpp): o MESMO desenho da Central (central.cpp):
+// Avatar::DrawPhoto (foto da conta ou avatar padrao) + Avatar::DrawBorder (borda escolhida pelo jogador). Central: raio 28 com escala u*0.8.
+bool PerfilDrawAvatar(ImGuiRenderer* r, float cx, float cy, float radius, int alpha)
+{
+	(void)alpha;
+	if (!r || radius <= 1.0f) return false;
+	Avatar::DrawPhoto(r, cx, cy, radius);
+	Avatar::DrawBorder(r, Avatar::Border(), cx, cy, radius, radius / 28.0f * 0.8f, (double)NowMs() / 1000.0);
+	return true;
+}

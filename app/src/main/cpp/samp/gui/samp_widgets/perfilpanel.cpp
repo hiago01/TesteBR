@@ -200,13 +200,13 @@ bool PerfilPanel::OnRank(RakNet::BitStream& bs)
 bool PerfilPanel::OnRules(RakNet::BitStream& bs)
 {
 	uint16_t seq = 0; uint8_t tab = 0, n = 0;
-	if (!bs.Read(seq) || !bs.Read(tab) || !bs.Read(n) || n > 120) return false;
+	if (!bs.Read(seq) || !bs.Read(tab) || !bs.Read(n) || n > 160) return false;
 	RuleState d;
 	for (int i = 0; i < n; i++)
 	{
 		uint8_t st = 0; RuleLine w;
 		if (!bs.Read(st) || !RdStr(bs, w.text)) return false;
-		w.style = st > 4 ? 0 : (int)st; d.lines.push_back(std::move(w));
+		w.style = st > 5 ? 0 : (int)st; d.lines.push_back(std::move(w));
 	}
 	d.have = true;
 	std::lock_guard<std::mutex> l(g_mtx);
@@ -350,7 +350,7 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 		card(CX0, 112.0f, X1, 196.0f);
 		{
 			const ImVec2 c = V(CX0 + 46.0f, 154.0f);
-			if (!PerfilDrawAvatar(r, c.x, c.y, 29.0f * u, (int)(255.0f * f)))        // foto + moldura do Central da Cidade (a mesma da conta)
+			if (!PerfilDrawAvatar(r, c.x, c.y, 26.0f * u, (int)(255.0f * f)))        // foto + moldura do Central da Cidade (a mesma da conta)
 			{
 				r->drawRoundedRect(ImVec2(c.x - 29 * u, c.y - 29 * u), ImVec2(c.x + 29 * u, c.y + 29 * u), A(244, 248, 255, 255), 29.0f * u, true);
 				std::string ini = g_i.name.empty() ? "?" : g_i.name.substr(0, 1);
@@ -594,10 +594,10 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 					rs.wl.clear(); float y = 0.0f;
 					for (const RuleLine& ln : rs.lines)
 					{
-						if (ln.style == 3) { y += 9.0f; continue; }
-						const bool head = ln.style == 1, item = ln.style == 2 || ln.style == 4;
-						const float fs = head ? 13.0f : 10.8f, lh = head ? 20.0f : 16.0f, ind = item ? 16.0f : 0.0f, maxW = TXW - ind;
-						if (head) y += 6.0f;
+						if (ln.style == 3) { y += 12.0f; continue; }
+						const bool head = ln.style == 1, sub = ln.style == 5, item = ln.style == 2 || ln.style == 4;
+						const float fs = head ? 15.0f : (sub ? 12.4f : 11.6f), lh = head ? 22.0f : (sub ? 19.0f : 18.0f), ind = item ? 16.0f : 0.0f, maxW = TXW - ind;
+						if (head) y += 8.0f;
 						std::string cur; bool first = true;
 						auto flush = [&]() { WLine w; w.style = ln.style; w.y = y; w.h = lh; w.text = cur; w.first = first; rs.wl.push_back(std::move(w)); y += lh; first = false; cur.clear(); };
 						size_t i = 0; const std::string& s = ln.text;
@@ -613,8 +613,7 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 							i = j + 1;
 						}
 						if (!cur.empty() || first) flush();
-						if (head) y += 2.0f;
-						else y += 2.0f;
+						y += sub ? 3.0f : 2.0f;
 					}
 					rs.total = y; rs.layU = u; rs.layW = TXW;
 				}
@@ -628,10 +627,10 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 				{
 					const float y = VY0 + w.y - g_ruleScroll;
 					if (y + w.h < VY0 || y > VY1) continue;
-					const bool head = w.style == 1, item = w.style == 2 || w.style == 4;
+					const bool head = w.style == 1, sub = w.style == 5, item = w.style == 2 || w.style == 4;
 					const float x = CX0 + 22.0f + (item ? 16.0f : 0.0f);
 					if (item && w.first) { const ImVec2 b = V(CX0 + 26.0f, y + w.h * 0.5f); r->drawRoundedRect(ImVec2(b.x - 2 * u, b.y - 2 * u), ImVec2(b.x + 2 * u, b.y + 2 * u), A(98, 232, 250, 255), 2.0f * u, true); }
-					txt(x, y, head ? A(240, 248, 255, 255) : A(212, 224, 244, 255), w.text, head ? 13.0f : 10.8f, head);
+					txt(x, y, head ? A(244, 250, 255, 255) : (sub ? A(126, 226, 244, 255) : A(218, 230, 248, 255)), w.text, head ? 15.0f : (sub ? 12.4f : 11.6f), head || sub);
 				}
 				r->popClipRect();
 				if (maxS > 0.0f)

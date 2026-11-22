@@ -81,8 +81,8 @@ static std::vector<uint8_t> Rules(int seq, int tab, int n)
 	std::vector<uint8_t> v; put16(v, (unsigned)seq); put8(v, (unsigned)tab); put8(v, (unsigned)n);
 	for (int i = 0; i < n; i++)
 	{
-		const int st = i % 6 == 0 ? 1 : (i % 6 == 5 ? 3 : (i % 6 == 4 ? 4 : (i % 2 ? 2 : 0)));
-		put8(v, (unsigned)st); putS(v, st == 3 ? "" : (st == 1 ? "Titulo da secao " + std::to_string(i) : "Texto da regra numero " + std::to_string(i) + " com bastante conteudo para forcar a quebra de linha dentro do painel de regras do servidor Maximo RP."));
+		const int st = i % 7 == 0 ? 1 : (i % 7 == 1 ? 5 : (i % 7 == 6 ? 3 : (i % 7 == 5 ? 4 : (i % 2 ? 2 : 0))));
+		put8(v, (unsigned)st); putS(v, st == 3 ? "" : (st == 5 ? "Subtitulo " + std::to_string(i) : st == 1 ? "01 - Titulo da secao " + std::to_string(i) : "Texto da regra numero " + std::to_string(i) + " com bastante conteudo para forcar a quebra de linha dentro do painel de regras do servidor Maximo RP."));
 	}
 	return v;
 }

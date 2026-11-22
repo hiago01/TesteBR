@@ -11,7 +11,11 @@ COMO INSTALAR
 2) Instale também o zip dos banners (texdb-perfil.zip): ele cria a pasta texdb/perfil. Ela é um banco PEQUENO e separado (só 3 imagens (2 banners + a moeda)), NÃO é um IMG novo e não mexe no favela.img nem no texdb/favela. Coloque junto dos outros bancos texdb do cliente. Sem esse banco o menu funciona normal, só desenha o banner com cor e texto.
 3) Instale o zip do servidor junto (cliente e servidor precisam ser da mesma versão).
 
+NOVO NESTA VERSÃO
+- Foto de perfil + moldura do Central da Cidade agora aparecem no Menu Jogador (mesmas funções do central.cpp: Avatar::DrawPhoto + Avatar::DrawBorder, com a borda que o jogador escolheu).
+- A aba "Perfil" da barra /tablistmx agora abre o Menu Jogador (/perfil) no lugar da Central. A Central continua em /central. ATENÇÃO: se o seu settings.ini já tem [tablistmx] cmd_perfil=/central salvo, ele vence o padrão: troque para cmd_perfil=/perfil.
+- Regras: nova hierarquia título (branco) / subtítulo (ciano) / bullets, fonte maior e mais espaçamento, rolagem para até 160 linhas por aba.
+- Instale junto o zip do servidor (corrige os "?" nos acentos e traz o regulamento novo).
+
 HONESTIDADE
-- Nada disso foi compilado com o NDK nem testado no jogo/celular. Testei no PC só a lógica e o desenho do painel com um "renderer falso" (27 checagens) e o servidor com testes. Se o build der erro, me mande o log.
-- FOTO + MOLDURA DO CENTRAL no Menu Jogador: o ponto de desenho está pronto (função PerfilDrawAvatar no fim do jobs.cpp), mas hoje devolve "não desenhou" e o menu mostra a inicial do nome. O avatar.cpp/.h e o central.cpp/.h NÃO estão no projeto que tenho; me envie esses arquivos que eu ligo a mesma foto e a mesma moldura.
-- O clique para abrir no lugar do "Central da cidade"/tablist: NÃO consegui ligar, pois o arquivo do Central (central.cpp/.h) não está no projeto que tenho. Me envie esse arquivo e eu coloco. Enquanto isso o menu abre com o comando /perfil.
+- Nada disso foi compilado com o NDK nem testado no jogo/celular. No PC testei a lógica do painel (renderer falso) e o servidor. Se o build der erro, me mande o log.

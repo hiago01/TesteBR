@@ -59,7 +59,7 @@ namespace
 	{
 		if (g_loaded.load() || !g_pszStorage) return;
 		g_loaded.store(true);
-		{ std::lock_guard<std::mutex> l0(g_cmdMu); g_cmd[TL::Perfil] = "/central"; }      // aba Perfil abre a Central da Cidade (settings.ini cmd_perfil= troca)
+		{ std::lock_guard<std::mutex> l0(g_cmdMu); g_cmd[TL::Perfil] = "/perfil"; }      // aba Perfil abre o MENU JOGADOR (a Central da Cidade continua em /central; settings.ini cmd_perfil= troca)
 		const std::string path = IniPath();
 		CSimpleIniA ini;
 		ini.SetUnicode();
@@ -70,7 +70,7 @@ namespace
 		const long py = ini.GetLongValue("tablistmx", "pos", TL::kDefaultPosY);
 		g_posY.store((int)std::min<long>(std::max<long>(py, TL::kMinPosY), TL::kMaxPosY));
 		std::lock_guard<std::mutex> l(g_cmdMu);
-		for (int i = 0; i < TL::kTabs; i++) g_cmd[i] = TL::SanitizeCommand(ini.GetValue("tablistmx", kCmdKey[i], i == TL::Perfil ? "/central" : ""));
+		for (int i = 0; i < TL::kTabs; i++) g_cmd[i] = TL::SanitizeCommand(ini.GetValue("tablistmx", kCmdKey[i], i == TL::Perfil ? "/perfil" : ""));
 	}
 
 	void Save()
