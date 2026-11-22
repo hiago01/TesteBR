@@ -28,6 +28,7 @@
 #include "../../game/CarryTuner.h"
 #include "../../game/CustomDiag.h"
 #include "../../game/movemode.h"
+#include "../../game/runstyle.h"
 #include "controlmode.h"
 #include "hudstate.h"
 #include "controlsselector.h"
@@ -399,6 +400,15 @@ if (input == "/controles" || input.rfind("/controles ", 0) == 0 || input == "/co
             {
                 addDebugMessage("[CONTROLES] Uso: /controles (abre a escolha) | /controles classico | /controles moderno");
             }
+
+            return;
+        }
+if (input == "/corrida" || input.rfind("/corrida ", 0) == 0)
+        {
+            // variacoes de andar/correr salvas por skin (game/runstyle.h)
+            std::string args = input.size() > 8 ? input.substr(9) : std::string();
+            std::string reply = RunStyle::Command(args);
+            addDebugMessage("%s", reply.c_str());
 
             return;
         }
