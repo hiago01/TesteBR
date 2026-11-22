@@ -70,6 +70,67 @@ namespace
 	}
 }
 
+// icone da empresa (tile azul com o glifo branco): o mesmo da nota fiscal, usado tambem no topo da loja (shoppanel.cpp). x,y,size em pixels.
+void InvoicePanel::DrawCompanyIcon(ImGuiRenderer* r, int icon, float x, float y, float size, int alpha)
+{
+	const float k = size / 30.0f;
+	const float al = (float)std::clamp(alpha, 0, 255) / 255.0f;
+	auto A = [&](const ImColor& col, float mul = 1.0f) { return ImColor(col.Value.x, col.Value.y, col.Value.z, col.Value.w * al * mul); };
+	const ImColor accent(37, 109, 255, 255);
+	for (int g = 3; g >= 1; g--)
+		r->drawRoundedRect(ImVec2(x - g * 1.8f * k, y - g * 1.8f * k), ImVec2(x + size + g * 1.8f * k, y + size + g * 1.8f * k), A(accent, 0.16f - g * 0.04f), (7.0f + g * 1.8f) * k, false, 1.6f * k);
+	r->drawRoundedRect(ImVec2(x, y), ImVec2(x + size, y + size), A(accent), 7.0f * k, true);
+	r->drawRoundedRect(ImVec2(x, y), ImVec2(x + size, y + size * 0.5f), A(ImColor(255, 255, 255, 38)), 7.0f * k, true);
+	const ImColor wh = A(ImColor(255, 255, 255, 255)), tile = A(accent);
+	auto G = [&](float gx, float gy) { return ImVec2(x + (5.0f + gx * 1.25f) * k, y + (5.0f + gy * 1.25f) * k); };
+	auto GD = [&](float cx, float cy, float rad, const ImColor& col) { r->drawRoundedRect(G(cx - rad, cy - rad), G(cx + rad, cy + rad), col, rad * 1.25f * k, true); };
+	auto GL = [&](float x0, float y0, float x1, float y1, float th) { r->drawLine(G(x0, y0), G(x1, y1), wh, th * k); };
+	auto GP = [&](std::vector<ImVec2> pts, const ImColor& col) { for (ImVec2& p : pts) p = G(p.x, p.y); Poly(r, std::move(pts), col); };
+	switch (icon)
+	{
+	case 0:   // carrinho (mercado)
+	{
+		const ImVec2 h[4] = { G(0.4f, 2.4f), G(3.0f, 2.4f), G(5.0f, 10.6f), G(13.6f, 10.6f) };
+		r->drawPolyline(h, 4, wh, false, 1.7f * k);
+		GP({ ImVec2(3.7f, 4.3f), ImVec2(15.2f, 4.3f), ImVec2(13.5f, 9.3f), ImVec2(5.3f, 9.3f) }, wh);
+		GD(6.4f, 13.4f, 1.35f, wh); GD(12.6f, 13.4f, 1.35f, wh);
+		break;
+	}
+	case 1:   // chave inglesa (auto pecas)
+		GL(3.0f, 13.0f, 9.4f, 6.6f, 2.6f); GD(3.0f, 13.0f, 1.5f, wh); GD(11.0f, 5.0f, 3.9f, wh); GD(11.2f, 4.8f, 1.6f, tile);
+		GP({ ImVec2(11.2f, 4.8f), ImVec2(13.6f, 0.4f), ImVec2(16.0f, 2.4f) }, tile);
+		break;
+	case 2:   // camiseta (roupas)
+		GP({ ImVec2(5.0f, 2.8f), ImVec2(11.0f, 2.8f), ImVec2(11.0f, 14.4f), ImVec2(5.0f, 14.4f) }, wh);
+		GP({ ImVec2(5.2f, 3.0f), ImVec2(5.2f, 7.6f), ImVec2(2.2f, 8.8f), ImVec2(0.4f, 5.4f) }, wh);
+		GP({ ImVec2(10.8f, 3.0f), ImVec2(15.6f, 5.4f), ImVec2(13.8f, 8.8f), ImVec2(10.8f, 7.6f) }, wh);
+		GP({ ImVec2(6.5f, 2.6f), ImVec2(9.5f, 2.6f), ImVec2(8.0f, 4.8f) }, tile);
+		break;
+	case 3:   // tesoura (barbearia)
+		GL(5.2f, 1.0f, 11.0f, 10.6f, 1.8f); GL(10.8f, 1.0f, 5.0f, 10.6f, 1.8f);
+		r->drawRoundedRect(G(2.0f, 10.4f), G(6.8f, 15.2f), wh, 2.4f * 1.25f * k, false, 1.6f * k);
+		r->drawRoundedRect(G(9.2f, 10.4f), G(14.0f, 15.2f), wh, 2.4f * 1.25f * k, false, 1.6f * k);
+		GD(8.0f, 5.8f, 0.9f, tile);
+		break;
+	case 4:   // hamburguer (lanchonete)
+	{
+		std::vector<ImVec2> dome;
+		for (int q = 0; q <= 10; q++) { const float th = 3.1415927f * (1.0f + (float)q / 10.0f); dome.push_back(ImVec2(8.0f + 6.8f * std::cos(th), 7.0f + 6.0f * std::sin(th))); }
+		GP(dome, wh);
+		GD(5.8f, 4.4f, 0.55f, tile); GD(8.4f, 3.4f, 0.55f, tile); GD(10.6f, 4.8f, 0.55f, tile);
+		const ImVec2 z[9] = { G(1.6f, 8.8f), G(3.2f, 9.9f), G(4.8f, 8.8f), G(6.4f, 9.9f), G(8.0f, 8.8f), G(9.6f, 9.9f), G(11.2f, 8.8f), G(12.8f, 9.9f), G(14.4f, 8.8f) };
+		r->drawPolyline(z, 9, wh, false, 1.5f * k);
+		r->drawRoundedRect(G(1.6f, 10.5f), G(14.4f, 12.3f), wh, 0.9f * 1.25f * k, true);
+		r->drawRoundedRect(G(2.8f, 13.0f), G(13.2f, 15.2f), wh, 1.6f * 1.25f * k, true);
+		break;
+	}
+	default:  // sacola
+		r->drawRoundedRect(G(3.0f, 5.6f), G(13.0f, 15.0f), wh, 1.4f * 1.25f * k, true);
+		r->drawRoundedRect(G(5.4f, 1.6f), G(10.6f, 7.8f), wh, 2.6f * 1.25f * k, false, 1.5f * k);
+		break;
+	}
+}
+
 bool InvoicePanel::OnShow(RakNet::BitStream& bs)
 {
 	Data d;

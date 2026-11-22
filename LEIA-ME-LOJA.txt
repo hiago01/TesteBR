@@ -20,3 +20,8 @@ TESTADO / NAO TESTADO
 - Testado no PC: shoppanel.cpp compila com g++ e passa 20 verificacoes (pacotes validos/invalidos, toques, rolagem, +/-, Finalizar, Fechar). As imagens de pre-visualizacao foram geradas por um renderer falso (fonte diferente da do jogo).
 - NAO compilado com o NDK/Gradle e NAO testado no jogo. jobs.cpp so foi revisado por leitura (usa o mesmo caminho da nota fiscal).
 - Protocolo novo: RPC 245 ops 18/19/20 (servidor->cliente) e RPC 246 ops 17/18/19 (cliente->servidor); veja shoppanel.h.
+
+
+=== ATUALIZACAO v3 ===
+Topo da loja com o icone azul da empresa (igual ao da nota fiscal), painel e carrinho maiores, fontes maiores.
+Arquivos alterados: shoppanel.cpp/.h e notafiscal.cpp/.h (nova funcao InvoicePanel::DrawCompanyIcon). Instale junto com o servidor v3.

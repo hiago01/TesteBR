@@ -59,7 +59,7 @@ struct P { const char* name; const char* desc; unsigned price; int stock; int ic
 static std::vector<uint8_t> Packet(int seq, const char* title, const char* sub, std::vector<P> ps)
 {
 	std::vector<uint8_t> v;
-	put16(v, (unsigned)seq); putS(v, title); putS(v, sub); put8(v, (unsigned)ps.size());
+	put16(v, (unsigned)seq); put8(v, 4); putS(v, title); putS(v, sub); put8(v, (unsigned)ps.size());
 	for (const P& p : ps) { putS(v, p.name); putS(v, p.desc); put32(v, p.price); put16(v, (unsigned)p.stock); put8(v, (unsigned)p.icon); put8(v, (unsigned)p.color); put8(v, (unsigned)p.q0); }
 	return v;
 }

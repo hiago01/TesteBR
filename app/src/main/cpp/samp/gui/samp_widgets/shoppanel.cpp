@@ -2,6 +2,7 @@
 #include "../imguirenderer.h"
 #include "../../vendor/raknet/BitStream.h"
 #include "shoppanel.h"
+#include "notafiscal.h"
 
 #include <algorithm>
 #include <chrono>
@@ -18,7 +19,7 @@
 namespace
 {
 	struct Prod { std::string name, desc; uint32_t price = 0; int stock = 0, icon = 8, color = 0, qty0 = 0; };
-	struct Data { int seq = 0; std::string title, sub; std::vector<Prod> prods; };
+	struct Data { int seq = 0; int cicon = 99; std::string title, sub; std::vector<Prod> prods; };
 
 	std::mutex g_mtx;
 	Data       g_net;
@@ -95,8 +96,8 @@ namespace
 bool ShopPanel::OnShow(RakNet::BitStream& bs)
 {
 	Data d;
-	uint16_t seq = 0; uint8_t n = 0;
-	if (!bs.Read(seq) || !RdStr(bs, d.title) || !RdStr(bs, d.sub) || !bs.Read(n) || n > 20) return false;
+	uint16_t seq = 0; uint8_t n = 0, cicon = 99;
+	if (!bs.Read(seq) || !bs.Read(cicon) || !RdStr(bs, d.title) || !RdStr(bs, d.sub) || !bs.Read(n) || n > 20) return false;
 	for (int i = 0; i < n; i++)
 	{
 		Prod p; uint16_t stock = 0; uint8_t icon = 8, color = 0, q0 = 0; uint32_t price = 0;
@@ -105,7 +106,7 @@ bool ShopPanel::OnShow(RakNet::BitStream& bs)
 		d.prods.push_back(std::move(p));
 	}
 	if (seq == 0) return false;
-	d.seq = seq;
+	d.seq = seq; d.cicon = cicon;
 	std::lock_guard<std::mutex> l(g_mtx);
 	g_net = std::move(d); g_ver++;
 	return true;
@@ -361,10 +362,10 @@ void ShopPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vector
 		if (std::fabs(want - g_cartAnim) < 0.01f) g_cartAnim = want;
 		g_lastDraw = now;
 	}
-	const float LW = 416.0f, CWID = 230.0f, H = 416.0f;
+	const float LW = 416.0f, CWID = 290.0f, H = 416.0f;
 	const float cartA = g_cartAnim;
 	const float W = LW + CWID * cartA;
-	const float u = std::min(0.62f * scrH / H, 0.86f * scrW / (LW + CWID));
+	const float u = std::min(0.84f * scrH / H, 0.95f * scrW / (LW + CWID));
 	const float slide = (1.0f - f) * 10.0f;
 	const ImVec2 P0((scrW - W * u) * 0.5f, (scrH - H * u) * 0.5f + slide * u);
 	auto V = [&](float x, float y) { return ImVec2(P0.x + x * u, P0.y + y * u); };
@@ -405,11 +406,8 @@ void ShopPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vector
 
 	// ---- cabecalho: icone de loja (roxo) + titulo + subtitulo ----
 	{
-		const ImColor pur = A(176, 112, 255, 255);
-		r->drawRoundedRect(V(20, 20), V(33, 32), pur, 2.0f * u, true);                 // corpo da lojinha
-		r->drawRoundedRect(V(18, 16), V(35, 22), pur, 2.0f * u, true);                 // toldo
-		r->drawRoundedRect(V(24, 25), V(29, 32), A(26, 38, 60, 255), 1.0f * u, true);  // porta
-		txt(40.0f, 16.0f, A(240, 246, 255, 255), g_d.title.empty() ? std::string("Loja") : fit(g_d.title, 14.5f, W - 40.0f - 120.0f), 14.5f, true);
+		InvoicePanel::DrawCompanyIcon(r, g_d.cicon, V(14, 10).x, V(14, 10).y, 32.0f * u, (int)(255 * f));
+		txt(56.0f, 14.0f, A(240, 246, 255, 255), g_d.title.empty() ? std::string("Loja") : fit(g_d.title, 16.0f, W - 56.0f - 120.0f), 16.0f, true);
 		if (!g_d.sub.empty()) txt(PX, 46.0f, A(130, 168, 210, 255), fit(g_d.sub, 7.8f, W - 2.0f * PX - 110.0f), 7.8f);
 	}
 
@@ -544,16 +542,16 @@ void ShopPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vector
 				DrawItem(r, p.icon, aa, bb, (int)(255.0f * f * cartA));
 			}
 			const float nx = CX0 + 52.0f, nw = (CX1 - 66.0f) - nx;
-			r->drawText(V(nx, ry + 1.0f), CA(244, 248, 255, 255), fit(p.name, 9.2f, nw), false, 9.2f * u);
-			r->drawText(V(nx + 0.4f, ry + 1.0f), CA(244, 248, 255, 255), fit(p.name, 9.2f, nw), false, 9.2f * u);
+			r->drawText(V(nx, ry + 1.0f), CA(244, 248, 255, 255), fit(p.name, 10.6f, nw), false, 10.6f * u);
+			r->drawText(V(nx + 0.4f, ry + 1.0f), CA(244, 248, 255, 255), fit(p.name, 10.6f, nw), false, 10.6f * u);
 			const std::string pr = Money(p.price);
-			const float pw = std::max(46.0f, txtW(pr, 7.0f) + 10.0f);
+			const float pw = std::max(46.0f, txtW(pr, 8.0f) + 10.0f);
 			r->drawRoundedRect(V(nx, ry + 15), V(nx + pw, ry + 27), CA(18, 92, 112, 190), 6.0f * u, true);
 			r->drawRoundedRect(V(nx, ry + 15), V(nx + pw, ry + 27), CA(64, 200, 222, 190), 6.0f * u, false, std::max(1.0f, 1.0f * u));
-			r->drawText(V(nx + (pw - txtW(pr, 7.0f)) * 0.5f, ry + 15 + (12.0f - txtH(pr, 7.0f)) * 0.5f), CA(100, 232, 248, 255), pr, false, 7.0f * u);
+			r->drawText(V(nx + (pw - txtW(pr, 8.0f)) * 0.5f, ry + 15 + (12.0f - txtH(pr, 8.0f)) * 0.5f), CA(100, 232, 248, 255), pr, false, 8.0f * u);
 			// - x1 +
 			const std::string qs = "x" + std::to_string(ln.qty);
-			const float qw = txtW(qs, 8.0f), qy = ry + 12.0f;
+			const float qw = txtW(qs, 9.4f), qy = ry + 12.0f;
 			const float pcx = CX1 - 6.0f, tx0 = pcx - 7.0f - qw, mcx = tx0 - 7.0f;
 			const bool dnM = g_down.kind == T_MINUS && g_down.idx == ln.idx, dnP = g_down.kind == T_PLUS && g_down.idx == ln.idx;
 			const bool atMax = ln.qty >= Limit(p);
@@ -566,7 +564,7 @@ void ShopPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vector
 				if (plus) r->drawLine(V(cx, cy - 2.2f), V(cx, cy + 2.2f), col, std::max(1.0f, 1.0f * u));
 			};
 			circ(mcx, qy + 4.5f, false, false, dnM);
-			r->drawText(V(tx0, qy - 0.5f), CA(236, 242, 252, 255), qs, false, 8.0f * u);
+			r->drawText(V(tx0, qy - 0.5f), CA(236, 242, 252, 255), qs, false, 9.4f * u);
 			circ(pcx, qy + 4.5f, true, atMax, dnP);
 			{
 				const ImVec2 m0 = V(mcx - 9.0f, std::max(ry, RY0)), m1 = V(mcx + 8.0f, std::min(ry + 34.0f, RY1));
@@ -578,8 +576,8 @@ void ShopPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vector
 		r->popClipRect();
 
 		// total + Finalizar Compra
-		r->drawText(V(CX0 + 11, 328), CA(150, 172, 204, 255), "Total:", false, 7.6f * u);
-		r->drawText(V(CX0 + 11, 339), CA(120, 224, 226, 255), Money(CartTotal()), false, 11.5f * u);
+		r->drawText(V(CX0 + 11, 328), CA(150, 172, 204, 255), "Total:", false, 8.6f * u);
+		r->drawText(V(CX0 + 11, 339), CA(120, 224, 226, 255), Money(CartTotal()), false, 13.0f * u);
 		const bool dn = g_down.kind == T_FIN;
 		const float bx0 = CX0 + 11, bx1 = CX1, by0 = 367.0f, by1 = 397.0f;
 		r->drawRoundedRect(V(bx0, by0), V(bx1, by1), CA(66, 166, 196, dn ? 255 : 220), 9.0f * u, true);

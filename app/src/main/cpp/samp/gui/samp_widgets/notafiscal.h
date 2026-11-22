@@ -24,7 +24,9 @@ namespace InvoicePanel
 {
 	bool OnShow(RakNet::BitStream& bs);   // op 16 (depois do byte da op). false = pacote invalido (a nota anterior e mantida)
 	void Reset();                         // desconexao / op 17: apaga a nota
-	int  Seq();                           // numero da nota na tela (0 = nenhuma)
+	int  Seq();
+	// Tile azul da empresa com o glifo branco (0 mercado, 1 auto pecas, 2 roupas, 3 barbearia, 4 lanchonete, outro = sacola): o mesmo icone do topo da nota; usado no topo da loja.
+	void DrawCompanyIcon(ImGuiRenderer* r, int icon, float x, float y, float size, int alpha);                           // numero da nota na tela (0 = nenhuma)
 	// Desenha e processa os toques. answer: 0 nada | 1 tocou em Finalizar pedido | 2 tocou em Cancelar.
 	void Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vector<InvoiceTouch>& events, int& answer);
 }

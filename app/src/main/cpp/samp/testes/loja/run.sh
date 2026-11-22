@@ -27,6 +27,12 @@ private:
 };
 }
 EOS
+cat > "$T/gui/samp_widgets/notafiscal.h" <<'EOS'
+#pragma once
+#include "../imguirenderer.h"
+// stub de teste: no jogo vem de notafiscal.cpp (tile azul + glifo branco)
+namespace InvoicePanel { inline void DrawCompanyIcon(ImGuiRenderer* r, int icon, float x, float y, float size, int alpha) { r->drawRoundedRect(ImVec2(x, y), ImVec2(x + size, y + size), ImColor(37, 109, 255, alpha), 7.0f, true); } }
+EOS
 mkdir -p "${SH_OUT:=/tmp/sh_out}"; export SH_OUT
 g++ -std=gnu++17 -Wall -Wextra -Wno-unused-parameter -Wno-deprecated-declarations -I"$T" -o "$T/sh" -x c++ "$HERE/shop_main.test" -x none "$T/gui/samp_widgets/shoppanel.cpp"
 "$T/sh"
