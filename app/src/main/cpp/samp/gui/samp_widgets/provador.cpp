@@ -4,6 +4,7 @@
 #include "../../game/CustomSkin.h"
 #include "../../game/SkinSlots.h"
 #include "../../game/ProvadorModel.h"
+#include "../../game/CorpTex.h"
 #include "../../net/netgame.h"
 #include "provador.h"
 
@@ -210,6 +211,387 @@ namespace
 	}
 }
 
+
+// =====================================================================================
+//  /provador FEMININO (modelos 9 = FemininaNormal e 272 = policial feminina)
+//  Usa a BASE sincronizada (CorpTex, RPC 231): pele/rosto, cabelo, camisa, calca, calcado, intima (9) ou corp (272).
+//  Previa so no seu ator; APLICAR envia "/lookx base ..." ao servidor (autoridade); CANCELAR/sair sem salvar volta ao que estava.
+//  Nao usa o motor de slots do /skin7 (CustomSkin) -- o provador masculino (7/271) continua exatamente como era.
+// =====================================================================================
+namespace
+{
+	bool          g_fem = false;                 // /provador aberto no modo feminino
+	int           g_fModel = 0;                  // 9 ou 272
+	CorpTex::Base g_fOrig, g_fWork;              // original (o que o servidor tem) x em edicao
+	int           g_fCat = 0, g_fRow = 0;        // categoria e linha (valor) selecionada
+	float         g_fScrollList = 0.0f, g_fScrollVar = 0.0f;
+	std::vector<std::string> g_fCorps;
+
+	enum FemKind { FK_FACE = 0, FK_HAIR, FK_SHIRT, FK_PANTS, FK_BOOT, FK_UNDER, FK_CORP };
+	struct FemCat { const char* title; FemKind kind; };
+	const FemCat kFemCats9[]   = { {"PELE E ROSTO", FK_FACE}, {"CABELO", FK_HAIR}, {"CAMISA", FK_SHIRT}, {"CALÇA", FK_PANTS}, {"CALÇADO", FK_BOOT}, {"ÍNTIMA", FK_UNDER} };
+	const FemCat kFemCats272[] = { {"PELE E ROSTO", FK_FACE}, {"CABELO", FK_HAIR}, {"CORP", FK_CORP} };
+	int            FemCatCount() { return g_fModel == 272 ? 3 : 6; }
+	const FemCat&  FemCatAt(int i) { return g_fModel == 272 ? kFemCats272[i] : kFemCats9[i]; }
+
+	struct FemRow { std::string label; int val; };
+
+	std::vector<FemRow> FemRows(FemKind kind)
+	{
+		std::vector<FemRow> v;
+		switch (kind)
+		{
+			case FK_FACE:  for (int t = 1; t <= 6; ++t) v.push_back({"Tom de pele " + std::to_string(t), t}); break;
+			case FK_HAIR:  v.push_back({"Sem cabelo", 0}); for (int t = 1; t <= 5; ++t) v.push_back({"Estilo " + std::to_string(t), t}); break;
+			case FK_SHIRT: v.push_back({"Nenhuma", 0}); for (int t = 1; t <= 6; ++t) v.push_back({"Camisa pasta " + std::to_string(t), t}); break;
+			case FK_PANTS: v.push_back({"Nenhuma", 0}); for (int t = 1; t <= 6; ++t) v.push_back({"Calça pasta " + std::to_string(t), t}); break;
+			case FK_BOOT:  v.push_back({"Nenhum", 0}); for (int t = 1; t <= 7; ++t) v.push_back({"Calçado pasta " + std::to_string(t), t}); break;
+			case FK_UNDER: v.push_back({"Padrão (preta)", 0}); for (int t = 1; t <= 6; ++t) v.push_back({"Cor " + std::to_string(t), t}); v.push_back({"Nenhuma", 9}); break;
+			case FK_CORP:  v.push_back({"(sem corp)", 0}); for (size_t i = 0; i < g_fCorps.size(); ++i) v.push_back({g_fCorps[i], (int)i + 1}); break;
+		}
+		return v;
+	}
+
+	int FemGridCount(FemKind kind, int row)
+	{
+		switch (kind)
+		{
+			case FK_FACE:  return CorpTex::FemCount(0, row);
+			case FK_HAIR:  return CorpTex::FemCount(1, row);
+			case FK_BOOT:  return CorpTex::FemCount(2, row);
+			case FK_PANTS: return CorpTex::FemCount(3, row);
+			case FK_SHIRT: return CorpTex::FemCount(4, row);
+			default:       return 0;
+		}
+	}
+
+	// valor (linha) e variante atuais da categoria, segundo a base em edicao
+	int FemCurRow(FemKind kind)
+	{
+		const CorpTex::Base& b = g_fWork;
+		switch (kind)
+		{
+			case FK_FACE: return b.tone;        case FK_HAIR: return b.hairStyle;  case FK_SHIRT: return b.shirtSet;
+			case FK_PANTS: return b.pantsSet;   case FK_BOOT: return b.bootSet;   case FK_UNDER: return b.under;
+			case FK_CORP:
+				for (size_t i = 0; i < g_fCorps.size(); ++i) if (g_fCorps[i] == b.corp) return (int)i + 1;
+				return 0;
+		}
+		return 0;
+	}
+	int FemCurVar(FemKind kind)
+	{
+		const CorpTex::Base& b = g_fWork;
+		switch (kind)
+		{
+			case FK_FACE: return b.face;        case FK_HAIR: return b.hairColor;  case FK_SHIRT: return b.shirtVar;
+			case FK_PANTS: return b.pantsVar;   case FK_BOOT: return b.bootVar;    default: return 0;
+		}
+	}
+
+	void FemPreview() { CorpTex::PreviewLocalBase(g_fWork); }
+
+	void FemSetRow(FemKind kind, int row)
+	{
+		CorpTex::Base& b = g_fWork;
+		auto clampVar = [&](int cnt, uint8_t cur) -> uint8_t { return row ? (uint8_t)std::clamp<int>(cur ? cur : 1, 1, std::max(cnt, 1)) : (uint8_t)0; };
+		switch (kind)
+		{
+			case FK_FACE:  b.tone = (uint8_t)row; b.face = clampVar(FemGridCount(kind, row), b.face); break;
+			case FK_HAIR:  b.hairStyle = (uint8_t)row; b.hairColor = clampVar(FemGridCount(kind, row), b.hairColor); break;
+			case FK_SHIRT: b.shirtSet = (uint8_t)row; b.shirtVar = row ? 1 : 0; break;
+			case FK_PANTS: b.pantsSet = (uint8_t)row; b.pantsVar = row ? 1 : 0; break;
+			case FK_BOOT:  b.bootSet = (uint8_t)row; b.bootVar = row ? 1 : 0; break;
+			case FK_UNDER: b.under = (uint8_t)row; break;
+			case FK_CORP:  std::memset(b.corp, 0, sizeof(b.corp)); if (row >= 1 && row <= (int)g_fCorps.size()) std::strncpy(b.corp, g_fCorps[(size_t)row - 1].c_str(), sizeof(b.corp) - 1); break;
+		}
+		FemPreview();
+	}
+
+	void FemSetVar(FemKind kind, int row, int var)
+	{
+		CorpTex::Base& b = g_fWork;
+		switch (kind)
+		{
+			case FK_FACE:  b.tone = (uint8_t)row; b.face = (uint8_t)var; break;
+			case FK_HAIR:  b.hairStyle = (uint8_t)row; b.hairColor = (uint8_t)var; break;
+			case FK_SHIRT: b.shirtSet = (uint8_t)row; b.shirtVar = (uint8_t)var; break;
+			case FK_PANTS: b.pantsSet = (uint8_t)row; b.pantsVar = (uint8_t)var; break;
+			case FK_BOOT:  b.bootSet = (uint8_t)row; b.bootVar = (uint8_t)var; break;
+			default: return;
+		}
+		FemPreview();
+	}
+
+	void FemOpen(int model)
+	{
+		g_fem = true; g_fModel = model;
+		g_fCat = 0; g_fScrollList = 0.0f; g_fScrollVar = 0.0f;
+		g_fCorps = CorpTex::FemCorps();
+		CorpTex::GetLocalBase(g_fOrig);
+		g_fWork = g_fOrig;
+		g_fRow = FemCurRow(FemCatAt(0).kind);
+		g_toastUntil = 0; g_confirmExit.store(false);
+	}
+
+	void FemRestore() { if (g_fWork != g_fOrig) { g_fWork = g_fOrig; FemPreview(); } }
+
+	// desenha + trata toques. Retorna true se a tela foi fechada neste frame.
+	bool DrawFem(ImGuiRenderer* r)
+	{
+		const ImVec2 scr = pUI ? pUI->displaySize() : ImVec2(1920, 1080);
+		const float  k   = scr.y / 540.0f;
+		const bool pending = g_fWork != g_fOrig;
+		g_pendingMirror.store(pending);
+		g_awaitMirror.store(false);
+		if (!pending && g_confirmExit.load()) g_confirmExit.store(false);
+		const bool confirmExit = g_confirmExit.load();
+
+		const float m = 8.0f * k, hdrY = 4.0f * k, hdrH = 38.0f * k, top = hdrY + hdrH + 6.0f * k, bot = scr.y - m;
+		const float catW = std::clamp(scr.x * 0.14f, 105.0f * k, 150.0f * k);
+		const float panW = std::clamp(scr.x * 0.30f, 210.0f * k, 300.0f * k);
+		const float catX = m, panX = scr.x - m - panW, cx0 = catX + catW + m, cx1 = panX - m;
+		const float pad = 8.0f * k, fs = 12.0f * k, fsS = 10.5f * k;
+		const float catH = 34.0f * k, catGap = 4.0f * k, titleH = 20.0f * k, rowH = 30.0f * k;
+		const float listTop = top + titleH, listBot = top + (bot - top) * 0.52f;
+		const float varTop = listBot + 4.0f * k + titleH, varBot = bot;
+		const int   cols = 5;
+		const float cellGap = 4.0f * k, cellW = (panW - 2.0f * pad - (cols - 1) * cellGap) / cols, cellH = 30.0f * k;
+		const float gap = 6.0f * k, barY = bot - 104.0f * k, rowAY = barY, rowCY = barY + 68.0f * k, rowCH = 34.0f * k;
+		const float bw = cx1 - cx0, cbw = (bw - 2.0f * gap) / 3.0f;
+		const ImVec2 apA(cx0, rowCY), apB(cx0 + cbw, rowCY + rowCH), caA(apB.x + gap, rowCY), caB(caA.x + cbw, rowCY + rowCH), bkA(caB.x + gap, rowCY), bkB(cx1, rowCY + rowCH);
+
+		const FemKind kind = FemCatAt(g_fCat).kind;
+		const std::vector<FemRow> rows = FemRows(kind);
+		const int nRows = (int)rows.size();
+		const int nVars = FemGridCount(kind, g_fRow);
+		const float listMax = std::max(0.0f, nRows * rowH - (listBot - listTop));
+		const int   varRows = (nVars + cols - 1) / cols;
+		const float varMax = std::max(0.0f, varRows * (cellH + cellGap) - (varBot - varTop));
+		g_fScrollList = std::clamp(g_fScrollList, 0.0f, listMax);
+		g_fScrollVar  = std::clamp(g_fScrollVar, 0.0f, varMax);
+
+		const float exW = std::min(scr.x * 0.7f, 460.0f * k), exH = 132.0f * k, exX0 = (scr.x - exW) * 0.5f, exY0 = (scr.y - exH) * 0.5f;
+		const float exBw = (exW - 4.0f * gap) / 3.0f, exBy = exY0 + exH - 46.0f * k, exBh = 34.0f * k;
+		const ImVec2 exSaveA(exX0 + gap, exBy), exSaveB(exSaveA.x + exBw, exBy + exBh), exDiscA(exSaveB.x + gap, exBy), exDiscB(exDiscA.x + exBw, exBy + exBh),
+		             exStayA(exDiscB.x + gap, exBy), exStayB(exStayA.x + exBw, exBy + exBh);
+
+		auto inRect = [](float x, float y, float ax, float ay, float bx, float by) { return x >= ax && x <= bx && y >= ay && y <= by; };
+		auto inBox = [&](float x, float y, const ImVec2& a, const ImVec2& b) { return inRect(x, y, a.x, a.y, b.x, b.y); };
+
+		auto hitTest = [&](float x, float y, int& region) -> Hit {
+			Hit h; region = 0;
+			if (confirmExit)
+			{
+				if (inBox(x, y, exSaveA, exSaveB)) h.kind = K_EXIT_SAVE;
+				else if (inBox(x, y, exDiscA, exDiscB)) h.kind = K_EXIT_DISCARD;
+				else if (inBox(x, y, exStayA, exStayB)) h.kind = K_EXIT_STAY;
+				return h;
+			}
+			if (inBox(x, y, bkA, bkB)) { h.kind = K_BACK; return h; }
+			if (inBox(x, y, apA, apB)) { h.kind = K_APPLY; return h; }
+			if (inBox(x, y, caA, caB)) { h.kind = K_CANCEL; return h; }
+			if (inRect(x, y, catX, top, catX + catW, top + FemCatCount() * (catH + catGap)))
+			{
+				const int i = (int)((y - top) / (catH + catGap));
+				if (i >= 0 && i < FemCatCount()) { h.kind = K_CAT; h.idx = i; return h; }
+			}
+			if (inRect(x, y, panX, listTop, panX + panW, listBot))
+			{
+				region = 1;
+				const int i = (int)std::floor((y - listTop + g_fScrollList) / rowH);
+				if (i >= 0 && i < nRows) { h.kind = K_ROW; h.idx = i; }
+				return h;
+			}
+			if (inRect(x, y, panX, varTop, panX + panW, varBot))
+			{
+				region = 2;
+				const float lx = x - (panX + pad), ly = y - varTop + g_fScrollVar;
+				if (lx >= 0.0f && ly >= 0.0f)
+				{
+					const int c = (int)(lx / (cellW + cellGap)), rr = (int)(ly / (cellH + cellGap)), i = rr * cols + c;
+					if (c < cols && (lx - c * (cellW + cellGap)) <= cellW && (ly - rr * (cellH + cellGap)) <= cellH && i >= 0 && i < nVars) { h.kind = K_VAR; h.idx = i; }
+				}
+				return h;
+			}
+			return h;
+		};
+		auto sameHit = [](const Hit& a, const Hit& b) { return a.kind == b.kind && a.idx == b.idx; };
+
+		auto doAction = [&](const Hit& h) -> bool {
+			switch (h.kind)
+			{
+				case K_BACK:
+					if (pending) { g_confirmExit.store(true); break; }
+					Provador::Close();
+					return true;
+				case K_EXIT_SAVE:
+					g_confirmExit.store(false);
+					if (!CorpTex::SendLocalBase(g_fWork)) { Toast("Sem conexão com o servidor: não foi possível salvar", true); break; }
+					g_fOrig = g_fWork;
+					Provador::Close();
+					return true;
+				case K_EXIT_DISCARD:
+					g_confirmExit.store(false);
+					Provador::Close();                 // Close() restaura a prévia
+					return true;
+				case K_EXIT_STAY: g_confirmExit.store(false); break;
+				case K_CAT:
+					if (h.idx != g_fCat && h.idx >= 0 && h.idx < FemCatCount()) { g_fCat = h.idx; g_fRow = FemCurRow(FemCatAt(h.idx).kind); g_fScrollList = g_fScrollVar = 0.0f; }
+					break;
+				case K_ROW:
+					if (h.idx < 0 || h.idx >= nRows) break;
+					g_fRow = rows[(size_t)h.idx].val; g_fScrollVar = 0.0f;
+					FemSetRow(kind, g_fRow);
+					break;
+				case K_VAR:
+					if (h.idx < 0 || h.idx >= nVars || g_fRow <= 0) break;
+					FemSetVar(kind, g_fRow, h.idx + 1);
+					break;
+				case K_APPLY:
+					if (!pending) break;
+					if (!CorpTex::SendLocalBase(g_fWork)) { Toast("Sem conexão com o servidor: não foi possível aplicar", true); break; }
+					g_fOrig = g_fWork;
+					Toast("Aparência enviada ao servidor", false);
+					break;
+				case K_CANCEL:
+					if (!pending) break;
+					FemRestore(); g_fRow = FemCurRow(kind);
+					Toast("Prévia cancelada", false);
+					break;
+			}
+			return false;
+		};
+
+		std::vector<TouchEv> evs;
+		{ std::lock_guard<std::mutex> l(g_evMutex); evs.swap(g_events); }
+		for (const TouchEv& e : evs)
+		{
+			if (e.type == 2 && g_drag.finger < 0)
+			{
+				g_drag = Drag(); g_drag.finger = e.num;
+				int region = 0; g_drag.hit = hitTest(e.x, e.y, region); g_drag.region = region;
+				g_drag.sy = e.y; g_drag.scroll0 = (region == 1) ? g_fScrollList : g_fScrollVar;
+			}
+			else if (e.num == g_drag.finger && e.type == 3)
+			{
+				if (g_drag.region != 0)
+				{
+					if (std::fabs(e.y - g_drag.sy) > 10.0f * k) g_drag.scrolling = true;
+					if (g_drag.scrolling)
+					{
+						if (g_drag.region == 1) g_fScrollList = std::clamp(g_drag.scroll0 - (e.y - g_drag.sy), 0.0f, listMax);
+						else                    g_fScrollVar  = std::clamp(g_drag.scroll0 - (e.y - g_drag.sy), 0.0f, varMax);
+					}
+				}
+			}
+			else if (e.num == g_drag.finger && e.type == 1)
+			{
+				const bool ok = !e.cancel && !g_drag.scrolling && g_drag.hit.kind != K_NONE;
+				Hit up; int reg2 = 0;
+				if (ok) up = hitTest(e.x, e.y, reg2);
+				const bool same = ok && sameHit(up, g_drag.hit);
+				const Hit act = g_drag.hit;
+				g_drag = Drag();
+				if (same && doAction(act)) return true;
+			}
+		}
+
+		// ---- pintura ----
+		r->drawRect(ImVec2(m, hdrY), ImVec2(scr.x - m, hdrY + hdrH), cPanel, true);
+		r->drawRect(ImVec2(m, hdrY + hdrH - 2.0f * k), ImVec2(scr.x - m, hdrY + hdrH), cBlue, true);
+		r->drawText(ImVec2(m + 10.0f * k, hdrY + 4.0f * k), cBlue, g_fModel == 272 ? "/PROVADOR - SKIN 272" : "/PROVADOR - SKIN 9", false, fsS);
+		r->drawText(ImVec2(m + 10.0f * k, hdrY + 16.0f * k), cText, "PERSONALIZAÇÃO", false, 17.0f * k);
+
+		auto button = [&](const ImVec2& a, const ImVec2& b, const char* text, bool enabled, bool accent, float size) {
+			r->drawRect(a, b, enabled ? (accent ? cBlue : cPanel2) : cOff, true);
+			if (enabled && !accent) r->drawRect(a, b, cLine, false);
+			const ImVec2 ts = r->calculateTextSize(text, size);
+			r->drawText(ImVec2((a.x + b.x - ts.x) * 0.5f, (a.y + b.y - ts.y) * 0.5f), enabled ? cText : cDim, text, false, size);
+		};
+
+		for (int i = 0; i < FemCatCount(); ++i)
+		{
+			const float ay = top + i * (catH + catGap);
+			const bool act = (i == g_fCat);
+			r->drawRect(ImVec2(catX, ay), ImVec2(catX + catW, ay + catH), act ? cPanel2 : cPanel, true);
+			if (act)
+			{
+				r->drawRect(ImVec2(catX, ay), ImVec2(catX + 3.0f * k, ay + catH), cBlue, true);
+				r->drawRect(ImVec2(catX, ay), ImVec2(catX + catW, ay + catH), cBlueBg, true);
+			}
+			const char* t = FemCatAt(i).title;
+			const ImVec2 ts = r->calculateTextSize(t, fs);
+			r->drawText(ImVec2(catX + 12.0f * k, ay + (catH - ts.y) * 0.5f), act ? cText : cDim, t, false, fs);
+		}
+
+		r->drawRect(ImVec2(panX, top), ImVec2(panX + panW, bot), cPanel, true);
+		r->drawText(ImVec2(panX + pad, top + 4.0f * k), cBlue, FemCatAt(g_fCat).title, false, fsS);
+		r->drawRect(ImVec2(panX, listTop - 2.0f * k), ImVec2(panX + panW, listTop - 1.0f * k), cLine, true);
+
+		const int curRow = FemCurRow(kind);
+		r->pushClipRect(ImVec2(panX, listTop), ImVec2(panX + panW, listBot), true);
+		for (int i = 0; i < nRows; ++i)
+		{
+			const float ry = listTop + i * rowH - g_fScrollList;
+			if (ry + rowH < listTop || ry > listBot) continue;
+			const bool sel = rows[(size_t)i].val == g_fRow, used = rows[(size_t)i].val == curRow;
+			if (sel) { r->drawRect(ImVec2(panX, ry), ImVec2(panX + panW, ry + rowH), cBlueBg, true); r->drawRect(ImVec2(panX, ry), ImVec2(panX + 3.0f * k, ry + rowH), cBlue, true); }
+			else if (i & 1) r->drawRect(ImVec2(panX, ry), ImVec2(panX + panW, ry + rowH), ImColor(255, 255, 255, 8), true);
+			r->drawText(ImVec2(panX + pad + 4.0f * k, ry + (rowH - fs) * 0.5f), used ? cText : cDim, rows[(size_t)i].label, false, fs);
+			if (used) { const char* u = "USADO"; const ImVec2 us = r->calculateTextSize(u, fsS); r->drawText(ImVec2(panX + panW - pad - us.x, ry + (rowH - us.y) * 0.5f), cBlue, u, false, fsS); }
+		}
+		r->popClipRect();
+
+		r->drawRect(ImVec2(panX, listBot + 2.0f * k), ImVec2(panX + panW, listBot + 3.0f * k), cLine, true);
+		r->drawText(ImVec2(panX + pad, listBot + 6.0f * k), cBlue, nVars ? "VARIANTES" : "SEM VARIANTES", false, fsS);
+		const int curVar = FemCurVar(kind);
+		r->pushClipRect(ImVec2(panX, varTop), ImVec2(panX + panW, varBot), true);
+		for (int i = 0; i < nVars; ++i)
+		{
+			const int c = i % cols, rr = i / cols;
+			const float x0 = panX + pad + c * (cellW + cellGap), y0 = varTop + rr * (cellH + cellGap) - g_fScrollVar;
+			if (y0 + cellH < varTop || y0 > varBot) continue;
+			const bool used = (g_fRow == curRow) && (i + 1 == curVar);
+			r->drawRect(ImVec2(x0, y0), ImVec2(x0 + cellW, y0 + cellH), used ? cBlue : cPanel2, true);
+			if (!used) r->drawRect(ImVec2(x0, y0), ImVec2(x0 + cellW, y0 + cellH), cLine, false);
+			const std::string n = std::to_string(i + 1);
+			const ImVec2 ts = r->calculateTextSize(n, fsS);
+			r->drawText(ImVec2(x0 + (cellW - ts.x) * 0.5f, y0 + (cellH - ts.y) * 0.5f), used ? cText : cDim, n, false, fsS);
+		}
+		r->popClipRect();
+
+		{
+			std::string msg; ImColor mc = cDim;
+			if (NowMs() < g_toastUntil) { msg = g_toast; mc = g_toastErr ? cRed : cBlue; }
+			else if (pending) { msg = "Prévia (não salva): toque em APLICAR para salvar no servidor"; mc = cAmber; }
+			else msg = "Escolha um item na lista e a variante na grade";
+			r->pushClipRect(ImVec2(cx0, rowAY), ImVec2(cx1, rowAY + 26.0f * k), true);
+			r->drawText(ImVec2(cx0 + pad, rowAY + 6.0f * k), mc, msg, false, fs);
+			r->popClipRect();
+		}
+		button(apA, apB, "APLICAR", pending, true, fs);
+		button(caA, caB, "CANCELAR", pending, false, fs);
+		button(bkA, bkB, "VOLTAR", true, false, fs);
+
+		if (confirmExit)
+		{
+			r->drawRect(ImVec2(0.0f, 0.0f), scr, ImColor(0, 0, 0, 170), true);
+			r->drawRect(ImVec2(exX0, exY0), ImVec2(exX0 + exW, exY0 + exH), cPanel, true);
+			r->drawRect(ImVec2(exX0, exY0), ImVec2(exX0 + exW, exY0 + exH), cAmber, false);
+			const char* t1 = "Sair sem salvar?";
+			const char* t2 = "Você tem uma prévia que ainda não foi salva.";
+			const ImVec2 s1 = r->calculateTextSize(t1, 16.0f * k), s2 = r->calculateTextSize(t2, fsS);
+			r->drawText(ImVec2(exX0 + (exW - s1.x) * 0.5f, exY0 + 12.0f * k), cText, t1, false, 16.0f * k);
+			r->drawText(ImVec2(exX0 + (exW - s2.x) * 0.5f, exY0 + 40.0f * k), cDim, t2, false, fsS);
+			button(exSaveA, exSaveB, "SALVAR E SAIR", true, true, fsS);
+			button(exDiscA, exDiscB, "SAIR SEM SALVAR", true, false, fsS);
+			button(exStayA, exStayB, "CONTINUAR", true, false, fsS);
+		}
+		return false;
+	}
+}
+
 // =====================================================================================
 //  API estatica
 // =====================================================================================
@@ -223,6 +605,20 @@ void Provador::Open()
 		g_events.clear();
 	}
 	for (auto& c : g_claimed) c.store(false);
+	{   // skin feminina (9/272): abre o provador feminino (base sincronizada); 7/271 e as demais seguem no provador de sempre
+		const int lm = CorpTex::LocalModel();
+		if (lm == 9 || lm == 272)
+		{
+			g_drag = Drag();
+			FemOpen(lm);
+			g_flush.store(true);
+			g_pendingMirror.store(false);
+			g_awaitMirror.store(false);
+			g_open.store(true);
+			return;
+		}
+	}
+	g_fem = false;
 	CCustomSkin::UiSetActive(true);        // antes do pedido: o estado e republicado depois de cada comando
 	g_resetView.store(true);               // a thread de desenho zera a tela e pede o estado real
 	g_flush.store(true);                   // o hook solta os dedos que o jogo considera pressionados
@@ -241,6 +637,13 @@ void Provador::Close()
 		g_events.clear();
 	}
 	// g_claimed e mantido: o dedo que ainda esta na tela continua sendo engolido ate o UP.
+	if (g_fem)                              // provador feminino: desfaz a previa nao salva e sai (nao mexe no CCustomSkin)
+	{
+		FemRestore();
+		g_fem = false;
+		g_pendingMirror.store(false);
+		return;
+	}
 	CCustomSkin::UiRequest("cancel");      // desfaz a previa nao confirmada (nao faz nada se nao houver)
 	CCustomSkin::UiSetActive(false);
 }
@@ -301,6 +704,8 @@ void Provador::draw(ImGuiRenderer* r)
 		g_drag = Drag();
 		return;
 	}
+
+	if (g_fem) { DrawFem(r); return; }      // provador feminino (9/272)
 
 	const ImVec2 scr = pUI ? pUI->displaySize() : ImVec2(1920, 1080);
 	const float  k   = scr.y / 540.0f;

@@ -56,6 +56,20 @@ void Process();                            // 1x por frame, thread do jogo (Clot
 std::string DebugCommand(const std::string& args);   // "/corp ..."
 std::string VisualCommand(const std::string& cmd, const std::string& args);   // "/rosto", "/cabelo", "/pele", "/visual"
 
+// ---- API do /provador FEMININO (modelos 9 e 272; gui/samp_widgets/provador.cpp). Base = RPC 231; salvar = "/lookx base ..." ----
+struct Base {
+    uint8_t tone = 0, face = 0, hairStyle = 0, hairColor = 0, bootSet = 0, bootVar = 0, pantsSet = 0, pantsVar = 0, shirtSet = 0, shirtVar = 0, under = 0;
+    char corp[16] = {0};
+    bool operator==(const Base& o) const;
+    bool operator!=(const Base& o) const { return !(*this == o); }
+};
+int  LocalModel();                          // modelo do ped local (0 = indisponivel)
+bool GetLocalBase(Base& out);               // espelho do SEU visual (se o servidor ainda nao mandou: o padrao feminino pele 1/rosto 1/cabelo 1/1)
+void PreviewLocalBase(const Base& b);       // previa SO no seu ator (nada vai ao servidor)
+bool SendLocalBase(const Base& b);          // "/lookx base ..." ao servidor (autoridade; ele devolve o RPC 231). false = sem conexao
+int  FemCount(int kind, int a);             // kind 0 rostos do tom a | 1 cores do estilo a | 2 bota/chinelo | 3 calca | 4 camisa: variantes da pasta a
+std::vector<std::string> FemCorps();        // corps da policial (banco texdb/skins 272/corp/)
+
 bool BeginRender(void* entity);            // thread do jogo, dentro de CEntity::Render
 void EndRender(void* entity);
 

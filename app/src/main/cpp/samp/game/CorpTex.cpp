@@ -79,7 +79,9 @@ namespace {
 constexpr int      kCorpModel      = 271;    // hospeda o male_police.dff (skin271.dff): pecas fantasy_m_cop_*
 constexpr int      kNormalModel    = 7;      // hospeda o DFF male normal (skin.dff): rosto, cabelo, tom de pele e roupas do pack
 constexpr int      kFemCorpModel   = 272;    // hospeda o female_police.dff (skin272.dff): pecas fantasy_f_cop_*  (teste: /corp272)
-bool IsHostModel(int m) { return m == kCorpModel || m == kNormalModel || m == kFemCorpModel; }
+constexpr int      kFemModel       = 9;      // hospeda o female.dff (skin9.dff): FemininaNormal (base feminina propria, texturas 9/... do banco)
+bool IsFemModel(int m)  { return m == kFemModel || m == kFemCorpModel; }
+bool IsHostModel(int m) { return m == kCorpModel || m == kNormalModel || m == kFemCorpModel || m == kFemModel; }
 bool IsCopModel(int m)  { return m == kCorpModel || m == kFemCorpModel; }                // modelos policiais (corp + oculta o resto)
 const char* PiecePrefixFor(int m) { return m == kFemCorpModel ? "fantasy_f_cop_" : "fantasy_m_cop_"; }
 // pasta das corps no banco texdb/skins: 271/7 = "corp/<corp>/<peca>" (inalterado); 272 = "272/corp/<corp>/<peca>"
@@ -285,18 +287,30 @@ bool ValidName(const std::string& s)
 }
 
 // ajusta o visual a valores validos (vale para o RPC e para os comandos)
+// limites FEMININOS (banco 9/heads, 9/hair): rostos por tom e cores por estilo 1..5. O Sanitize abaixo aceita o MAIOR dos dois generos
+// (a base chega por RPC sem saber o modelo); o masculino e re-limitado por ClampMale no BuildEntry (comportamento antigo intacto).
+constexpr int kFaceVariantsF[7] = { 0, 6, 8, 8, 7, 6, 12 };
+constexpr int kHairStylesF = 5;
+constexpr int kHairColorsF[6] = { 0, 6, 6, 7, 7, 7 };
+void ClampMale(Look& l)
+{
+    if (l.tone) { if (l.face > kFaceVariants[l.tone]) l.face = (uint8_t)kFaceVariants[l.tone]; }
+    if (l.hairStyle > CorpMap::kHairStyles) l.hairStyle = 0;
+    if (l.hairStyle) { if (l.hairColor > kHairColors[l.hairStyle]) l.hairColor = (uint8_t)kHairColors[l.hairStyle]; }
+    else l.hairColor = 0;
+}
 void Sanitize(Look& l)
 {
     l.corp = SkinImg::Lower(l.corp);
     if (!ValidName(l.corp) || l.corp == kAppFolder) l.corp.clear();
     if (l.tone > 6) l.tone = 0;
-    if (l.tone) { if (l.face < 1) l.face = 1; if (l.face > kFaceVariants[l.tone]) l.face = (uint8_t)kFaceVariants[l.tone]; }
+    if (l.tone) { if (l.face < 1) l.face = 1; if (l.face > kFaceVariantsF[l.tone]) l.face = (uint8_t)kFaceVariantsF[l.tone]; }
     else l.face = 0;
     auto cloth = [](uint8_t& set, uint8_t& var) { if (set > kMaxClothSet) set = 0; if (!set) var = 0; else if (var < 1) var = 1; };
     cloth(l.bootSet, l.bootVar); cloth(l.pantsSet, l.pantsVar); cloth(l.shirtSet, l.shirtVar);
     if (l.under > 6 && l.under != 9) l.under = 0;
-    if (l.hairStyle > CorpMap::kHairStyles) l.hairStyle = 0;
-    if (l.hairStyle) { if (l.hairColor < 1) l.hairColor = 1; if (l.hairColor > kHairColors[l.hairStyle]) l.hairColor = (uint8_t)kHairColors[l.hairStyle]; }
+    if (l.hairStyle > kHairStylesF) l.hairStyle = 0;
+    if (l.hairStyle) { if (l.hairColor < 1) l.hairColor = 1; if (l.hairColor > kHairColorsF[l.hairStyle]) l.hairColor = (uint8_t)kHairColorsF[l.hairStyle]; }
     else l.hairColor = 0;
 }
 
@@ -608,8 +622,10 @@ const Box* FindPiece(const std::string& key)
     return nullptr;
 }
 
-void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
+void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& lookIn)
 {
+    Look look = lookIn;                                  // copia: o masculino e re-limitado (ClampMale), o feminino usa os limites largos
+    if (!IsFemModel((int)e->GetModelId())) ClampMale(look);
     std::vector<RpMaterial*> mats;
     if (!CollectMaterials(e->m_pRwClump, mats)) { SetInfo("jogador " + std::to_string(id) + ": clump sem materiais legiveis"); return; }
 
@@ -636,7 +652,7 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
     Corp* c = nullptr;
     // Vale para os dois modelos: no 271 (policia) as pecas fantasy_m_cop_*; no 7 (normal) qualquer peca pelo NOME do material
     // (fantasy_m_torso2.png, fantasy_m_pants1.png ...) dentro de textures/272/<pasta>/ ou pack/corp/<pasta>/  ->  /corp <pasta>
-    if (!look.corp.empty()) { c = EnsureCorp(look.corp, model); if (!c) FLog("[CORPTEX] corp '%s' indisponivel: ignorada", look.corp.c_str()); }
+    if (!look.corp.empty() && model != kFemModel) { c = EnsureCorp(look.corp, model); if (!c) FLog("[CORPTEX] corp '%s' indisponivel: ignorada", look.corp.c_str()); }
     const bool copMode = c != nullptr || !look.ov.empty();   // corp escolhida OU pecas trocadas por /cop: peca sem PNG fica oculta
     // CORRECAO (skin 271 branca): sem corp escolhida o DFF so tem NOMES (fantasy_m_cop_*) e o texdb do jogo nao tem essas texturas;
     // textura NULL = peca BRANCA. Entao o 271 sem corp usa uma corp PADRAO do banco texdb/skins (base > policia > primeira que existir)
@@ -796,16 +812,45 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
         FLog("[CORPTEX] jogador %d modelo 271: roupa intima ocultada (%d material(is))", (int)id, nUnder);
     }
 
-    // 272 (teste /corp272): corpo padrao da FemininaNormal (pele tom 1, cabeca 1, cabelo 1) onde a corp nao cobriu; o resto e ocultado.
-    // Nomes dos materiais = female_police.dff (body.*, fantasy_f_hair*, fantasy_tatto_*). Texturas = banco texdb/skins "9/<pasta>/<n>".
-    // Slots/RPC 232 do 272 (provador /skin9) ainda NAO existem: este e so o visual de teste das roupas de corp.
-    if (byIndex && model == kFemCorpModel && hideTex) {
-        RwTexture* tTor = GetSlotPackTex("9/torso/1");
-        RwTexture* tLeg = GetSlotPackTex("9/leg/1");
-        RwTexture* tFeet = GetSlotPackTex("9/feet/1");
-        RwTexture* tHead = GetSlotPackTex("9/heads/1/1");
-        RwTexture* tHair = GetSlotPackTex("9/hair/1/1");
-        auto starts = [](const std::string& k, const char* p) { return k.compare(0, std::strlen(p), p) == 0; };
+    // FEMININO (modelo 9 = FemininaNormal, modelo 272 = policial feminina): base propria. Nomes dos materiais = female.dff / female_police.dff
+    // (body.*, fantasy_f_*, fantasy_tatto_*); texturas = banco texdb/skins "9/<pasta>/<n>". O 9 veste bota/calca/camisa por pasta+variante;
+    // o 272 veste a corp (pecas fantasy_f_cop_* ja tratadas acima). O mapa pasta -> material abaixo e HIPOTESE (mesma logica do masculino:
+    // boot 1-4 botas / 5-7 chinelos; pants 1-4 calcas / resto short) - confira no jogo e me diga o que estiver trocado.
+    if (byIndex && IsFemModel(model) && hideTex) {
+        static const char* kFBoot[7]  = {"fantasy_f_boot1", "fantasy_f_boot2", "fantasy_f_boot3", "fantasy_f_boot5", "fantasy_f_slipper1", "fantasy_f_slipper2", "fantasy_f_slipper3"};
+        static const char* kFPants[6] = {"fantasy_f_pants1", "fantasy_f_pants2", "fantasy_f_pants4", "fantasy_f_pants5", "fantasy_f_short1", "fantasy_f_bikinibotton"};
+        static const char* kFShirt[6] = {"fantasy_f_torso1", "fantasy_f_torso2", "fantasy_f_torso3", "fantasy_f_torso4", "fantasy_f_torso5", "fantasy_f_torso6"};
+        const bool cop = model == kFemCorpModel;
+        int tone = look.tone ? look.tone : 1;
+        int face = look.tone ? (look.face ? look.face : 1) : 1;
+        int hs = look.hairStyle, hc = look.hairColor;
+        if (!look.tone && !look.hairStyle) { hs = 1; hc = 1; }       // sem base nenhuma (teste local): pele 1, rosto 1, cabelo 1/1
+        if (hs && hc < 1) hc = 1;
+        auto P = [&](const std::string& rel) { return GetSlotPackTex(rel); };
+        const std::string tn = std::to_string(tone);
+        RwTexture* tTor = P("9/torso/" + tn);
+        RwTexture* tLeg = P("9/leg/" + tn);
+        RwTexture* tFeet = P("9/feet/" + tn);
+        RwTexture* tHead = P("9/heads/" + tn + "/" + std::to_string(face));
+        const std::string hairMat = "fantasy_f_hair" + std::to_string(hs);
+        RwTexture* tHair = hs ? P("9/hair/" + std::to_string(hs) + "/" + std::to_string(hc)) : nullptr;
+        bool pantsWorn = false, shirtWorn = false;
+        auto wear = [&](const char* type, int set, int var, const char* const* tab, int n, bool& worn) {
+            if (cop || set < 1 || set > n) return;
+            RwTexture* t = P(std::string("9/") + type + "/" + std::to_string(set) + "/" + std::to_string(var < 1 ? 1 : var));
+            if (t) { over[tab[set - 1]] = t; ++nApp; worn = true; }
+        };
+        bool bootWorn = false;
+        wear("boot", look.bootSet, look.bootVar, kFBoot, 7, bootWorn);
+        wear("pants", look.pantsSet, look.pantsVar, kFPants, 6, pantsWorn);
+        wear("tshirts", look.shirtSet, look.shirtVar, kFShirt, 6, shirtWorn);
+        // roupa intima (biquini) so no 9 e so onde nao ha calca/camisa; 9 = nenhuma
+        if (!cop && look.under != 9) {
+            RwTexture* ut = GetSolidTex(look.under ? look.under : 1);
+            if (ut && !pantsWorn) { over["fantasy_f_bikinibotton"] = ut; ++nApp; }
+            if (ut && !shirtWorn) { over["fantasy_f_bikinitop"] = ut; ++nApp; }
+        }
+        auto starts = [](const std::string& k, const char* q) { return k.compare(0, std::strlen(q), q) == 0; };
         int nF = 0;
         for (size_t i = 0; i < mats.size(); ++i) {
             const std::string& k = keys[i];
@@ -813,14 +858,15 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
             RwTexture* t = nullptr; bool hide = false;
             if (starts(k, "body.torso") || starts(k, "body.arm") || starts(k, "body.shoulder") || k == "body.hand") t = tTor;
             else if (starts(k, "body.legleft") || starts(k, "body.legright")) t = tLeg;
-            else if (k == "body.feets") t = tFeet;
+            else if (k == "body.feets" || k == "body.feets2") t = tFeet;
             else if (k == "body.head1") t = tHead;
-            else if (k == "fantasy_f_hair1") t = tHair;
-            else if (starts(k, "body.head") || starts(k, "body.eyebrown") || starts(k, "body.makeup") || starts(k, "fantasy_f_hair")
-                     || starts(k, "fantasy_tatto_") || k == "fantasy_f_bikinibotton") hide = true;
+            else if (hs && k == hairMat) t = tHair;
+            else if (starts(k, "body.head") || starts(k, "body.eyebrown") || starts(k, "body.makeup") || starts(k, "fantasy_f_")
+                     || starts(k, "fantasy_tatto_")) hide = true;      // sem textura/escolha: oculto (nunca branco)
             if (t) { over[k] = t; ++nF; } else if (hide) { over[k] = hideTex; ++nF; ++nHidden; }
         }
-        FLog("[CORPTEX] jogador %d modelo 272: corpo padrao de teste aplicado em %d material(is)", (int)id, nF);
+        FLog("[CORPTEX] jogador %d modelo %d (feminino): tom %d rosto %d cabelo %d/%d bota %d/%d calca %d/%d camisa %d/%d: %d material(is)",
+             (int)id, model, tone, face, hs, hc, (int)look.bootSet, (int)look.bootVar, (int)look.pantsSet, (int)look.pantsVar, (int)look.shirtSet, (int)look.shirtVar, nF);
     }
 
     Entry en{id, e, e->m_pRwClump, look, {}, false, 0};
@@ -1207,6 +1253,76 @@ std::string DebugCommand(const std::string& argsIn)     // /corp
     if (std::find(corps.begin(), corps.end(), a) == corps.end()) return "[CORPTEX] corp '" + a + "' nao existe (use /corp lista)";
     return ApplyLocal(me, [&](Look& l) { l.corp = a; });
 }
+
+// ---- API do /provador FEMININO ------------------------------------------------------------------------------------------
+bool Base::operator==(const Base& o) const {
+    return tone == o.tone && face == o.face && hairStyle == o.hairStyle && hairColor == o.hairColor && bootSet == o.bootSet && bootVar == o.bootVar &&
+           pantsSet == o.pantsSet && pantsVar == o.pantsVar && shirtSet == o.shirtSet && shirtVar == o.shirtVar && under == o.under &&
+           std::strncmp(corp, o.corp, sizeof(corp)) == 0;
+}
+
+int LocalModel()
+{
+    CPlayerPool* pool = pNetGame ? pNetGame->GetPlayerPool() : nullptr;
+    if (!pool) return 0;
+    CEntityGTA* e = GetEnt(pool->GetLocalPlayerID());
+    return e ? (int)e->GetModelId() : 0;
+}
+
+static Base ToBase(const Look& l)
+{
+    Base b; b.tone = l.tone; b.face = l.face; b.hairStyle = l.hairStyle; b.hairColor = l.hairColor; b.bootSet = l.bootSet; b.bootVar = l.bootVar;
+    b.pantsSet = l.pantsSet; b.pantsVar = l.pantsVar; b.shirtSet = l.shirtSet; b.shirtVar = l.shirtVar; b.under = l.under;
+    std::strncpy(b.corp, l.corp.c_str(), sizeof(b.corp) - 1);
+    return b;
+}
+
+bool GetLocalBase(Base& out)
+{
+    Look l; { std::lock_guard<std::mutex> g(s_qMutex); l = s_localLook; }
+    if (!l.tone && !l.hairStyle && !l.bootSet && !l.pantsSet && !l.shirtSet && !l.under && l.corp.empty()) { l.tone = 1; l.face = 1; l.hairStyle = 1; l.hairColor = 1; }
+    out = ToBase(l);
+    return true;
+}
+
+void PreviewLocalBase(const Base& b)
+{
+    CPlayerPool* pool = pNetGame ? pNetGame->GetPlayerPool() : nullptr;
+    if (!pool) return;
+    const PLAYERID me = pool->GetLocalPlayerID();
+    ApplyLocal(me, [&](Look& l) {
+        l.tone = b.tone; l.face = b.face; l.hairStyle = b.hairStyle; l.hairColor = b.hairColor; l.bootSet = b.bootSet; l.bootVar = b.bootVar;
+        l.pantsSet = b.pantsSet; l.pantsVar = b.pantsVar; l.shirtSet = b.shirtSet; l.shirtVar = b.shirtVar; l.under = b.under; l.corp = b.corp;
+    });
+}
+
+bool SendLocalBase(const Base& b)
+{
+    if (!pNetGame) return false;
+    char buf[160];
+    std::snprintf(buf, sizeof(buf), "/lookx base %d %d %d %d %d %d %d %d %d %d %d %s", (int)b.tone, (int)b.face, (int)b.hairStyle, (int)b.hairColor,
+                  (int)b.bootSet, (int)b.bootVar, (int)b.pantsSet, (int)b.pantsVar, (int)b.shirtSet, (int)b.shirtVar, (int)b.under, b.corp[0] ? b.corp : "-");
+    pNetGame->SendChatCommand(buf);
+    return true;
+}
+
+// variantes por pasta do banco texdb/skins (9/boot, 9/pants, 9/tshirts) e rostos/cores (9/heads, 9/hair): contagens conferidas no pack
+int FemCount(int kind, int a)
+{
+    static const int kBoot[8]  = {0, 24, 15, 21, 16, 55, 23, 16};
+    static const int kPants[7] = {0, 12, 16, 31, 40, 6, 11};
+    static const int kShirt[7] = {0, 12, 12, 20, 16, 35, 35};
+    switch (kind) {
+        case 0: return (a >= 1 && a <= 6) ? kFaceVariantsF[a] : 0;
+        case 1: return (a >= 1 && a <= 5) ? kHairColorsF[a] : 0;
+        case 2: return (a >= 1 && a <= 7) ? kBoot[a] : 0;
+        case 3: return (a >= 1 && a <= 6) ? kPants[a] : 0;
+        case 4: return (a >= 1 && a <= 6) ? kShirt[a] : 0;
+    }
+    return 0;
+}
+
+std::vector<std::string> FemCorps() { return ListCorps(kFemCorpModel); }
 
 std::string VisualCommand(const std::string& cmdIn, const std::string& argsIn)   // /rosto /cabelo /pele /visual
 {
