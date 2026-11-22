@@ -70,7 +70,7 @@ namespace
 	ImColor C(const uint8_t* c, int a = 255) { return ImColor((int)c[0], (int)c[1], (int)c[2], a); }
 
 	// fundo de uma linha com o modelo e o efeito (todos os efeitos sao desenhados por primitivas)
-	void DrawStyleBg(ImGuiRenderer* r, const ImVec2& a, const ImVec2& b, int idx, float u, double t)
+	void DrawStyleBg(ImGuiRenderer* r, const ImVec2& a, const ImVec2& b, int idx, float u, double t, float rad = 0.0f)
 	{
 		const CL::StyleDef& s = CL::Style(idx);
 		const float w = b.x - a.x, h = b.y - a.y;
@@ -80,7 +80,13 @@ namespace
 			const float m = 0.5f + 0.5f * (float)std::sin(t * 2.3);
 			c2 = ImColor((int)std::min(255.0f, s.c2[0] + 15.0f * m), (int)std::min(255.0f, s.c2[1] + 50.0f * m), (int)s.c2[2], 240);
 		}
-		r->drawRectFilledMulticolor(a, b, c1, c2, c2, c1);
+		if (rad > 0.0f)     // cantos arredondados: miolo em degrade + duas pontas de cor solida (mesma cor das extremidades do degrade)
+		{
+			r->drawRoundedRect(a, ImVec2(a.x + rad * 2.0f, b.y), c1, rad, true);
+			r->drawRoundedRect(ImVec2(b.x - rad * 2.0f, a.y), b, c2, rad, true);
+			r->drawRectFilledMulticolor(ImVec2(a.x + rad, a.y), ImVec2(b.x - rad, b.y), c1, c2, c2, c1);
+		}
+		else r->drawRectFilledMulticolor(a, b, c1, c2, c2, c1);
 
 		r->pushClipRect(a, b, true);
 		if (s.effect == CL::E_Shimmer || s.effect == CL::E_Wave)
@@ -96,12 +102,12 @@ namespace
 		if (s.effect == CL::E_Lights)     // pisca-pisca nas bordas de cima e de baixo
 		{
 			static const int col[3][3] = { { 255, 80, 80 }, { 110, 255, 140 }, { 255, 220, 100 } };
-			const float gap = 15.0f * u;
-			const int n = std::max(2, (int)(w / gap));
+			const float gap = 15.0f * u, ins = rad;
+			const int n = std::max(2, (int)((w - 2.0f * ins) / gap));
 			const int ph = (int)(t * 2.4);
 			for (int i = 0; i < n; i++)
 			{
-				const float x = a.x + (i + 0.5f) * (w / (float)n);
+				const float x = a.x + ins + (i + 0.5f) * ((w - 2.0f * ins) / (float)n);
 				const bool on = ((ph + i) & 1) == 0;
 				const int* c = col[i % 3];
 				for (int side = 0; side < 2; side++)
@@ -119,8 +125,16 @@ namespace
 		if (s.effect == CL::E_Pulse)
 		{
 			const float p = 0.5f + 0.5f * (float)std::sin(t * 2.8);
-			r->drawRect(ImVec2(a.x - 1.2f * u, a.y - 1.2f * u), ImVec2(b.x + 1.2f * u, b.y + 1.2f * u), C(s.edge, (int)(30 + 60 * p)), false, 2.6f * u);
-			r->drawRect(a, b, C(s.edge, (int)(110 + 145 * p)), false, lw);
+			if (rad > 0.0f)
+			{
+				r->drawRoundedRect(ImVec2(a.x - 1.2f * u, a.y - 1.2f * u), ImVec2(b.x + 1.2f * u, b.y + 1.2f * u), C(s.edge, (int)(30 + 60 * p)), rad + 1.0f * u, false, 2.6f * u);
+				r->drawRoundedRect(a, b, C(s.edge, (int)(110 + 145 * p)), rad, false, lw);
+			}
+			else
+			{
+				r->drawRect(ImVec2(a.x - 1.2f * u, a.y - 1.2f * u), ImVec2(b.x + 1.2f * u, b.y + 1.2f * u), C(s.edge, (int)(30 + 60 * p)), false, 2.6f * u);
+				r->drawRect(a, b, C(s.edge, (int)(110 + 145 * p)), false, lw);
+			}
 		}
 		else if (s.effect == CL::E_Rainbow)
 		{
@@ -129,13 +143,17 @@ namespace
 			{
 				float hh = (float)i / (float)N + (float)(t * 0.3); hh -= std::floor(hh);
 				const ImColor col = ImColor::HSV(hh, 0.8f, 1.0f);
-				const float x0 = a.x + w * i / N, x1 = a.x + w * (i + 1) / N;
+				const float x0 = a.x + rad + (w - 2.0f * rad) * i / N, x1 = a.x + rad + (w - 2.0f * rad) * (i + 1) / N;
 				r->drawLine(ImVec2(x0, a.y), ImVec2(x1, a.y), col, lw * 1.4f);
 				r->drawLine(ImVec2(x0, b.y), ImVec2(x1, b.y), col, lw * 1.4f);
 			}
-			r->drawLine(ImVec2(a.x, a.y), ImVec2(a.x, b.y), ImColor::HSV((float)std::fmod(t * 0.3, 1.0), 0.8f, 1.0f), lw * 1.4f);
-			r->drawLine(ImVec2(b.x, a.y), ImVec2(b.x, b.y), ImColor::HSV((float)std::fmod(t * 0.3 + 0.5, 1.0), 0.8f, 1.0f), lw * 1.4f);
+			if (rad <= 0.0f)
+			{
+				r->drawLine(ImVec2(a.x, a.y), ImVec2(a.x, b.y), ImColor::HSV((float)std::fmod(t * 0.3, 1.0), 0.8f, 1.0f), lw * 1.4f);
+				r->drawLine(ImVec2(b.x, a.y), ImVec2(b.x, b.y), ImColor::HSV((float)std::fmod(t * 0.3 + 0.5, 1.0), 0.8f, 1.0f), lw * 1.4f);
+			}
 		}
+		else if (rad > 0.0f) r->drawRoundedRect(a, b, C(s.edge, 210), rad, false, lw);
 		else r->drawRect(a, b, C(s.edge, 210), false, lw);
 		(void)h;
 	}
@@ -318,7 +336,7 @@ void CentralUI::draw(ImGuiRenderer* r)
 	const ImVec2 sa(PX(446.0f), PY(212.0f)), sb(PX(834.0f), PY(244.0f));          // caixa de pesquisa
 	const ImVec2 sxa(PX(804.0f), PY(212.0f)), sxb(PX(834.0f), PY(244.0f));        // "x" que limpa a pesquisa
 	const ImVec2 va(PX(446.0f), PY(254.0f)), vb(PX(834.0f), PY(672.0f));          // area da lista
-	const float rowH = 44.0f * u, pitch = 50.0f * u;
+	const float rowH = 58.0f * u, pitch = 66.0f * u, rowR = 10.0f * u;
 	const float content = (float)shown.size() * pitch;
 	auto In = [](float x, float y, const ImVec2& a, const ImVec2& b) { return x >= a.x && x <= b.x && y >= a.y && y <= b.y; };
 	auto cellA = [&](int i) { return ImVec2(PX(446.0f + (i % 3) * 130.0f), PY(262.0f + (i / 3) * 70.0f)); };
@@ -373,7 +391,7 @@ void CentralUI::draw(ImGuiRenderer* r)
 	r->drawRect(ImVec2(0, 0), scr, ImColor(0, 0, 0, 110), true);
 	r->drawRoundedRect(pa, pb, ImColor(22, 22, 28, 240), 8.0f * u, true);
 	r->drawRoundedRect(pa, pb, ImColor(70, 70, 82, 255), 8.0f * u, false, 1.0f);
-	const ImColor cPink(236, 40, 96, 255), cText(238, 238, 244, 255), cMute(150, 150, 164, 255);
+	const ImColor cPink(46, 128, 255, 255), cText(238, 238, 244, 255), cMute(150, 150, 164, 255);
 
 	// cabecalho
 	{
@@ -401,7 +419,7 @@ void CentralUI::draw(ImGuiRenderer* r)
 		snprintf(line, sizeof(line), "Online ha %d minuto(s)", (int)L.myMin);
 		r->drawText(ImVec2(PX(534.0f), PY(128.0f)), cMute, line, false, 10.5f * u);
 		const bool pr = g_f.num >= 0 && g_f.kind == 2 && In(g_f.sx, g_f.sy, ga, gb);
-		r->drawRoundedRect(ga, gb, pr || g_settings ? ImColor(236, 40, 96, 90) : ImColor(255, 255, 255, 22), 6.0f * u, true);
+		r->drawRoundedRect(ga, gb, pr || g_settings ? ImColor(46, 128, 255, 90) : ImColor(255, 255, 255, 22), 6.0f * u, true);
 		r->drawRoundedRect(ga, gb, g_settings ? cPink : ImColor(255, 255, 255, 50), 6.0f * u, false, 1.0f);
 		const float gx = (ga.x + gb.x) * 0.5f, gy = (ga.y + gb.y) * 0.5f;       // engrenagem: anel + 8 dentes
 		for (int i = 0; i < 8; i++) { const float an = 0.785398f * i; r->drawLine(ImVec2(gx + std::cos(an) * 7.0f * u, gy + std::sin(an) * 7.0f * u), ImVec2(gx + std::cos(an) * 10.0f * u, gy + std::sin(an) * 10.0f * u), cText, 2.4f * u); }
@@ -452,7 +470,7 @@ void CentralUI::draw(ImGuiRenderer* r)
 	if (!g_settings)
 	{
 		const bool pr = g_f.num >= 0 && g_f.kind == 2 && In(g_f.sx, g_f.sy, sa, sb);
-		r->drawRoundedRect(sa, sb, pr ? ImColor(236, 40, 96, 40) : ImColor(255, 255, 255, 14), 6.0f * u, true);
+		r->drawRoundedRect(sa, sb, pr ? ImColor(46, 128, 255, 50) : ImColor(255, 255, 255, 14), 6.0f * u, true);
 		r->drawRoundedRect(sa, sb, ImColor(255, 255, 255, 46), 6.0f * u, false, 1.0f);
 		IconSearch(r, sa.x + 16.0f * u, (sa.y + sb.y) * 0.5f, 7.0f * u, cMute, 1.5f * u);
 		const std::string shownTxt = query.empty() ? std::string("Pesquisar...") : Encoding::cp2utf(query);
@@ -494,6 +512,7 @@ void CentralUI::draw(ImGuiRenderer* r)
 		return;
 	}
 	const int localId = (pNetGame && pNetGame->GetPlayerPool()) ? (int)pNetGame->GetPlayerPool()->GetLocalPlayerID() : -1;
+	r->drawRoundedRect(ImVec2(va.x - 4.0f * u, va.y - 2.0f * u), ImVec2(vb.x + 2.0f * u, vb.y + 2.0f * u), ImColor(255, 255, 255, 10), 12.0f * u, true);     // moldura arredondada da lista
 	r->pushClipRect(va, vb, true);
 	for (size_t i = 0; i < shown.size(); i++)
 	{
@@ -501,27 +520,34 @@ void CentralUI::draw(ImGuiRenderer* r)
 		if (y + rowH < va.y || y > vb.y) continue;
 		const CL::Row& row = L.rows[shown[i]];
 		const ImVec2 a(va.x, y), b(vb.x - 8.0f * u, y + rowH);
-		DrawStyleBg(r, a, b, row.style, u, t);
+		DrawStyleBg(r, a, b, row.style, u, t, rowR);
 		const bool self = (int)row.pid == localId || (Avatar::AccountId() && row.acc == Avatar::AccountId());
-		if (self) r->drawRect(ImVec2(a.x - 1.5f * u, a.y - 1.5f * u), ImVec2(b.x + 1.5f * u, b.y + 1.5f * u), ImColor(255, 255, 255, 200), false, 1.4f * u);
+		if (self) r->drawRoundedRect(ImVec2(a.x - 1.5f * u, a.y - 1.5f * u), ImVec2(b.x + 1.5f * u, b.y + 1.5f * u), ImColor(255, 255, 255, 220), rowR + 1.5f * u, false, 1.6f * u);
 		char buf[64]; snprintf(buf, sizeof(buf), "%s", row.name.c_str());
-		const float ty = a.y + (rowH - 13.0f * u) * 0.5f;
-		r->drawText(ImVec2(a.x + 12.0f * u, ty), ImColor(255, 255, 255, 255), buf, true, 12.0f * u);
-		const ImVec2 nsz = r->calculateTextSize(buf, 12.0f * u);
+		const float nfs = 15.5f * u;
+		const ImVec2 nsz = r->calculateTextSize(buf, nfs);
+		const float tx0 = a.x + 16.0f * u, ty = a.y + (rowH - nsz.y) * 0.5f;
+		// nome nitido: sombra escura deslocada + traco duplo (peso) em branco puro
+		r->drawText(ImVec2(tx0 + 1.4f * u, ty + 1.4f * u), ImColor(0, 0, 0, 200), buf, false, nfs);
+		r->drawText(ImVec2(tx0, ty), ImColor(255, 255, 255, 255), buf, true, nfs);
+		r->drawText(ImVec2(tx0 + 0.6f * u, ty), ImColor(255, 255, 255, 255), buf, false, nfs);
 		snprintf(buf, sizeof(buf), "(%u)", (unsigned)row.acc);
-		r->drawText(ImVec2(a.x + 16.0f * u + nsz.x, ty + 1.0f * u), ImColor(235, 235, 245, 190), buf, true, 10.5f * u);
-		float rx = b.x - 10.0f * u;
+		const ImVec2 isz = r->calculateTextSize(buf, 12.5f * u);
+		r->drawText(ImVec2(tx0 + nsz.x + 8.0f * u + 1.0f * u, a.y + (rowH - isz.y) * 0.5f + 1.0f * u), ImColor(0, 0, 0, 170), buf, false, 12.5f * u);
+		r->drawText(ImVec2(tx0 + nsz.x + 8.0f * u, a.y + (rowH - isz.y) * 0.5f), ImColor(240, 240, 250, 235), buf, true, 12.5f * u);
+		float rx = b.x - 14.0f * u;
 		if (row.flags & 1)       // admin
 		{
-			const char* tg = "ADMIN"; const ImVec2 ts = r->calculateTextSize(tg, 10.0f * u);
-			const ImVec2 ta(rx - ts.x - 12.0f * u, a.y + (rowH - 18.0f * u) * 0.5f), tb(rx, ta.y + 18.0f * u);
-			r->drawRoundedRect(ta, tb, ImColor(0, 0, 0, 130), 4.0f * u, true);
-			r->drawText(ImVec2(ta.x + 6.0f * u, ta.y + (18.0f * u - ts.y) * 0.5f), ImColor(255, 226, 120, 255), tg, false, 10.0f * u);
-			rx = ta.x - 8.0f * u;
+			const char* tg = "ADMIN"; const ImVec2 ts = r->calculateTextSize(tg, 11.0f * u);
+			const ImVec2 ta(rx - ts.x - 14.0f * u, a.y + (rowH - 22.0f * u) * 0.5f), tb(rx, ta.y + 22.0f * u);
+			r->drawRoundedRect(ta, tb, ImColor(0, 0, 0, 150), 6.0f * u, true);
+			r->drawText(ImVec2(ta.x + 7.0f * u, ta.y + (22.0f * u - ts.y) * 0.5f), ImColor(255, 226, 120, 255), tg, false, 11.0f * u);
+			rx = ta.x - 10.0f * u;
 		}
 		snprintf(buf, sizeof(buf), "%dms", (int)row.ping);
-		const ImVec2 ps = r->calculateTextSize(buf, 9.5f * u);
-		r->drawText(ImVec2(rx - ps.x, a.y + (rowH - ps.y) * 0.5f), ImColor(235, 235, 245, 170), buf, true, 9.5f * u);
+		const ImVec2 ps = r->calculateTextSize(buf, 11.0f * u);
+		r->drawText(ImVec2(rx - ps.x + 1.0f * u, a.y + (rowH - ps.y) * 0.5f + 1.0f * u), ImColor(0, 0, 0, 170), buf, false, 11.0f * u);
+		r->drawText(ImVec2(rx - ps.x, a.y + (rowH - ps.y) * 0.5f), ImColor(240, 240, 250, 220), buf, true, 11.0f * u);
 	}
 	r->popClipRect();
 	if (content > vb.y - va.y)     // barra de rolagem

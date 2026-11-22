@@ -18,3 +18,8 @@ Nao compilado com o NDK nem testado em aparelho (so sintaxe com clang + teste da
 - Ícone de jogadores (imagem enviada) no chip de população (online/slots) e globo no cabeçalho da Central (central_icons.h).
 - Os chips PM / MEC / SAMU agora filtram a lista pelos jogadores ONLINE da organização daquela TAG (toque de novo = todos). A contagem mostra membros online.
 - Precisa do servidor novo: cada linha do RPC 253 leva 1 byte a mais (org 0..3). Atualize org.pwn + maximo_central.inc junto.
+
+## Atualização (v4)
+- Ícones refeitos com fundo transparente (globo do cabeçalho e jogadores do chip).
+- Paleta rosa trocada por azul (chips, barra online/slots, engrenagem, caixa de pesquisa). O modelo de fundo "Rosa" da lista continua existindo como opção dos jogadores.
+- Lista de jogadores maior (linhas 58 px, passo 66 px), com cantos arredondados e moldura arredondada; nome em tamanho maior, com sombra e traço duplo para ficar mais nítido.
