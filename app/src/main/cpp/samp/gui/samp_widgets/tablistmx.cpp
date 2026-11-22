@@ -71,6 +71,7 @@ namespace
 		g_posY.store((int)std::min<long>(std::max<long>(py, TL::kMinPosY), TL::kMaxPosY));
 		std::lock_guard<std::mutex> l(g_cmdMu);
 		for (int i = 0; i < TL::kTabs; i++) g_cmd[i] = TL::SanitizeCommand(ini.GetValue("tablistmx", kCmdKey[i], i == TL::Perfil ? "/perfil" : ""));
+		if (g_cmd[TL::Perfil] == "/central") g_cmd[TL::Perfil] = "/perfil";      // settings.ini antigo (padrao da versao anterior): a aba Perfil agora abre o Menu Jogador; a Central abre pelo circulo de pessoas da HUD
 	}
 
 	void Save()

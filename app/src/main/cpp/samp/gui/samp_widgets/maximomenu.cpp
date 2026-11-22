@@ -8,6 +8,7 @@
 #include "../../vendor/SimpleIni/SimpleIni.h"
 #include "maximomenu.h"
 #include "tablistmx.h"
+#include "hud.h"
 #include "central.h"
 #include "../gfxsettings.h"
 #include "worldmap.h"
@@ -368,6 +369,8 @@ bool MaximoMenu::HandleRawTouch(int type, int num, int x, int y)
 	if (CentralUI::HandleRawTouch(type, num, x, y))      // Central da Cidade: aberta consome todos os toques
 		return true;
 	if (TabListMX::HandleRawTouch(type, num, x, y))
+		return true;
+	if (HudHandleRawTouch(type, num, x, y, g_open.load()))      // circulo "pessoas online" da HUD -> Central da Cidade
 		return true;
 
 	const int n = num & 3;

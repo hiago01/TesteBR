@@ -680,12 +680,12 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 			{
 			case K_CLOSE: answer = 1; return;
 			case K_BAN_G: answer = 4; return;
-			case K_BAN_V: ShopPanel::LocalToast(0, "A loja VIP chega em breve."); break;
+			case K_BAN_V: ShopPanel::LocalToast(2, "A loja VIP chega em breve."); break;
 			case K_NAV:
 			{
 				if (was.idx < 0 || was.idx >= (int)(sizeof(kNav) / sizeof(kNav[0]))) break;
 				const NavDef& nv = kNav[was.idx];
-				if (nv.soon) { ShopPanel::LocalToast(0, "Em breve."); break; }
+				if (nv.soon) { ShopPanel::LocalToast(2, "Em breve."); break; }
 				if (g_page != nv.page) { g_page = nv.page; g_rankScroll = 0.0f; g_ruleScroll = 0.0f; }
 				break;
 			}

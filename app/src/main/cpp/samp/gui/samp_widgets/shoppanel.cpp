@@ -130,8 +130,8 @@ bool ShopPanel::OnToast(RakNet::BitStream& bs)
 	uint8_t kind = 0; std::string t;
 	if (!bs.Read(kind) || !RdStr(bs, t) || t.empty()) return false;
 	std::lock_guard<std::mutex> l(g_tmx);
-	g_toastKind = kind ? 1 : 0;
-	g_toastText = kind ? t : ("Você comprou " + t + " com sucesso!");
+	g_toastKind = kind == 2 ? 2 : (kind ? 1 : 0);                      // 0 transacao de dinheiro (verde, $) | 1 erro/aviso (vermelho) | 2 informacao (amarelo)
+	g_toastText = kind == 0 ? ("Você comprou " + t + " com sucesso!") : t;
 	g_toastVer++;
 	return true;
 }
@@ -140,7 +140,7 @@ void ShopPanel::LocalToast(int kind, const char* text)
 {
 	if (!text || !*text) return;
 	std::lock_guard<std::mutex> l(g_tmx);
-	g_toastKind = kind ? 1 : 0; g_toastText = text; g_toastVer++;
+	g_toastKind = kind == 2 ? 2 : (kind ? 1 : 0); g_toastText = text; g_toastVer++;
 }
 
 void ShopPanel::DrawToast(ImGuiRenderer* r, float scrW, float scrH)
@@ -161,15 +161,21 @@ void ShopPanel::DrawToast(ImGuiRenderer* r, float scrW, float scrH)
 	const float u = std::min(0.62f * scrH / 416.0f, 0.80f * scrW / 646.0f);
 	const int A = (int)(255.0f * a);
 	const float cx = scrW * 0.5f, cy = scrH * 0.715f - (1.0f - a) * 8.0f * u, R = 19.0f * u;
-	const ImColor ring = kind ? ImColor(255, 96, 96, A) : ImColor(46, 222, 150, A);
-	for (int g = 3; g >= 1; g--) r->drawRoundedRect(ImVec2(cx - R - g * 2.2f * u, cy - R - g * 2.2f * u), ImVec2(cx + R + g * 2.2f * u, cy + R + g * 2.2f * u), ImColor(ring.Value.x, ring.Value.y, ring.Value.z, 0.10f * a), (R + g * 2.2f * u), false, 1.6f * u);
-	r->drawRoundedRect(ImVec2(cx - R, cy - R), ImVec2(cx + R, cy + R), ImColor(10, 34, 30, (int)(215.0f * a)), R, true);
-	r->drawRoundedRect(ImVec2(cx - R, cy - R), ImVec2(cx + R, cy + R), ring, R, false, 2.0f * u);
-	const std::string glyph = kind ? "!" : "$";
+	// cores por tipo: 0 transacao de dinheiro (verde, "$") | 1 erro (vermelho, "!") | 2 informacao (amarelo, "i")
+	const ImColor ring = kind == 2 ? ImColor(255, 196, 38, A) : (kind == 1 ? ImColor(255, 96, 96, A) : ImColor(46, 222, 150, A));
+	const ImColor fill = kind == 2 ? ImColor(40, 32, 8, (int)(215.0f * a)) : (kind == 1 ? ImColor(40, 14, 14, (int)(215.0f * a)) : ImColor(10, 34, 30, (int)(215.0f * a)));
+	// circulo de verdade: poligono de 64 lados (drawRoundedRect com raio grande saia facetado, como um octogono)
+	auto circlePts = [&](float rad, ImVec2* out) { for (int k = 0; k < 64; k++) { const float t = 6.28318530718f * (float)k / 64.0f; out[k] = ImVec2(cx + std::cos(t) * rad, cy + std::sin(t) * rad); } };
+	ImVec2 pts[64];
+	for (int g = 3; g >= 1; g--) { circlePts(R + g * 2.2f * u, pts); r->drawPolyline(pts, 64, ImColor(ring.Value.x, ring.Value.y, ring.Value.z, 0.12f * a), true, 1.6f * u); }
+	circlePts(R, pts); r->drawConvexPolyFilled(pts, 64, fill);
+	circlePts(R, pts); r->drawPolyline(pts, 64, ring, true, 2.2f * u);
+	const std::string glyph = kind == 2 ? "i" : (kind == 1 ? "!" : "$");
 	const float gfs = 17.0f * u;
 	const ImVec2 gs = r->calculateTextSize(glyph, gfs);
 	r->drawText(ImVec2(cx - gs.x * 0.5f, cy - gs.y * 0.5f), ring, glyph, false, gfs);
-	const std::string title = kind ? "Aviso" : "Informação";
+	r->drawText(ImVec2(cx - gs.x * 0.5f + 0.5f * u, cy - gs.y * 0.5f), ring, glyph, false, gfs);
+	const std::string title = kind == 2 ? "Informação" : (kind == 1 ? "Aviso" : "Transação");
 	const float tfs = 12.5f * u, mfs = 10.5f * u;
 	const ImVec2 ts = r->calculateTextSize(title, tfs);
 	const float ty = cy + R + 7.0f * u;

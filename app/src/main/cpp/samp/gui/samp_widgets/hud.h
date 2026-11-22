@@ -4,6 +4,10 @@
 
 // Widget da HUD (canto superior direito). Veja hudstate.h para o modelo de dados e hud.cpp
 // para o desenho. Substitui vida / colete / dinheiro nativos do jogo.
+// Toque no circulo "pessoas online" da HUD = abre a Central da Cidade (/central). Chamada por MaximoMenu::HandleRawTouch; true = consumiu o toque.
+// blockNew = nao comecar toque novo (menu aberto).
+bool HudHandleRawTouch(int type, int num, int x, int y, bool blockNew);
+
 class HudInfo : public Widget
 {
 public:

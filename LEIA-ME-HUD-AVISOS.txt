@@ -1,0 +1,12 @@
+HUD -> CENTRAL, PERFIL e AVISOS (CLIENTE) - Máximo RP
+
+1) Aba "Perfil" da barra (tablistmx) agora abre o MENU JOGADOR (/perfil). Se o seu settings.ini tinha cmd_perfil=/central salvo, o jogo troca sozinho para /perfil.
+2) O círculo de PESSOAS ONLINE da HUD (ícone de pessoa + número de jogadores online, no alto à direita) agora é tocável: abre a Central da Cidade (envia /central, o mesmo caminho do comando digitado). Toque curto; arrastar não conta. Não funciona com o menu, a Central ou telas de loja/perfil abertas.
+3) Aviso redondo corrigido: a moldura agora é um círculo de verdade (antes parecia um octógono). Três tipos:
+   - Verde com "$" = "Transação" (compra/dinheiro) - igual ao que o servidor já manda hoje (op 20, tipo 0).
+   - Vermelho com "!" = "Aviso" (erro).
+   - Amarelo com "i" = "Informação" (ex.: "Em breve.").
+   O servidor não precisa mudar. Se quiser que o servidor mande um aviso amarelo, é o tipo 2 no RPC 245 op 20.
+
+Arquivos (a partir da SUA versão do zip TesteBR-free): hud.cpp, hud.h, maximomenu.cpp, tablistmx.cpp, shoppanel.cpp, perfilpanel.cpp, testes/loja/shop_main.test.
+Descompacte direto na raiz do projeto. NÃO compilado com o NDK nem testado no aparelho (só o desenho dos avisos num teste de PC com renderer falso; o toque da HUD foi só revisado por leitura).

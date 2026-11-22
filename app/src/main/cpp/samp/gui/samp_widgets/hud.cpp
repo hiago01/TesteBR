@@ -12,7 +12,9 @@
 #include "worldmap.h"
 #include "../../game/stamina.h"
 #include "../gfxsettings.h"
+#include "jobs.h"
 
+#include <atomic>
 #include <chrono>
 #include <mutex>
 
@@ -826,6 +828,50 @@ HudInfo::HudInfo()
 {
 }
 
+// ---- toque no circulo "pessoas online" (icone de pessoa + contagem): abre a Central da Cidade (/central) ----
+extern volatile bool g_bTouchCancel;     // game/multitouch.cpp
+namespace
+{
+	std::atomic<float>   g_pplRect[4] = {{0.0f}, {0.0f}, {0.0f}, {0.0f}};   // x0,y0,x1,y1 do bloco (circulo + pilula), na ultima vez que a HUD foi desenhada
+	std::atomic<int64_t> g_pplStamp{0};
+	int64_t PplNowMs() { using namespace std::chrono; return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count(); }
+	bool PplInside(float x, float y)
+	{
+		return x >= g_pplRect[0].load() && x <= g_pplRect[2].load() && y >= g_pplRect[1].load() && y <= g_pplRect[3].load();
+	}
+}
+
+bool HudHandleRawTouch(int type, int num, int x, int y, bool blockNew)
+{
+	static int   s_finger = -1;
+	static float s_sx = 0.0f, s_sy = 0.0f;
+	static bool  s_moved = false;
+	const int n = num & 3;
+	if (type == 2)                                   // dedo desceu
+	{
+		if (s_finger >= 0 || blockNew) return false;
+		if (!Hud::g.visible.load() || JobsUI::IsOpen()) return false;
+		if (PplNowMs() - g_pplStamp.load() > 250) return false;                  // HUD nao foi desenhada agora (oculta / outra tela por cima)
+		if (!PplInside((float)x, (float)y)) return false;
+		s_finger = n; s_sx = (float)x; s_sy = (float)y; s_moved = false;
+		return true;
+	}
+	if (s_finger != n) return false;
+	if (type == 3)                                   // moveu: se passou de ~14 px deixa de ser toque
+	{
+		if (std::fabs((float)x - s_sx) > 14.0f || std::fabs((float)y - s_sy) > 14.0f) s_moved = true;
+		return true;
+	}
+	if (type == 1)                                   // soltou: toque valido = abre a Central (mesmo caminho do /central digitado)
+	{
+		const bool ok = !s_moved && !g_bTouchCancel && PplInside((float)x, (float)y);
+		s_finger = -1; s_moved = false;
+		if (ok && pNetGame) pNetGame->SendChatCommand("/central");
+		return true;
+	}
+	return true;
+}
+
 void HudInfo::draw(ImGuiRenderer* r)
 {
 	if (!Hud::g.visible.load()) return;
@@ -957,8 +1003,16 @@ void HudInfo::draw(ImGuiRenderer* r)
 		{
 			const Block& bl = blocks[i];
 
+			const float blockX0 = x;
 			ValueCircle(r, tex, bl.icon, bl.label, ImVec2(x + R, y2), S, bl.col);
 			x += R * 2.0f + kCircPill * S;
+			if (i == 1)                                 // bloco "pessoas online": area de toque (com folga para o dedo)
+			{
+				const float pad = 8.0f * S, hh = std::max(R, ph * 0.5f);
+				g_pplRect[0].store(blockX0 - pad); g_pplRect[1].store(y2 - hh - pad);
+				g_pplRect[2].store(x + bl.pillW + pad); g_pplRect[3].store(y2 + hh + pad);
+				g_pplStamp.store(PplNowMs());
+			}
 
 			// pilula translucida (azul-petroleo escuro, como na referencia)
 			FillCapsule(r, x, y2 - ph * 0.5f, x + bl.pillW, y2 + ph * 0.5f, ImColor(22, 34, 50, 205));

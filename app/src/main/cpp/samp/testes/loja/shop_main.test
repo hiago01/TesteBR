@@ -114,6 +114,9 @@ int main()
 	{ int a; std::vector<ShopLine> o; ShopPanel::Reset(); Show(Packet(104, "Lanchonete com um nome bem grande", "Lanches quentes.", Eletro())); Settle(); Toast(0, "3x Pizza inteira, 1x Batata frita"); Frame({}, a, o, true, "loja_aviso"); }
 	{ int a; std::vector<ShopLine> o; ShopPanel::Reset(); Settle(); Toast(1, "Dinheiro insuficiente."); Frame({}, a, o); Sleep(260); Frame({}, a, o, true, "aviso_erro"); }
 
+	{ int a; std::vector<ShopLine> o; ShopPanel::Reset(); Settle(); Toast(0, "1x Pizza inteira"); Frame({}, a, o); Sleep(260); Frame({}, a, o, true, "aviso_dinheiro"); }
+	{ int a; std::vector<ShopLine> o; ShopPanel::Reset(); Settle(); ShopPanel::LocalToast(2, "Em breve."); Frame({}, a, o); Sleep(260); Frame({}, a, o, true, "aviso_info"); }
+
 	// folha com todos os icones de produto
 	{
 		g_out = nullptr; std::string path = std::string(getenv("SH_OUT") ? getenv("SH_OUT") : ".") + "/glifos.dump"; g_out = fopen(path.c_str(), "w");
