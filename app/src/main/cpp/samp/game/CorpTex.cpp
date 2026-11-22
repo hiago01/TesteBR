@@ -78,7 +78,12 @@ namespace {
 
 constexpr int      kCorpModel      = 271;    // hospeda o male_police.dff (skin271.dff): pecas fantasy_m_cop_*
 constexpr int      kNormalModel    = 7;      // hospeda o DFF male normal (skin.dff): rosto, cabelo, tom de pele e roupas do pack
-bool IsHostModel(int m) { return m == kCorpModel || m == kNormalModel; }
+constexpr int      kFemCorpModel   = 272;    // hospeda o female_police.dff (skin272.dff): pecas fantasy_f_cop_*  (teste: /corp272)
+bool IsHostModel(int m) { return m == kCorpModel || m == kNormalModel || m == kFemCorpModel; }
+bool IsCopModel(int m)  { return m == kCorpModel || m == kFemCorpModel; }                // modelos policiais (corp + oculta o resto)
+const char* PiecePrefixFor(int m) { return m == kFemCorpModel ? "fantasy_f_cop_" : "fantasy_m_cop_"; }
+// pasta das corps no banco texdb/skins: 271/7 = "corp/<corp>/<peca>" (inalterado); 272 = "272/corp/<corp>/<peca>"
+std::string CorpBankDir(int m) { return m == kFemCorpModel ? "272/corp/" : "corp/"; }
 constexpr const char* kSkinFolder  = "272";  // textures/<kSkinFolder>/<corp>/  e  textures/<kSkinFolder>/aparencia/...
 constexpr const char* kAppFolder   = "aparencia";
 constexpr int      kMaxTexSize     = 1024;   // teto de lado no celular (os PNGs de 2048 sao reduzidos)
@@ -296,12 +301,12 @@ void Sanitize(Look& l)
 }
 
 // corps: so no banco texdb/skins (rel "corp/<corp>/<peca>"); leitura de PNG removida
-bool CorpExists(const std::string& corp) { return SkinTexDb::Ready() && !SkinTexDb::List("corp/" + corp + "/").empty(); }
+bool CorpExists(const std::string& corp, int model = kCorpModel) { return SkinTexDb::Ready() && !SkinTexDb::List(CorpBankDir(model) + corp + "/").empty(); }
 
-std::vector<std::string> ListCorps()
+std::vector<std::string> ListCorps(int model = kCorpModel)
 {
     std::vector<std::string> out;
-    for (const std::string& n : SkinTexDb::SubFolders("corp/")) if (ValidName(n.c_str())) out.push_back(n);
+    for (const std::string& n : SkinTexDb::SubFolders(CorpBankDir(model))) if (ValidName(n.c_str())) out.push_back(n);
     return out;                                   // SubFolders ja vem em ordem
 }
 
@@ -390,12 +395,14 @@ RwTexture* LoadPng(const std::string& path, const std::string& name)
 }
 
 // ---- cache de corps (carrega a pasta inteira: sao poucas pecas) --------------------------------
-Corp* EnsureCorp(const std::string& corp)
+Corp* EnsureCorp(const std::string& corpName, int model = kCorpModel)
 {
-    auto it = s_corps.find(corp);
+    const std::string corp = corpName;
+    const std::string ckey = model == kFemCorpModel ? "f:" + corpName : corpName;     // 272 tem cache proprio (mesmo nome de corp, pecas diferentes)
+    auto it = s_corps.find(ckey);
     if (it != s_corps.end()) { it->second.lastUse = NowMs(); return &it->second; }
 
-    const std::vector<std::string> rels = SkinTexDb::List("corp/" + corp + "/");
+    const std::vector<std::string> rels = SkinTexDb::List(CorpBankDir(model) + corp + "/");
     if (rels.empty()) { SetInfo("corp '" + corp + "': nao existe no banco texdb/skins"); return nullptr; }
 
     Corp c; c.lastUse = NowMs();
@@ -403,7 +410,7 @@ Corp* EnsureCorp(const std::string& corp)
         if (RwTexture* t = SkinTexDb::Texture(rel)) c.tex[rel.substr(rel.rfind('/') + 1)] = t;
     if (c.tex.empty()) { SetInfo("corp '" + corp + "': nenhuma textura pode ser carregada"); return nullptr; }
     FLog("[CORPTEX] corp '%s' carregada do banco: %zu/%zu textura(s)", corp.c_str(), c.tex.size(), rels.size());
-    return &(s_corps[corp] = std::move(c));
+    return &(s_corps[ckey] = std::move(c));
 }
 
 // rel do pack sem a extensao de imagem ("heads/1/2.png" -> "heads/1/2"): chave do banco texdb/skins
@@ -629,15 +636,16 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
     Corp* c = nullptr;
     // Vale para os dois modelos: no 271 (policia) as pecas fantasy_m_cop_*; no 7 (normal) qualquer peca pelo NOME do material
     // (fantasy_m_torso2.png, fantasy_m_pants1.png ...) dentro de textures/272/<pasta>/ ou pack/corp/<pasta>/  ->  /corp <pasta>
-    if (!look.corp.empty()) { c = EnsureCorp(look.corp); if (!c) FLog("[CORPTEX] corp '%s' indisponivel: ignorada", look.corp.c_str()); }
+    if (!look.corp.empty()) { c = EnsureCorp(look.corp, model); if (!c) FLog("[CORPTEX] corp '%s' indisponivel: ignorada", look.corp.c_str()); }
     const bool copMode = c != nullptr || !look.ov.empty();   // corp escolhida OU pecas trocadas por /cop: peca sem PNG fica oculta
     // CORRECAO (skin 271 branca): sem corp escolhida o DFF so tem NOMES (fantasy_m_cop_*) e o texdb do jogo nao tem essas texturas;
     // textura NULL = peca BRANCA. Entao o 271 sem corp usa uma corp PADRAO do banco texdb/skins (base > policia > primeira que existir)
     // nas pecas padrao (kDefaultVisible) e OCULTA as demais pecas da policia (nunca ficam brancas).
     Corp* dc = nullptr;
-    if (!copMode && byIndex && model == kCorpModel) {
-        for (const char* nm : {"base", "policia", "padrao"}) { if (CorpExists(nm)) { dc = EnsureCorp(nm); if (dc) break; } }
-        if (!dc) for (const std::string& n : ListCorps()) { dc = EnsureCorp(n); if (dc) break; }
+    const char* pfx = PiecePrefixFor(model);
+    if (!copMode && byIndex && IsCopModel(model)) {
+        for (const char* nm : {"base", "policia", "padrao"}) { if (CorpExists(nm, model)) { dc = EnsureCorp(nm, model); if (dc) break; } }
+        if (!dc) for (const std::string& n : ListCorps(model)) { dc = EnsureCorp(n, model); if (dc) break; }
         FLog("[CORPTEX] jogador %d modelo 271 sem corp: corp padrao %s", (int)id, dc ? "carregada do banco" : "INDISPONIVEL (pecas da policia ficam ocultas; instale o banco texdb/skins)");
     }
     for (size_t i = 0; i < mats.size(); ++i) {
@@ -648,26 +656,26 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
                 auto it = c->tex.find(k);
                 if (it != c->tex.end()) { over[k] = it->second; ++nCorp; if (const Box* b = FindPiece(k)) visible.push_back(b); continue; }
             }
-            if (hideTex && byIndex && k.compare(0, std::strlen(kPiecePrefix), kPiecePrefix) == 0) { over[k] = hideTex; ++nHidden; }
-        } else if (byIndex && model == kCorpModel) {   // sem corp (ou corp indisponivel): corp padrao nas pecas padrao; o resto oculto
+            if (hideTex && byIndex && k.compare(0, std::strlen(pfx), pfx) == 0) { over[k] = hideTex; ++nHidden; }
+        } else if (byIndex && IsCopModel(model)) {   // sem corp (ou corp indisponivel): corp padrao nas pecas padrao; o resto oculto
             bool isDef = false;
             for (const char* d : kDefaultVisible) if (k == d) isDef = true;
             if (isDef && dc) {
                 auto it = dc->tex.find(k);
                 if (it != dc->tex.end()) { over[k] = it->second; ++nCorp; if (const Box* b = FindPiece(k)) visible.push_back(b); continue; }
             }
-            if (hideTex && k.compare(0, std::strlen(kPiecePrefix), kPiecePrefix) == 0) { over[k] = hideTex; ++nHidden; }
+            if (hideTex && k.compare(0, std::strlen(pfx), pfx) == 0) { over[k] = hideTex; ++nHidden; }
         }
     }
 
     // 1a) /cop: troca por peca (teste). off | corp:<nome> (PNG da peca nessa corp) | cop/<tipo>/<pasta>/<n>.png (pecas base em pack/271)
     for (const auto& ovp : look.ov) {
-        const std::string key = std::string(kPiecePrefix) + ovp.first;
+        const std::string key = std::string(pfx) + ovp.first;
         visible.erase(std::remove_if(visible.begin(), visible.end(), [&](const Box* b) { return key == b->name; }), visible.end());
         if (ovp.second == "off") { if (hideTex) { over[key] = hideTex; ++nHidden; } continue; }
         RwTexture* t = nullptr;
         if (ovp.second.compare(0, 5, "corp:") == 0) {
-            if (Corp* oc = EnsureCorp(ovp.second.substr(5))) { auto it = oc->tex.find(key); if (it != oc->tex.end()) t = it->second; }
+            if (Corp* oc = EnsureCorp(ovp.second.substr(5), model)) { auto it = oc->tex.find(key); if (it != oc->tex.end()) t = it->second; }
         } else if (ovp.second.compare(0, 4, "cop/") == 0) {
             t = GetAppTex(ovp.second);
         }
@@ -774,7 +782,7 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
     }
     // CORRECAO (271): o policial NAO usa roupa intima (aparecia como formas cinza/brancas no quadril e nas costas).
     // Oculta por nome (qualquer material com "underwear"/"intima"/"cueca") e por ultimo, para nada reaplicar por cima.
-    if (byIndex && model == kCorpModel && hideTex) {
+    if (byIndex && IsCopModel(model) && hideTex) {
         int nUnder = 0;
         for (size_t i = 0; i < mats.size(); ++i) {
             const std::string& k = keys[i];
@@ -786,6 +794,33 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& look)
         }
         over["fantasy_m_underwear"] = hideTex;
         FLog("[CORPTEX] jogador %d modelo 271: roupa intima ocultada (%d material(is))", (int)id, nUnder);
+    }
+
+    // 272 (teste /corp272): corpo padrao da FemininaNormal (pele tom 1, cabeca 1, cabelo 1) onde a corp nao cobriu; o resto e ocultado.
+    // Nomes dos materiais = female_police.dff (body.*, fantasy_f_hair*, fantasy_tatto_*). Texturas = banco texdb/skins "9/<pasta>/<n>".
+    // Slots/RPC 232 do 272 (provador /skin9) ainda NAO existem: este e so o visual de teste das roupas de corp.
+    if (byIndex && model == kFemCorpModel && hideTex) {
+        RwTexture* tTor = GetSlotPackTex("9/torso/1");
+        RwTexture* tLeg = GetSlotPackTex("9/leg/1");
+        RwTexture* tFeet = GetSlotPackTex("9/feet/1");
+        RwTexture* tHead = GetSlotPackTex("9/heads/1/1");
+        RwTexture* tHair = GetSlotPackTex("9/hair/1/1");
+        auto starts = [](const std::string& k, const char* p) { return k.compare(0, std::strlen(p), p) == 0; };
+        int nF = 0;
+        for (size_t i = 0; i < mats.size(); ++i) {
+            const std::string& k = keys[i];
+            if (k.empty() || !mats[i] || over.count(k)) continue;
+            RwTexture* t = nullptr; bool hide = false;
+            if (starts(k, "body.torso") || starts(k, "body.arm") || starts(k, "body.shoulder") || k == "body.hand") t = tTor;
+            else if (starts(k, "body.legleft") || starts(k, "body.legright")) t = tLeg;
+            else if (k == "body.feets") t = tFeet;
+            else if (k == "body.head1") t = tHead;
+            else if (k == "fantasy_f_hair1") t = tHair;
+            else if (starts(k, "body.head") || starts(k, "body.eyebrown") || starts(k, "body.makeup") || starts(k, "fantasy_f_hair")
+                     || starts(k, "fantasy_tatto_") || k == "fantasy_f_bikinibotton") hide = true;
+            if (t) { over[k] = t; ++nF; } else if (hide) { over[k] = hideTex; ++nF; ++nHidden; }
+        }
+        FLog("[CORPTEX] jogador %d modelo 272: corpo padrao de teste aplicado em %d material(is)", (int)id, nF);
     }
 
     Entry en{id, e, e->m_pRwClump, look, {}, false, 0};
@@ -1141,6 +1176,25 @@ std::string DebugCommand(const std::string& argsIn)     // /corp
         return s.empty() ? "[CORPTEX] nenhuma corp em SAMP/skins/textures/" + std::string(kSkinFolder) + "/ nem em SAMP/skins/pack/corp/" : "[CORPTEX] corps: " + s;
     }
     if (a == "limpar" || a == "clear" || a == "off" || a == "reset") return ApplyLocal(me, [](Look& l) { l.corp.clear(); });
+    if (a == "272" || a.compare(0, 4, "272 ") == 0) {   // teste da policial feminina: /corp272 [lista | <corp> | limpar]
+        const std::string arg = Trim(a.substr(3));
+        const auto corps272 = ListCorps(kFemCorpModel);
+        if (arg == "lista" || arg == "list") {
+            std::string s;
+            for (const std::string& c : corps272) s += (s.empty() ? "" : ", ") + c;
+            return s.empty() ? "[CORPTEX] 272: nenhuma corp em 272/corp/ no banco texdb/skins (instale o banco novo)" : "[CORPTEX] 272 corps: " + s;
+        }
+        CLocalPlayer* lp = pool->GetLocalPlayer();
+        if (!lp || !lp->GetPlayerPed()) return "[CORPTEX] ped local indisponivel";
+        if (corps272.empty()) return "[CORPTEX] 272: nenhuma corp em 272/corp/ no banco texdb/skins (instale o banco novo)";
+        std::string corp = arg;
+        if (arg == "limpar" || arg == "clear" || arg == "off" || arg == "reset") corp.clear();
+        else if (corp.empty()) corp = std::find(corps272.begin(), corps272.end(), "pf") != corps272.end() ? "pf" : corps272.front();
+        else if (std::find(corps272.begin(), corps272.end(), corp) == corps272.end()) return "[CORPTEX] 272: corp '" + corp + "' nao existe (use /corp272 lista)";
+        lp->GetPlayerPed()->SetModelIndex(272u);
+        const std::string r = ApplyLocal(me, [&](Look& l) { l.corp = corp; });
+        return "[CORPTEX] ator no modelo 272 (policial feminina, so teste local) corp '" + (corp.empty() ? std::string("nenhuma") : corp) + "'  -  /corp272 lista | <corp> | limpar  -  " + r;
+    }
     if (a == "271" || a == "7") {   // teste: coloca o SEU ator no modelo (271 = policia, 7 = male normal); depois use /corp <nome>
         CLocalPlayer* lp = pool->GetLocalPlayer();
         if (!lp || !lp->GetPlayerPed()) return "[CORPTEX] ped local indisponivel";

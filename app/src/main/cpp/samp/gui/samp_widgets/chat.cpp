@@ -245,6 +245,14 @@ if (input == "/provador" || input.rfind("/provador ", 0) == 0)
 
             return;
         }
+// /corp272 [lista | <corp> | limpar]: teste LOCAL da policial feminina (modelo 272 + roupas de corp de 272/corp/ no banco texdb/skins)
+        if (input == "/corp272" || input.rfind("/corp272 ", 0) == 0)
+        {
+            const std::string a272 = input.size() > 8 ? input.substr(9) : std::string();
+            std::string reply = CorpTex::DebugCommand(a272.empty() ? std::string("272") : std::string("272 ") + a272);
+            addDebugMessage("%s", reply.c_str());
+            return;
+        }
 const std::string corpArgs = input.size() > 5 ? input.substr(6) : std::string();
         // /corp <nome> e /corp limpar vao para o SERVIDOR (online: grava e todos veem); so info/lista/271/7 sao locais
         if ((input == "/corp" || input.rfind("/corp ", 0) == 0)

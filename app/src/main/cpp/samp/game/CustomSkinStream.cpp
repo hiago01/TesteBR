@@ -6,6 +6,7 @@
 //   Este modulo so troca A ORIGEM DOS BYTES. Modelos substituidos (tabela s_skins):
 //     7 -> SAMP/skins/skin.dff                (male normal: corpo do pack)
 //     9 -> SAMP/skins/skin9.dff  ou  SAMP/skins/(FeminaNormal)skin[ParaModelo9].dff   (FemininaNormal)
+//   272 -> SAMP/skins/skin272.dff | female_police.dff (policial feminina; teste /corp272)
 //   271 -> SAMP/skins/skin271.dff | _MasculinaCorp_skin.dff | male_police.dff | male.dff (o 1o que existir)                             (male_police.dff: policia; mesmo corpo do 7)
 //   Quando o modelo esta na tabela e o DFF existe, o buffer
 //   e o tamanho (m_nCdSize, em setores de 2048 bytes) passam a ser os do skin.dff. Todo o resto e o
@@ -60,6 +61,7 @@ namespace
         { 7, { "skin.dff",  nullptr } },                                              // male normal (CorpTex: aparencia + roupas pack)
         { 9, { "skin9.dff", "(FeminaNormal)skin[ParaModelo9].dff" } },                // FemininaNormal
         { 271, { "skin271.dff", "_MasculinaCorp_skin.dff", "male_police.dff", "male.dff" } },                                       // male_police.dff (CorpTex: corp + aparencia do 7)
+        { 272, { "skin272.dff", "female_police.dff", nullptr, nullptr } },                                                             // female_police.dff (CorpTex: /corp272, teste das roupas de corp feminina)
     };
     Skin* FindSkin(int model) { for (Skin& k : s_skins) if (k.model == model) return &k; return nullptr; }
 
