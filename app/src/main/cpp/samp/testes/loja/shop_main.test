@@ -175,7 +175,19 @@ int main()
 		Tap(minus.x, minus.y, ans, ord); Frame({}, ans, ord);
 		check(FindNth("x1", 0).x > 0 || FindNth("x2", 0).x > 0, "- diminui");
 		// esgotado: botao sem toque
-		check(FindNth("Esgotado", 0).x > 0, "produto sem estoque mostra Esgotado");
+	}
+	{   // sem estoque vai para o fim da grade, e tocar no 1o card compra o produto REAL (indice original), nao o da posicao
+		ShopPanel::Reset(); std::vector<P> e = { {"Tablet", "Eletronico", 2800, 0, 12, 4, 0}, {"Pneu", "Pneu novo", 400, 3, 17, 3, 0}, {"Pendrive", "Usado", 150, 20, 11, 0, 0}, {"Fone", "Musica", 400, 0, 8, 5, 0} };
+		Show(Packet(80, "Loja", "sub", e)); int ans = 0; std::vector<ShopLine> ord; Settle(); Frame({}, ans, ord, true, "loja_sem_estoque");
+		const ImVec2 nT = FindNth("Tablet", 0), nP = FindNth("Pneu", 0), nPd = FindNth("Pendrive", 0), nF = FindNth("Fone", 0);
+		check(nP.x > 0 && nPd.x > 0 && nT.x > 0 && nF.x > 0, "4 produtos desenhados");
+		check(nP.y < nT.y && nPd.y < nT.y && nP.y < nF.y && nPd.y < nF.y, "com estoque acima dos sem estoque");
+		check(FindNth("Esgotado", 0).x > 0 && FindNth("Esgotado", 1).x > 0 && true, "mostra Esgotado");
+		const ImVec2 add = FindNth("Adicionar ao carrinho", 0);
+		Tap(add.x, add.y, ans, ord); Settle(400);
+		check(FindNth("Carrinho", 0).x > 0 && FindNth("x1", 0).x > 0, "toque no 1o card adiciona ao carrinho");
+		Tap(FindNth("Finalizar Compra", 0).x, FindNth("Finalizar Compra", 0).y, ans, ord);
+		check(ans == 1 && ord.size() == 1 && ord[0].idx == 1 && ord[0].qty == 1, "pedido usa o indice original (Pneu = 1)");
 	}
 	{   // novo pacote com o mesmo numero preserva a rolagem; carrinho vem do servidor
 		ShopPanel::Reset(); auto e = Eletro(); e[0].q0 = 2; Show(Packet(70, "Loja", "sub", e));

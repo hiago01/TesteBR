@@ -444,10 +444,15 @@ void ShopPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vector
 		const ImVec2 c0 = V(0, GY0), c1 = V(LW, GY1);
 		g_gridR[0] = c0.x; g_gridR[1] = c0.y; g_gridR[2] = c1.x; g_gridR[3] = c1.y;
 		r->pushClipRect(c0, c1, false);
-		for (int i = 0; i < np; i++)
+		// ordem de exibicao: com estoque primeiro, sem estoque no fim (mesma ordem do servidor dentro de cada grupo); i continua sendo o indice real do produto
+		std::vector<int> ord; ord.reserve((size_t)np);
+		for (int k = 0; k < np; k++) if (g_d.prods[(size_t)k].stock > 0) ord.push_back(k);
+		for (int k = 0; k < np; k++) if (g_d.prods[(size_t)k].stock <= 0) ord.push_back(k);
+		for (int slot = 0; slot < np; slot++)
 		{
+			const int i = ord[(size_t)slot];
 			const Prod& p = g_d.prods[(size_t)i];
-			const float cx = (i % 2 == 0) ? GX0 : GX1, cy = GY0 + (float)(i / 2) * (CARDH + GAP) - g_scrollGrid;
+			const float cx = (slot % 2 == 0) ? GX0 : GX1, cy = GY0 + (float)(slot / 2) * (CARDH + GAP) - g_scrollGrid;
 			if (cy + CARDH < GY0 - 1.0f || cy > GY1 + 1.0f) continue;
 			const int* ac = kAccent[p.color];
 			const bool out = p.stock <= 0;
@@ -472,9 +477,10 @@ void ShopPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vector
 			{
 				const std::string pr = Money(p.price);
 				const float pw = std::max(50.0f, txtW(pr, 7.4f) + 12.0f);
-				r->drawRoundedRect(V(cx + 8, cy + 69), V(cx + 8 + pw, cy + 83), A(18, 92, 112, 190), 7.0f * u, true);
-				r->drawRoundedRect(V(cx + 8, cy + 69), V(cx + 8 + pw, cy + 83), A(64, 200, 222, 190), 7.0f * u, false, std::max(1.0f, 1.0f * u));
-				txt(cx + 8 + (pw - txtW(pr, 7.4f)) * 0.5f, cy + 69 + (14.0f - txtH(pr, 7.4f)) * 0.5f, A(100, 232, 248, 255), pr, 7.4f, true);
+				// sem estoque: pilula e valor em vermelho apagado (o jogador ve de cara que acabou)
+				r->drawRoundedRect(V(cx + 8, cy + 69), V(cx + 8 + pw, cy + 83), out ? A(104, 34, 40, 170) : A(18, 92, 112, 190), 7.0f * u, true);
+				r->drawRoundedRect(V(cx + 8, cy + 69), V(cx + 8 + pw, cy + 83), out ? A(176, 78, 84, 170) : A(64, 200, 222, 190), 7.0f * u, false, std::max(1.0f, 1.0f * u));
+				txt(cx + 8 + (pw - txtW(pr, 7.4f)) * 0.5f, cy + 69 + (14.0f - txtH(pr, 7.4f)) * 0.5f, out ? A(214, 112, 116, 230) : A(100, 232, 248, 255), pr, 7.4f, true);
 				// botao Adicionar ao carrinho
 				const float bx0 = cx + 8 + pw + 9.0f, bx1 = cx + CARDW - 8.0f;
 				const bool dn = g_down.kind == T_ADD && g_down.idx == i;

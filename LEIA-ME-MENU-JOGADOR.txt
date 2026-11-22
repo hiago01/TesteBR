@@ -1,0 +1,15 @@
+MENU JOGADOR (CLIENTE) - Máximo RP
+
+O QUE VEM AQUI
+- Menu Jogador em tela cheia: Início, Ranking e Regras funcionam. Loja premium, Comandos e funções, Configurações e Dúvidas frequentes mostram "Em breve".
+- Banner "painel de grupos": ao tocar, envia o comando /grupos. Banner "Eleve sua experiência / acessar loja": mostra "Em breve" (a loja VIP ainda não existe).
+- Loja: produtos SEM estoque agora ficam embaixo dos que têm estoque, e o preço deles fica vermelho apagado.
+
+COMO INSTALAR
+1) Descompacte este zip direto na raiz do projeto (ele já vem com app/... e tools/...). Ele sobrescreve jobs.cpp, shoppanel, notafiscal, game.cpp e cria perfilpanel.cpp/.h e PerfilTexDb.h. O CMake já pega arquivos novos sozinho.
+2) Instale também o zip dos banners (texdb-perfil.zip): ele cria a pasta texdb/perfil. Ela é um banco PEQUENO e separado (só 2 imagens), NÃO é um IMG novo e não mexe no favela.img nem no texdb/favela. Coloque junto dos outros bancos texdb do cliente. Sem esse banco o menu funciona normal, só desenha o banner com cor e texto.
+3) Instale o zip do servidor junto (cliente e servidor precisam ser da mesma versão).
+
+HONESTIDADE
+- Nada disso foi compilado com o NDK nem testado no jogo/celular. Testei no PC só a lógica e o desenho do painel com um "renderer falso" (27 checagens) e o servidor com testes. Se o build der erro, me mande o log.
+- O clique para abrir no lugar do "Central da cidade"/tablist: NÃO consegui ligar, pois o arquivo do Central (central.cpp/.h) não está no projeto que tenho. Me envie esse arquivo e eu coloco. Enquanto isso o menu abre com o comando /perfil.

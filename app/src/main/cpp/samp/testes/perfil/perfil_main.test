@@ -1,0 +1,168 @@
+// Teste de PC do Menu Jogador (perfilpanel.cpp): le os pacotes RPC 245 op 21/22/23, desenha com um renderer falso (render.py gera PNG) e confere os toques.
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
+#include <vector>
+#include <thread>
+#include <chrono>
+#include "gui/imguirenderer.h"
+#include "gui/samp_widgets/perfilpanel.h"
+#include "vendor/raknet/BitStream.h"
+
+static FILE* g_out = nullptr;
+static int g_clipN = 0;
+static bool g_banner = false;
+static std::vector<std::string> g_toasts;
+static std::vector<std::string> g_texts;
+static std::vector<ImVec4> g_textPos;
+void* PerfilBannerTexture(int) { static int x; return g_banner ? (void*)&x : nullptr; }
+void ShopPanel::LocalToast(int, const char* t) { g_toasts.push_back(t); }
+#define RGBA(c) (int)((c).Value.x * 255.0f + 0.5f), (int)((c).Value.y * 255.0f + 0.5f), (int)((c).Value.z * 255.0f + 0.5f), (int)((c).Value.w * 255.0f + 0.5f)
+
+ImGuiRenderer::ImGuiRenderer(ImDrawList*, ImFont*) : m_drawList(nullptr), m_font(nullptr) {}
+void ImGuiRenderer::drawLine(const ImVec2& a, const ImVec2& b, const ImColor& c, float th) { if (g_out) fprintf(g_out, "L %.2f %.2f %.2f %.2f %.2f %d %d %d %d\n", a.x, a.y, b.x, b.y, th, RGBA(c)); }
+void ImGuiRenderer::drawRect(const ImVec2& a, const ImVec2& b, const ImColor& c, bool fill, float th) { if (g_out) fprintf(g_out, "R %.2f %.2f %.2f %.2f %d %d %d %d %d %.2f\n", a.x, a.y, b.x, b.y, RGBA(c), (int)fill, th); }
+void ImGuiRenderer::drawRoundedRect(const ImVec2& a, const ImVec2& b, const ImColor& c, float rd, bool fill, float th) { if (g_out) fprintf(g_out, "RR %.2f %.2f %.2f %.2f %d %d %d %d %.2f %d %.2f\n", a.x, a.y, b.x, b.y, RGBA(c), rd, (int)fill, th); }
+void ImGuiRenderer::drawRectFilledMulticolor(const ImVec2& a, const ImVec2& b, const ImColor& c1, const ImColor& c2, const ImColor& c3, const ImColor& c4)
+{ if (g_out) fprintf(g_out, "M %.2f %.2f %.2f %.2f %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d\n", a.x, a.y, b.x, b.y, RGBA(c1), RGBA(c2), RGBA(c3), RGBA(c4)); }
+void ImGuiRenderer::drawConvexPolyFilled(ImVec2* p, int n, const ImColor& c)
+{
+	if (!g_out) return;
+	fprintf(g_out, "P %d %d %d %d %d", n, RGBA(c));
+	for (int i = 0; i < n; i++) fprintf(g_out, " %.2f %.2f", p[i].x, p[i].y);
+	fprintf(g_out, "\n");
+}
+void ImGuiRenderer::drawPolyline(const ImVec2* p, int n, const ImColor& c, bool closed, float th)
+{
+	if (!g_out) return;
+	fprintf(g_out, "PL %d %d %.2f %d %d %d %d", n, (int)closed, th, RGBA(c));
+	for (int i = 0; i < n; i++) fprintf(g_out, " %.2f %.2f", p[i].x, p[i].y);
+	fprintf(g_out, "\n");
+}
+void ImGuiRenderer::drawImage(const ImVec2& a, const ImVec2& b, ImTextureID, const ImColor& c, const ImVec2&, const ImVec2&) { if (g_out) fprintf(g_out, "IM %.2f %.2f %.2f %.2f\n", a.x, a.y, b.x, b.y); }
+void ImGuiRenderer::pushClipRect(const ImVec2& a, const ImVec2& b, bool) { g_clipN++; if (g_out) fprintf(g_out, "CP %.2f %.2f %.2f %.2f\n", a.x, a.y, b.x, b.y); }
+void ImGuiRenderer::popClipRect() { if (g_out) fprintf(g_out, "CO\n"); }
+ImVec2 ImGuiRenderer::calculateTextSize(const std::string& s, float fs) { return ImVec2(0.48f * fs * (float)s.size(), fs * 1.15f); }
+void ImGuiRenderer::drawText(const ImVec2& pos, const ImColor& c, const std::string& s, bool, float fs)
+{
+	if (g_out) fprintf(g_out, "T %.2f %.2f %.2f %d %d %d %d %s\n", pos.x, pos.y, fs, RGBA(c), s.c_str());
+	g_texts.push_back(s); g_textPos.push_back(ImVec4(pos.x, pos.y, fs, (float)s.size()));
+}
+
+
+
+static int g_fail = 0, g_n = 0;
+static void check(bool ok, const char* msg) { g_n++; if (!ok) { g_fail++; printf("FALHOU: %s\n", msg); } }
+static void put8(std::vector<uint8_t>& v, unsigned x) { v.push_back((uint8_t)x); }
+static void put16(std::vector<uint8_t>& v, unsigned x) { v.push_back((uint8_t)x); v.push_back((uint8_t)(x >> 8)); }
+static void put32(std::vector<uint8_t>& v, unsigned x) { put16(v, x & 0xFFFF); put16(v, x >> 16); }
+static void putS(std::vector<uint8_t>& v, const std::string& s) { put8(v, (unsigned)s.size()); for (char c : s) v.push_back((uint8_t)c); }
+static std::vector<uint8_t> Open(int seq, int ncat = 2, int ntab = 5)
+{
+	std::vector<uint8_t> v; put16(v, (unsigned)seq);
+	putS(v, "Hiago Silva"); put32(v, 1004); putS(v, "(21) 99999-0001"); putS(v, "22/11/2026"); putS(v, "01/10/2026"); putS(v, "Nenhuma"); putS(v, "Entregador");
+	put32(v, 12500); put32(v, 340); put32(v, 2);
+	put8(v, (unsigned)ncat); for (int i = 0; i < ncat; i++) put8(v, (unsigned)i);
+	static const char* T[] = { "Gravações e Denúncias", "Gerais", "Roleplay", "Comportamento", "Ações Ilegais" };
+	put8(v, (unsigned)ntab); for (int i = 0; i < ntab; i++) putS(v, T[i % 5]);
+	return v;
+}
+static std::vector<uint8_t> Rank(int seq, int cat, int n, int mePos = 0)
+{
+	std::vector<uint8_t> v; put16(v, (unsigned)seq); put8(v, (unsigned)cat); put8(v, (unsigned)n);
+	for (int i = 0; i < n; i++) { put32(v, (unsigned)i + 1); putS(v, "Jogador Numero " + std::to_string(i + 1)); put32(v, 5000 - (unsigned)i * 37); }
+	put32(v, (unsigned)mePos); put32(v, 340); return v;
+}
+static std::vector<uint8_t> Rules(int seq, int tab, int n)
+{
+	std::vector<uint8_t> v; put16(v, (unsigned)seq); put8(v, (unsigned)tab); put8(v, (unsigned)n);
+	for (int i = 0; i < n; i++)
+	{
+		const int st = i % 6 == 0 ? 1 : (i % 6 == 5 ? 3 : (i % 6 == 4 ? 4 : (i % 2 ? 2 : 0)));
+		put8(v, (unsigned)st); putS(v, st == 3 ? "" : (st == 1 ? "Titulo da secao " + std::to_string(i) : "Texto da regra numero " + std::to_string(i) + " com bastante conteudo para forcar a quebra de linha dentro do painel de regras do servidor Maximo RP."));
+	}
+	return v;
+}
+static bool In(const std::vector<uint8_t>& v, int w) { RakNet::BitStream bs(v.data(), (int)v.size()); return w == 21 ? PerfilPanel::OnOpen(bs) : (w == 22 ? PerfilPanel::OnRank(bs) : PerfilPanel::OnRules(bs)); }
+static void Sleep(int ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); }
+static const float SW = 2400, SH = 1080;
+static ImGuiRenderer* R() { static ImGuiRenderer r(nullptr, nullptr); return &r; }
+static int g_ans, g_arg;
+static void Frame(const std::vector<ShopTouch>& ev, bool rec = false, const char* name = nullptr)
+{
+	g_texts.clear(); g_textPos.clear();
+	if (rec) { std::string path = std::string(getenv("PF_OUT") ? getenv("PF_OUT") : ".") + "/" + name + ".dump"; g_out = fopen(path.c_str(), "w"); fprintf(g_out, "SIZE %.0f %.0f\n", SW, SH); }
+	PerfilPanel::Draw(R(), SW, SH, ev, g_ans, g_arg);
+	if (rec) { fclose(g_out); g_out = nullptr; }
+}
+static void Settle() { Frame({}); Sleep(260); Frame({}); Frame({}); }
+static void Tap(float x, float y) { Frame({ {2, 0, x, y, false}, {1, 0, x, y, false} }); }
+static ImVec2 Find(const char* s, int nth = 0)
+{
+	int k = 0;
+	for (size_t i = 0; i < g_texts.size(); i++) if (g_texts[i] == s) { if (k++ == nth) return ImVec2(g_textPos[i].x + 0.48f * g_textPos[i].z * g_textPos[i].w * 0.5f, g_textPos[i].y + g_textPos[i].z * 0.5f); }
+	return ImVec2(-1, -1);
+}
+
+int main()
+{
+	PerfilPanel::Reset();
+	{ auto v = Open(9); v.resize(v.size() - 2); check(!In(v, 21), "pacote cortado recusado"); check(PerfilPanel::Seq() == 0, "nada na tela depois do invalido"); }
+	check(!In(Open(0), 21), "numero 0 recusado");
+	check(In(Open(7), 21) && PerfilPanel::Seq() == 7, "pacote valido");
+	check(In(Rank(7, 0, 3), 22), "ranking de tela atual aceito");
+	check(In(Rank(6, 0, 3), 22), "ranking de tela antiga ignorado sem erro");
+	{ auto v = Rank(7, 0, 3); v.resize(v.size() - 1); check(!In(v, 22), "ranking cortado recusado"); }
+	{ auto v = Rank(7, 0, 21); check(!In(v, 22), "ranking com mais de 20 recusado"); }
+
+	// Inicio: pede nada, mostra dados e banners
+	PerfilPanel::Reset(); In(Open(10), 21); Settle();
+	Frame({}, true, "inicio_sem_banco");
+	check(Find("Hiago Silva").x > 0, "nome aparece"); check(Find("1004").x > 0, "RG aparece"); check(Find("R$ 12.500,00").x > 0, "dinheiro formatado");
+	check(Find("PP 340").x > 0, "PP aparece"); check(Find("painel de grupos").x > 0, "botao painel de grupos"); check(Find("acessar loja").x > 0, "botao acessar loja");
+	g_banner = true; Frame({}, true, "inicio_com_banco"); g_banner = false;
+	// banner grupos -> resposta 4
+	{ ImVec2 p = Find("painel de grupos"); Tap(p.x, p.y); check(g_ans == 4, "toque no banner de grupos = /grupos"); }
+	// banner VIP -> toast Em breve
+	g_toasts.clear(); Settle();
+	{ ImVec2 p = Find("acessar loja"); Tap(p.x, p.y); check(g_ans == 0 && !g_toasts.empty(), "banner da loja VIP = Em breve"); }
+	// itens "Em breve" da lateral
+	g_toasts.clear(); { ImVec2 p = Find("Loja premium"); Tap(p.x, p.y); check(!g_toasts.empty() && g_ans == 0, "Loja premium = Em breve"); }
+	g_toasts.clear(); { ImVec2 p = Find("Configurações"); Tap(p.x, p.y); check(!g_toasts.empty(), "Configuracoes = Em breve"); }
+	// Sair
+	{ ImVec2 p = Find("Sair do Menu"); Tap(p.x, p.y); check(g_ans == 1, "Sair do Menu fecha"); }
+
+	// Ranking
+	PerfilPanel::Reset(); In(Open(11), 21); Settle();
+	{ ImVec2 p = Find("Ranking"); Tap(p.x, p.y); }
+	Frame({}); check(g_ans == 2 && g_arg == 0, "ranking pede a categoria 0 ao abrir");
+	Frame({}); check(g_ans == 0, "nao pede de novo enquanto espera");
+	Frame({}, true, "ranking_carregando");
+	In(Rank(11, 0, 20, 0), 22); Frame({}); Frame({}, true, "ranking_pp");
+	check(Find("Jogador Numero 1").x > 0, "linha 1 do ranking");
+	{ ImVec2 p = Find("Clube da Coroa"); Tap(p.x, p.y); Frame({}); check(g_ans == 2 && g_arg == 1, "trocar aba pede categoria 1"); }
+	In(Rank(11, 1, 5, 4), 22); Frame({}); Frame({}, true, "ranking_vip");
+	{ ImVec2 p = Find("Titãs do investimento"); Tap(p.x, p.y); Frame({}); check(g_ans == 0, "voltar para aba ja carregada nao pede de novo"); }
+	// rolagem
+	Frame({ {2, 0, 1000, 700, false}, {3, 0, 1000, 500, false}, {1, 0, 1000, 500, false} }); Frame({}, true, "ranking_rolado");
+
+	// Regras
+	PerfilPanel::Reset(); In(Open(12), 21); Settle();
+	{ ImVec2 p = Find("Regras"); Tap(p.x, p.y); }
+	Frame({}); check(g_ans == 3 && g_arg == 0, "regras pede a aba 0");
+	Frame({}, true, "regras_carregando");
+	In(Rules(12, 0, 30), 23); Frame({}); Frame({}, true, "regras_aba0");
+	{ ImVec2 p = Find("Roleplay"); Tap(p.x, p.y); Frame({}); check(g_ans == 3 && g_arg == 2, "trocar aba de regras pede a aba 2"); }
+	In(Rules(12, 2, 12), 23); Frame({}); Frame({}, true, "regras_aba2");
+	Frame({ {2, 0, 1000, 800, false}, {3, 0, 1000, 500, false}, {1, 0, 1000, 500, false} }); Frame({}, true, "regras_rolado");
+	// sem regras cadastradas
+	PerfilPanel::Reset(); In(Open(13, 2, 0), 21); Settle(); { ImVec2 p = Find("Regras"); Tap(p.x, p.y); } Frame({}, true, "regras_vazio");
+
+	// tela nova (numero novo) volta ao Inicio e limpa cache
+	PerfilPanel::Reset(); In(Open(14), 21); Settle(); { ImVec2 p = Find("Ranking"); Tap(p.x, p.y); } In(Rank(14, 0, 3), 22); Frame({});
+	In(Open(15), 21); Settle(); Frame({}); check(Find("painel de grupos").x > 0, "tela nova volta ao Inicio");
+
+	printf("%d checagens, %d falhas\n", g_n, g_fail);
+	return g_fail ? 1 : 0;
+}
