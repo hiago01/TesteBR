@@ -291,7 +291,84 @@ bool ValidName(const std::string& s)
 // (a base chega por RPC sem saber o modelo); o masculino e re-limitado por ClampMale no BuildEntry (comportamento antigo intacto).
 constexpr int kFaceVariantsF[7] = { 0, 6, 8, 8, 7, 6, 12 };
 constexpr int kHairStylesF = 5;
-constexpr int kHairColorsF[6] = { 0, 6, 6, 7, 7, 7 };
+constexpr int kHairColorsF[6] = { 0, 6, 6, 7, 7, 5 };      // config.lua: hair_1..31 = 6,6,7,7,5 cores por estilo
+// GERADO do config.lua (clothesManage[9] e [272].removeParts): peca -> partes do corpo ocultadas quando ela esta vestida
+struct FemCover { const char* mat; const char* hide; };
+static const FemCover kFemCover[] = {
+    {"fantasy_f_boot1", "body.feets,body.feets2"},
+    {"fantasy_f_boot2", "body.feets,body.feets2"},
+    {"fantasy_f_boot3", "body.feets,body.feets2"},
+    {"fantasy_f_boot5", "body.feets,body.legleft5,body.legright5"},
+    {"fantasy_f_cop_boot1", "body.feets,body.feets2,body.legleft4,body.legleft5,body.legright4,body.legright5"},
+    {"fantasy_f_cop_boot2", "body.feets,body.feets2,body.legleft4,body.legleft5,body.legright4,body.legright5"},
+    {"fantasy_f_cop_pants1", "body.legleft1,body.legleft2,body.legleft3,body.legleft6,body.legright1,body.legright2,body.legright3,body.legright6"},
+    {"fantasy_f_cop_short1", "body.legleft1,body.legleft2,body.legleft6,body.legright1,body.legright2,body.legright6"},
+    {"fantasy_f_cop_torso1", "body.torso2,body.torso3,body.torso4"},
+    {"fantasy_f_cop_torso2", "body.shoulderleft,body.shoulderright,body.torso1,body.torso2,body.torso3,body.torso4"},
+    {"fantasy_f_cop_torso3", "body.shoulderleft,body.shoulderright,body.torso1,body.torso2,body.torso3,body.torso4"},
+    {"fantasy_f_cop_torso4", "body.armleft,body.armright,body.shoulderleft,body.shoulderright,body.torso1,body.torso2,body.torso3,body.torso4"},
+    {"fantasy_f_pants1", "body.legleft1,body.legleft2,body.legleft3,body.legleft4,body.legleft6,body.legright1,body.legright2,body.legright3,body.legright4,body.legright6"},
+    {"fantasy_f_pants2", "body.legleft1,body.legleft2,body.legleft3,body.legleft4,body.legleft6,body.legright1,body.legright2,body.legright3,body.legright4,body.legright6"},
+    {"fantasy_f_pants4", "body.legleft1,body.legleft2,body.legleft3,body.legleft6,body.legright1,body.legright2,body.legright3,body.legright6"},
+    {"fantasy_f_pants5", "body.legleft1,body.legleft2,body.legleft3,body.legleft4,body.legright1,body.legright2,body.legright3,body.legright4"},
+    {"fantasy_f_slipper1", "body.feets2"},
+    {"fantasy_f_slipper2", "body.feets2"},
+    {"fantasy_f_slipper3", "body.feets,body.feets2"},
+    {"fantasy_f_torso3", "body.torso4"},
+    {"fantasy_f_torso4", "body.shoulderleft,body.shoulderright,body.torso1,body.torso2,body.torso3,body.torso4"},
+    {"fantasy_f_torso5", "body.armleft,body.armright,body.shoulderleft,body.shoulderright,body.torso1,body.torso2,body.torso3,body.torso4"},
+};
+
+// GERADO do config.lua (clothesConfig[9]): variantes de MARCA (louisvuitton, versace) de cada pasta; entram DEPOIS das variantes comuns
+struct FemBrand { const char* type; int folder; const char* rel; };
+static const FemBrand kFemBrand[] = {
+    {"boot", 2, "9/louisvuitton/boot/2_1"},
+    {"boot", 2, "9/louisvuitton/boot/2_2"},
+    {"boot", 2, "9/versace/boot/2_1"},
+    {"boot", 2, "9/versace/boot/2_2"},
+    {"boot", 4, "9/louisvuitton/boot/4_1"},
+    {"boot", 4, "9/louisvuitton/boot/4_2"},
+    {"pants", 1, "9/louisvuitton/pants/1_1"},
+    {"tshirts", 1, "9/louisvuitton/tshirts/1_1"},
+    {"tshirts", 2, "9/louisvuitton/tshirts/2_1"},
+    {"tshirts", 5, "9/louisvuitton/tshirts/5_1"},
+    {"tshirts", 5, "9/louisvuitton/tshirts/5_2"},
+    {"tshirts", 5, "9/louisvuitton/tshirts/5_3"},
+    {"tshirts", 5, "9/versace/tshirts/5_1"},
+    {"tshirts", 5, "9/versace/tshirts/5_2"},
+    {"tshirts", 5, "9/versace/tshirts/5_3"},
+    {"tshirts", 5, "9/versace/tshirts/5_4"},
+    {"tshirts", 6, "9/louisvuitton/tshirts/6_1"},
+    {"tshirts", 6, "9/louisvuitton/tshirts/6_2"},
+    {"tshirts", 6, "9/versace/tshirts/6_1"},
+    {"tshirts", 6, "9/versace/tshirts/6_2"},
+};
+
+// variantes comuns por pasta do banco (conferidas com config.lua e com o banco): boot 1..7, pants 1..6, tshirts 1..6
+int FemBaseN(const char* type, int folder)
+{
+    static const int kBoot[8]  = {0, 24, 15, 21, 16, 55, 23, 16};
+    static const int kPants[7] = {0, 12, 16, 31, 40, 6, 11};
+    static const int kShirt[7] = {0, 12, 12, 20, 16, 35, 35};
+    if (!std::strcmp(type, "boot"))   return (folder >= 1 && folder <= 7) ? kBoot[folder] : 0;
+    if (!std::strcmp(type, "pants"))  return (folder >= 1 && folder <= 6) ? kPants[folder] : 0;
+    if (!std::strcmp(type, "tshirts")) return (folder >= 1 && folder <= 6) ? kShirt[folder] : 0;
+    return 0;
+}
+int FemBrandN(const char* type, int folder)
+{
+    int n = 0; for (const FemBrand& b : kFemBrand) if (b.folder == folder && !std::strcmp(b.type, type)) ++n; return n;
+}
+// rel do banco da variante `var` (1..comuns, depois as de marca louisvuitton/versace)
+std::string FemRel(const char* type, int folder, int var)
+{
+    const int n = FemBaseN(type, folder);
+    if (var >= 1 && var <= n) return std::string("9/") + type + "/" + std::to_string(folder) + "/" + std::to_string(var);
+    int k = var - n;
+    for (const FemBrand& b : kFemBrand) if (b.folder == folder && !std::strcmp(b.type, type) && --k == 0) return b.rel;
+    return std::string();
+}
+
 void ClampMale(Look& l)
 {
     if (l.tone) { if (l.face > kFaceVariants[l.tone]) l.face = (uint8_t)kFaceVariants[l.tone]; }
@@ -817,9 +894,11 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& lookIn)
     // o 272 veste a corp (pecas fantasy_f_cop_* ja tratadas acima). O mapa pasta -> material abaixo e HIPOTESE (mesma logica do masculino:
     // boot 1-4 botas / 5-7 chinelos; pants 1-4 calcas / resto short) - confira no jogo e me diga o que estiver trocado.
     if (byIndex && IsFemModel(model) && hideTex) {
-        static const char* kFBoot[7]  = {"fantasy_f_boot1", "fantasy_f_boot2", "fantasy_f_boot3", "fantasy_f_boot5", "fantasy_f_slipper1", "fantasy_f_slipper2", "fantasy_f_slipper3"};
-        static const char* kFPants[6] = {"fantasy_f_pants1", "fantasy_f_pants2", "fantasy_f_pants4", "fantasy_f_pants5", "fantasy_f_short1", "fantasy_f_bikinibotton"};
-        static const char* kFShirt[6] = {"fantasy_f_torso1", "fantasy_f_torso2", "fantasy_f_torso3", "fantasy_f_torso4", "fantasy_f_torso5", "fantasy_f_torso6"};
+        // pasta -> material: CONFERIDO no config.lua (clothesManage[9]): boot 1-3 chinelos, 4 boot1, 5 boot2, 6 boot3, 7 boot5;
+        // pants 1 calcinha (biquini), 2 pants1, 3 pants2, 4 pants4, 5 pants5, 6 short1; tshirts 1 top (biquini), 2..6 torso1..5
+        static const char* kFBoot[7]  = {"fantasy_f_slipper1", "fantasy_f_slipper2", "fantasy_f_slipper3", "fantasy_f_boot1", "fantasy_f_boot2", "fantasy_f_boot3", "fantasy_f_boot5"};
+        static const char* kFPants[6] = {"fantasy_f_bikinibotton", "fantasy_f_pants1", "fantasy_f_pants2", "fantasy_f_pants4", "fantasy_f_pants5", "fantasy_f_short1"};
+        static const char* kFShirt[6] = {"fantasy_f_bikinitop", "fantasy_f_torso1", "fantasy_f_torso2", "fantasy_f_torso3", "fantasy_f_torso4", "fantasy_f_torso5"};
         const bool cop = model == kFemCorpModel;
         int tone = look.tone ? look.tone : 1;
         int face = look.tone ? (look.face ? look.face : 1) : 1;
@@ -837,29 +916,45 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& lookIn)
         bool pantsWorn = false, shirtWorn = false;
         auto wear = [&](const char* type, int set, int var, const char* const* tab, int n, bool& worn) {
             if (cop || set < 1 || set > n) return;
-            RwTexture* t = P(std::string("9/") + type + "/" + std::to_string(set) + "/" + std::to_string(var < 1 ? 1 : var));
+            const std::string rel = FemRel(type, set, var < 1 ? 1 : var);
+            RwTexture* t = rel.empty() ? nullptr : P(rel);
             if (t) { over[tab[set - 1]] = t; ++nApp; worn = true; }
         };
         bool bootWorn = false;
         wear("boot", look.bootSet, look.bootVar, kFBoot, 7, bootWorn);
         wear("pants", look.pantsSet, look.pantsVar, kFPants, 6, pantsWorn);
         wear("tshirts", look.shirtSet, look.shirtVar, kFShirt, 6, shirtWorn);
-        // roupa intima (biquini) so no 9 e so onde nao ha calca/camisa; 9 = nenhuma
+        // padrao do config.lua (defaultClothes[9]): calcinha (pants/1/1) e sutia (tshirts/1/1) quando nao ha calca/camisa; under 9 = nenhuma
         if (!cop && look.under != 9) {
-            RwTexture* ut = GetSolidTex(look.under ? look.under : 1);
-            if (ut && !pantsWorn) { over["fantasy_f_bikinibotton"] = ut; ++nApp; }
-            if (ut && !shirtWorn) { over["fantasy_f_bikinitop"] = ut; ++nApp; }
+            const int uv = (look.under >= 1 && look.under <= 6) ? look.under : 1;
+            if (!pantsWorn) if (RwTexture* ut = P("9/pants/1/" + std::to_string(uv))) { over["fantasy_f_bikinibotton"] = ut; ++nApp; }
+            if (!shirtWorn) if (RwTexture* ut = P("9/tshirts/1/" + std::to_string(uv))) { over["fantasy_f_bikinitop"] = ut; ++nApp; }
         }
+        // cobertura (config.lua removeParts): partes do corpo ocultadas por cada peca VISIVEL vestida (corp do 272 inclusive)
+        std::unordered_set<std::string> covered;
+        bool boot5 = false;
+        for (const auto& kv : over) {
+            if (kv.second == hideTex) continue;
+            if (kv.first == "fantasy_f_boot5") boot5 = true;
+            for (const FemCover& fc : kFemCover) {
+                if (kv.first != fc.mat) continue;
+                const char* q = fc.hide;
+                while (*q) { const char* e = std::strchr(q, ','); std::string part = e ? std::string(q, (size_t)(e - q)) : std::string(q); covered.insert(part); if (!e) break; q = e + 1; }
+            }
+        }
+        RwTexture* tBrow = P("eyebrown/1");                          // mesmo arquivo do masculino (config.lua: clothes/7/eyebrown), sobrancelha 1
         auto starts = [](const std::string& k, const char* q) { return k.compare(0, std::strlen(q), q) == 0; };
         int nF = 0;
         for (size_t i = 0; i < mats.size(); ++i) {
             const std::string& k = keys[i];
             if (k.empty() || !mats[i] || over.count(k)) continue;
             RwTexture* t = nullptr; bool hide = false;
+            if (starts(k, "body.") && (covered.count(k) || (k == "body.feets2" && !boot5))) { over[k] = hideTex; ++nF; ++nHidden; continue; }   // coberto por roupa (ou pe alternativo sem bota jump)
             if (starts(k, "body.torso") || starts(k, "body.arm") || starts(k, "body.shoulder") || k == "body.hand") t = tTor;
             else if (starts(k, "body.legleft") || starts(k, "body.legright")) t = tLeg;
             else if (k == "body.feets" || k == "body.feets2") t = tFeet;
             else if (k == "body.head1") t = tHead;
+            else if (k == "body.eyebrown1") t = tBrow;
             else if (hs && k == hairMat) t = tHair;
             else if (starts(k, "body.head") || starts(k, "body.eyebrown") || starts(k, "body.makeup") || starts(k, "fantasy_f_")
                      || starts(k, "fantasy_tatto_")) hide = true;      // sem textura/escolha: oculto (nunca branco)
@@ -1309,15 +1404,12 @@ bool SendLocalBase(const Base& b)
 // variantes por pasta do banco texdb/skins (9/boot, 9/pants, 9/tshirts) e rostos/cores (9/heads, 9/hair): contagens conferidas no pack
 int FemCount(int kind, int a)
 {
-    static const int kBoot[8]  = {0, 24, 15, 21, 16, 55, 23, 16};
-    static const int kPants[7] = {0, 12, 16, 31, 40, 6, 11};
-    static const int kShirt[7] = {0, 12, 12, 20, 16, 35, 35};
     switch (kind) {
         case 0: return (a >= 1 && a <= 6) ? kFaceVariantsF[a] : 0;
         case 1: return (a >= 1 && a <= 5) ? kHairColorsF[a] : 0;
-        case 2: return (a >= 1 && a <= 7) ? kBoot[a] : 0;
-        case 3: return (a >= 1 && a <= 6) ? kPants[a] : 0;
-        case 4: return (a >= 1 && a <= 6) ? kShirt[a] : 0;
+        case 2: return FemBaseN("boot", a) + FemBrandN("boot", a);          // + variantes de marca (louisvuitton/versace)
+        case 3: return FemBaseN("pants", a) + FemBrandN("pants", a);
+        case 4: return FemBaseN("tshirts", a) + FemBrandN("tshirts", a);
     }
     return 0;
 }

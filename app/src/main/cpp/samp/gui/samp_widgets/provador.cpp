@@ -229,9 +229,9 @@ namespace
 
 	enum FemKind { FK_FACE = 0, FK_HAIR, FK_SHIRT, FK_PANTS, FK_BOOT, FK_UNDER, FK_CORP };
 	struct FemCat { const char* title; FemKind kind; };
-	const FemCat kFemCats9[]   = { {"PELE E ROSTO", FK_FACE}, {"CABELO", FK_HAIR}, {"CAMISA", FK_SHIRT}, {"CALÇA", FK_PANTS}, {"CALÇADO", FK_BOOT}, {"ÍNTIMA", FK_UNDER} };
+	const FemCat kFemCats9[]   = { {"PELE E ROSTO", FK_FACE}, {"CABELO", FK_HAIR}, {"CAMISA", FK_SHIRT}, {"CALÇA", FK_PANTS}, {"CALÇADO", FK_BOOT} };
 	const FemCat kFemCats272[] = { {"PELE E ROSTO", FK_FACE}, {"CABELO", FK_HAIR}, {"CORP", FK_CORP} };
-	int            FemCatCount() { return g_fModel == 272 ? 3 : 6; }
+	int            FemCatCount() { return g_fModel == 272 ? 3 : 5; }
 	const FemCat&  FemCatAt(int i) { return g_fModel == 272 ? kFemCats272[i] : kFemCats9[i]; }
 
 	struct FemRow { std::string label; int val; };
@@ -243,9 +243,13 @@ namespace
 		{
 			case FK_FACE:  for (int t = 1; t <= 6; ++t) v.push_back({"Tom de pele " + std::to_string(t), t}); break;
 			case FK_HAIR:  v.push_back({"Sem cabelo", 0}); for (int t = 1; t <= 5; ++t) v.push_back({"Estilo " + std::to_string(t), t}); break;
-			case FK_SHIRT: v.push_back({"Nenhuma", 0}); for (int t = 1; t <= 6; ++t) v.push_back({"Camisa pasta " + std::to_string(t), t}); break;
-			case FK_PANTS: v.push_back({"Nenhuma", 0}); for (int t = 1; t <= 6; ++t) v.push_back({"Calça pasta " + std::to_string(t), t}); break;
-			case FK_BOOT:  v.push_back({"Nenhum", 0}); for (int t = 1; t <= 7; ++t) v.push_back({"Calçado pasta " + std::to_string(t), t}); break;
+			// nomes = config.lua (clothesManage[9]); pasta 1 de calca/camisa = calcinha/sutia (roupa de baixo padrao)
+			case FK_SHIRT: { static const char* n[6] = {"Top (sutiã)", "Blusa cropped", "Cropped", "Cropped c/ decote", "Camiseta", "Moletom"};
+			                 v.push_back({"Padrão (sutiã 1)", 0}); for (int t = 1; t <= 6; ++t) v.push_back({std::to_string(t) + " - " + n[t - 1], t}); break; }
+			case FK_PANTS: { static const char* n[6] = {"Calcinha", "Jeans", "Moletom", "Cargo", "Rasgada", "Shorts"};
+			                 v.push_back({"Padrão (calcinha 1)", 0}); for (int t = 1; t <= 6; ++t) v.push_back({std::to_string(t) + " - " + n[t - 1], t}); break; }
+			case FK_BOOT:  { static const char* n[7] = {"Chinelo", "Chinelo slide", "Slide c/ meia", "Tênis sneaker", "Tênis esportivo", "Tênis regular", "Bota jump"};
+			                 v.push_back({"Descalça", 0}); for (int t = 1; t <= 7; ++t) v.push_back({std::to_string(t) + " - " + n[t - 1], t}); break; }
 			case FK_UNDER: v.push_back({"Padrão (preta)", 0}); for (int t = 1; t <= 6; ++t) v.push_back({"Cor " + std::to_string(t), t}); v.push_back({"Nenhuma", 9}); break;
 			case FK_CORP:  v.push_back({"(sem corp)", 0}); for (size_t i = 0; i < g_fCorps.size(); ++i) v.push_back({g_fCorps[i], (int)i + 1}); break;
 		}
