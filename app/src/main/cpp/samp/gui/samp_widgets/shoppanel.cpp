@@ -183,6 +183,150 @@ void ShopPanel::DrawToast(ImGuiRenderer* r, float scrW, float scrH)
 	r->drawText(ImVec2(cx - ms.x * 0.5f, ty + ts.y + 3.0f * u), ImColor(255, 255, 255, A), m, true, mfs);
 }
 
+
+// ----------------------------------------------------------------------------------------------------- icones dos produtos (por codigo)
+// g = 0 cola | 1 lima | 2 agua | 3 chips | 4 cereal | 5 molho | 6 pao | 7 camisetas | 8 jeans | 9 tenis | 10 camiseta no cabide | 11 pizza | 12 caixa de pizza | 13 caixa de hamburguer
+//     14 hamburguer | 15 batata frita | 16 kit de reparo | 17 pneu | 18 oleo | 19 galao | 20 pomada | 21 navalha | 22 shampoo | outro = sacola.  (>= 100: icone do inventario, g - 100)
+void ShopPanel::DrawGlyph(ImGuiRenderer* r, int g, const float a[2], const float b[2], int alpha)
+{
+	const float s = std::min(b[0] - a[0], b[1] - a[1]) / 16.0f;
+	const float ox = (a[0] + b[0]) * 0.5f - 8.0f * s, oy = (a[1] + b[1]) * 0.5f - 8.0f * s;
+	auto P = [&](float x, float y) { return ImVec2(ox + x * s, oy + y * s); };
+	auto C = [&](int rr, int gg, int bb, int aa = 255) { return ImColor(rr, gg, bb, aa * alpha / 255); };
+	auto RR = [&](float x0, float y0, float x1, float y1, const ImColor& c, float rad) { r->drawRoundedRect(P(x0, y0), P(x1, y1), c, rad * s, true); };
+	auto Ci = [&](float cx, float cy, float rad, const ImColor& c) { r->drawRoundedRect(P(cx - rad, cy - rad), P(cx + rad, cy + rad), c, rad * s, true); };
+	auto Ln = [&](float x0, float y0, float x1, float y1, float th, const ImColor& c) { r->drawLine(P(x0, y0), P(x1, y1), c, std::max(1.0f, th * s)); };
+	auto Pg = [&](std::vector<ImVec2> pts, const ImColor& c)
+	{
+		for (ImVec2& q : pts) q = P(q.x, q.y);
+		float a2 = 0.0f;
+		for (size_t i = 0; i < pts.size(); i++) { const ImVec2& u0 = pts[i]; const ImVec2& u1 = pts[(i + 1) % pts.size()]; a2 += u0.x * u1.y - u1.x * u0.y; }
+		if (a2 < 0.0f) std::reverse(pts.begin(), pts.end());
+		r->drawConvexPolyFilled(pts.data(), (int)pts.size(), c);
+	};
+	auto Shirt = [&](const ImColor& body, const ImColor& neck)
+	{
+		Pg({ ImVec2(5, 3), ImVec2(11, 3), ImVec2(11, 14), ImVec2(5, 14) }, body);
+		Pg({ ImVec2(5.2f, 3.2f), ImVec2(5.2f, 7.6f), ImVec2(2.2f, 8.8f), ImVec2(0.6f, 5.4f) }, body);
+		Pg({ ImVec2(10.8f, 3.2f), ImVec2(15.4f, 5.4f), ImVec2(13.8f, 8.8f), ImVec2(10.8f, 7.6f) }, body);
+		Pg({ ImVec2(6.5f, 2.8f), ImVec2(9.5f, 2.8f), ImVec2(8, 5) }, neck);
+	};
+	switch (g)
+	{
+	case 0: case 1:   // lata (cola vermelha / lima verde)
+	{
+		const bool lima = g == 1;
+		RR(4.6f, 2.0f, 11.4f, 14.0f, lima ? C(70, 190, 90) : C(222, 52, 56), 1.4f);
+		RR(4.6f, 2.0f, 11.4f, 3.6f, C(200, 206, 214), 0.8f); RR(4.6f, 12.4f, 11.4f, 14.0f, C(200, 206, 214), 0.8f);
+		RR(4.6f, 6.4f, 11.4f, 9.6f, lima ? C(230, 250, 200) : C(255, 255, 255), 0.2f);
+		Ci(8.0f, 8.0f, 1.1f, lima ? C(70, 190, 90) : C(222, 52, 56));
+		break;
+	}
+	case 2:   // garrafa de agua
+		RR(6.8f, 1.0f, 9.2f, 2.8f, C(40, 90, 200), 0.5f); RR(7.1f, 2.6f, 8.9f, 5.0f, C(150, 210, 255), 0.4f);
+		RR(5.6f, 4.6f, 10.4f, 15.0f, C(130, 205, 255), 1.6f); RR(5.6f, 8.2f, 10.4f, 11.4f, C(255, 255, 255), 0.2f);
+		Ci(8.0f, 9.8f, 0.9f, C(40, 130, 220));
+		break;
+	case 3:   // pacote de chips
+		RR(3.8f, 2.0f, 12.2f, 14.2f, C(255, 160, 40), 1.2f);
+		for (int i = 0; i < 5; i++) Ln(4.2f + i * 1.8f, 2.0f, 4.2f + i * 1.8f, 3.6f, 0.9f, C(200, 110, 20));
+		Ci(8.0f, 8.4f, 2.6f, C(255, 226, 90)); Ci(8.0f, 8.4f, 1.2f, C(230, 70, 50));
+		break;
+	case 4:   // caixa de cereal
+		RR(4.0f, 1.8f, 12.0f, 14.2f, C(255, 214, 80), 0.9f); RR(4.0f, 1.8f, 12.0f, 4.4f, C(230, 70, 60), 0.9f);
+		Ci(8.0f, 9.4f, 2.8f, C(250, 250, 250)); Ci(8.0f, 9.4f, 1.9f, C(190, 120, 60));
+		break;
+	case 5:   // lata de molho de tomate
+		RR(4.6f, 3.0f, 11.4f, 14.0f, C(214, 60, 52), 1.2f);
+		RR(4.6f, 3.0f, 11.4f, 4.4f, C(200, 206, 214), 0.6f); RR(4.6f, 12.6f, 11.4f, 14.0f, C(200, 206, 214), 0.6f);
+		Ci(8.0f, 8.6f, 2.5f, C(255, 245, 235)); Ci(8.0f, 8.6f, 1.5f, C(220, 50, 40)); Ln(8.0f, 6.4f, 8.8f, 5.2f, 1.0f, C(60, 160, 70));
+		break;
+	case 6:   // pao de forma
+		RR(2.0f, 6.0f, 14.0f, 13.6f, C(206, 142, 70), 1.6f); RR(3.0f, 3.6f, 13.0f, 8.6f, C(232, 172, 92), 2.6f);
+		Ln(6.0f, 4.8f, 6.0f, 7.6f, 0.9f, C(190, 120, 50)); Ln(8.0f, 4.6f, 8.0f, 7.6f, 0.9f, C(190, 120, 50)); Ln(10.0f, 4.8f, 10.0f, 7.6f, 0.9f, C(190, 120, 50));
+		break;
+	case 7:   Shirt(C(120, 170, 255), C(70, 110, 210)); break;                       // camisetas
+	case 8:   // calca jeans
+		RR(4.0f, 1.8f, 12.0f, 4.6f, C(52, 96, 190), 0.8f);
+		Pg({ ImVec2(4.0f, 4.4f), ImVec2(7.8f, 4.4f), ImVec2(7.4f, 14.6f), ImVec2(4.6f, 14.6f) }, C(70, 118, 214));
+		Pg({ ImVec2(8.2f, 4.4f), ImVec2(12.0f, 4.4f), ImVec2(11.4f, 14.6f), ImVec2(8.6f, 14.6f) }, C(70, 118, 214));
+		Ln(8.0f, 4.4f, 8.0f, 8.0f, 0.7f, C(40, 76, 160)); Ci(6.0f, 3.2f, 0.45f, C(255, 214, 90));
+		break;
+	case 9:   // tenis
+		Pg({ ImVec2(2.4f, 11.0f), ImVec2(2.4f, 5.2f), ImVec2(6.6f, 5.2f), ImVec2(8.6f, 8.2f), ImVec2(13.8f, 9.6f), ImVec2(13.8f, 11.0f) }, C(230, 70, 70));
+		RR(1.8f, 10.8f, 14.4f, 13.4f, C(250, 250, 250), 1.2f); Ln(5.0f, 7.4f, 7.2f, 9.2f, 0.8f, C(255, 255, 255));
+		break;
+	case 10:  // camiseta no cabide
+		Shirt(C(255, 140, 170), C(210, 80, 110));
+		Ln(8.0f, 2.8f, 8.0f, 1.6f, 0.9f, C(200, 206, 214)); Ln(8.0f, 1.6f, 9.4f, 1.0f, 0.9f, C(200, 206, 214)); Ln(8.0f, 2.6f, 4.2f, 4.4f, 0.8f, C(200, 206, 214)); Ln(8.0f, 2.6f, 11.8f, 4.4f, 0.8f, C(200, 206, 214));
+		break;
+	case 11:  // fatia de pizza
+		Pg({ ImVec2(8.0f, 14.6f), ImVec2(1.8f, 4.0f), ImVec2(14.2f, 4.0f) }, C(255, 200, 70));
+		RR(1.6f, 2.8f, 14.4f, 5.0f, C(200, 130, 60), 1.0f);
+		Ci(6.4f, 7.2f, 1.2f, C(214, 56, 56)); Ci(9.8f, 8.0f, 1.2f, C(214, 56, 56)); Ci(8.0f, 10.8f, 1.1f, C(214, 56, 56));
+		break;
+	case 12:  // caixa de pizza
+		RR(2.0f, 5.0f, 14.0f, 13.4f, C(196, 146, 96), 0.8f); RR(2.0f, 4.0f, 14.0f, 7.0f, C(222, 178, 126), 0.8f);
+		Ci(8.0f, 10.0f, 1.7f, C(230, 70, 60)); Ln(5.0f, 8.0f, 11.0f, 8.0f, 0.6f, C(160, 110, 66));
+		break;
+	case 13:  // caixa de hamburguer
+		RR(2.6f, 6.0f, 13.4f, 13.6f, C(206, 150, 96), 1.0f); RR(2.6f, 4.6f, 13.4f, 7.4f, C(232, 184, 126), 1.0f);
+		Ci(8.0f, 10.2f, 2.0f, C(255, 214, 90)); Ci(8.0f, 10.2f, 1.0f, C(206, 80, 50));
+		break;
+	case 14:  // hamburguer
+	{
+		std::vector<ImVec2> dome;
+		for (int k = 0; k <= 10; k++) { const float th = 3.1415927f * (1.0f + (float)k / 10.0f); dome.push_back(ImVec2(8.0f + 6.8f * std::cos(th), 7.0f + 6.0f * std::sin(th))); }
+		Pg(dome, C(232, 160, 70));
+		Ci(5.8f, 4.4f, 0.5f, C(255, 240, 200)); Ci(8.4f, 3.4f, 0.5f, C(255, 240, 200)); Ci(10.6f, 4.8f, 0.5f, C(255, 240, 200));
+		RR(1.4f, 7.4f, 14.6f, 9.0f, C(90, 190, 80), 0.8f); RR(1.8f, 9.0f, 14.2f, 11.2f, C(120, 62, 40), 0.8f); RR(2.6f, 11.6f, 13.4f, 14.2f, C(232, 160, 70), 1.4f);
+		break;
+	}
+	case 15:  // batata frita
+		for (int i = 0; i < 5; i++) RR(4.8f + i * 1.5f, 2.2f + (i % 2) * 1.0f, 6.2f + i * 1.5f, 9.0f, C(255, 214, 80), 0.4f);
+		Pg({ ImVec2(3.6f, 8.0f), ImVec2(12.4f, 8.0f), ImVec2(11.0f, 14.6f), ImVec2(5.0f, 14.6f) }, C(222, 54, 54));
+		Ci(8.0f, 11.2f, 1.4f, C(255, 226, 90));
+		break;
+	case 16:  // kit de reparo (caixa de ferramentas)
+		r->drawRoundedRect(P(5.2f, 3.4f), P(10.8f, 7.4f), C(200, 206, 214), 1.4f * s, false, std::max(1.0f, 1.2f * s));
+		RR(1.8f, 6.0f, 14.2f, 13.8f, C(220, 60, 52), 1.2f); RR(1.8f, 8.6f, 14.2f, 9.6f, C(150, 36, 32), 0.1f); RR(6.8f, 7.6f, 9.2f, 10.8f, C(255, 214, 80), 0.6f);
+		break;
+	case 17:  // pneu
+		Ci(8.0f, 8.0f, 6.4f, C(40, 44, 52)); Ci(8.0f, 8.0f, 3.6f, C(170, 176, 186)); Ci(8.0f, 8.0f, 1.3f, C(70, 76, 86));
+		for (int i = 0; i < 4; i++) { const float t = 0.785f + i * 1.5708f; Ln(8.0f + 1.4f * std::cos(t), 8.0f + 1.4f * std::sin(t), 8.0f + 3.4f * std::cos(t), 8.0f + 3.4f * std::sin(t), 0.8f, C(70, 76, 86)); }
+		break;
+	case 18:  // oleo de motor
+		RR(4.6f, 5.0f, 11.4f, 14.4f, C(242, 168, 40), 1.4f); Pg({ ImVec2(6.0f, 5.0f), ImVec2(10.0f, 5.0f), ImVec2(9.0f, 2.4f), ImVec2(7.0f, 2.4f) }, C(60, 60, 66));
+		RR(4.6f, 8.2f, 11.4f, 11.8f, C(255, 245, 220), 0.2f); Ci(8.0f, 10.0f, 1.1f, C(20, 20, 24));
+		break;
+	case 19:  // galao de combustivel
+		RR(3.0f, 4.0f, 13.0f, 14.4f, C(222, 52, 52), 1.4f); Pg({ ImVec2(8.6f, 4.0f), ImVec2(12.0f, 4.0f), ImVec2(11.4f, 1.6f), ImVec2(9.2f, 1.6f) }, C(60, 60, 66));
+		RR(4.6f, 5.4f, 8.0f, 7.8f, C(60, 20, 20), 0.8f); Ci(8.6f, 10.8f, 1.8f, C(255, 214, 80));
+		break;
+	case 20:  // pomada
+		RR(4.0f, 7.0f, 12.0f, 14.2f, C(56, 70, 120), 1.2f); RR(3.8f, 4.8f, 12.2f, 7.6f, C(200, 206, 214), 0.8f); RR(5.4f, 9.2f, 10.6f, 12.0f, C(240, 240, 250), 0.4f);
+		break;
+	case 21:  // navalha
+		RR(1.8f, 8.4f, 9.4f, 11.2f, C(120, 74, 44), 1.2f);
+		Pg({ ImVec2(8.6f, 7.8f), ImVec2(14.6f, 5.6f), ImVec2(14.6f, 7.4f), ImVec2(9.0f, 10.6f) }, C(214, 222, 232));
+		Ci(5.6f, 9.8f, 0.6f, C(214, 222, 232));
+		break;
+	case 22:  // shampoo
+		RR(5.0f, 5.0f, 11.0f, 14.6f, C(170, 112, 232), 1.6f); RR(6.4f, 1.6f, 9.6f, 5.2f, C(245, 245, 250), 0.8f); RR(5.0f, 8.0f, 11.0f, 11.6f, C(250, 240, 255), 0.2f); Ci(8.0f, 9.8f, 1.0f, C(170, 112, 232));
+		break;
+	default:  // sacola
+		RR(3.0f, 5.6f, 13.0f, 14.8f, C(190, 150, 255), 1.4f); r->drawRoundedRect(P(5.4f, 1.8f), P(10.6f, 7.8f), C(190, 150, 255), 2.6f * s, false, std::max(1.0f, 1.4f * s));
+		break;
+	}
+}
+
+// icone de produto: glifo desenhado por codigo (0..99) ou icone do inventario (100 + icone)
+static void DrawItem(ImGuiRenderer* r, int icon, const float a[2], const float b[2], int alpha)
+{
+	if (icon >= 100) ShopDrawItemIcon(r, icon - 100, a, b, alpha);
+	else ShopPanel::DrawGlyph(r, icon, a, b, alpha);
+}
+
 // ----------------------------------------------------------------------------------------------------- a tela da loja
 void ShopPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vector<ShopTouch>& events, int& answer, std::vector<ShopLine>& order)
 {
@@ -316,9 +460,9 @@ void ShopPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vector
 			// icone do produto
 			r->drawRoundedRect(V(cx + 8, cy + 12), V(cx + 58, cy + 62), A(20, 30, 48, 190), 6.0f * u, true);
 			{
-				const ImVec2 a = V(cx + 11, cy + 15), b = V(cx + 55, cy + 59);
+				const ImVec2 a = V(cx + 12, cy + 16), b = V(cx + 54, cy + 58);
 				const float aa[2] = { a.x, a.y }, bb[2] = { b.x, b.y };
-				ShopDrawItemIcon(r, p.icon, aa, bb, out ? 110 : A255);
+				DrawItem(r, p.icon, aa, bb, out ? 110 : A255);
 			}
 			const float tx = cx + 67.0f, tw = CARDW - 67.0f - 6.0f;
 			float nfs = 10.5f; while (nfs > 7.6f && txtW(p.name, nfs) > tw) nfs -= 0.4f;
@@ -397,7 +541,7 @@ void ShopPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vector
 			{
 				const ImVec2 a = V(CX0 + 13, ry + 2), b = V(CX0 + 41, ry + 30);
 				const float aa[2] = { a.x, a.y }, bb[2] = { b.x, b.y };
-				ShopDrawItemIcon(r, p.icon, aa, bb, (int)(255.0f * f * cartA));
+				DrawItem(r, p.icon, aa, bb, (int)(255.0f * f * cartA));
 			}
 			const float nx = CX0 + 52.0f, nw = (CX1 - 66.0f) - nx;
 			r->drawText(V(nx, ry + 1.0f), CA(244, 248, 255, 255), fit(p.name, 9.2f, nw), false, 9.2f * u);

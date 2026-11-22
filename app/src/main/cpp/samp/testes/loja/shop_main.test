@@ -69,8 +69,8 @@ static bool Toast(int kind, const std::string& t) { std::vector<uint8_t> v; put8
 static std::vector<P> Eletro()
 {
 	return {
-		{"Camera", "Um par de boas fotos vem a qualquer momento", 3500, 5, 11, 0, 0}, {"Telefone", "Smartphone", 1200, 9, 12, 1, 0},
-		{"Radio", "Contato rapido", 600, 4, 8, 2, 0}, {"GPS", "Usado para se localizar", 3500, 3, 13, 3, 0},
+		{"Refri cola (6 latas)", "Seis latas geladas para a sede", 31, 24, 0, 0, 0}, {"Pizza inteira", "Pizza inteira quentinha", 55, 6, 11, 3, 0},
+		{"Hamburguer", "Hamburguer suculento na chapa", 25, 8, 14, 1, 0}, {"Pneu", "Pneu novo para o seu carro", 400, 3, 17, 3, 0},
 		{"Pendrive virgem", "Usado para transferir arquivos", 150, 20, 11, 0, 0}, {"Tablet", "Eletronico", 2800, 0, 12, 4, 0},
 		{"Fone de ouvido", "Musica onde voce for", 400, 12, 8, 5, 0}, {"Carregador", "Energia para o seu aparelho", 90, 30, 13, 1, 0},
 	};
@@ -109,11 +109,23 @@ int main()
 
 	// previas
 	{ int a; std::vector<ShopLine> o; ShopPanel::Reset(); Show(Packet(101, "Loja de eletronicos", "Gadgets e dispositivos eletronicos para facilitar sua vida.", Eletro())); Settle(); Frame({}, a, o, true, "loja_vazia"); }
-	{ int a; std::vector<ShopLine> o; ShopPanel::Reset(); auto e = Eletro(); e[1].q0 = 1; Show(Packet(102, "Loja de eletronicos", "Gadgets e dispositivos eletronicos para facilitar sua vida.", e)); Settle(); Frame({}, a, o, true, "loja_carrinho"); }
+	{ int a; std::vector<ShopLine> o; ShopPanel::Reset(); auto e = Eletro(); e[1].q0 = 2; e[2].q0 = 1; Show(Packet(102, "Loja de eletronicos", "Gadgets e dispositivos eletronicos para facilitar sua vida.", e)); Settle(); Frame({}, a, o, true, "loja_carrinho"); }
 	{ int a; std::vector<ShopLine> o; ShopPanel::Reset(); auto e = Eletro(); e[0].q0 = 2; e[2].q0 = 1; e[3].q0 = 3; e[4].q0 = 1; e[6].q0 = 5; e[7].q0 = 2; Show(Packet(103, "Mercado", "Alimentos e bebidas para o seu dia a dia.", e)); Settle(); Frame({}, a, o, true, "loja_cheia"); }
 	{ int a; std::vector<ShopLine> o; ShopPanel::Reset(); Show(Packet(104, "Lanchonete com um nome bem grande", "Lanches quentes.", Eletro())); Settle(); Toast(0, "3x Pizza inteira, 1x Batata frita"); Frame({}, a, o, true, "loja_aviso"); }
 	{ int a; std::vector<ShopLine> o; ShopPanel::Reset(); Settle(); Toast(1, "Dinheiro insuficiente."); Frame({}, a, o); Sleep(260); Frame({}, a, o, true, "aviso_erro"); }
 
+	// folha com todos os icones de produto
+	{
+		g_out = nullptr; std::string path = std::string(getenv("SH_OUT") ? getenv("SH_OUT") : ".") + "/glifos.dump"; g_out = fopen(path.c_str(), "w");
+		fprintf(g_out, "SIZE 480 360\nR 0 0 480 360 20 30 48 255 1 1\n");
+		for (int g = 0; g < 24; g++)
+		{
+			const float x = 10.0f + (float)(g % 6) * 76.0f, y = 10.0f + (float)(g / 6) * 86.0f; const float A[2] = { x, y }, B[2] = { x + 64, y + 64 };
+			R()->drawRoundedRect(ImVec2(x, y), ImVec2(x + 64, y + 64), ImColor(20, 30, 48, 255), 8.0f, true);
+			ShopPanel::DrawGlyph(R(), g, A, B, 255);
+		}
+		fclose(g_out); g_out = nullptr;
+	}
 	// toques
 	{
 		ShopPanel::Reset(); Show(Packet(55, "Loja", "sub", Eletro()));

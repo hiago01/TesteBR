@@ -4,7 +4,7 @@ ARQUIVOS (extraia na raiz do projeto; a pasta app/ ja esta no caminho certo)
 - app/src/main/cpp/samp/gui/samp_widgets/shoppanel.h / shoppanel.cpp   (NOVOS: a tela da loja e o aviso "Informacao")
 - app/src/main/cpp/samp/gui/samp_widgets/jobs.cpp                        (ALTERADO: liga a loja ao canal 245/246, igual a nota fiscal)
 - app/src/main/cpp/samp/testes/loja/                                      (teste de PC: gera as imagens de pre-visualizacao; nao entra no APK)
-O CMakeLists ja pega arquivos novos sozinho (GLOB). Nenhum IMG novo, nenhuma imagem nova: tudo desenhado por codigo; os icones dos produtos sao os do inventario.
+O CMakeLists ja pega arquivos novos sozinho (GLOB). Nenhum IMG novo, nenhuma imagem nova: tudo desenhado por codigo; cada produto tem um icone proprio desenhado por codigo (23 glifos: cola, lima, agua, chips, cereal, molho, pao, camisetas, jeans, tenis, camiseta no cabide, pizza, caixa de pizza, caixa de hamburguer, hamburguer, batata, kit de reparo, pneu, oleo, galao, pomada, navalha, shampoo + sacola), iguais no cartao e no carrinho.
 
 COMO FICA (copiado do video)
 - Painel escuro: icone + titulo da loja, subtitulo, botao Fechar com a tecla ESC, aba "Todos", cartoes em 2 colunas (ponto colorido, icone, nome, descricao colorida, preco, "Adicionar ao carrinho"), barra de rolagem.
