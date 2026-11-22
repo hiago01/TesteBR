@@ -43,7 +43,7 @@ uint16_t CPad__GetPedWalkLeftRight_hook(uintptr_t thiz)
 	else
 	{
 		// Local player
-		RunStyle::Tick();   // /corrida: estilo de andar/correr por skin (game/runstyle.cpp); leve
+		RunStyle::Tick();   // estilo de andar/correr definido pelo servidor por skin (game/runstyle.cpp); leve
 		// Modo de movimento (WALK/JOG/SPRINT): molda o modulo do stick mantendo a direcao.
 		// Lemos os dois eixos do original para escalar o vetor (e nao cada eixo isolado).
 		// MODERNO (a pe): o joystick analogico proprio substitui o stick nativo (intensidade proporcional, sem moldar por WALK/JOG).

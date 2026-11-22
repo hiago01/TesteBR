@@ -18,8 +18,8 @@
 #include "notafiscal.h"
 #include "shoppanel.h"
 #include "perfilpanel.h"
-#include "avatar.h"
 #include "../../game/PerfilTexDb.h"
+#include "../../game/runstyle.h"
 #include "carinteract.h"
 #include "maximomenu.h"
 
@@ -242,6 +242,7 @@ bool JobsUI_ScooterFolded() { return g_scFolded.load(); }
 bool GarageIsOpenNow() { return g_open.load() && (g_garage.load() || g_invoice.load() || g_shop.load() || g_perfil.load()); }   // a nota fiscal esconde o HUD como a garagem
 void JobsUI::Reset()
 {
+	RunStyle::Reset();   // nova conexao: estilo de andar/correr volta ao nativo ate o servidor mandar
 	g_open.store(false); g_garage.store(false); g_invoice.store(false); g_shop.store(false); g_perfil.store(false); GaragePanel::Reset(); InvoicePanel::Reset(); ShopPanel::Reset(); PerfilPanel::Reset(); g_confirm = 0; g_drag = Drag(); g_tapReq.store(false); for (WorldTap& w : g_wt) w.valid = false;
 	{ std::lock_guard<std::mutex> l(g_mkMutex); g_mkNetA.clear(); g_mkNetB.clear(); g_mkNetC.clear(); g_mkNetD.clear(); g_mkNet.clear(); }
 	g_scFolded.store(false);
@@ -302,6 +303,7 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	uint8_t op = 0;
 	if (!bs.Read(op)) return;
 	if (op == 3) { Close(false); return; }
+	if (op == 25) { uint8_t st = 0; if (bs.Read(st)) RunStyle::OnServer(st); return; }   // estilo de andar/correr da skin (servidor: maximo_corrida.inc); nao abre tela
 	if (op == 2) { uint8_t c = 0; if (bs.Read(c)) g_resultCode.store(c); return; }
 	if (op == 13) { GaragePanel::OnList(bs); g_garage.store(true); if (!g_open.exchange(true)) { g_flush.store(true); g_resetView.store(true); } return; }   // lista da garagem: abre a tela
 	if (op == 16)      // nota fiscal da loja: abre a tela e confirma ao servidor (op 14) que este cliente a mostra
@@ -1083,13 +1085,7 @@ void* PerfilBannerTexture(int which)
 	return (t && t->raster) ? (void*)t->raster : nullptr;
 }
 
-// foto de perfil + moldura do Central da Cidade para o Menu Jogador (perfilpanel.cpp): o MESMO desenho da Central (central.cpp):
-// Avatar::DrawPhoto (foto da conta ou avatar padrao) + Avatar::DrawBorder (borda escolhida pelo jogador). Central: raio 28 com escala u*0.8.
-bool PerfilDrawAvatar(ImGuiRenderer* r, float cx, float cy, float radius, int alpha)
-{
-	(void)alpha;
-	if (!r || radius <= 1.0f) return false;
-	Avatar::DrawPhoto(r, cx, cy, radius);
-	Avatar::DrawBorder(r, Avatar::Border(), cx, cy, radius, radius / 28.0f * 0.8f, (double)NowMs() / 1000.0);
-	return true;
-}
+// foto de perfil + moldura do Central da Cidade para o Menu Jogador (perfilpanel.cpp).
+// PENDENTE: o desenho do avatar fica no avatar.cpp/central.cpp (fora deste pacote de fontes); quando eles forem enviados, ligar aqui.
+// Devolve false = nao desenhou (o menu desenha o circulo com a inicial do nome).
+bool PerfilDrawAvatar(ImGuiRenderer*, float, float, float, int) { return false; }

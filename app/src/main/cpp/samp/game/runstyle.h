@@ -1,18 +1,15 @@
-// runstyle.h - /corrida: variacoes de andar/correr (grupo de animacao do ped), salvas em SAMP/corrida.ini, com padrao por SKIN.
+// runstyle.h - estilo de andar/correr do jogador local, definido PELO SERVIDOR por SKIN.
 //
-//  /corrida                    -> mostra o estilo atual e a skin
-//  /corrida lista              -> lista os estilos
-//  /corrida <estilo>           -> escolhe o estilo para a SKIN atual (salvo)
-//  /corrida todas <estilo>     -> escolhe o estilo para todas as skins (salvo)
-//  /corrida padrao             -> volta ao padrao da skin (apaga a sua escolha para esta skin)
-//  /corrida reset              -> apaga todas as suas escolhas
-//  /corrida defskin <skin> <estilo|nativo>  -> define o PADRAO da skin (quem administra; vale para quem nao escolheu)
+//  O servidor (maximo_corrida.inc) le scriptfiles/corrida_skins.ini (linhas "skin=estilo", editado so por administrador nivel 5 com /corrida)
+//  e manda ao jogador ao logar / nascer / trocar de skin: RPC 245, op 25, u8 estilo (0 = nativo do jogo, 1..15 = lista abaixo).
+//  O jogador comum NAO escolhe: nao existe comando no cliente.
 //
-//  Prioridade: escolha do jogador (skin) > escolha do jogador (todas) > padrao da skin > padrao geral > nativo do jogo.
-//  Nao troca o ped.ifp: so seleciona QUAL grupo de animacao ja existente o ped usa (CPed::m_nAnimGroup).
+//  Nao troca o ped.ifp: so seleciona QUAL grupo de animacao ja existente o ped usa (CPed::m_nAnimGroup, offset 0x630).
+//  Indices (mesma ordem do servidor): 1 civil 2 cj 3 musculoso 4 gangue 5 gangue2 6 corredor 7 gordo 8 idoso 9 arrastado
+//  10 bebado 11 swat 12 mulher 13 sexy 14 apressada 15 corredora
 #pragma once
-#include <string>
 namespace RunStyle {
-	std::string Command(const std::string& args);
-	void Tick();    // chamar todo frame (leve): aplica o estilo ao ped local
+	void OnServer(int style);   // thread de rede: so guarda o valor
+	void Reset();               // nova conexao: volta ao nativo
+	void Tick();                // thread do jogo, todo frame (leve)
 }
