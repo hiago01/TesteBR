@@ -392,3 +392,5 @@ void Avatar::DrawPhoto(ImGuiRenderer* r, float cx, float cy, float ar)
 	}
 	r->drawTexPoly(ap, au, N, (ImTextureID)ras);
 }
+
+RwRaster* Avatar::PngRaster(const unsigned char* png, int n) { return MakeRasterPng(png, n); }

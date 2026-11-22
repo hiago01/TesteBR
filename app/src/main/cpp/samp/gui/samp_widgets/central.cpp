@@ -9,6 +9,7 @@
 #include "central.h"
 #include "central_logic.h"
 #include "avatar.h"
+#include "central_icons.h"
 
 #include <algorithm>
 #include <atomic>
@@ -58,6 +59,7 @@ namespace
 	// ---- estado da tela (thread de desenho) ----
 	bool    g_settings = false;      // painel de modelos de fundo aberto
 	float   g_scroll = 0.0f;
+	int     g_orgSel = 0;                // filtro da lista: 0 todos | 1 PM | 2 MEC | 3 SAMU
 	int64_t g_lastReq = 0;
 	int64_t g_openT = 0;                 // quando abriu (para avisar se o servidor nao responde)
 	std::string g_query;                 // texto da pesquisa (bytes cp1251 do teclado); protegido por g_m
@@ -209,7 +211,7 @@ void CentralUI::Open()
 	if (g_open.load()) return;
 	{ std::lock_guard<std::mutex> l(g_m); g_ev.clear(); }
 	for (auto& c : g_claimed) c.store(false);
-	g_f = Fing(); g_scroll = 0.0f; g_settings = false; g_lastReq = 0; g_openT = NowMs();
+	g_f = Fing(); g_scroll = 0.0f; g_orgSel = 0; g_settings = false; g_lastReq = 0; g_openT = NowMs();
 	{ std::lock_guard<std::mutex> l(g_m); g_query.clear(); g_lastQuery.clear(); }
 	g_open.store(true);
 }
@@ -277,7 +279,7 @@ void CentralUI::OnServerPacket(const unsigned char* data, int bytes)
 		for (int i = 0; i < n; i++)
 		{
 			CL::Row row; uint8_t nl = 0;
-			if (!bs.Read(row.pid) || !bs.Read(row.acc) || !bs.Read(row.style) || !bs.Read(row.border) || !bs.Read(row.flags) || !bs.Read(row.ping) || !bs.Read(nl)) return;
+			if (!bs.Read(row.pid) || !bs.Read(row.acc) || !bs.Read(row.style) || !bs.Read(row.border) || !bs.Read(row.flags) || !bs.Read(row.org) || !bs.Read(row.ping) || !bs.Read(nl)) return;
 			if (nl > 24) return;
 			char nm[25]; for (int k = 0; k < nl; k++) { uint8_t ch = 0; if (!bs.Read(ch)) return; nm[k] = (char)ch; } nm[nl] = 0;
 			row.name = nm;
@@ -301,7 +303,8 @@ void CentralUI::draw(ImGuiRenderer* r)
 	std::vector<Ev> evs;
 	{ std::lock_guard<std::mutex> l(g_m); L = g_list; query = g_query; evs.swap(g_ev); }
 	if (query != g_lastQuery) { g_lastQuery = query; g_scroll = 0.0f; }
-	const std::vector<int> shown = CL::Filter(L, query);
+	static int s_lastOrg = 0; if (s_lastOrg != g_orgSel) { s_lastOrg = g_orgSel; g_scroll = 0.0f; }
+	const std::vector<int> shown = CL::Filter(L, query, g_orgSel);
 
 	const ImVec2 scr = pUI ? pUI->displaySize() : ImVec2(1920, 1080);
 	const float u  = std::min(scr.y / 720.0f, scr.x / 1100.0f);
@@ -311,6 +314,7 @@ void CentralUI::draw(ImGuiRenderer* r)
 	const ImVec2 pa(PX(430.0f), PY(36.0f)), pb(PX(850.0f), PY(684.0f));
 	const ImVec2 xa(PX(806.0f), PY(46.0f)), xb(PX(838.0f), PY(74.0f));            // X fechar
 	const ImVec2 ga(PX(796.0f), PY(104.0f)), gb(PX(834.0f), PY(142.0f));          // engrenagem
+	const ImVec2 oa(PX(446.0f), PY(172.0f)), ob(PX(640.0f), PY(204.0f));         // faixa dos chips PM | MEC | SAMU
 	const ImVec2 sa(PX(446.0f), PY(212.0f)), sb(PX(834.0f), PY(244.0f));          // caixa de pesquisa
 	const ImVec2 sxa(PX(804.0f), PY(212.0f)), sxb(PX(834.0f), PY(244.0f));        // "x" que limpa a pesquisa
 	const ImVec2 va(PX(446.0f), PY(254.0f)), vb(PX(834.0f), PY(672.0f));          // area da lista
@@ -319,6 +323,7 @@ void CentralUI::draw(ImGuiRenderer* r)
 	auto In = [](float x, float y, const ImVec2& a, const ImVec2& b) { return x >= a.x && x <= b.x && y >= a.y && y <= b.y; };
 	auto cellA = [&](int i) { return ImVec2(PX(446.0f + (i % 3) * 130.0f), PY(262.0f + (i / 3) * 70.0f)); };
 	auto cellB = [&](int i) { const ImVec2 a = cellA(i); return ImVec2(a.x + 124.0f * u, a.y + 54.0f * u); };
+	auto orgAt = [&](float x, float y) { if (!In(x, y, oa, ob)) return 0; const int i = (int)((x - oa.x) / ((ob.x - oa.x) / 3.0f)); return 1 + std::min(2, std::max(0, i)); };
 	auto cellAt = [&](float x, float y) { for (int i = 0; i < CL::kStyles; i++) if (In(x, y, cellA(i), cellB(i))) return i; return -1; };
 
 	g_scroll = CL::ClampScroll(g_scroll, content, vb.y - va.y);
@@ -330,7 +335,7 @@ void CentralUI::draw(ImGuiRenderer* r)
 		{
 			g_f = Fing(); g_f.num = e.num; g_f.sx = e.x; g_f.sy = e.y; g_f.s0 = g_scroll;
 			if (!In(e.x, e.y, pa, pb)) g_f.kind = 3;
-			else if (In(e.x, e.y, xa, xb) || In(e.x, e.y, ga, gb) || (g_settings && cellAt(e.x, e.y) >= 0) || (!g_settings && In(e.x, e.y, sa, sb))) g_f.kind = 2;
+			else if (In(e.x, e.y, xa, xb) || In(e.x, e.y, ga, gb) || (g_settings && cellAt(e.x, e.y) >= 0) || (!g_settings && orgAt(e.x, e.y) > 0) || (!g_settings && In(e.x, e.y, sa, sb))) g_f.kind = 2;
 			else if (!g_settings && In(e.x, e.y, va, vb)) g_f.kind = 1;
 			else g_f.kind = 4;
 		}
@@ -357,6 +362,7 @@ void CentralUI::draw(ImGuiRenderer* r)
 					else if (pUI && pUI->keyboard() && s_self) pUI->keyboard()->show(s_self);                                      // abre o teclado (o texto volta em keyboardEvent)
 					continue;
 				}
+				{ const int o0 = g_settings ? 0 : orgAt(f.sx, f.sy), o1 = g_settings ? 0 : orgAt(e.x, e.y); if (o0 > 0 && o0 == o1) { g_orgSel = (g_orgSel == o0) ? 0 : o0; continue; } }       // chip: filtra pela org (toque de novo = todos)
 				const int c0 = cellAt(f.sx, f.sy), c1 = cellAt(e.x, e.y);
 				if (g_settings && c0 >= 0 && c0 == c1) { SendReq(2, c0); g_lastReq = 0; }   // escolhe o modelo; a lista volta com ele aplicado
 			}
@@ -370,8 +376,12 @@ void CentralUI::draw(ImGuiRenderer* r)
 	const ImColor cPink(236, 40, 96, 255), cText(238, 238, 244, 255), cMute(150, 150, 164, 255);
 
 	// cabecalho
-	r->drawRoundedRect(ImVec2(PX(446.0f), PY(46.0f)), ImVec2(PX(474.0f), PY(74.0f)), cPink, 5.0f * u, true);
-	Icon(r, PX(460.0f), PY(60.0f), 10.0f * u, ImColor(255, 255, 255, 255));
+	{
+		static RwRaster* s_globe = nullptr; static bool s_gf = false;
+		if (!s_globe && !s_gf) { s_globe = Avatar::PngRaster(kIconGlobePng, kIconGlobePngSize); if (!s_globe) s_gf = true; }
+		if (s_globe) r->drawImage(ImVec2(PX(444.0f), PY(44.0f)), ImVec2(PX(476.0f), PY(76.0f)), (ImTextureID)s_globe, ImColor(255, 255, 255, 255), ImVec2(0, 0), ImVec2(1, 1));
+		else { r->drawRoundedRect(ImVec2(PX(446.0f), PY(46.0f)), ImVec2(PX(474.0f), PY(74.0f)), cPink, 5.0f * u, true); Icon(r, PX(460.0f), PY(60.0f), 10.0f * u, ImColor(255, 255, 255, 255)); }
+	}
 	r->drawText(ImVec2(PX(484.0f), PY(52.0f)), cText, "Central da Cidade", false, 14.0f * u);
 	{
 		const bool pr = g_f.num >= 0 && g_f.kind == 2 && In(g_f.sx, g_f.sy, xa, xb);
@@ -408,6 +418,7 @@ void CentralUI::draw(ImGuiRenderer* r)
 		const ImColor ic[3] = { ImColor(96, 170, 255, 255), ImColor(255, 172, 72, 255), ImColor(255, 92, 104, 255) };
 		for (int i = 0; i < 3; i++)
 		{
+			if (g_orgSel == i + 1) r->drawRoundedRect(ImVec2(a1.x + cw * i + 2.0f * u, a1.y + 2.0f * u), ImVec2(a1.x + cw * (i + 1) - 2.0f * u, b1.y - 2.0f * u), ImColor(ic[i].Value.x, ic[i].Value.y, ic[i].Value.z, 0.28f), 5.0f * u, true);
 			const float ix = a1.x + cw * i + 16.0f * u;
 			if (i == 0) IconShield(r, ix, cyy, 7.5f * u, ic[0], 1.5f * u);
 			else if (i == 1) IconTools(r, ix, cyy, 7.5f * u, ic[1], 1.6f * u);
@@ -422,7 +433,13 @@ void CentralUI::draw(ImGuiRenderer* r)
 		r->drawRoundedRect(a3, b3, ImColor(255, 255, 255, 14), 6.0f * u, true);
 		const float fillW = std::max(34.0f * u, (b3.x - a3.x) * CL::PopFill(L.total, L.slots));
 		r->drawRoundedRect(a3, ImVec2(a3.x + fillW, b3.y), cPink, 6.0f * u, true);
-		IconPeople(r, a3.x + 17.0f * u, (a3.y + b3.y) * 0.5f, 7.5f * u, ImColor(255, 255, 255, 255));
+		{
+			static RwRaster* s_pl = nullptr; static bool s_pf = false;
+			if (!s_pl && !s_pf) { s_pl = Avatar::PngRaster(kIconPlayersPng, kIconPlayersPngSize); if (!s_pl) s_pf = true; }
+			const float ic = 10.0f * u, icx = a3.x + 17.0f * u, icy = (a3.y + b3.y) * 0.5f;
+			if (s_pl) r->drawImage(ImVec2(icx - ic, icy - ic), ImVec2(icx + ic, icy + ic), (ImTextureID)s_pl, ImColor(255, 255, 255, 255), ImVec2(0, 0), ImVec2(1, 1));
+			else IconPeople(r, icx, icy, 7.5f * u, ImColor(255, 255, 255, 255));
+		}
 		char sn[16], ss[16]; snprintf(sn, sizeof(sn), "%d", (int)L.total); snprintf(ss, sizeof(ss), "/%d", (int)L.slots);
 		const ImVec2 t1 = r->calculateTextSize(sn, 12.0f * u), t2 = r->calculateTextSize(ss, 11.0f * u);
 		const float tx = b3.x - 10.0f * u - t1.x - t2.x, ty = (a3.y + b3.y) * 0.5f;
@@ -471,7 +488,7 @@ void CentralUI::draw(ImGuiRenderer* r)
 	{
 		const bool slow = !L.have && (now - g_openT) > 4500;
 		const char* msg = !L.have ? (slow ? "Sem resposta do servidor. Atualize o servidor (maximo_central.inc)." : "Carregando...")
-		                          : (L.rows.empty() ? "Ninguem online" : "Nenhum jogador encontrado");
+		                          : (L.rows.empty() ? "Ninguem online" : (g_orgSel > 0 && query.empty() ? "Nenhum membro dessa organizacao online" : "Nenhum jogador encontrado"));
 		const ImVec2 ts = r->calculateTextSize(msg, 11.5f * u);
 		r->drawText(ImVec2((va.x + vb.x - ts.x) * 0.5f, va.y + 40.0f * u), cMute, msg, false, 11.5f * u);
 		return;

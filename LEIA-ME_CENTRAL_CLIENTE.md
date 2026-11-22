@@ -13,3 +13,8 @@ Nao compilado com o NDK nem testado em aparelho (so sintaxe com clang + teste da
 - Faixa: icones PM (escudo) | MEC (ferramentas) | SAMU (maleta) com a quantidade EM SERVICO, e a barra de jogadores com "online/slots" reais do servidor.
 - Caixa "Pesquisar...": toque abre o teclado do Android (mesmo mecanismo do EditBox/Keyboard::show) e filtra por trecho do NOME ou do ID da conta; "x" limpa.
 - O pedido da lista e a troca de modelo agora vao pelo comando oculto "/cenx ..." (mesmo caminho comprovado do /invx), e o servidor ja manda a lista junto com a ordem de abrir. Se o servidor nao responder em ~4,5 s, a tela avisa.
+
+## Atualização (v3)
+- Ícone de jogadores (imagem enviada) no chip de população (online/slots) e globo no cabeçalho da Central (central_icons.h).
+- Os chips PM / MEC / SAMU agora filtram a lista pelos jogadores ONLINE da organização daquela TAG (toque de novo = todos). A contagem mostra membros online.
+- Precisa do servidor novo: cada linha do RPC 253 leva 1 byte a mais (org 0..3). Atualize org.pwn + maximo_central.inc junto.

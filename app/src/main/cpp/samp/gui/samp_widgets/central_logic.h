@@ -29,7 +29,7 @@ namespace CenLogic
 		return k[(idx >= 0 && idx < kStyles) ? idx : 0];
 	}
 
-	struct Row { uint16_t pid = 0; uint32_t acc = 0; uint8_t style = 0, border = 0, flags = 0; uint16_t ping = 0; std::string name; };
+	struct Row { uint16_t pid = 0; uint32_t acc = 0; uint8_t style = 0, border = 0, flags = 0, org = 0; uint16_t ping = 0; std::string name; };
 
 	struct List
 	{
@@ -74,10 +74,11 @@ namespace CenLogic
 		if (Lower(r.name).find(q) != std::string::npos) return true;
 		return std::to_string(r.acc).find(q) != std::string::npos;
 	}
-	inline std::vector<int> Filter(const List& l, const std::string& query)
+	// org: 0 = todos | 1 PM | 2 MEC | 3 SAMU (so os jogadores online que sao membros da organizacao daquela TAG)
+	inline std::vector<int> Filter(const List& l, const std::string& query, int org = 0)
 	{
 		std::vector<int> out; out.reserve(l.rows.size());
-		for (size_t i = 0; i < l.rows.size(); i++) if (Match(l.rows[i], query)) out.push_back((int)i);
+		for (size_t i = 0; i < l.rows.size(); i++) if ((org == 0 || l.rows[i].org == org) && Match(l.rows[i], query)) out.push_back((int)i);
 		return out;
 	}
 }

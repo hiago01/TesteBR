@@ -19,6 +19,7 @@ namespace Avatar
 	uint32_t AccountId();                                        // 0 = ainda nao recebido
 	bool PopMessage(std::string& out);                           // aviso curto para o toast do inventario
 	void Reset();
+	RwRaster* PngRaster(const unsigned char* png, int n);        // PNG (RGBA) -> textura; nullptr se falhar (thread de desenho)
 
 	// ---- bordas do avatar (globais; cada jogador escolhe a sua, o servidor guarda por conta) ----
 	constexpr int kBorderCount = 5;          // 0 Natural (cinza) | 1 Guirlanda (pisca-pisca) | 2 Papai Noel | 3 Neon pulsante | 4 Arco-iris
