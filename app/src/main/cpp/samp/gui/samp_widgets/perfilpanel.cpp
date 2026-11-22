@@ -26,7 +26,7 @@ namespace
 	struct Info
 	{
 		int seq = 0; std::string name, phone, last, since, org, job;
-		uint32_t rg = 0, pp = 0, vips = 0; int32_t money = 0;
+		uint32_t rg = 0, pp = 0, vips = 0; int32_t money = 0; bool group = false;
 		std::vector<int> cats; std::vector<std::string> tabs;
 	};
 
@@ -94,14 +94,14 @@ namespace
 	// categorias de ranking conhecidas (o servidor manda so o id; nomes e formato ficam aqui, em UTF-8)
 	struct CatDef { const char* name; const char* metric; const char* sub; int r0, g0, b0, r1, g1, b1; int kind; };   // kind 0 = "PP n" | 1 = "n VIPs" | 2 = so numero
 	const CatDef kCats[] = {
-		{ "Titãs do investimento", "Premium Points acumulados", "Quem mais acumulou Premium Points", 64, 22, 96, 214, 52, 122, 0 },
+		{ "Titãs do investimento", "MB Pontos acumulados", "Quem mais acumulou MB Pontos", 64, 22, 96, 214, 52, 122, 0 },
 		{ "Clube da Coroa", "VIPs adquiridos", "Quem mais adquiriu VIPs", 86, 58, 12, 226, 168, 44, 1 },
 	};
 	const CatDef kCatUnknown = { "Ranking", "Valor", "Classificação dos jogadores", 30, 70, 110, 70, 150, 200, 2 };
 	const CatDef& CatOf(int id) { return (id >= 0 && id < (int)(sizeof(kCats) / sizeof(kCats[0]))) ? kCats[id] : kCatUnknown; }
 	std::string CatValue(const CatDef& c, uint32_t v)
 	{
-		if (c.kind == 0) return "PP " + Dots(v);
+		if (c.kind == 0) return "MB " + Dots(v);
 		if (c.kind == 1) return Dots(v) + (v == 1 ? " VIP" : " VIPs");
 		return Dots(v);
 	}
@@ -165,7 +165,9 @@ bool PerfilPanel::OnOpen(RakNet::BitStream& bs)
 	Info d;
 	uint16_t seq = 0; uint8_t nc = 0, nt = 0;
 	if (!bs.Read(seq) || !RdStr(bs, d.name) || !bs.Read(d.rg) || !RdStr(bs, d.phone) || !RdStr(bs, d.last) || !RdStr(bs, d.since) || !RdStr(bs, d.org) || !RdStr(bs, d.job)) return false;
-	if (!bs.Read(d.money) || !bs.Read(d.pp) || !bs.Read(d.vips) || !bs.Read(nc) || nc > 8) return false;
+	uint8_t grp = 0;
+	if (!bs.Read(d.money) || !bs.Read(d.pp) || !bs.Read(d.vips) || !bs.Read(grp) || !bs.Read(nc) || nc > 8) return false;
+	d.group = grp != 0;
 	for (int i = 0; i < nc; i++) { uint8_t id = 0; if (!bs.Read(id)) return false; d.cats.push_back((int)id); }
 	if (!bs.Read(nt) || nt > 8) return false;
 	for (int i = 0; i < nt; i++) { std::string s; if (!RdStr(bs, s)) return false; d.tabs.push_back(s); }
@@ -304,7 +306,8 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 			const ImColor ic = active ? A(24, 50, 74, 255) : A(214, 228, 248, nv.soon ? 150 : 235);
 			const ImVec2 c = V(SX0 + 22.0f, y + IH * 0.5f);
 			NavIcon(r, nv.icon, c.x, c.y, 1.15f * u, ic);
-			txt(SX0 + 44.0f, y + (IH - txtH(nv.name, 12.5f)) * 0.5f, active ? A(24, 50, 74, 255) : A(232, 240, 255, nv.soon ? 170 : 255), nv.name, 12.5f, true);
+			const float tagW = nv.soon ? txtW(nv.tagNew ? "NOVO" : "EM BREVE", 7.0f) + 14.0f + 14.0f : 8.0f;      // reserva o espaco da etiqueta: o nome nunca passa por cima dela
+			txt(SX0 + 44.0f, y + (IH - txtH(nv.name, 12.5f)) * 0.5f, active ? A(24, 50, 74, 255) : A(232, 240, 255, nv.soon ? 170 : 255), fit(nv.name, 12.5f, (SX1 - SX0) - 44.0f - tagW), 12.5f, true);
 			if (nv.soon)
 			{
 				const std::string sb = nv.tagNew ? "NOVO" : "EM BREVE";
@@ -347,10 +350,13 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 		card(CX0, 112.0f, X1, 196.0f);
 		{
 			const ImVec2 c = V(CX0 + 46.0f, 154.0f);
-			r->drawRoundedRect(ImVec2(c.x - 29 * u, c.y - 29 * u), ImVec2(c.x + 29 * u, c.y + 29 * u), A(244, 248, 255, 255), 29.0f * u, true);
-			std::string ini = g_i.name.empty() ? "?" : g_i.name.substr(0, 1);
-			const float iw = txtW(ini, 22.0f), ih = txtH(ini, 22.0f);
-			txt(CX0 + 46.0f - iw * 0.5f, 154.0f - ih * 0.5f, A(40, 62, 96, 255), ini, 22.0f, true);
+			if (!PerfilDrawAvatar(r, c.x, c.y, 29.0f * u, (int)(255.0f * f)))        // foto + moldura do Central da Cidade (a mesma da conta)
+			{
+				r->drawRoundedRect(ImVec2(c.x - 29 * u, c.y - 29 * u), ImVec2(c.x + 29 * u, c.y + 29 * u), A(244, 248, 255, 255), 29.0f * u, true);
+				std::string ini = g_i.name.empty() ? "?" : g_i.name.substr(0, 1);
+				const float iw = txtW(ini, 22.0f), ih = txtH(ini, 22.0f);
+				txt(CX0 + 46.0f - iw * 0.5f, 154.0f - ih * 0.5f, A(40, 62, 96, 255), ini, 22.0f, true);
+			}
 			txt(CX0 + 92.0f, 128.0f, A(176, 198, 230, 220), "Nome completo", 9.5f);
 			txt(CX0 + 92.0f, 147.0f, A(244, 248, 255, 255), fit(g_i.name, 14.5f, 220.0f), 14.5f, true);
 			txt(CX0 + 340.0f, 128.0f, A(176, 198, 230, 220), "RG", 9.5f);
@@ -376,7 +382,7 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 		card(CX0, 372.0f, X1, 470.0f);
 		{
 			struct Row { const char* label; std::string val; bool dim; int icon; };
-			const Row rows[3] = { { "Dinheiro em mãos", MoneyBR(g_i.money), false, 0 }, { "Banco", "Em breve", true, 1 }, { "Premium Points", "PP " + Dots(g_i.pp), false, 2 } };
+			const Row rows[3] = { { "Dinheiro em mãos", MoneyBR(g_i.money), false, 0 }, { "Banco", "Em breve", true, 1 }, { "MB Pontos", "MB " + Dots(g_i.pp), false, 2 } };
 			for (int k = 0; k < 3; k++)
 			{
 				const float y = 372.0f + 12.0f + (float)k * 27.0f;
@@ -385,14 +391,22 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 				const ImVec2 c = V(CX0 + 30.0f, y + 10.5f);
 				if (k == 0) { r->drawRoundedRect(ImVec2(c.x - 7 * u, c.y - 4 * u), ImVec2(c.x + 7 * u, c.y + 4 * u), A(236, 250, 255, 255), 1.5f * u, false, std::max(1.0f, 1.2f * u)); r->drawRoundedRect(ImVec2(c.x - 2 * u, c.y - 2 * u), ImVec2(c.x + 2 * u, c.y + 2 * u), A(236, 250, 255, 255), 2.0f * u, true); }
 				else if (k == 1) { ImVec2 roof[3] = { ImVec2(c.x - 7 * u, c.y - 1 * u), ImVec2(c.x, c.y - 6 * u), ImVec2(c.x + 7 * u, c.y - 1 * u) }; r->drawConvexPolyFilled(roof, 3, A(236, 250, 255, 255)); r->drawRoundedRect(ImVec2(c.x - 5.5f * u, c.y), ImVec2(c.x + 5.5f * u, c.y + 5 * u), A(236, 250, 255, 255), 0.5f * u, true); }
-				else { ImVec2 d[4] = { ImVec2(c.x, c.y - 6 * u), ImVec2(c.x + 6 * u, c.y), ImVec2(c.x, c.y + 6 * u), ImVec2(c.x - 6 * u, c.y) }; r->drawConvexPolyFilled(d, 4, A(236, 250, 255, 255)); }
+				else
+				{
+					void* coin = PerfilBannerTexture(2);                          // moeda do MB Pontos (banco texdb/perfil); sem banco = losango
+					if (coin) r->drawImage(ImVec2(c.x - 9 * u, c.y - 9 * u), ImVec2(c.x + 9 * u, c.y + 9 * u), (ImTextureID)coin, ImColor(255, 255, 255, (int)(255 * f)), ImVec2(0, 0), ImVec2(1, 1));
+					else { ImVec2 d[4] = { ImVec2(c.x, c.y - 6 * u), ImVec2(c.x + 6 * u, c.y), ImVec2(c.x, c.y + 6 * u), ImVec2(c.x - 6 * u, c.y) }; r->drawConvexPolyFilled(d, 4, A(236, 250, 255, 255)); }
+				}
 				txt(CX0 + 54.0f, y + (21.0f - txtH(rows[k].val, 12.2f)) * 0.5f, rows[k].dim ? A(170, 188, 214, 150) : A(244, 248, 255, 255), rows[k].val, 12.2f, !rows[k].dim);
 				const float lw = txtW(rows[k].label, 8.6f);
 				txt(X1 - 18.0f - lw, y + (21.0f - txtH(rows[k].label, 8.6f)) * 0.5f, A(150, 176, 214, 170), rows[k].label, 8.6f);
 			}
 		}
-		// banner "painel de grupos" (toque = /grupos)
+		// banner "Painel do Grupo" (toque = /grupo): so aparece quando o jogador esta em um grupo (organizacao)
+		float vipY = 482.0f;
+		if (g_i.group)
 		{
+			vipY = 482.0f + CW / 5.4f + 12.0f;
 			const float by0 = 482.0f, bh = CW / 5.4f, by1 = by0 + bh;
 			void* tex = PerfilBannerTexture(0);
 			const bool dn = g_down.kind == K_BAN_G;
@@ -402,7 +416,7 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 				r->drawRoundedRect(V(CX0, by0), V(X1, by1), A(40, 56, 110, 255), 12.0f * u, true);
 				r->drawRectFilledMulticolor(V(CX0 + 3, by0 + 3), V(X1 - 3, by1 - 3), A(120, 52, 170, 230), A(46, 110, 220, 230), A(46, 130, 230, 230), A(150, 50, 140, 230));
 			}
-			const std::string lb = "painel de grupos";
+			const std::string lb = "Painel do Grupo";
 			const float lw = txtW(lb, 10.5f) + 38.0f, lx0 = CX0 + (CW - lw) * 0.5f, lx1 = lx0 + lw, ly0 = by0 + bh * 0.5f - 12.0f, ly1 = ly0 + 24.0f;
 			r->drawRoundedRect(V(lx0, ly0), V(lx1, ly1), A(224, 120, 214, 215), 12.0f * u, true);
 			r->drawRoundedRect(V(lx0, ly0), V(lx1, ly1), A(255, 214, 250, 200), 12.0f * u, false, std::max(1.0f, 1.0f * u));
@@ -416,7 +430,7 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 		}
 		// banner "Eleve sua experiencia" (acessar loja = em breve)
 		{
-			const float by0 = 482.0f + CW / 5.4f + 12.0f, bh = CW / 6.9f, by1 = by0 + bh;
+			const float by0 = vipY, bh = CW / 6.9f, by1 = by0 + bh;
 			void* tex = PerfilBannerTexture(1);
 			const bool dn = g_down.kind == K_BAN_V;
 			if (tex) r->drawImage(V(CX0, by0), V(X1, by1), (ImTextureID)tex, ImColor(255, 255, 255, (int)(255 * f * (dn ? 0.85f : 1.0f))), ImVec2(0, 0), ImVec2(1, 1));

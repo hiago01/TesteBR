@@ -554,7 +554,7 @@ void JobsUI::draw(ImGuiRenderer* r)
 		if (answer == 1) JobsUI::Close(true);
 		else if (answer == 2 && sq > 0) SendPerfil(21, sq, arg);
 		else if (answer == 3 && sq > 0) SendPerfil(22, sq, arg);
-		else if (answer == 4 && pNetGame) { pNetGame->SendChatCommand("/grupos"); JobsUI::Close(true); }
+		else if (answer == 4 && pNetGame) { pNetGame->SendChatCommand("/grupo"); JobsUI::Close(true); }
 		return;
 	}
 	if (g_shop.load())
@@ -1078,6 +1078,11 @@ void ShopDrawItemIcon(ImGuiRenderer* r, int icon, const float a[2], const float 
 // banner do menu jogador (perfilpanel.cpp): textura nativa do banco texdb/perfil; nullptr = sem banco (o menu desenha so com cor e texto)
 void* PerfilBannerTexture(int which)
 {
-	RwTexture* t = PerfilTexDb::Texture(which == 0 ? "perfil_grupos" : "perfil_vip");
+	RwTexture* t = PerfilTexDb::Texture(which == 0 ? "perfil_grupos" : (which == 1 ? "perfil_vip" : "perfil_mb"));
 	return (t && t->raster) ? (void*)t->raster : nullptr;
 }
+
+// foto de perfil + moldura do Central da Cidade para o Menu Jogador (perfilpanel.cpp).
+// PENDENTE: o desenho do avatar fica no avatar.cpp/central.cpp (fora deste pacote de fontes); quando eles forem enviados, ligar aqui.
+// Devolve false = nao desenhou (o menu desenha o circulo com a inicial do nome).
+bool PerfilDrawAvatar(ImGuiRenderer*, float, float, float, int) { return false; }
