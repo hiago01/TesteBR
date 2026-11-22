@@ -15,8 +15,8 @@
 #include "../../vendor/armhook/patch.h"
 #include "jobs.h"
 #include "garagepanel.h"
+#include "notafiscal.h"
 #include "carinteract.h"
-#include "waypoint3d.h"
 #include "maximomenu.h"
 
 #include <algorithm>
@@ -46,6 +46,7 @@ namespace
 
 	std::atomic<bool> g_open{false}, g_flush{false}, g_resetView{false};
 	std::atomic<bool> g_garage{false};               // a tela aberta e a GARAGEM (RPC 245 op 13), nao a agencia
+	std::atomic<bool> g_invoice{false};              // a tela aberta e a NOTA FISCAL da loja (RPC 245 op 16; notafiscal.cpp), nao a agencia
 	std::atomic<bool> g_claimed[4] = {{false}, {false}, {false}, {false}};
 	std::atomic<uint32_t> g_ver{0}, g_mkVer{0};
 	std::atomic<bool> g_scFolded{false};             // patinete dobrado na mao: o servidor mostra o botao fixo "Montar patinete" (op 6, kind 4, state 0 = montar)
@@ -98,7 +99,7 @@ namespace
 		FLog("[JOBS3D] Send op %d arg %d", op, arg);
 		RakNet::BitStream bs;
 		bs.Write((uint8_t)op);
-		if (op == 1 || op == 2 || op == 12 || op == 13) bs.Write((uint16_t)arg);
+		if (op == 1 || op == 2 || op == 12 || op == 13 || (op >= 14 && op <= 16)) bs.Write((uint16_t)arg);   // 14/15/16 = nota fiscal: u16 numero da nota
 		pNetGame->GetRakClient()->RPC(&RPC_JobsRequest, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
 	}
 
@@ -152,11 +153,11 @@ namespace
 			r->drawImage(a, b, (ImTextureID)t->raster, ImColor(190, 190, 190, 255), uv0, uv1);
 			return;
 		}
-		r->drawRoundedRect(a, b, ImColor(26, 26, 30, 255), 5.0f * u, true);
+		r->drawRoundedRect(a, b, ImColor(12, 20, 38, 255), 5.0f * u, true);
 		std::string ch = j.name.empty() ? "?" : j.name.substr(0, 1);
 		const float fs = (b.y - a.y) * 0.5f;
 		const ImVec2 ts = r->calculateTextSize(ch, fs);
-		r->drawText(ImVec2((a.x + b.x - ts.x) * 0.5f, (a.y + b.y - ts.y) * 0.5f), ImColor(236, 40, 96, 200), ch, false, fs);
+		r->drawText(ImVec2((a.x + b.x - ts.x) * 0.5f, (a.y + b.y - ts.y) * 0.5f), ImColor(70, 140, 255, 210), ch, false, fs);
 	}
 
 	bool Proj(float x, float y, float z, ImVec2& o, float& depth)
@@ -183,17 +184,23 @@ void JobsUI::Close(bool notifyServer)
 	if (!g_open.exchange(false)) return;
 	g_confirm = 0; g_drag = Drag();
 	if (g_garage.exchange(false)) return;            // a garagem nao avisa o servidor: ele nao guarda estado dela
+	if (g_invoice.exchange(false))                   // nota fiscal: voltar/fechar sem tocar nos botoes = Cancelar (RPC 246 op 16)
+	{
+		const int sq = InvoicePanel::Seq();
+		InvoicePanel::Reset();
+		if (notifyServer && sq > 0) Send(16, sq);
+		return;
+	}
 	if (notifyServer) Send(4);
 }
 bool JobsUI_ScooterFolded() { return g_scFolded.load(); }
-bool GarageIsOpenNow() { return g_open.load() && g_garage.load(); }
+bool GarageIsOpenNow() { return g_open.load() && (g_garage.load() || g_invoice.load()); }   // a nota fiscal esconde o HUD como a garagem
 void JobsUI::Reset()
 {
-	g_open.store(false); g_garage.store(false); GaragePanel::Reset(); g_confirm = 0; g_drag = Drag(); g_tapReq.store(false); for (WorldTap& w : g_wt) w.valid = false;
+	g_open.store(false); g_garage.store(false); g_invoice.store(false); GaragePanel::Reset(); InvoicePanel::Reset(); g_confirm = 0; g_drag = Drag(); g_tapReq.store(false); for (WorldTap& w : g_wt) w.valid = false;
 	{ std::lock_guard<std::mutex> l(g_mkMutex); g_mkNetA.clear(); g_mkNetB.clear(); g_mkNetC.clear(); g_mkNetD.clear(); g_mkNet.clear(); }
 	g_scFolded.store(false);
 	CarInteract::Reset();
-	Waypoint3D::Reset();
 	ChatSetAllowed(false);
 	ProvadorSetAllowed(false);
 	g_mkVer.fetch_add(1);
@@ -252,9 +259,16 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	if (op == 3) { Close(false); return; }
 	if (op == 2) { uint8_t c = 0; if (bs.Read(c)) g_resultCode.store(c); return; }
 	if (op == 13) { GaragePanel::OnList(bs); g_garage.store(true); if (!g_open.exchange(true)) { g_flush.store(true); g_resetView.store(true); } return; }   // lista da garagem: abre a tela
-	if (op == 22) { Waypoint3D::OnHq(bs); return; }   // sedes de todos os grupos (categoria "Grupos" do mapa aberto)
-	if (op == 21) { Waypoint3D::OnSede(bs); return; }   // marcacao temporaria "SEDE (grupo)" (org.pwn, /grupo > Marcar no GPS)
-	if (op == 20) { Waypoint3D::OnPacket(bs); return; }   // marcacoes 3D de GPS do jogador (servidor org.pwn /marcar)
+	if (op == 16)      // nota fiscal da loja: abre a tela e confirma ao servidor (op 14) que este cliente a mostra
+	{
+		if (!InvoicePanel::OnShow(bs)) { FLog("[JOBS3D] nota fiscal (op 16) invalida (%d bytes)", bytes); return; }
+		if (g_open.load() && !g_invoice.load() && !g_garage.load()) Send(4);            // a agencia estava aberta: o servidor precisa saber que fechou
+		g_garage.store(false); g_invoice.store(true);
+		if (!g_open.exchange(true)) { g_flush.store(true); g_resetView.store(true); }
+		Send(14, InvoicePanel::Seq());
+		return;
+	}
+	if (op == 17) { if (g_invoice.load()) JobsUI::Close(false); return; }                 // o servidor fecha a nota (ex.: o cliente da loja tinha a tela antiga por baixo)
 	if (op == 15) { CarInteract::OnPacket(bs); return; }   // interacao com o proprio carro (chave): ponto "Abrir interacao"
 	if (op == 14) { if (g_garage.load()) JobsUI::Close(false); return; }                                                                 // o servidor fecha a garagem (carro retirado)
 	if (op == 12) { uint8_t a = 0; if (bs.Read(a)) ProvadorSetAllowed(a != 0); return; }   // u8: libera o /provador
@@ -352,10 +366,10 @@ static void DrawMarkers(ImGuiRenderer* r, float k, int64_t now)
 			a = ImVec2(chest.x + 22.0f * k, chest.y - h * 0.5f); b = ImVec2(a.x + ts.x + 34.0f * k, a.y + h);
 		}
 		const float pulse = 0.5f + 0.5f * std::sin(t * 4.0f);
-		r->drawRoundedRect(a, b, ImColor(22, 22, 26, 215), 6.0f * k, true);
+		r->drawRoundedRect(a, b, ImColor(12, 20, 40, 220), 6.0f * k, true);
 		r->drawRoundedRect(a, b, ImColor(255, 255, 255, 60 + (int)(60.0f * pulse)), 6.0f * k, false, 1.2f);
 		const ImVec2 dc2(a.x + 13.0f * k, a.y + h * 0.5f);
-		r->drawRoundedRect(ImVec2(dc2.x - 5.5f * k, dc2.y - 5.5f * k), ImVec2(dc2.x + 5.5f * k, dc2.y + 5.5f * k), ImColor(236, 40, 96, 255), 5.5f * k, true);
+		r->drawRoundedRect(ImVec2(dc2.x - 5.5f * k, dc2.y - 5.5f * k), ImVec2(dc2.x + 5.5f * k, dc2.y + 5.5f * k), ImColor(41, 121, 255, 255), 5.5f * k, true);
 		r->drawText(ImVec2(a.x + 26.0f * k, a.y + (h - ts.y) * 0.5f), ImColor(235, 235, 240, 255), label, false, fs);
 		const float pad = 14.0f * k;
 		g_mkHit.push_back({ImVec2(a.x - pad, a.y - pad), ImVec2(b.x + pad, b.y + pad), m.kind});
@@ -376,9 +390,6 @@ void JobsUI::draw(ImGuiRenderer* r)
 	// ---- marcadores no mundo (anel no chao, circulo com icone, seta, texto sobre o NPC) ----
 	if (!g_open.load()) DrawMarkers(r, k, now);
 	else g_mkHit.clear();
-
-	// ---- marcacoes 3D de GPS do jogador (pino + nome + distancia); a tela aberta (agencia/garagem) cobre o mundo ----
-	if (!g_open.load()) Waypoint3D::Draw(r, k);
 
 	// ---- interacao com o proprio carro (chave): ponto "Abrir interacao" + menu Trancar/Destrancar; o toque dele vem antes dos demais ----
 	if (!g_open.load())
@@ -459,6 +470,21 @@ void JobsUI::draw(ImGuiRenderer* r)
 		if (closeReq) JobsUI::Close(false);
 		return;
 	}
+	if (g_invoice.load())
+	{
+		std::vector<TouchEv> evs; std::vector<InvoiceTouch> ie;
+		{ std::lock_guard<std::mutex> l(g_evMutex); evs.swap(g_events); }
+		for (const TouchEv& e : evs) ie.push_back({e.type, e.num, e.x, e.y, e.cancel});
+		int answer = 0;
+		InvoicePanel::Draw(r, scr.x, scr.y, ie, answer);
+		if (answer != 0)
+		{
+			const int sq = InvoicePanel::Seq();
+			if (sq > 0) Send(answer == 1 ? 15 : 16, sq);                  // 15 = Finalizar pedido | 16 = Cancelar
+			JobsUI::Close(false);                                          // a nota fecha na hora; o resultado vem no chat
+		}
+		return;
+	}
 	{
 		const uint32_t v = g_ver.load();
 		if (v != g_seenVer)
@@ -477,8 +503,9 @@ void JobsUI::draw(ImGuiRenderer* r)
 	}
 
 	// ---- layout identico ao da referencia (coordenadas em "pixels de referencia": painel 797 x 448) ----
-	const ImColor cDim(0, 0, 0, 120), cPanel(30, 30, 33, 236), cCard(46, 46, 50, 228), cLine(82, 82, 90, 255), cText(244, 244, 247, 255), cSub(160, 160, 170, 255);
-	const ImColor cPink(236, 40, 96, 255), cGreen(60, 200, 120, 255), cRed(229, 72, 77, 255), cOff(58, 58, 64, 255), cDark(22, 22, 25, 255);
+	// PALETA AZUL (antes rosa/cinza): fundo azul-marinho + destaque azul; verde/vermelho continuam so para aprovado/erro
+	const ImColor cDim(0, 8, 28, 135), cPanel(14, 22, 40, 238), cCard(24, 36, 62, 230), cLine(52, 76, 126, 255), cText(244, 246, 252, 255), cSub(150, 168, 202, 255);
+	const ImColor cAccent(41, 121, 255, 255), cGreen(60, 200, 120, 255), cRed(229, 72, 77, 255), cOff(34, 48, 82, 255), cDark(10, 16, 32, 255);
 
 	std::vector<Hit> hits;
 	r->drawRect(ImVec2(0, 0), scr, cDim, true);
@@ -507,7 +534,7 @@ void JobsUI::draw(ImGuiRenderer* r)
 	{
 		const ImVec2 a2 = V(x0, y0), b2 = V(x1, y1);
 		r->drawRoundedRect(a2, b2, enabled ? col : cOff, 5.0f * u, true);
-		if (col.Value.x != cPink.Value.x || !enabled) r->drawRoundedRect(a2, b2, cLine, 5.0f * u, false, 1.0f);
+		if (col.Value.x != cAccent.Value.x || !enabled) r->drawRoundedRect(a2, b2, cLine, 5.0f * u, false, 1.0f);
 		const ImVec2 ts = r->calculateTextSize(text, fs * u);
 		r->drawText(ImVec2((a2.x + b2.x - ts.x) * 0.5f, (a2.y + b2.y - ts.y) * 0.5f), enabled ? cText : cSub, text, false, fs * u);
 		if (enabled) hits.push_back({a2, b2, kind, idx});
@@ -524,7 +551,7 @@ void JobsUI::draw(ImGuiRenderer* r)
 	hits.push_back({P0, P1, K_PANEL, 0});
 
 	// ---- cabecalho ----
-	r->drawRoundedRect(V(15, 15), V(41, 41), cPink, 6.0f * u, true);
+	r->drawRoundedRect(V(15, 15), V(41, 41), cAccent, 6.0f * u, true);
 	briefcase(20.0f, 20.0f, 16.0f, cText);
 	txt(50, 20, cText, "Agência de Empregos", 12.5f);
 	r->drawRoundedRect(V(756, 16), V(782, 42), cOff, 6.0f * u, true);
@@ -539,7 +566,7 @@ void JobsUI::draw(ImGuiRenderer* r)
 
 	// ---- barra lateral ----
 	txt(15, 58, cSub, "NAVEGAÇÃO", 8.0f);
-	r->drawRoundedRect(V(15, 73), V(200, 110), cPink, 6.0f * u, true);
+	r->drawRoundedRect(V(15, 73), V(200, 110), cAccent, 6.0f * u, true);
 	briefcase(25.0f, 82.0f, 18.0f, cText);
 	txt(52, 85, cText, "AGÊNCIA", 10.0f);
 	txtR(190, 84, cText, ">", 12.0f);
@@ -554,10 +581,10 @@ void JobsUI::draw(ImGuiRenderer* r)
 			DrawJobImage(r, cur, V(20, 147), V(195, 226), u);
 			char lv[24]; snprintf(lv, sizeof lv, "LVL %d", g_s.mine.lvl);
 			const ImVec2 ts = r->calculateTextSize(lv, 7.5f * u);
-			r->drawRoundedRect(V(26, 207), ImVec2(V(26, 207).x + ts.x + 10.0f * u, V(26, 221).y), cPink, 3.0f * u, true);
+			r->drawRoundedRect(V(26, 207), ImVec2(V(26, 207).x + ts.x + 10.0f * u, V(26, 221).y), cAccent, 3.0f * u, true);
 			txt(31, 208.5f, cText, lv, 7.5f);
 			txt(25, 233, cText, g_s.mine.name, 11.5f);
-			dot(30, 258, 3.0f, cPink);
+			dot(30, 258, 3.0f, cAccent);
 			txt(38, 253, cText, curIdx >= 0 ? Money(cur.smin) + " até " + Money(cur.smax) : "", 8.0f);
 			button(25, 277, 190, 302, "DEMITIR-SE", cOff, true, K_QUIT, 0, 9.0f);
 		}
@@ -579,10 +606,10 @@ void JobsUI::draw(ImGuiRenderer* r)
 			const int into = lvl >= 5 ? 60 : g_s.mine.xp - (lvl - 1) * 60;
 			frac = lvl >= 5 ? 1.0f : std::clamp(into / 60.0f, 0.0f, 1.0f);
 			snprintf(b1, sizeof b1, "%d XP - %d%%", g_s.mine.xp, (int)std::lround(frac * 100.0f));
-			txtR(190, 334, cPink, b1, 8.0f);
+			txtR(190, 334, cAccent, b1, 8.0f);
 		}
 		r->drawRoundedRect(V(25, 350), V(190, 355), cOff, 2.5f * u, true);
-		if (frac > 0.01f) r->drawRoundedRect(V(25, 350), V(25 + 165.0f * frac, 355), cPink, 2.5f * u, true);
+		if (frac > 0.01f) r->drawRoundedRect(V(25, 350), V(25 + 165.0f * frac, 355), cAccent, 2.5f * u, true);
 		wrap(25, 362, "Complete trabalhos para subir de nível e desbloquear novas profissões", cSub, 7.5f, 165, 2, 10.0f);
 	}
 	{   // jogador
@@ -592,7 +619,7 @@ void JobsUI::draw(ImGuiRenderer* r)
 		CPlayerPool* pp = (pNetGame && pNetGame->GetPlayerPool()) ? pNetGame->GetPlayerPool() : nullptr;
 		const char* nm = pp ? pp->GetLocalPlayerName() : nullptr;
 		txt(50, 404, cText, nm ? nm : "", 8.5f);
-		if (pp) { char b1[24]; snprintf(b1, sizeof b1, "ID: %d", (int)pp->GetLocalPlayerID()); txt(50, 417, cPink, b1, 7.5f); }
+		if (pp) { char b1[24]; snprintf(b1, sizeof b1, "ID: %d", (int)pp->GetLocalPlayerID()); txt(50, 417, cAccent, b1, 7.5f); }
 	}
 
 	// ---- vagas ----
@@ -613,16 +640,16 @@ void JobsUI::draw(ImGuiRenderer* r)
 		const bool full = j.vac > 0 && j.used >= j.vac;
 		const bool lowLvl = g_s.plLevel < j.minLvl;
 		if (sel) for (int gI = 4; gI >= 1; gI--)
-			r->drawRoundedRect(V(cx - gI * 1.6f, cy - gI * 1.6f), V(cx + cw + gI * 1.6f, cy + ch + gI * 1.6f), ImColor(236, 40, 96, 80 - gI * 16), (7.0f + gI) * u, false, 1.6f);
+			r->drawRoundedRect(V(cx - gI * 1.6f, cy - gI * 1.6f), V(cx + cw + gI * 1.6f, cy + ch + gI * 1.6f), ImColor(41, 121, 255, 80 - gI * 16), (7.0f + gI) * u, false, 1.6f);
 		r->drawRoundedRect(V(cx, cy), V(cx + cw, cy + ch), cCard, 7.0f * u, true);
-		r->drawRoundedRect(V(cx, cy), V(cx + cw, cy + ch), sel ? cPink : cLine, 7.0f * u, false, sel ? 2.0f : 1.0f);
+		r->drawRoundedRect(V(cx, cy), V(cx + cw, cy + ch), sel ? cAccent : cLine, 7.0f * u, false, sel ? 2.0f : 1.0f);
 		hits.push_back({V(cx, cy), V(cx + cw, cy + ch), K_CARD, i});
 		DrawJobImage(r, j, V(cx + 4, cy + 4), V(cx + cw - 4, cy + 112), u);
 		{   // selo de nivel
 			char lv[24]; snprintf(lv, sizeof lv, "LVL %d", j.minLvl);
 			const ImVec2 ts = r->calculateTextSize(lv, 7.5f * u);
 			const ImVec2 la = V(cx + 10, cy + 90);
-			r->drawRoundedRect(la, ImVec2(la.x + ts.x + 10.0f * u, V(0, cy + 104).y), lowLvl ? cRed : cPink, 3.0f * u, true);
+			r->drawRoundedRect(la, ImVec2(la.x + ts.x + 10.0f * u, V(0, cy + 104).y), lowLvl ? cRed : cAccent, 3.0f * u, true);
 			txt(cx + 15, cy + 91.5f, cText, lv, 7.5f);
 		}
 		{   // icone de livro = informacoes completas
@@ -632,7 +659,7 @@ void JobsUI::draw(ImGuiRenderer* r)
 			hits.push_back({V(cx + cw - 34, cy + 6), V(cx + cw - 6, cy + 32), K_INFO, i});
 		}
 		txt(cx + 12, cy + 121, cText, j.name, 12.5f);
-		dot(cx + 16, cy + 151, 3.0f, cPink);
+		dot(cx + 16, cy + 151, 3.0f, cAccent);
 		txt(cx + 24, cy + 146, cText, Money(j.smin) + " até " + Money(j.smax), 8.5f);
 		wrap(cx + 12, cy + 166, j.descr.empty() ? "Sem descrição." : j.descr, cSub, 8.5f, cw - 24, sel ? 3 : 4, 11.0f);
 		if (sel)
@@ -651,7 +678,7 @@ void JobsUI::draw(ImGuiRenderer* r)
 		else
 		{
 			const char* label = employed ? "JÁ POSSUI EMPREGO" : (full ? "VAGAS ESGOTADAS" : (lowLvl ? "NÍVEL INSUFICIENTE" : "ASSINAR CARTEIRA"));
-			button(cx + 10, cy + 300, cx + cw - 10, cy + 324, label, sel ? cPink : cOff, !employed && !full && !lowLvl, K_SIGN, i, 9.0f);
+			button(cx + 10, cy + 300, cx + cw - 10, cy + 324, label, sel ? cAccent : cOff, !employed && !full && !lowLvl, K_SIGN, i, 9.0f);
 		}
 	}
 
@@ -663,8 +690,8 @@ void JobsUI::draw(ImGuiRenderer* r)
 		hits.push_back({P0, P1, K_PANEL, 0});
 		const bool info = (g_confirm == 3);
 		const float mw = info ? 400.0f : 330.0f, mh = info ? 250.0f : 140.0f, mx = 398.5f - mw * 0.5f, my = 224.0f - mh * 0.5f;
-		r->drawRoundedRect(V(mx, my), V(mx + mw, my + mh), ImColor(36, 36, 40, 250), 8.0f * u, true);
-		r->drawRoundedRect(V(mx, my), V(mx + mw, my + mh), cPink, 8.0f * u, false, 2.0f);
+		r->drawRoundedRect(V(mx, my), V(mx + mw, my + mh), ImColor(16, 26, 50, 250), 8.0f * u, true);
+		r->drawRoundedRect(V(mx, my), V(mx + mw, my + mh), cAccent, 8.0f * u, false, 2.0f);
 		const bool okJob = g_sel >= 0 && g_sel < nJobs;
 		if (info && okJob)
 		{

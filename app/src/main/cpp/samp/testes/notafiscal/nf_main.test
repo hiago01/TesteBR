@@ -1,0 +1,140 @@
+// Teste de PC da nota fiscal (notafiscal.cpp): le o pacote RPC 245 op 16, desenha com um "renderer" falso que grava cada primitiva
+// (render.py transforma a gravacao em PNG) e confere os toques (Finalizar / Cancelar). NAO compila o cliente Android.
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
+#include <vector>
+#include <thread>
+#include <chrono>
+#include "gui/imguirenderer.h"
+#include "gui/samp_widgets/notafiscal.h"
+#include "vendor/raknet/BitStream.h"
+
+static FILE* g_out = nullptr;
+static std::vector<std::string> g_texts;       // "x y texto" de cada texto desenhado (para achar os botoes)
+static std::vector<ImVec4> g_textPos;
+#define RGBA(c) (int)((c).Value.x * 255.0f + 0.5f), (int)((c).Value.y * 255.0f + 0.5f), (int)((c).Value.z * 255.0f + 0.5f), (int)((c).Value.w * 255.0f + 0.5f)
+
+ImGuiRenderer::ImGuiRenderer(ImDrawList*, ImFont*) : m_drawList(nullptr), m_font(nullptr) {}
+void ImGuiRenderer::drawLine(const ImVec2& a, const ImVec2& b, const ImColor& c, float th) { if (g_out) fprintf(g_out, "L %.2f %.2f %.2f %.2f %.2f %d %d %d %d\n", a.x, a.y, b.x, b.y, th, RGBA(c)); }
+void ImGuiRenderer::drawRect(const ImVec2& a, const ImVec2& b, const ImColor& c, bool fill, float th) { if (g_out) fprintf(g_out, "R %.2f %.2f %.2f %.2f %d %d %d %d %d %.2f\n", a.x, a.y, b.x, b.y, RGBA(c), (int)fill, th); }
+void ImGuiRenderer::drawRoundedRect(const ImVec2& a, const ImVec2& b, const ImColor& c, float rd, bool fill, float th) { if (g_out) fprintf(g_out, "RR %.2f %.2f %.2f %.2f %d %d %d %d %.2f %d %.2f\n", a.x, a.y, b.x, b.y, RGBA(c), rd, (int)fill, th); }
+void ImGuiRenderer::drawRectFilledMulticolor(const ImVec2& a, const ImVec2& b, const ImColor& c1, const ImColor& c2, const ImColor& c3, const ImColor& c4)
+{ if (g_out) fprintf(g_out, "M %.2f %.2f %.2f %.2f %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d\n", a.x, a.y, b.x, b.y, RGBA(c1), RGBA(c2), RGBA(c3), RGBA(c4)); }
+void ImGuiRenderer::drawConvexPolyFilled(ImVec2* p, int n, const ImColor& c)
+{
+	if (!g_out) return;
+	fprintf(g_out, "P %d %d %d %d %d", n, RGBA(c));
+	for (int i = 0; i < n; i++) fprintf(g_out, " %.2f %.2f", p[i].x, p[i].y);
+	fprintf(g_out, "\n");
+}
+void ImGuiRenderer::drawPolyline(const ImVec2* p, int n, const ImColor& c, bool closed, float th)
+{
+	if (!g_out) return;
+	fprintf(g_out, "PL %d %d %.2f %d %d %d %d", n, (int)closed, th, RGBA(c));
+	for (int i = 0; i < n; i++) fprintf(g_out, " %.2f %.2f", p[i].x, p[i].y);
+	fprintf(g_out, "\n");
+}
+ImVec2 ImGuiRenderer::calculateTextSize(const std::string& s, float fs) { return ImVec2(0.48f * fs * (float)s.size(), fs * 1.15f); }
+void ImGuiRenderer::drawText(const ImVec2& pos, const ImColor& c, const std::string& s, bool, float fs)
+{
+	if (g_out) fprintf(g_out, "T %.2f %.2f %.2f %d %d %d %d %s\n", pos.x, pos.y, fs, RGBA(c), s.c_str());
+	g_texts.push_back(s); g_textPos.push_back(ImVec4(pos.x, pos.y, fs, (float)s.size()));
+}
+
+static int g_fail = 0, g_n = 0;
+static void check(bool ok, const char* msg) { g_n++; if (!ok) { g_fail++; printf("FALHOU: %s\n", msg); } }
+
+static void put8(std::vector<uint8_t>& v, unsigned x) { v.push_back((uint8_t)x); }
+static void put16(std::vector<uint8_t>& v, unsigned x) { v.push_back((uint8_t)x); v.push_back((uint8_t)(x >> 8)); }
+static void put32(std::vector<uint8_t>& v, unsigned x) { put16(v, x & 0xFFFF); put16(v, x >> 16); }
+static void putS(std::vector<uint8_t>& v, const std::string& s) { put8(v, (unsigned)s.size()); for (char c : s) v.push_back((uint8_t)c); }
+struct It { const char* name; int qty; };
+static std::vector<uint8_t> Packet(int seq, int icon, int pct, unsigned total, unsigned tax, const char* co, std::vector<It> items)
+{
+	std::vector<uint8_t> v;
+	put16(v, (unsigned)seq); put8(v, (unsigned)icon); put8(v, (unsigned)pct); put32(v, total); put32(v, tax); putS(v, co); put8(v, (unsigned)items.size());
+	for (const It& i : items) { putS(v, i.name); put16(v, (unsigned)i.qty); }
+	return v;
+}
+static bool Show(const std::vector<uint8_t>& v) { RakNet::BitStream bs(v.data(), (int)v.size()); return InvoicePanel::OnShow(bs); }
+
+static void Scene(const char* file, float w, float h, int seq, int icon, int pct, unsigned total, unsigned tax, const char* co, std::vector<It> items)
+{
+	g_out = nullptr; InvoicePanel::Reset();
+	check(Show(Packet(seq, icon, pct, total, tax, co, items)), file);
+	ImGuiRenderer r(nullptr, nullptr);
+	std::vector<InvoiceTouch> none; int ans = 0;
+	InvoicePanel::Draw(&r, w, h, none, ans);                          // 1o quadro: abre a animacao
+	std::this_thread::sleep_for(std::chrono::milliseconds(260));
+	std::string path = std::string(getenv("NF_OUT") ? getenv("NF_OUT") : ".") + "/" + file + ".dump";
+	g_out = fopen(path.c_str(), "w");
+	fprintf(g_out, "SIZE %.0f %.0f\n", w, h);
+	g_texts.clear(); g_textPos.clear();
+	InvoicePanel::Draw(&r, w, h, none, ans);
+	fclose(g_out); g_out = nullptr;
+}
+
+static ImVec2 FindText(const char* s)
+{
+	for (size_t i = 0; i < g_texts.size(); i++) if (g_texts[i] == s) return ImVec2(g_textPos[i].x + 0.48f * g_textPos[i].z * g_textPos[i].w * 0.5f, g_textPos[i].y + g_textPos[i].z * 0.5f);
+	return ImVec2(-1, -1);
+}
+
+int main()
+{
+	// pacote invalido nao troca a nota
+	InvoicePanel::Reset();
+	{ std::vector<uint8_t> v = Packet(9, 1, 5, 100, 5, "Auto Pecas", { {"Pneu", 2} }); v.resize(v.size() - 1); check(!Show(v), "pacote cortado e recusado"); check(InvoicePanel::Seq() == 0, "nada na tela depois do pacote invalido"); }
+	check(!Show(Packet(0, 1, 5, 100, 5, "X", { {"A", 1} })), "numero 0 recusado");
+	{ std::vector<uint8_t> v = Packet(7, 1, 5, 100, 5, "Auto Pecas", {}); v[v.size() - 1] = 9; check(!Show(v), "mais de 8 itens recusado"); }
+	check(Show(Packet(12, 1, 5, 7600, 380, "Auto Pecas", { {"Pneu", 2}, {"Farol", 1} })) && InvoicePanel::Seq() == 12, "pacote valido");
+
+	// cenas
+	Scene("mercado",    2400, 1080, 101, 0, 5,  4560, 228,  "Mercado",    { {"Refrigerante cola (6 latas)", 1}, {"Pao de forma", 2}, {"Arroz 5 kg", 1} });
+	Scene("autopecas",  2400, 1080, 102, 1, 8,  7600, 608,  "Auto Pecas", { {"Porta-malas danificado", 1}, {"Para-choque danificado", 1}, {"Pneu danificado", 2} });
+	Scene("roupas",     2400, 1080, 103, 2, 5,  12000, 600, "Roupas",     { {"Camiseta basica", 2}, {"Calca jeans", 1} });
+	Scene("barbearia",  2400, 1080, 104, 3, 10, 3500, 350,  "Barbearia",  { {"Corte de cabelo", 1}, {"Barba", 1} });
+	Scene("lanchonete", 2400, 1080, 105, 4, 5,  9900, 495,  "Lanchonete", { {"X-Burger", 2}, {"Batata frita grande", 1}, {"Suco de laranja", 2}, {"Milk-shake", 1} });
+	Scene("generica",   2400, 1080, 106, 9, 0,  500, 0,     "",           { {"Produto", 1} });
+	Scene("cheia",      2400, 1080, 107, 0, 12, 99999999, 11999999, "Mercado com um nome bem comprido demais", {
+		{"Refrigerante cola (6 latas) com nome enorme para cortar", 12}, {"Item 2", 1}, {"Item 3", 3}, {"Item 4", 4}, {"Item 5", 5}, {"Item 6", 6}, {"Item 7", 7}, {"Item 8", 8} });
+	Scene("retrato",     720,  648, 108, 1, 8,  4560, 365,  "Auto Pecas", { {"Porta-malas danificado", 1}, {"Para-choque danificado", 1}, {"Pneu danificado", 2} });
+
+	// toques: Finalizar pedido
+	{
+		g_out = nullptr; InvoicePanel::Reset();
+		Show(Packet(55, 0, 5, 4560, 228, "Mercado", { {"Pao", 2} }));
+		ImGuiRenderer r(nullptr, nullptr); int ans = 0; std::vector<InvoiceTouch> none;
+		g_texts.clear(); g_textPos.clear();
+		InvoicePanel::Draw(&r, 2400, 1080, none, ans);
+		std::this_thread::sleep_for(std::chrono::milliseconds(260));
+		g_texts.clear(); g_textPos.clear();
+		InvoicePanel::Draw(&r, 2400, 1080, none, ans);
+		const ImVec2 fin = FindText("Finalizar pedido"), can = FindText("Cancelar");
+		check(fin.x > 0 && can.x > 0, "achou os botoes");
+		std::vector<InvoiceTouch> ev = { {2, 0, fin.x, fin.y, false}, {1, 0, fin.x, fin.y, false} };
+		InvoicePanel::Draw(&r, 2400, 1080, ev, ans); check(ans == 1, "toque em Finalizar pedido");
+		ev = { {2, 0, can.x, can.y, false}, {1, 0, can.x, can.y, false} };
+		InvoicePanel::Draw(&r, 2400, 1080, ev, ans); check(ans == 2, "toque em Cancelar");
+		ev = { {2, 0, fin.x, fin.y, false}, {3, 0, can.x, can.y, false}, {1, 0, can.x, can.y, false} };
+		InvoicePanel::Draw(&r, 2400, 1080, ev, ans); check(ans == 0, "arrastar para fora do botao nao conta");
+		ev = { {2, 0, fin.x, fin.y, false}, {1, 0, fin.x, fin.y, true} };
+		InvoicePanel::Draw(&r, 2400, 1080, ev, ans); check(ans == 0, "toque cancelado pelo jogo nao conta");
+		ev = { {2, 0, 5, 5, false}, {1, 0, 5, 5, false} };
+		InvoicePanel::Draw(&r, 2400, 1080, ev, ans); check(ans == 0, "toque fora dos botoes nao faz nada");
+	}
+	// toques durante a animacao de entrada sao ignorados
+	{
+		InvoicePanel::Reset(); Show(Packet(56, 0, 5, 4560, 228, "Mercado", { {"Pao", 2} }));
+		ImGuiRenderer r(nullptr, nullptr); int ans = 0; std::vector<InvoiceTouch> none;
+		g_texts.clear(); g_textPos.clear();
+		InvoicePanel::Draw(&r, 2400, 1080, none, ans);
+		const ImVec2 fin = FindText("Finalizar pedido");
+		std::vector<InvoiceTouch> ev = { {2, 0, fin.x, fin.y, false}, {1, 0, fin.x, fin.y, false} };
+		InvoicePanel::Draw(&r, 2400, 1080, ev, ans); check(ans == 0, "sem toque durante a entrada");
+	}
+	printf("%d verificacoes, %d falhas\n", g_n, g_fail);
+	return g_fail ? 1 : 0;
+}

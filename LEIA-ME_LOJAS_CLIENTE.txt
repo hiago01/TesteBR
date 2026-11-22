@@ -1,0 +1,31 @@
+LOJAS v13 - CLIENTE (predio de 5 lojas em Idlewood): PRATELEIRAS REAIS + MODELOS DE PRODUTOS
+
+Extrair DENTRO de Android/data/com.maximo.roleplay/files/ (aceite substituir). Feche o jogo antes. Sobrescreve a v12 (mesmo caminho dos arquivos).
+ORDEM: instale ESTE pacote do cliente ANTES de ligar o servidor novo (LEIA-ME_LOJAS_SERVIDOR.md). Sem o servidor novo as prateleiras ficam vazias;
+sem este pacote o servidor cria objetos com modelos que o cliente nao conhece.
+
+O QUE MUDOU
+ 1) PRATELEIRAS/VITRINES REAIS (antes eram "quadrados" de vidro): dentro do modelo 12123, no mesmo lugar de antes, agora com
+      - gondola do mercado: laterais e fundo perfurado em inox, tabuas com friso de preco, rodape e testeira "OFERTAS";
+      - ilhas de oferta: dois degraus com tampo vermelho, friso de preco, painel central e testeira dos dois lados;
+      - prateleiras de parede (mercado em inox; roupas em madeira escura com fundo ripado) e armario lateral;
+      - arara de cabides com pes em T, colunas e 2 varoes;
+      - estufas de pizza (2): base inox, colunas, vidro com reflexo em 3 lados, fundo inox, capelo com luz e placa "PIZZA QUENTE", 3 bandejas;
+      - vitrine de lanches: armario refrigerado, vidro em 3 lados, 3 bandejas, luz e placa "LANCHES".
+ 2) PRODUTOS REAIS (16 modelos novos, ids 12124-12139, cada um com textura propria e rotulo):
+      12124 pizza inteira na assadeira   12125 caixa de pizza        12126 caixa de hamburguer   12127 hamburguer (pao, alface, tomate, queijo, carne)
+      12128 refri cola (6 latas)         12129 refri lima (6 latas)  12130 agua mineral (6)      12131 pacote de batata chips
+      12132 caixa de cereal              12133 molho de tomate (4)   12134 pao de forma          12135 camisetas dobradas (3)
+      12136 calcas jeans dobradas (2)    12137 caixa de tenis        12138 camiseta no cabide    12139 batata frita
+    Eles NAO estao no IPL: quem cria e posiciona e o servidor (comandos /addprod etc.), em 254 lugares (slots) nas 12 prateleiras.
+ 3) SOMBREAMENTO: corrigido um erro que escurecia so 2 dos 4 cantos de cada face (gradiente diagonal). Cada vertice recebe o brilho uma vez; o brilho
+    medio de antes foi mantido.
+
+CONTEUDO: texdb/favela.img (+17 modelos; 171 de 191 entradas, SEM IMG novo) | texdb/favela/* (+58 texturas mxl_*/mxp_*) | SAMP/favela.ide (12123-12139) |
+          SAMP/favela.col | texdb/ipl/lawn_stream2.ipl | LOJAS_PRODUTOS_SLOTS.txt (lista de prateleiras, slots e produtos)
+BASE: pacote unico de 17-11. Se mudou favela.img/.ide/.col/banco depois dele, NAO instale por cima: me mande os atuais.
+
+LIMITES (honestos): NAO foi testado no jogo nem em aparelho; foi conferido por script (IMG/COL/IDE/banco consistentes, 0 faces coplanares visiveis, o
+chao continua 100% alcancavel no teste de caminhada) e por renders de pre-visualizacao. Os moveis originais CJ_* nao estao disponiveis (gta_int.img), entao
+as MEDIDAS das prateleiras sao estimativas a partir da posicao dos itens do outlet.map; se alguma ficar fora de escala, me diga o numero (planta anexa).
+Conferir no samp_log.txt: [IMG] FAVELA e [IPL] lawn_stream2. Os produtos usam colisao em caixa pequena (70% do tamanho).

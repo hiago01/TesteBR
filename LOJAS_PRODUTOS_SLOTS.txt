@@ -1,0 +1,300 @@
+LOJAS - PRATELEIRAS E SLOTS (gerado das mesmas tabelas do modelo 12123 e do include maximo_lojas.inc)
+
+Use /prateleiras e /produtos no jogo. Slot = lugar de UM produto; a numeracao e por prateleira, de baixo para cima (nivel -> fileira -> coluna).
+
+[1] M_GOND  |  Mercado  |  Mercado - gondola do corredor  |  aceita: Mercado  |  60 slots
+     slot  1: x=1101.32 y=-1357.60 z=13.10 giro=0  demo=agua
+     slot  2: x=1101.56 y=-1357.60 z=13.10 giro=0  demo=agua
+     slot  3: x=1101.80 y=-1357.60 z=13.10 giro=0  demo=cola
+     slot  4: x=1102.04 y=-1357.60 z=13.10 giro=0  demo=cola
+     slot  5: x=1102.28 y=-1357.60 z=13.10 giro=0  demo=lima
+     slot  6: x=1102.52 y=-1357.60 z=13.10 giro=0  demo=lima
+     slot  7: x=1102.76 y=-1357.60 z=13.10 giro=0  demo=agua
+     slot  8: x=1103.00 y=-1357.60 z=13.10 giro=0  demo=agua
+     slot  9: x=1103.24 y=-1357.60 z=13.10 giro=0  demo=cola
+     slot 10: x=1103.48 y=-1357.60 z=13.10 giro=0  demo=cola
+     slot 11: x=1103.72 y=-1357.60 z=13.10 giro=0  demo=lima
+     slot 12: x=1103.96 y=-1357.60 z=13.10 giro=0  demo=lima
+     slot 13: x=1104.20 y=-1357.60 z=13.10 giro=0  demo=agua
+     slot 14: x=1104.44 y=-1357.60 z=13.10 giro=0  demo=agua
+     slot 15: x=1104.68 y=-1357.60 z=13.10 giro=0  demo=cola
+     slot 16: x=1101.32 y=-1357.60 z=13.53 giro=0  demo=chips
+     slot 17: x=1101.56 y=-1357.60 z=13.53 giro=0  demo=chips
+     slot 18: x=1101.80 y=-1357.60 z=13.53 giro=0  demo=chips
+     slot 19: x=1102.04 y=-1357.60 z=13.53 giro=0  demo=cereal
+     slot 20: x=1102.28 y=-1357.60 z=13.53 giro=0  demo=cereal
+     slot 21: x=1102.52 y=-1357.60 z=13.53 giro=0  demo=chips
+     slot 22: x=1102.76 y=-1357.60 z=13.53 giro=0  demo=chips
+     slot 23: x=1103.00 y=-1357.60 z=13.53 giro=0  demo=chips
+     slot 24: x=1103.24 y=-1357.60 z=13.53 giro=0  demo=cereal
+     slot 25: x=1103.48 y=-1357.60 z=13.53 giro=0  demo=cereal
+     slot 26: x=1103.72 y=-1357.60 z=13.53 giro=0  demo=chips
+     slot 27: x=1103.96 y=-1357.60 z=13.53 giro=0  demo=chips
+     slot 28: x=1104.20 y=-1357.60 z=13.53 giro=0  demo=chips
+     slot 29: x=1104.44 y=-1357.60 z=13.53 giro=0  demo=cereal
+     slot 30: x=1104.68 y=-1357.60 z=13.53 giro=0  demo=cereal
+     slot 31: x=1101.32 y=-1357.60 z=13.96 giro=0  demo=molho
+     slot 32: x=1101.56 y=-1357.60 z=13.96 giro=0  demo=molho
+     slot 33: x=1101.80 y=-1357.60 z=13.96 giro=0  demo=pao
+     slot 34: x=1102.04 y=-1357.60 z=13.96 giro=0  demo=molho
+     slot 35: x=1102.28 y=-1357.60 z=13.96 giro=0  demo=molho
+     slot 36: x=1102.52 y=-1357.60 z=13.96 giro=0  demo=pao
+     slot 37: x=1102.76 y=-1357.60 z=13.96 giro=0  demo=molho
+     slot 38: x=1103.00 y=-1357.60 z=13.96 giro=0  demo=molho
+     slot 39: x=1103.24 y=-1357.60 z=13.96 giro=0  demo=pao
+     slot 40: x=1103.48 y=-1357.60 z=13.96 giro=0  demo=molho
+     slot 41: x=1103.72 y=-1357.60 z=13.96 giro=0  demo=molho
+     slot 42: x=1103.96 y=-1357.60 z=13.96 giro=0  demo=pao
+     slot 43: x=1104.20 y=-1357.60 z=13.96 giro=0  demo=molho
+     slot 44: x=1104.44 y=-1357.60 z=13.96 giro=0  demo=molho
+     slot 45: x=1104.68 y=-1357.60 z=13.96 giro=0  demo=pao
+     slot 46: x=1101.32 y=-1357.60 z=14.39 giro=0  demo=cola
+     slot 47: x=1101.56 y=-1357.60 z=14.39 giro=0  demo=lima
+     slot 48: x=1101.80 y=-1357.60 z=14.39 giro=0  demo=cereal
+     slot 49: x=1102.04 y=-1357.60 z=14.39 giro=0  demo=chips
+     slot 50: x=1102.28 y=-1357.60 z=14.39 giro=0  demo=cola
+     slot 51: x=1102.52 y=-1357.60 z=14.39 giro=0  demo=lima
+     slot 52: x=1102.76 y=-1357.60 z=14.39 giro=0  demo=cereal
+     slot 53: x=1103.00 y=-1357.60 z=14.39 giro=0  demo=chips
+     slot 54: x=1103.24 y=-1357.60 z=14.39 giro=0  demo=cola
+     slot 55: x=1103.48 y=-1357.60 z=14.39 giro=0  demo=lima
+     slot 56: x=1103.72 y=-1357.60 z=14.39 giro=0  demo=cereal
+     slot 57: x=1103.96 y=-1357.60 z=14.39 giro=0  demo=chips
+     slot 58: x=1104.20 y=-1357.60 z=14.39 giro=0  demo=cola
+     slot 59: x=1104.44 y=-1357.60 z=14.39 giro=0  demo=lima
+     slot 60: x=1104.68 y=-1357.60 z=14.39 giro=0  demo=cereal
+
+[2] M_ILHA_A  |  Mercado  |  Mercado - ilha de ofertas A  |  aceita: Mercado  |  16 slots
+     slot  1: x=1103.12 y=-1361.28 z=13.43 giro=270  demo=cola
+     slot  2: x=1103.12 y=-1361.53 z=13.43 giro=270  demo=lima
+     slot  3: x=1103.12 y=-1361.78 z=13.43 giro=270  demo=cola
+     slot  4: x=1103.12 y=-1362.03 z=13.43 giro=270  demo=lima
+     slot  5: x=1103.12 y=-1362.28 z=13.43 giro=270  demo=cola
+     slot  6: x=1103.12 y=-1362.53 z=13.43 giro=270  demo=lima
+     slot  7: x=1103.12 y=-1362.78 z=13.43 giro=270  demo=cola
+     slot  8: x=1103.12 y=-1363.03 z=13.43 giro=270  demo=lima
+     slot  9: x=1103.62 y=-1361.28 z=13.83 giro=270  demo=chips
+     slot 10: x=1103.62 y=-1361.53 z=13.83 giro=270  demo=cereal
+     slot 11: x=1103.62 y=-1361.78 z=13.83 giro=270  demo=chips
+     slot 12: x=1103.62 y=-1362.03 z=13.83 giro=270  demo=cereal
+     slot 13: x=1103.62 y=-1362.28 z=13.83 giro=270  demo=chips
+     slot 14: x=1103.62 y=-1362.53 z=13.83 giro=270  demo=cereal
+     slot 15: x=1103.62 y=-1362.78 z=13.83 giro=270  demo=chips
+     slot 16: x=1103.62 y=-1363.03 z=13.83 giro=270  demo=cereal
+
+[3] M_ILHA_B  |  Mercado  |  Mercado - ilha de ofertas B  |  aceita: Mercado  |  16 slots
+     slot  1: x=1104.58 y=-1363.03 z=13.43 giro=90  demo=agua
+     slot  2: x=1104.58 y=-1362.78 z=13.43 giro=90  demo=cola
+     slot  3: x=1104.58 y=-1362.53 z=13.43 giro=90  demo=agua
+     slot  4: x=1104.58 y=-1362.28 z=13.43 giro=90  demo=cola
+     slot  5: x=1104.58 y=-1362.03 z=13.43 giro=90  demo=agua
+     slot  6: x=1104.58 y=-1361.78 z=13.43 giro=90  demo=cola
+     slot  7: x=1104.58 y=-1361.53 z=13.43 giro=90  demo=agua
+     slot  8: x=1104.58 y=-1361.28 z=13.43 giro=90  demo=cola
+     slot  9: x=1104.08 y=-1363.03 z=13.83 giro=90  demo=pao
+     slot 10: x=1104.08 y=-1362.78 z=13.83 giro=90  demo=chips
+     slot 11: x=1104.08 y=-1362.53 z=13.83 giro=90  demo=pao
+     slot 12: x=1104.08 y=-1362.28 z=13.83 giro=90  demo=chips
+     slot 13: x=1104.08 y=-1362.03 z=13.83 giro=90  demo=pao
+     slot 14: x=1104.08 y=-1361.78 z=13.83 giro=90  demo=chips
+     slot 15: x=1104.08 y=-1361.53 z=13.83 giro=90  demo=pao
+     slot 16: x=1104.08 y=-1361.28 z=13.83 giro=90  demo=chips
+
+[4] M_PAREDE  |  Mercado  |  Mercado - prateleira de parede  |  aceita: Mercado  |  24 slots
+     slot  1: x=1107.03 y=-1358.93 z=13.18 giro=270  demo=molho
+     slot  2: x=1107.03 y=-1359.20 z=13.18 giro=270  demo=molho
+     slot  3: x=1107.03 y=-1359.47 z=13.18 giro=270  demo=molho
+     slot  4: x=1107.03 y=-1359.73 z=13.18 giro=270  demo=molho
+     slot  5: x=1107.03 y=-1360.00 z=13.18 giro=270  demo=molho
+     slot  6: x=1107.03 y=-1360.27 z=13.18 giro=270  demo=molho
+     slot  7: x=1107.03 y=-1358.93 z=13.63 giro=270  demo=agua
+     slot  8: x=1107.03 y=-1359.20 z=13.63 giro=270  demo=agua
+     slot  9: x=1107.03 y=-1359.47 z=13.63 giro=270  demo=agua
+     slot 10: x=1107.03 y=-1359.73 z=13.63 giro=270  demo=agua
+     slot 11: x=1107.03 y=-1360.00 z=13.63 giro=270  demo=agua
+     slot 12: x=1107.03 y=-1360.27 z=13.63 giro=270  demo=agua
+     slot 13: x=1107.03 y=-1358.93 z=14.08 giro=270  demo=cereal
+     slot 14: x=1107.03 y=-1359.20 z=14.08 giro=270  demo=chips
+     slot 15: x=1107.03 y=-1359.47 z=14.08 giro=270  demo=cereal
+     slot 16: x=1107.03 y=-1359.73 z=14.08 giro=270  demo=chips
+     slot 17: x=1107.03 y=-1360.00 z=14.08 giro=270  demo=cereal
+     slot 18: x=1107.03 y=-1360.27 z=14.08 giro=270  demo=chips
+     slot 19: x=1107.03 y=-1358.93 z=14.53 giro=270  demo=pao
+     slot 20: x=1107.03 y=-1359.20 z=14.53 giro=270  demo=cola
+     slot 21: x=1107.03 y=-1359.47 z=14.53 giro=270  demo=pao
+     slot 22: x=1107.03 y=-1359.73 z=14.53 giro=270  demo=cola
+     slot 23: x=1107.03 y=-1360.00 z=14.53 giro=270  demo=pao
+     slot 24: x=1107.03 y=-1360.27 z=14.53 giro=270  demo=cola
+
+[5] M_ARMARIO  |  Mercado  |  Mercado - armario lateral  |  aceita: Mercado  |  32 slots
+     slot  1: x=1101.47 y=-1364.63 z=13.18 giro=90  demo=chips
+     slot  2: x=1101.47 y=-1364.38 z=13.18 giro=90  demo=cereal
+     slot  3: x=1101.47 y=-1364.13 z=13.18 giro=90  demo=chips
+     slot  4: x=1101.47 y=-1363.88 z=13.18 giro=90  demo=cereal
+     slot  5: x=1101.47 y=-1363.63 z=13.18 giro=90  demo=chips
+     slot  6: x=1101.47 y=-1363.38 z=13.18 giro=90  demo=cereal
+     slot  7: x=1101.47 y=-1363.13 z=13.18 giro=90  demo=chips
+     slot  8: x=1101.47 y=-1362.88 z=13.18 giro=90  demo=cereal
+     slot  9: x=1101.47 y=-1364.63 z=13.68 giro=90  demo=molho
+     slot 10: x=1101.47 y=-1364.38 z=13.68 giro=90  demo=agua
+     slot 11: x=1101.47 y=-1364.13 z=13.68 giro=90  demo=molho
+     slot 12: x=1101.47 y=-1363.88 z=13.68 giro=90  demo=agua
+     slot 13: x=1101.47 y=-1363.63 z=13.68 giro=90  demo=molho
+     slot 14: x=1101.47 y=-1363.38 z=13.68 giro=90  demo=agua
+     slot 15: x=1101.47 y=-1363.13 z=13.68 giro=90  demo=molho
+     slot 16: x=1101.47 y=-1362.88 z=13.68 giro=90  demo=agua
+     slot 17: x=1101.47 y=-1364.63 z=14.18 giro=90  demo=lima
+     slot 18: x=1101.47 y=-1364.38 z=14.18 giro=90  demo=cola
+     slot 19: x=1101.47 y=-1364.13 z=14.18 giro=90  demo=lima
+     slot 20: x=1101.47 y=-1363.88 z=14.18 giro=90  demo=cola
+     slot 21: x=1101.47 y=-1363.63 z=14.18 giro=90  demo=lima
+     slot 22: x=1101.47 y=-1363.38 z=14.18 giro=90  demo=cola
+     slot 23: x=1101.47 y=-1363.13 z=14.18 giro=90  demo=lima
+     slot 24: x=1101.47 y=-1362.88 z=14.18 giro=90  demo=cola
+     slot 25: x=1101.47 y=-1364.63 z=14.63 giro=90  demo=cereal
+     slot 26: x=1101.47 y=-1364.38 z=14.63 giro=90  demo=cereal
+     slot 27: x=1101.47 y=-1364.13 z=14.63 giro=90  demo=cereal
+     slot 28: x=1101.47 y=-1363.88 z=14.63 giro=90  demo=cereal
+     slot 29: x=1101.47 y=-1363.63 z=14.63 giro=90  demo=cereal
+     slot 30: x=1101.47 y=-1363.38 z=14.63 giro=90  demo=cereal
+     slot 31: x=1101.47 y=-1363.13 z=14.63 giro=90  demo=cereal
+     slot 32: x=1101.47 y=-1362.88 z=14.63 giro=90  demo=cereal
+
+[6] R_PAREDE  |  Roupas  |  Roupas - prateleira da parede  |  aceita: Roupas  |  20 slots
+     slot  1: x=1122.59 y=-1361.73 z=13.23 giro=270  demo=tenis
+     slot  2: x=1122.59 y=-1362.13 z=13.23 giro=270  demo=tenis
+     slot  3: x=1122.59 y=-1362.53 z=13.23 giro=270  demo=tenis
+     slot  4: x=1122.59 y=-1362.93 z=13.23 giro=270  demo=tenis
+     slot  5: x=1122.59 y=-1363.33 z=13.23 giro=270  demo=tenis
+     slot  6: x=1122.59 y=-1361.73 z=13.78 giro=270  demo=jeans
+     slot  7: x=1122.59 y=-1362.13 z=13.78 giro=270  demo=jeans
+     slot  8: x=1122.59 y=-1362.53 z=13.78 giro=270  demo=jeans
+     slot  9: x=1122.59 y=-1362.93 z=13.78 giro=270  demo=jeans
+     slot 10: x=1122.59 y=-1363.33 z=13.78 giro=270  demo=jeans
+     slot 11: x=1122.59 y=-1361.73 z=14.33 giro=270  demo=camisa
+     slot 12: x=1122.59 y=-1362.13 z=14.33 giro=270  demo=camisa
+     slot 13: x=1122.59 y=-1362.53 z=14.33 giro=270  demo=camisa
+     slot 14: x=1122.59 y=-1362.93 z=14.33 giro=270  demo=camisa
+     slot 15: x=1122.59 y=-1363.33 z=14.33 giro=270  demo=camisa
+     slot 16: x=1122.59 y=-1361.73 z=14.88 giro=270  demo=camisa
+     slot 17: x=1122.59 y=-1362.13 z=14.88 giro=270  demo=jeans
+     slot 18: x=1122.59 y=-1362.53 z=14.88 giro=270  demo=camisa
+     slot 19: x=1122.59 y=-1362.93 z=14.88 giro=270  demo=jeans
+     slot 20: x=1122.59 y=-1363.33 z=14.88 giro=270  demo=camisa
+
+[7] R_BALCAO  |  Roupas  |  Roupas - balcao baixo  |  aceita: Roupas  |  16 slots
+     slot  1: x=1117.36 y=-1366.05 z=13.18 giro=180  demo=tenis
+     slot  2: x=1116.99 y=-1366.05 z=13.18 giro=180  demo=tenis
+     slot  3: x=1116.61 y=-1366.05 z=13.18 giro=180  demo=tenis
+     slot  4: x=1116.24 y=-1366.05 z=13.18 giro=180  demo=tenis
+     slot  5: x=1117.36 y=-1366.05 z=13.68 giro=180  demo=jeans
+     slot  6: x=1116.99 y=-1366.05 z=13.68 giro=180  demo=camisa
+     slot  7: x=1116.61 y=-1366.05 z=13.68 giro=180  demo=jeans
+     slot  8: x=1116.24 y=-1366.05 z=13.68 giro=180  demo=camisa
+     slot  9: x=1117.36 y=-1366.05 z=14.18 giro=180  demo=camisa
+     slot 10: x=1116.99 y=-1366.05 z=14.18 giro=180  demo=camisa
+     slot 11: x=1116.61 y=-1366.05 z=14.18 giro=180  demo=camisa
+     slot 12: x=1116.24 y=-1366.05 z=14.18 giro=180  demo=camisa
+     slot 13: x=1117.36 y=-1366.05 z=14.53 giro=180  demo=jeans
+     slot 14: x=1116.99 y=-1366.05 z=14.53 giro=180  demo=jeans
+     slot 15: x=1116.61 y=-1366.05 z=14.53 giro=180  demo=jeans
+     slot 16: x=1116.24 y=-1366.05 z=14.53 giro=180  demo=jeans
+
+[8] R_ARARA  |  Roupas  |  Roupas - arara de cabides  |  aceita: so cabides  |  18 slots
+     slot  1: x=1116.05 y=-1364.88 z=13.71 giro=0  demo=cabide
+     slot  2: x=1116.05 y=-1364.73 z=13.71 giro=0  demo=cabide
+     slot  3: x=1116.05 y=-1364.59 z=13.71 giro=0  demo=cabide
+     slot  4: x=1116.05 y=-1364.44 z=13.71 giro=0  demo=cabide
+     slot  5: x=1116.05 y=-1364.30 z=13.71 giro=0  demo=cabide
+     slot  6: x=1116.05 y=-1364.16 z=13.71 giro=0  demo=cabide
+     slot  7: x=1116.05 y=-1364.01 z=13.71 giro=0  demo=cabide
+     slot  8: x=1116.05 y=-1363.87 z=13.71 giro=0  demo=cabide
+     slot  9: x=1116.05 y=-1363.72 z=13.71 giro=0  demo=cabide
+     slot 10: x=1116.05 y=-1364.88 z=14.60 giro=0  demo=cabide
+     slot 11: x=1116.05 y=-1364.73 z=14.60 giro=0  demo=cabide
+     slot 12: x=1116.05 y=-1364.59 z=14.60 giro=0  demo=cabide
+     slot 13: x=1116.05 y=-1364.44 z=14.60 giro=0  demo=cabide
+     slot 14: x=1116.05 y=-1364.30 z=14.60 giro=0  demo=cabide
+     slot 15: x=1116.05 y=-1364.16 z=14.60 giro=0  demo=cabide
+     slot 16: x=1116.05 y=-1364.01 z=14.60 giro=0  demo=cabide
+     slot 17: x=1116.05 y=-1363.87 z=14.60 giro=0  demo=cabide
+     slot 18: x=1116.05 y=-1363.72 z=14.60 giro=0  demo=cabide
+
+[9] R_DEGRAU  |  Roupas  |  Roupas - expositor lateral  |  aceita: Roupas  |  16 slots
+     slot  1: x=1117.12 y=-1364.38 z=13.38 giro=90  demo=tenis
+     slot  2: x=1117.12 y=-1363.92 z=13.38 giro=90  demo=tenis
+     slot  3: x=1117.12 y=-1363.47 z=13.38 giro=90  demo=tenis
+     slot  4: x=1117.12 y=-1363.02 z=13.38 giro=90  demo=tenis
+     slot  5: x=1117.12 y=-1364.38 z=13.88 giro=90  demo=jeans
+     slot  6: x=1117.12 y=-1363.92 z=13.88 giro=90  demo=jeans
+     slot  7: x=1117.12 y=-1363.47 z=13.88 giro=90  demo=jeans
+     slot  8: x=1117.12 y=-1363.02 z=13.88 giro=90  demo=jeans
+     slot  9: x=1117.12 y=-1364.38 z=14.38 giro=90  demo=camisa
+     slot 10: x=1117.12 y=-1363.92 z=14.38 giro=90  demo=camisa
+     slot 11: x=1117.12 y=-1363.47 z=14.38 giro=90  demo=camisa
+     slot 12: x=1117.12 y=-1363.02 z=14.38 giro=90  demo=camisa
+     slot 13: x=1117.12 y=-1364.38 z=14.88 giro=90  demo=camisa
+     slot 14: x=1117.12 y=-1363.92 z=14.88 giro=90  demo=jeans
+     slot 15: x=1117.12 y=-1363.47 z=14.88 giro=90  demo=camisa
+     slot 16: x=1117.12 y=-1363.02 z=14.88 giro=90  demo=jeans
+
+[10] L_PIZZA1  |  Lanchonete  |  Lanchonete - estufa de pizza 1  |  aceita: Lanchonete  |  6 slots
+     slot  1: x=1131.80 y=-1364.14 z=14.10 giro=270  demo=pizza
+     slot  2: x=1131.80 y=-1364.57 z=14.10 giro=270  demo=pizza
+     slot  3: x=1131.80 y=-1364.14 z=14.36 giro=270  demo=caixapizza
+     slot  4: x=1131.80 y=-1364.57 z=14.36 giro=270  demo=caixapizza
+     slot  5: x=1131.80 y=-1364.14 z=14.61 giro=270  demo=pizza
+     slot  6: x=1131.80 y=-1364.57 z=14.61 giro=270  demo=caixapizza
+
+[11] L_PIZZA2  |  Lanchonete  |  Lanchonete - estufa de pizza 2  |  aceita: Lanchonete  |  6 slots
+     slot  1: x=1131.85 y=-1363.24 z=14.10 giro=270  demo=caixapizza
+     slot  2: x=1131.85 y=-1363.67 z=14.10 giro=270  demo=caixapizza
+     slot  3: x=1131.85 y=-1363.24 z=14.36 giro=270  demo=pizza
+     slot  4: x=1131.85 y=-1363.67 z=14.36 giro=270  demo=pizza
+     slot  5: x=1131.85 y=-1363.24 z=14.61 giro=270  demo=caixapizza
+     slot  6: x=1131.85 y=-1363.67 z=14.61 giro=270  demo=pizza
+
+[12] L_COMIDA  |  Lanchonete  |  Lanchonete - vitrine de lanches  |  aceita: Lanchonete  |  24 slots
+     slot  1: x=1130.12 y=-1360.89 z=13.71 giro=90  demo=caixaburger
+     slot  2: x=1130.12 y=-1360.58 z=13.71 giro=90  demo=burger
+     slot  3: x=1130.12 y=-1360.27 z=13.71 giro=90  demo=caixaburger
+     slot  4: x=1130.12 y=-1359.96 z=13.71 giro=90  demo=burger
+     slot  5: x=1129.77 y=-1360.89 z=13.71 giro=90  demo=burger
+     slot  6: x=1129.77 y=-1360.58 z=13.71 giro=90  demo=caixaburger
+     slot  7: x=1129.77 y=-1360.27 z=13.71 giro=90  demo=burger
+     slot  8: x=1129.77 y=-1359.96 z=13.71 giro=90  demo=caixaburger
+     slot  9: x=1130.12 y=-1360.89 z=13.98 giro=90  demo=batata
+     slot 10: x=1130.12 y=-1360.58 z=13.98 giro=90  demo=burger
+     slot 11: x=1130.12 y=-1360.27 z=13.98 giro=90  demo=batata
+     slot 12: x=1130.12 y=-1359.96 z=13.98 giro=90  demo=burger
+     slot 13: x=1129.77 y=-1360.89 z=13.98 giro=90  demo=burger
+     slot 14: x=1129.77 y=-1360.58 z=13.98 giro=90  demo=batata
+     slot 15: x=1129.77 y=-1360.27 z=13.98 giro=90  demo=burger
+     slot 16: x=1129.77 y=-1359.96 z=13.98 giro=90  demo=batata
+     slot 17: x=1130.12 y=-1360.89 z=14.23 giro=90  demo=caixaburger
+     slot 18: x=1130.12 y=-1360.58 z=14.23 giro=90  demo=batata
+     slot 19: x=1130.12 y=-1360.27 z=14.23 giro=90  demo=caixaburger
+     slot 20: x=1130.12 y=-1359.96 z=14.23 giro=90  demo=batata
+     slot 21: x=1129.77 y=-1360.89 z=14.23 giro=90  demo=batata
+     slot 22: x=1129.77 y=-1360.58 z=14.23 giro=90  demo=caixaburger
+     slot 23: x=1129.77 y=-1360.27 z=14.23 giro=90  demo=batata
+     slot 24: x=1129.77 y=-1359.96 z=14.23 giro=90  demo=caixaburger
+
+CATALOGO DE PRODUTOS (ids de modelo no cliente 12124+):
+
+  pizza        modelo 12124  Pizza inteira                      categoria: Lanchonete
+  caixapizza   modelo 12125  Caixa de pizza                     categoria: Lanchonete
+  caixaburger  modelo 12126  Caixa de hamburguer                categoria: Lanchonete
+  burger       modelo 12127  Hamburguer                         categoria: Lanchonete
+  cola         modelo 12128  Refrigerante cola (6 latas)        categoria: Mercado
+  lima         modelo 12129  Refrigerante lima (6 latas)        categoria: Mercado
+  agua         modelo 12130  Agua mineral (6 garrafas)          categoria: Mercado
+  chips        modelo 12131  Pacote de batata chips             categoria: Mercado
+  cereal       modelo 12132  Caixa de cereal                    categoria: Mercado
+  molho        modelo 12133  Molho de tomate (4 latas)          categoria: Mercado
+  pao          modelo 12134  Pao de forma                       categoria: Mercado
+  camisa       modelo 12135  Camisetas dobradas (3)             categoria: Roupas
+  jeans        modelo 12136  Calcas jeans dobradas (2)          categoria: Roupas
+  tenis        modelo 12137  Caixa de tenis                     categoria: Roupas
+  cabide       modelo 12138  Camiseta no cabide                 categoria: Roupas  (so na arara)
+  batata       modelo 12139  Batata frita                       categoria: Lanchonete
