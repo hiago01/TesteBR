@@ -227,11 +227,14 @@ namespace
 	float         g_fScrollList = 0.0f, g_fScrollVar = 0.0f;
 	std::vector<std::string> g_fCorps;
 
-	enum FemKind { FK_FACE = 0, FK_HAIR, FK_SHIRT, FK_PANTS, FK_BOOT, FK_UNDER, FK_CORP };
+	enum FemKind { FK_FACE = 0, FK_HAIR, FK_SHIRT, FK_PANTS, FK_BOOT, FK_UNDER, FK_CORP, FK_MAKEUP, FK_BROW, FK_ACC, FK_TAT };
 	struct FemCat { const char* title; FemKind kind; };
-	const FemCat kFemCats9[]   = { {"PELE E ROSTO", FK_FACE}, {"CABELO", FK_HAIR}, {"CAMISA", FK_SHIRT}, {"CALÇA", FK_PANTS}, {"CALÇADO", FK_BOOT} };
-	const FemCat kFemCats272[] = { {"PELE E ROSTO", FK_FACE}, {"CABELO", FK_HAIR}, {"CORP", FK_CORP} };
-	int            FemCatCount() { return g_fModel == 272 ? 3 : 5; }
+	const FemCat kFemCats9[]   = { {"PELE E ROSTO", FK_FACE}, {"CABELO", FK_HAIR}, {"CAMISA", FK_SHIRT}, {"CALÇA", FK_PANTS}, {"CALÇADO", FK_BOOT},
+	                               {"MAQUIAGEM", FK_MAKEUP}, {"SOBRANCELHA", FK_BROW}, {"ACESSÓRIOS", FK_ACC}, {"TATUAGEM", FK_TAT} };
+	const FemCat kFemCats272[] = { {"PELE E ROSTO", FK_FACE}, {"CABELO", FK_HAIR}, {"MAQUIAGEM", FK_MAKEUP}, {"SOBRANCELHA", FK_BROW}, {"CORP", FK_CORP} };
+	int            FemCatCount() { return g_fModel == 272 ? 5 : 9; }
+	// categoria de extras (CorpTex::Base::ex) de uma linha: acessorios 2..5 (brinco, relogio, mascara, mochila) | tatuagens 6..11 (peito, costas, braco E/D, perna E/D)
+	int FemExK(int kind, int row) { return kind == FK_ACC ? 1 + row : kind == FK_TAT ? 5 + row : -1; }
 	const FemCat&  FemCatAt(int i) { return g_fModel == 272 ? kFemCats272[i] : kFemCats9[i]; }
 
 	struct FemRow { std::string label; int val; };
@@ -252,6 +255,13 @@ namespace
 			                 v.push_back({"Descalça", 0}); for (int t = 1; t <= 7; ++t) v.push_back({std::to_string(t) + " - " + n[t - 1], t}); break; }
 			case FK_UNDER: v.push_back({"Padrão (preta)", 0}); for (int t = 1; t <= 6; ++t) v.push_back({"Cor " + std::to_string(t), t}); v.push_back({"Nenhuma", 9}); break;
 			case FK_CORP:  v.push_back({"(sem corp)", 0}); for (size_t i = 0; i < g_fCorps.size(); ++i) v.push_back({g_fCorps[i], (int)i + 1}); break;
+			// extras do config.lua (faceshapes / clothes ear,clock,mask,backpack / tattoo): linha = item (maquiagem, sobrancelha) ou tipo (acessorio, tatuagem; item na grade)
+			case FK_MAKEUP: v.push_back({"Sem maquiagem", 0}); for (int i = 1; i <= CorpTex::FemExtraCount(1); ++i) v.push_back({"Maquiagem " + std::to_string(i), i}); break;
+			case FK_BROW:   v.push_back({"Padrão (1)", 0}); for (int i = 1; i <= CorpTex::FemExtraCount(0); ++i) v.push_back({"Sobrancelha " + std::to_string(i), i}); break;
+			case FK_ACC: { static const char* n[4] = {"Brinco", "Relógio", "Máscara", "Mochila"};
+			               v.push_back({"Remover todos", 0}); for (int t = 1; t <= 4; ++t) v.push_back({n[t - 1], t}); break; }
+			case FK_TAT: { static const char* n[6] = {"Peito", "Costas", "Braço esquerdo", "Braço direito", "Perna esquerda", "Perna direita"};
+			               v.push_back({"Remover todas", 0}); for (int t = 1; t <= 6; ++t) v.push_back({n[t - 1], t}); break; }
 		}
 		return v;
 	}
@@ -265,6 +275,7 @@ namespace
 			case FK_BOOT:  return CorpTex::FemCount(2, row);
 			case FK_PANTS: return CorpTex::FemCount(3, row);
 			case FK_SHIRT: return CorpTex::FemCount(4, row);
+			case FK_ACC: case FK_TAT: return row > 0 ? CorpTex::FemExtraCount(FemExK(kind, row)) : 0;
 			default:       return 0;
 		}
 	}
@@ -280,8 +291,17 @@ namespace
 			case FK_CORP:
 				for (size_t i = 0; i < g_fCorps.size(); ++i) if (g_fCorps[i] == b.corp) return (int)i + 1;
 				return 0;
+			case FK_MAKEUP: return b.ex[1];     case FK_BROW: return b.ex[0];
+			case FK_ACC: for (int t = 1; t <= 4; ++t) if (b.ex[FemExK(kind, t)]) return t; return 0;
+			case FK_TAT: for (int t = 1; t <= 6; ++t) if (b.ex[FemExK(kind, t)]) return t; return 0;
 		}
 		return 0;
+	}
+	// a linha 'val' tem item equipado? (acessorios/tatuagens: varios tipos podem estar em uso ao mesmo tempo)
+	bool FemRowUsed(FemKind kind, int val, int curRow)
+	{
+		if (kind == FK_ACC || kind == FK_TAT) return val > 0 && g_fWork.ex[FemExK(kind, val)] != 0;
+		return val == curRow;
 	}
 	int FemCurVar(FemKind kind)
 	{
@@ -289,7 +309,9 @@ namespace
 		switch (kind)
 		{
 			case FK_FACE: return b.face;        case FK_HAIR: return b.hairColor;  case FK_SHIRT: return b.shirtVar;
-			case FK_PANTS: return b.pantsVar;   case FK_BOOT: return b.bootVar;    default: return 0;
+			case FK_PANTS: return b.pantsVar;   case FK_BOOT: return b.bootVar;
+			case FK_ACC: case FK_TAT: return g_fRow > 0 ? b.ex[FemExK(kind, g_fRow)] : 0;
+			default: return 0;
 		}
 	}
 
@@ -307,6 +329,10 @@ namespace
 			case FK_PANTS: b.pantsSet = (uint8_t)row; b.pantsVar = row ? 1 : 0; break;
 			case FK_BOOT:  b.bootSet = (uint8_t)row; b.bootVar = row ? 1 : 0; break;
 			case FK_UNDER: b.under = (uint8_t)row; break;
+			case FK_MAKEUP: b.ex[1] = (uint8_t)row; break;
+			case FK_BROW:   b.ex[0] = (uint8_t)row; break;
+			case FK_ACC:    if (row == 0) for (int i = 2; i <= 5; ++i) b.ex[i] = 0; break;     // linha 0 = remove todos; senao so seleciona o tipo (item na grade)
+			case FK_TAT:    if (row == 0) for (int i = 6; i <= 11; ++i) b.ex[i] = 0; break;
 			case FK_CORP:  std::memset(b.corp, 0, sizeof(b.corp)); if (row >= 1 && row <= (int)g_fCorps.size()) std::strncpy(b.corp, g_fCorps[(size_t)row - 1].c_str(), sizeof(b.corp) - 1); break;
 		}
 		FemPreview();
@@ -322,6 +348,7 @@ namespace
 			case FK_SHIRT: b.shirtSet = (uint8_t)row; b.shirtVar = (uint8_t)var; break;
 			case FK_PANTS: b.pantsSet = (uint8_t)row; b.pantsVar = (uint8_t)var; break;
 			case FK_BOOT:  b.bootSet = (uint8_t)row; b.bootVar = (uint8_t)var; break;
+			case FK_ACC: case FK_TAT: { const int k = FemExK(kind, row); if (k < 0 || k > 11) return; b.ex[k] = (b.ex[k] == (uint8_t)var) ? (uint8_t)0 : (uint8_t)var; break; }   // tocar de novo remove
 			default: return;
 		}
 		FemPreview();
@@ -539,7 +566,7 @@ namespace
 		{
 			const float ry = listTop + i * rowH - g_fScrollList;
 			if (ry + rowH < listTop || ry > listBot) continue;
-			const bool sel = rows[(size_t)i].val == g_fRow, used = rows[(size_t)i].val == curRow;
+			const bool sel = rows[(size_t)i].val == g_fRow, used = FemRowUsed(kind, rows[(size_t)i].val, curRow);
 			if (sel) { r->drawRect(ImVec2(panX, ry), ImVec2(panX + panW, ry + rowH), cBlueBg, true); r->drawRect(ImVec2(panX, ry), ImVec2(panX + 3.0f * k, ry + rowH), cBlue, true); }
 			else if (i & 1) r->drawRect(ImVec2(panX, ry), ImVec2(panX + panW, ry + rowH), ImColor(255, 255, 255, 8), true);
 			r->drawText(ImVec2(panX + pad + 4.0f * k, ry + (rowH - fs) * 0.5f), used ? cText : cDim, rows[(size_t)i].label, false, fs);
@@ -556,7 +583,7 @@ namespace
 			const int c = i % cols, rr = i / cols;
 			const float x0 = panX + pad + c * (cellW + cellGap), y0 = varTop + rr * (cellH + cellGap) - g_fScrollVar;
 			if (y0 + cellH < varTop || y0 > varBot) continue;
-			const bool used = (g_fRow == curRow) && (i + 1 == curVar);
+			const bool used = (kind == FK_ACC || kind == FK_TAT) ? (i + 1 == curVar) : ((g_fRow == curRow) && (i + 1 == curVar));
 			r->drawRect(ImVec2(x0, y0), ImVec2(x0 + cellW, y0 + cellH), used ? cBlue : cPanel2, true);
 			if (!used) r->drawRect(ImVec2(x0, y0), ImVec2(x0 + cellW, y0 + cellH), cLine, false);
 			const std::string n = std::to_string(i + 1);
@@ -569,7 +596,7 @@ namespace
 			std::string msg; ImColor mc = cDim;
 			if (NowMs() < g_toastUntil) { msg = g_toast; mc = g_toastErr ? cRed : cBlue; }
 			else if (pending) { msg = "Prévia (não salva): toque em APLICAR para salvar no servidor"; mc = cAmber; }
-			else msg = "Escolha um item na lista e a variante na grade";
+			else msg = (kind == FK_ACC || kind == FK_TAT) ? "Escolha o tipo na lista e o item na grade (toque de novo para remover)" : "Escolha um item na lista e a variante na grade";
 			r->pushClipRect(ImVec2(cx0, rowAY), ImVec2(cx1, rowAY + 26.0f * k), true);
 			r->drawText(ImVec2(cx0 + pad, rowAY + 6.0f * k), mc, msg, false, fs);
 			r->popClipRect();

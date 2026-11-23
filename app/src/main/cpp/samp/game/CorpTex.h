@@ -59,6 +59,7 @@ std::string VisualCommand(const std::string& cmd, const std::string& args);   //
 // ---- API do /provador FEMININO (modelos 9 e 272; gui/samp_widgets/provador.cpp). Base = RPC 231; salvar = "/lookx base ..." ----
 struct Base {
     uint8_t tone = 0, face = 0, hairStyle = 0, hairColor = 0, bootSet = 0, bootVar = 0, pantsSet = 0, pantsVar = 0, shirtSet = 0, shirtVar = 0, under = 0;
+    uint8_t ex[12] = {0};                   // extras femininos: 0 sobrancelha 1 maquiagem 2 brinco 3 relogio 4 mascara 5 mochila 6..11 tatuagens (peito,costas,braco E/D,perna E/D)
     char corp[16] = {0};
     bool operator==(const Base& o) const;
     bool operator!=(const Base& o) const { return !(*this == o); }
@@ -68,6 +69,8 @@ bool GetLocalBase(Base& out);               // espelho do SEU visual (se o servi
 void PreviewLocalBase(const Base& b);       // previa SO no seu ator (nada vai ao servidor)
 bool SendLocalBase(const Base& b);          // "/lookx base ..." ao servidor (autoridade; ele devolve o RPC 231). false = sem conexao
 int  FemCount(int kind, int a);             // kind 0 rostos do tom a | 1 cores do estilo a | 2 bota/chinelo | 3 calca | 4 camisa: variantes da pasta a
+int  FemExtraCount(int k);                  // itens da categoria k (0..11) do config.lua
+const char* FemExtraName(int k, int i);     // nome do item i (1..n) no config.lua
 std::vector<std::string> FemCorps();        // corps da policial (banco texdb/skins 272/corp/)
 
 bool BeginRender(void* entity);            // thread do jogo, dentro de CEntity::Render

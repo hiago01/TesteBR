@@ -170,20 +170,360 @@ constexpr Box kPieces9[] = {   // roupas do male normal (modelo 7)
 // (male_police.dff: sem corp escolhida nao assumimos nenhuma peca visivel; escolha com /corp <nome>)
 constexpr const char* kDefaultVisible[] = {"fantasy_m_cop_boot1", "fantasy_m_cop_pants1", "fantasy_m_cop_torso4"};
 
+// ---- extras FEMININOS (config.lua clothesConfig[9]/clothesManage[9]): sobrancelha, maquiagem, acessorios, tatuagens ----
+// categoria k (0..11): 0 sobrancelha | 1 maquiagem | 2 brinco | 3 relogio | 4 mascara | 5 mochila | 6 tat.peito | 7 tat.costas | 8 tat.braco E | 9 tat.braco D | 10 tat.perna E | 11 tat.perna D
+// valor 0 = nada; i = item i (1..n) da tabela. mats = materiais do DFF (separados por virgula); na = pecas que impedem a tatuagem (notApply do Lua)
+constexpr int kFemExN = 12;
+struct FemExtraItem { const char* name; const char* mats; const char* rel; const char* na; };
+// GERADO de config.lua (clothesConfig[9] / clothesManage[9]). Nao editar a mao.
+static const FemExtraItem kFemEx0[] = { // brow
+    {"eyebrown_1", "body.eyebrown1", "eyebrown/1", ""},
+    {"eyebrown_2", "body.eyebrown1", "eyebrown/2", ""},
+    {"eyebrown_3", "body.eyebrown1", "eyebrown/3", ""},
+    {"eyebrown_4", "body.eyebrown1", "eyebrown/4", ""},
+    {"eyebrown_5", "body.eyebrown1", "eyebrown/5", ""},
+    {"eyebrown_6", "body.eyebrown1", "eyebrown/6", ""},
+    {"eyebrown_7", "body.eyebrown1", "eyebrown/7", ""},
+    {"eyebrown_8", "body.eyebrown1", "eyebrown/8", ""},
+    {"eyebrown_9", "body.eyebrown1", "eyebrown/9", ""},
+    {"eyebrown_10", "body.eyebrown1", "eyebrown/10", ""},
+    {"eyebrown_11", "body.eyebrown1", "eyebrown/11", ""},
+    {"eyebrown_12", "body.eyebrown1", "eyebrown/12", ""},
+    {"eyebrown_13", "body.eyebrown1", "eyebrown/13", ""},
+    {"eyebrown_14", "body.eyebrown1", "eyebrown/14", ""},
+    {"eyebrown_15", "body.eyebrown1", "eyebrown/15", ""},
+    {"eyebrown_16", "body.eyebrown1", "eyebrown/16", ""},
+    {"eyebrown_17", "body.eyebrown1", "eyebrown/17", ""},
+    {"eyebrown_18", "body.eyebrown1", "eyebrown/18", ""},
+    {"eyebrown_19", "body.eyebrown1", "eyebrown/19", ""},
+    {"eyebrown_20", "body.eyebrown1", "eyebrown/20", ""},
+    {"eyebrown_21", "body.eyebrown1", "eyebrown/21", ""},
+    {"eyebrown_22", "body.eyebrown1", "eyebrown/22", ""},
+    {"eyebrown_23", "body.eyebrown1", "eyebrown/23", ""},
+};
+static const FemExtraItem kFemEx1[] = { // makeup
+    {"makeup_1", "body.makeup1", "9/makeup/1", ""},
+    {"makeup_2", "body.makeup1", "9/makeup/2", ""},
+    {"makeup_3", "body.makeup1", "9/makeup/3", ""},
+    {"makeup_4", "body.makeup1", "9/makeup/4", ""},
+    {"makeup_5", "body.makeup1", "9/makeup/5", ""},
+    {"makeup_6", "body.makeup1", "9/makeup/6", ""},
+    {"makeup_7", "body.makeup1", "9/makeup/7", ""},
+    {"makeup_8", "body.makeup1", "9/makeup/8", ""},
+    {"makeup_9", "body.makeup1", "9/makeup/9", ""},
+    {"makeup_10", "body.makeup1", "9/makeup/10", ""},
+};
+static const FemExtraItem kFemEx2[] = { // ear
+    {"ear_1", "fantasy_f_ear1", "9/ear/1/1", ""},
+    {"ear_2", "fantasy_f_ear1", "9/ear/1/2", ""},
+    {"ear_3", "fantasy_f_ear1", "9/ear/1/3", ""},
+    {"ear_4", "fantasy_f_ear2", "9/ear/2/1", ""},
+    {"ear_5", "fantasy_f_ear2", "9/ear/2/2", ""},
+    {"ear_6", "fantasy_f_ear2", "9/ear/2/3", ""},
+    {"ear_7", "fantasy_f_ear2", "9/ear/2/4", ""},
+    {"ear_8", "fantasy_f_ear3", "9/ear/3/1", ""},
+    {"ear_9", "fantasy_f_ear4", "9/ear/4/1", ""},
+    {"ear_10", "fantasy_f_ear4", "9/ear/4/2", ""},
+    {"ear_11", "fantasy_f_ear4", "9/ear/4/3", ""},
+};
+static const FemExtraItem kFemEx3[] = { // clock
+    {"clock_1", "fantasy_f_clock1", "clock/1/1", ""},
+    {"clock_2", "fantasy_f_clock1", "clock/1/2", ""},
+    {"clock_3", "fantasy_f_clock1", "clock/1/3", ""},
+    {"clock_4", "fantasy_f_clock1", "clock/1/4", ""},
+    {"clock_5", "fantasy_f_clock2", "clock/2/1", ""},
+    {"clock_6", "fantasy_f_clock2", "clock/2/2", ""},
+    {"clock_7", "fantasy_f_clock2", "clock/2/3", ""},
+    {"clock_8", "fantasy_f_clock2", "clock/2/4", ""},
+    {"clock_9", "fantasy_f_clock2", "clock/2/5", ""},
+    {"clock_10", "fantasy_f_clock2", "clock/2/6", ""},
+};
+static const FemExtraItem kFemEx4[] = { // mask
+    {"mask_1", "fantasy_f_mask1", "mask/1/1", ""},
+    {"mask_2", "fantasy_f_mask1", "mask/1/2", ""},
+    {"mask_3", "fantasy_f_mask1", "mask/1/3", ""},
+    {"mask_4", "fantasy_f_mask1", "mask/1/4", ""},
+    {"mask_5", "fantasy_f_mask1", "mask/1/5", ""},
+    {"mask_6", "fantasy_f_mask1", "mask/1/6", ""},
+    {"mask_7", "fantasy_f_mask1", "mask/1/7", ""},
+    {"mask_8", "fantasy_f_mask1", "mask/1/8", ""},
+    {"mask_9", "fantasy_f_mask1", "mask/1/9", ""},
+    {"mask_10", "fantasy_f_mask1", "mask/1/10", ""},
+    {"mask_11", "fantasy_f_mask1", "mask/1/11", ""},
+    {"mask_12", "fantasy_f_mask1", "mask/1/12", ""},
+    {"mask_13", "fantasy_f_mask1", "mask/1/13", ""},
+    {"mask_14", "fantasy_f_mask1", "mask/1/14", ""},
+    {"mask_15", "fantasy_f_mask1", "mask/1/15", ""},
+    {"mask_16", "fantasy_f_mask1", "mask/1/16", ""},
+    {"mask_17", "fantasy_f_mask1", "mask/1/17", ""},
+    {"mask_18", "fantasy_f_mask2", "mask/2/1", ""},
+    {"mask_19", "fantasy_f_mask2", "mask/2/2", ""},
+    {"mask_20", "fantasy_f_mask2", "mask/2/3", ""},
+    {"mask_21", "fantasy_f_mask2", "mask/2/4", ""},
+    {"mask_22", "fantasy_f_mask2", "mask/2/5", ""},
+    {"mask_23", "fantasy_f_mask2", "mask/2/6", ""},
+    {"mask_24", "fantasy_f_mask2", "mask/2/7", ""},
+    {"mask_25", "fantasy_f_mask2", "mask/2/8", ""},
+    {"mask_26", "fantasy_f_mask2", "mask/2/9", ""},
+    {"mask_27", "fantasy_f_mask2", "mask/2/10", ""},
+    {"mask_28", "fantasy_f_mask2", "mask/2/11", ""},
+    {"mask_29", "fantasy_f_mask2", "mask/2/12", ""},
+    {"mask_30", "fantasy_f_mask2", "mask/2/13", ""},
+    {"mask_31", "fantasy_f_mask2", "mask/2/14", ""},
+    {"mask_32", "fantasy_f_mask2", "mask/2/15", ""},
+    {"mask_33", "fantasy_f_mask2", "mask/2/16", ""},
+    {"mask_34", "fantasy_f_mask2", "mask/2/17", ""},
+    {"mask_35", "fantasy_f_mask2", "mask/2/18", ""},
+    {"mask_36", "fantasy_f_mask2", "mask/2/19", ""},
+    {"mask_37", "fantasy_f_mask2", "mask/2/20", ""},
+};
+static const FemExtraItem kFemEx5[] = { // backpack
+    {"backpack_1", "fantasy_f_backpack1", "backpack/1/1", ""},
+    {"backpack_2", "fantasy_f_backpack1", "backpack/1/2", ""},
+    {"backpack_3", "fantasy_f_backpack1", "backpack/1/3", ""},
+    {"backpack_4", "fantasy_f_backpack1", "backpack/1/4", ""},
+    {"backpack_5", "fantasy_f_backpack1", "backpack/1/5", ""},
+    {"backpack_6", "fantasy_f_backpack1", "backpack/1/6", ""},
+    {"backpack_7", "fantasy_f_backpack1", "backpack/1/7", ""},
+    {"backpack_8", "fantasy_f_backpack1", "backpack/1/8", ""},
+    {"backpack_9", "fantasy_f_backpack1", "backpack/1/9", ""},
+    {"backpack_10", "fantasy_f_backpack1", "backpack/1/10", ""},
+    {"backpack_11", "fantasy_f_backpack1", "backpack/1/11", ""},
+    {"backpack_12", "fantasy_f_backpack1", "backpack/1/12", ""},
+    {"backpack_13", "fantasy_f_backpack1", "backpack/1/13", ""},
+    {"backpack_14", "fantasy_f_backpack1", "backpack/1/14", ""},
+    {"backpack_15", "fantasy_f_backpack1", "backpack/1/15", ""},
+    {"backpack_16", "fantasy_f_backpack1", "backpack/1/16", ""},
+    {"backpack_17", "fantasy_f_backpack1", "backpack/1/17", ""},
+    {"backpack_18", "fantasy_f_backpack1", "backpack/1/18", ""},
+    {"backpack_19", "fantasy_f_backpack1", "backpack/1/19", ""},
+    {"backpack_20", "fantasy_f_backpack1", "backpack/1/20", ""},
+    {"backpack_21", "fantasy_f_backpack1", "backpack/1/21", ""},
+    {"backpack_22", "fantasy_f_backpack1", "backpack/1/22", ""},
+    {"backpack_23", "fantasy_f_backpack1", "backpack/1/23", ""},
+    {"backpack_24", "fantasy_f_backpack1", "backpack/1/24", ""},
+    {"backpack_25", "fantasy_f_backpack1", "backpack/1/25", ""},
+    {"backpack_26", "fantasy_f_backpack1", "backpack/1/26", ""},
+    {"backpack_27", "fantasy_f_backpack1", "backpack/1/27", ""},
+    {"backpack_28", "fantasy_f_backpack1", "backpack/1/28", ""},
+    {"travelbag_1", "fantasy_f_backpack2", "backpack/2/1", ""},
+    {"travelbag_2", "fantasy_f_backpack2", "backpack/2/2", ""},
+    {"travelbag_3", "fantasy_f_backpack2", "backpack/2/3", ""},
+    {"travelbag_4", "fantasy_f_backpack2", "backpack/2/4", ""},
+    {"travelbag_5", "fantasy_f_backpack2", "backpack/2/5", ""},
+    {"travelbag_6", "fantasy_f_backpack2", "backpack/2/6", ""},
+    {"travelbag_7", "fantasy_f_backpack2", "backpack/2/7", ""},
+    {"travelbag_8", "fantasy_f_backpack2", "backpack/2/8", ""},
+    {"travelbag_9", "fantasy_f_backpack2", "backpack/2/9", ""},
+    {"travelbag_10", "fantasy_f_backpack2", "backpack/2/10", ""},
+    {"travelbag_11", "fantasy_f_backpack2", "backpack/2/11", ""},
+    {"travelbag_12", "fantasy_f_backpack2", "backpack/2/12", ""},
+    {"travelbag_13", "fantasy_f_backpack2", "backpack/2/13", ""},
+    {"travelbag_14", "fantasy_f_backpack2", "backpack/2/14", ""},
+    {"travelbag_15", "fantasy_f_backpack2", "backpack/2/15", ""},
+    {"travelbag_16", "fantasy_f_backpack2", "backpack/2/16", ""},
+    {"travelbag_17", "fantasy_f_backpack2", "backpack/2/17", ""},
+    {"travelbag_18", "fantasy_f_backpack2", "backpack/2/18", ""},
+    {"travelbag_19", "fantasy_f_backpack2", "backpack/2/19", ""},
+    {"travelbag_20", "fantasy_f_backpack2", "backpack/2/20", ""},
+    {"travelbag_21", "fantasy_f_backpack2", "backpack/2/21", ""},
+    {"travelbag_22", "fantasy_f_backpack2", "backpack/2/22", ""},
+    {"travelbag_23", "fantasy_f_backpack2", "backpack/2/23", ""},
+    {"travelbag_24", "fantasy_f_backpack2", "backpack/2/24", ""},
+    {"travelbag_25", "fantasy_f_backpack2", "backpack/2/25", ""},
+    {"travelbag_26", "fantasy_f_backpack2", "backpack/2/26", ""},
+    {"travelbag_27", "fantasy_f_backpack2", "backpack/2/27", ""},
+    {"travelbag_28", "fantasy_f_backpack2", "backpack/2/28", ""},
+    {"travelbag_29", "fantasy_f_backpack2", "backpack/2/29", ""},
+    {"travelbag_30", "fantasy_f_backpack2", "backpack/2/30", ""},
+    {"travelbag_31", "fantasy_f_backpack2", "backpack/2/31", ""},
+    {"travelbag_32", "fantasy_f_backpack2", "backpack/2/32", ""},
+    {"travelbag_33", "fantasy_f_backpack2", "backpack/2/33", ""},
+    {"travelbag_34", "fantasy_f_backpack2", "backpack/2/34", ""},
+    {"travelbag_35", "fantasy_f_backpack2", "backpack/2/35", ""},
+    {"travelbag_36", "fantasy_f_backpack2", "backpack/2/36", ""},
+    {"travelbag_37", "fantasy_f_backpack2", "backpack/2/37", ""},
+    {"travelbag_38", "fantasy_f_backpack2", "backpack/2/38", ""},
+    {"travelbag_39", "fantasy_f_backpack2", "backpack/2/39", ""},
+    {"lv_backpack_1", "fantasy_f_backpack1", "louisvuitton/backpack/1_1", ""},
+    {"lv_travelbag_1", "fantasy_f_backpack2", "louisvuitton/backpack/2_1", ""},
+};
+static const FemExtraItem kFemEx6[] = { // tattootorsofront
+    {"tattootorsofront_1", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_bottom/1", "fantasy_f_torso4"},
+    {"tattootorsofront_2", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_bottom/2", "fantasy_f_torso4"},
+    {"tattootorsofront_3", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_bottom/3", "fantasy_f_torso4"},
+    {"tattootorsofront_4", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_bottom/4", "fantasy_f_torso4"},
+    {"tattootorsofront_5", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_bottom/5", "fantasy_f_torso4"},
+    {"tattootorsofront_6", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_bottom/6", "fantasy_f_torso4"},
+    {"tattootorsofront_7", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_bottom/7", "fantasy_f_torso4"},
+    {"tattootorsofront_8", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_bottom/8", "fantasy_f_torso4"},
+    {"tattootorsofront_9", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_bottom/9", "fantasy_f_torso4"},
+    {"tattootorsofront_10", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_bottom/10", "fantasy_f_torso4"},
+    {"tattootorsofront_11", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_bottom/11", "fantasy_f_torso4"},
+    {"tattootorsofront_12", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_bottom/12", "fantasy_f_torso4"},
+    {"tattootorsofront_13", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_bottom/13", "fantasy_f_torso4"},
+    {"tattootorsofront_14", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_bottom/14", "fantasy_f_torso4"},
+    {"tattootorsofront_15", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_bottom/15", "fantasy_f_torso4"},
+    {"tattootorsofront_16", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_bottom/16", "fantasy_f_torso4"},
+    {"tattootorsofront_17", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_bottom/17", "fantasy_f_torso4"},
+    {"tattootorsofront_18", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_bottom/18", "fantasy_f_torso4"},
+    {"tattootorsofront_19", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_top/1", "fantasy_f_torso4"},
+    {"tattootorsofront_20", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_top/2", "fantasy_f_torso4"},
+    {"tattootorsofront_21", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_top/3", "fantasy_f_torso4"},
+    {"tattootorsofront_22", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_top/4", "fantasy_f_torso4"},
+    {"tattootorsofront_23", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_top/5", "fantasy_f_torso4"},
+    {"tattootorsofront_24", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_top/6", "fantasy_f_torso4"},
+    {"tattootorsofront_25", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_top/7", "fantasy_f_torso4"},
+    {"tattootorsofront_26", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_top/8", "fantasy_f_torso4"},
+    {"tattootorsofront_27", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_top/9", "fantasy_f_torso4"},
+    {"tattootorsofront_28", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_top/10", "fantasy_f_torso4"},
+    {"tattootorsofront_29", "fantasy_tatto_torso_front,fantasy_tatto_torso_front1,fantasy_tatto_torso_front2,fantasy_tatto_torso_front3", "9/tattoo/torso_chest_top/12", "fantasy_f_torso4"},
+};
+static const FemExtraItem kFemEx7[] = { // tattootorsoback
+    {"tattootorsoback_1", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_top/1", "fantasy_f_torso4"},
+    {"tattootorsoback_2", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/2", "fantasy_f_torso4"},
+    {"tattootorsoback_3", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/3", "fantasy_f_torso4"},
+    {"tattootorsoback_4", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/4", "fantasy_f_torso4"},
+    {"tattootorsoback_5", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/5", "fantasy_f_torso4"},
+    {"tattootorsoback_6", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/6", "fantasy_f_torso4"},
+    {"tattootorsoback_7", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/7", "fantasy_f_torso4"},
+    {"tattootorsoback_8", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/8", "fantasy_f_torso4"},
+    {"tattootorsoback_9", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/9", "fantasy_f_torso4"},
+    {"tattootorsoback_10", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/10", "fantasy_f_torso4"},
+    {"tattootorsoback_11", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/11", "fantasy_f_torso4"},
+    {"tattootorsoback_12", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/12", "fantasy_f_torso4"},
+    {"tattootorsoback_13", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/13", "fantasy_f_torso4"},
+    {"tattootorsoback_14", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/14", "fantasy_f_torso4"},
+    {"tattootorsoback_15", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/15", "fantasy_f_torso4"},
+    {"tattootorsoback_16", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/16", "fantasy_f_torso4"},
+    {"tattootorsoback_17", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/17", "fantasy_f_torso4"},
+    {"tattootorsoback_18", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/18", "fantasy_f_torso4"},
+    {"tattootorsoback_19", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/19", "fantasy_f_torso4"},
+    {"tattootorsoback_20", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/20", "fantasy_f_torso4"},
+    {"tattootorsoback_21", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/21", "fantasy_f_torso4"},
+    {"tattootorsoback_22", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/22", "fantasy_f_torso4"},
+    {"tattootorsoback_23", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/23", "fantasy_f_torso4"},
+    {"tattootorsoback_24", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/24", "fantasy_f_torso4"},
+    {"tattootorsoback_25", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/25", "fantasy_f_torso4"},
+    {"tattootorsoback_26", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/26", "fantasy_f_torso4"},
+    {"tattootorsoback_27", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/27", "fantasy_f_torso4"},
+    {"tattootorsoback_28", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/28", "fantasy_f_torso4"},
+    {"tattootorsoback_29", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/29", "fantasy_f_torso4"},
+    {"tattootorsoback_30", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/30", "fantasy_f_torso4"},
+    {"tattootorsoback_31", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/31", "fantasy_f_torso4"},
+    {"tattootorsoback_32", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/32", "fantasy_f_torso4"},
+    {"tattootorsoback_33", "fantasy_tatto_torso_back,fantasy_tatto_torso_back1,fantasy_tatto_torso_back2", "9/tattoo/torso_back_bottom/33", "fantasy_f_torso4"},
+};
+static const FemExtraItem kFemEx8[] = { // tattooarml
+    {"tattooarml_1", "fantasy_tatto_arm_l", "tattoo/torso_arm_complete/1", ""},
+    {"tattooarml_2", "fantasy_tatto_arm_l", "tattoo/torso_arm_complete/2", ""},
+    {"tattooarml_3", "fantasy_tatto_arm_l", "tattoo/torso_arm_complete/3", ""},
+    {"tattooarml_4", "fantasy_tatto_arm_l", "tattoo/torso_arm_complete/4", ""},
+    {"tattooarml_5", "fantasy_tatto_arm_l", "tattoo/torso_arm_complete/5", ""},
+    {"tattooarml_6", "fantasy_tatto_arm_l", "tattoo/torso_arm_complete/6", ""},
+    {"tattooarml_7", "fantasy_tatto_arm_l", "tattoo/torso_arm_complete/7", ""},
+    {"tattooarml_8", "fantasy_tatto_arm_l", "tattoo/torso_arm_complete/8", ""},
+    {"lv_tattooarml_1", "fantasy_tatto_arm_l", "louisvuitton/tattoo/torso_arm_complete_1", ""},
+};
+static const FemExtraItem kFemEx9[] = { // tattooarmr
+    {"tattooarmr_1", "fantasy_tatto_arm_r", "tattoo/torso_arm_complete/1", ""},
+    {"tattooarmr_2", "fantasy_tatto_arm_r", "tattoo/torso_arm_complete/2", ""},
+    {"tattooarmr_3", "fantasy_tatto_arm_r", "tattoo/torso_arm_complete/3", ""},
+    {"tattooarmr_4", "fantasy_tatto_arm_r", "tattoo/torso_arm_complete/4", ""},
+    {"tattooarmr_5", "fantasy_tatto_arm_r", "tattoo/torso_arm_complete/5", ""},
+    {"tattooarmr_6", "fantasy_tatto_arm_r", "tattoo/torso_arm_complete/6", ""},
+    {"tattooarmr_7", "fantasy_tatto_arm_r", "tattoo/torso_arm_complete/7", ""},
+    {"tattooarmr_8", "fantasy_tatto_arm_r", "tattoo/torso_arm_complete/8", ""},
+    {"lv_tattooarmr_1", "fantasy_tatto_arm_r", "louisvuitton/tattoo/torso_arm_complete_1", ""},
+};
+static const FemExtraItem kFemEx10[] = { // tattoolegl
+    {"tattoolegl_1", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/1", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_2", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/2", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_3", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/3", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_4", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/4", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_5", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/5", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_6", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/6", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_7", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/7", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_8", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/8", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_9", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/9", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_10", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/10", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_11", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/11", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_12", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/12", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_13", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/13", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_14", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/14", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_15", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/15", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_16", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/16", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_17", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/17", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_18", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/18", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_19", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/19", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_20", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/20", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_21", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/21", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_22", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/22", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_23", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/23", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_24", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/24", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_25", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/25", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegl_26", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "tattoo/legs_top/26", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"lv_tattoolegl_1", "fantasy_tatto_leg_l_1,fantasy_tatto_leg_l_2,fantasy_tatto_leg_l_3,fantasy_tatto_leg_l_4,fantasy_tatto_leg_l_5,fantasy_tatto_leg_l_6", "louisvuitton/tattoo/legs_top_1", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+};
+static const FemExtraItem kFemEx11[] = { // tattoolegr
+    {"tattoolegr_1", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/1", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_2", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/2", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_3", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/3", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_4", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/4", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_5", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/5", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_6", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/6", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_7", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/7", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_8", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/8", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_9", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/9", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_10", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/10", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_11", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/11", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_12", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/12", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_13", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/13", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_14", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/14", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_15", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/15", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_16", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/16", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_17", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/17", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_18", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/18", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_19", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/19", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_20", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/20", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_21", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/21", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_22", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/22", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_23", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/23", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_24", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/24", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_25", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/25", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"tattoolegr_26", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "tattoo/legs_top/26", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+    {"lv_tattoolegr_1", "fantasy_tatto_leg_r_1,fantasy_tatto_leg_r_2,fantasy_tatto_leg_r_3,fantasy_tatto_leg_r_4,fantasy_tatto_leg_r_5,fantasy_tatto_leg_r_6", "louisvuitton/tattoo/legs_top_1", "fantasy_f_pants1,fantasy_f_pants2,fantasy_f_pants4,fantasy_f_pants5"},
+};
+static const struct { const char* key; const FemExtraItem* it; int n; } kFemEx[] = {
+    {"brow", kFemEx0, 23},
+    {"makeup", kFemEx1, 10},
+    {"ear", kFemEx2, 11},
+    {"clock", kFemEx3, 10},
+    {"mask", kFemEx4, 37},
+    {"backpack", kFemEx5, 69},
+    {"tattootorsofront", kFemEx6, 29},
+    {"tattootorsoback", kFemEx7, 33},
+    {"tattooarml", kFemEx8, 9},
+    {"tattooarmr", kFemEx9, 9},
+    {"tattoolegl", kFemEx10, 27},
+    {"tattoolegr", kFemEx11, 27},
+};
+
 struct Look {
     std::string corp;
     uint8_t tone = 0, face = 0, hairStyle = 0, hairColor = 0;
     uint8_t bootSet = 0, bootVar = 0, pantsSet = 0, pantsVar = 0, shirtSet = 0, shirtVar = 0;   // roupas da Normal (pasta + variante)
     uint8_t under = 0;                                                                           // roupa intima: 0 padrao (preto), 1..6 cor, 9 nenhuma
+    uint8_t ex[kFemExN] = {};                                                                    // extras femininos (ver kFemEx): so skins 9/272
     // /cop (teste, so local, nao vai pelo RPC): peca da policia (ex. "vest3") -> "off" | "corp:<nome>" | "cop/<tipo>/<pasta>/<n>.png"
     std::vector<std::pair<std::string, std::string>> ov;
     std::vector<LookSlots::St> slots;                                                            // RPC 232 (slots do /skin7); guardado separado da base (231)
     bool synthetic = false;                                                                      // visual PADRAO sintetizado aqui (o servidor ainda nao mandou nada deste jogador)
-    bool Active() const { return !corp.empty() || tone || hairStyle || bootSet || pantsSet || shirtSet || !ov.empty() || !slots.empty(); }
+    bool Active() const { for (uint8_t v : ex) if (v) return true; return !corp.empty() || tone || hairStyle || bootSet || pantsSet || shirtSet || !ov.empty() || !slots.empty(); }
     bool operator==(const Look& o) const {
         return corp == o.corp && tone == o.tone && face == o.face && hairStyle == o.hairStyle && hairColor == o.hairColor &&
                bootSet == o.bootSet && bootVar == o.bootVar && pantsSet == o.pantsSet && pantsVar == o.pantsVar &&
-               shirtSet == o.shirtSet && shirtVar == o.shirtVar && under == o.under && ov == o.ov && slots == o.slots && synthetic == o.synthetic;
+               shirtSet == o.shirtSet && shirtVar == o.shirtVar && under == o.under && std::memcmp(ex, o.ex, sizeof(ex)) == 0 && ov == o.ov && slots == o.slots && synthetic == o.synthetic;
     }
 };
 
@@ -386,6 +726,7 @@ void Sanitize(Look& l)
     auto cloth = [](uint8_t& set, uint8_t& var) { if (set > kMaxClothSet) set = 0; if (!set) var = 0; else if (var < 1) var = 1; };
     cloth(l.bootSet, l.bootVar); cloth(l.pantsSet, l.pantsVar); cloth(l.shirtSet, l.shirtVar);
     if (l.under > 6 && l.under != 9) l.under = 0;
+    for (int i = 0; i < kFemExN; ++i) if (l.ex[i] > kFemEx[i].n) l.ex[i] = 0;
     if (l.hairStyle > kHairStylesF) l.hairStyle = 0;
     if (l.hairStyle) { if (l.hairColor < 1) l.hairColor = 1; if (l.hairColor > kHairColorsF[l.hairStyle]) l.hairColor = (uint8_t)kHairColorsF[l.hairStyle]; }
     else l.hairColor = 0;
@@ -952,6 +1293,8 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& lookIn)
                 if (nm.compare(0, 5, "pants") == 0 || nm.compare(0, 5, "short") == 0) cPants = true;
                 else if (nm.compare(0, 5, "torso") == 0 || nm.compare(0, 4, "vest") == 0) cTorso = true;
             }
+            if (!look.corp.empty()) { cPants = true; cTorso = true; }      // corp escolhida: a farda cobre tudo, sem depender do nome das pecas
+            FLog("[CORPTEX] 272 regra da farda: corp='%s' pernas=%d tronco=%d", look.corp.c_str(), (int)cPants, (int)cTorso);
             for (size_t i = 0; i < mats.size(); ++i) {
                 const std::string& k = keys[i];
                 if (k.compare(0, 5, "body.") != 0) continue;
@@ -960,7 +1303,20 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& lookIn)
                 if ((leg && cPants) || (top && cTorso)) covered.insert(k);
             }
         }
-        RwTexture* tBrow = P("eyebrown/1");                          // mesmo arquivo do masculino (config.lua: clothes/7/eyebrown), sobrancelha 1
+        RwTexture* tBrow = P("eyebrown/1");
+        // ---- extras do config.lua (so modelos femininos): sobrancelha, maquiagem, acessorios e tatuagens ----
+        auto exItem = [&](int k) -> const FemExtraItem* { const int v = look.ex[k]; return (v >= 1 && v <= kFemEx[k].n) ? &kFemEx[k].it[v - 1] : nullptr; };
+        auto splitCsv = [](const char* q) { std::vector<std::string> o; while (*q) { const char* e = std::strchr(q, ','); o.emplace_back(e ? std::string(q, (size_t)(e - q)) : std::string(q)); if (!e) break; q = e + 1; } return o; };
+        if (const FemExtraItem* it = exItem(0)) if (RwTexture* t = P(it->rel)) tBrow = t;                              // sobrancelha escolhida (body.eyebrown1)
+        if (const FemExtraItem* it = exItem(1)) if (RwTexture* t = P(it->rel)) { over["body.makeup1"] = t; ++nApp; }   // maquiagem sobre o rosto 1 (body.makeup1)
+        for (int k = 2; k <= 5; ++k) if (const FemExtraItem* it = exItem(k)) if (RwTexture* t = P(it->rel))           // brinco, relogio, mascara, mochila
+            for (const std::string& m : splitCsv(it->mats)) if (!m.empty()) { over[m] = t; ++nApp; }
+        if (!cop) for (int k = 6; k < kFemExN; ++k) if (const FemExtraItem* it = exItem(k)) {                          // tatuagens (notApply: roupa que cobre)
+            bool blocked = false;
+            for (const std::string& n : splitCsv(it->na)) { auto f = over.find(n); if (f != over.end() && f->second != hideTex) blocked = true; }
+            if (blocked) continue;
+            if (RwTexture* t = P(it->rel)) for (const std::string& m : splitCsv(it->mats)) if (!m.empty()) { over[m] = t; ++nApp; }
+        }
         auto starts = [](const std::string& k, const char* q) { return k.compare(0, std::strlen(q), q) == 0; };
         int nF = 0;
         std::vector<size_t> femUnnamed;
@@ -1107,6 +1463,7 @@ void ScrCorpTex(RPCParameters* rpcParams)
     if (!bs.Read(l.tone) || !bs.Read(l.face) || !bs.Read(l.hairStyle) || !bs.Read(l.hairColor)) return;
     if (!bs.Read(l.bootSet) || !bs.Read(l.bootVar) || !bs.Read(l.pantsSet) || !bs.Read(l.pantsVar) ||
         !bs.Read(l.shirtSet) || !bs.Read(l.shirtVar) || !bs.Read(l.under)) return;
+    for (int i = 0; i < kFemExN; ++i) if (!bs.Read(l.ex[i])) break;          // extras femininos (opcionais: servidor antigo nao manda)
     corp[len] = 0; l.corp = corp;
     Sanitize(l);
 
@@ -1378,7 +1735,7 @@ std::string DebugCommand(const std::string& argsIn)     // /corp
 bool Base::operator==(const Base& o) const {
     return tone == o.tone && face == o.face && hairStyle == o.hairStyle && hairColor == o.hairColor && bootSet == o.bootSet && bootVar == o.bootVar &&
            pantsSet == o.pantsSet && pantsVar == o.pantsVar && shirtSet == o.shirtSet && shirtVar == o.shirtVar && under == o.under &&
-           std::strncmp(corp, o.corp, sizeof(corp)) == 0;
+           std::memcmp(ex, o.ex, sizeof(ex)) == 0 && std::strncmp(corp, o.corp, sizeof(corp)) == 0;
 }
 
 int LocalModel()
@@ -1393,6 +1750,7 @@ static Base ToBase(const Look& l)
 {
     Base b; b.tone = l.tone; b.face = l.face; b.hairStyle = l.hairStyle; b.hairColor = l.hairColor; b.bootSet = l.bootSet; b.bootVar = l.bootVar;
     b.pantsSet = l.pantsSet; b.pantsVar = l.pantsVar; b.shirtSet = l.shirtSet; b.shirtVar = l.shirtVar; b.under = l.under;
+    std::memcpy(b.ex, l.ex, sizeof(b.ex));
     std::strncpy(b.corp, l.corp.c_str(), sizeof(b.corp) - 1);
     return b;
 }
@@ -1412,19 +1770,23 @@ void PreviewLocalBase(const Base& b)
     const PLAYERID me = pool->GetLocalPlayerID();
     ApplyLocal(me, [&](Look& l) {
         l.tone = b.tone; l.face = b.face; l.hairStyle = b.hairStyle; l.hairColor = b.hairColor; l.bootSet = b.bootSet; l.bootVar = b.bootVar;
-        l.pantsSet = b.pantsSet; l.pantsVar = b.pantsVar; l.shirtSet = b.shirtSet; l.shirtVar = b.shirtVar; l.under = b.under; l.corp = b.corp;
+        l.pantsSet = b.pantsSet; l.pantsVar = b.pantsVar; l.shirtSet = b.shirtSet; l.shirtVar = b.shirtVar; l.under = b.under; l.corp = b.corp; std::memcpy(l.ex, b.ex, sizeof(l.ex));
     });
 }
 
 bool SendLocalBase(const Base& b)
 {
     if (!pNetGame) return false;
-    char buf[160];
-    std::snprintf(buf, sizeof(buf), "/lookx base %d %d %d %d %d %d %d %d %d %d %d %s", (int)b.tone, (int)b.face, (int)b.hairStyle, (int)b.hairColor,
+    char buf[240];
+    int n = std::snprintf(buf, sizeof(buf), "/lookx base %d %d %d %d %d %d %d %d %d %d %d %s", (int)b.tone, (int)b.face, (int)b.hairStyle, (int)b.hairColor,
                   (int)b.bootSet, (int)b.bootVar, (int)b.pantsSet, (int)b.pantsVar, (int)b.shirtSet, (int)b.shirtVar, (int)b.under, b.corp[0] ? b.corp : "-");
+    for (int i = 0; i < kFemExN && n > 0 && n < (int)sizeof(buf) - 6; ++i) n += std::snprintf(buf + n, sizeof(buf) - (size_t)n, " %d", (int)b.ex[i]);   // extras: 12 numeros apos a corp
     pNetGame->SendChatCommand(buf);
     return true;
 }
+
+int FemExtraCount(int k) { return (k >= 0 && k < kFemExN) ? kFemEx[k].n : 0; }
+const char* FemExtraName(int k, int i) { return (k >= 0 && k < kFemExN && i >= 1 && i <= kFemEx[k].n) ? kFemEx[k].it[i - 1].name : ""; }
 
 // variantes por pasta do banco texdb/skins (9/boot, 9/pants, 9/tshirts) e rostos/cores (9/heads, 9/hair): contagens conferidas no pack
 int FemCount(int kind, int a)
