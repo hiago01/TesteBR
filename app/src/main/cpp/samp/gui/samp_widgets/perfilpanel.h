@@ -23,6 +23,7 @@ namespace RakNet { class BitStream; }
 // =====================================================================================
 
 // definido em jobs.cpp: textura nativa do banner (0 = painel de grupos, 1 = eleve sua experiencia) como ImTextureID; nullptr = sem textura
+void* PerfilRankBanner(int catId);      // moldura do ranking: 0 = Titas (4a), 1 = Clube da Coroa (1a), 2 = Magnatas (5a); banco texdb/perfil; nullptr = faixa por codigo
 void* PerfilMoneyTexture(int which);    // 0 = dinheiro em maos, 1 = banco, 2 = moeda MB Pontos (banco texdb/perfil; nullptr = sem a textura)
 void* PerfilBannerTexture(int which);   // 0 = Painel do Grupo, 1 = eleve sua experiencia, 2 = moeda do MB Pontos
 // definido em jobs.cpp: desenha a foto de perfil com a moldura do Central da Cidade (centro cx,cy; raio em pixels). false = nao desenhou

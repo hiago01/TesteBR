@@ -27,7 +27,7 @@ namespace
 	struct Info
 	{
 		int seq = 0; std::string name, phone, last, since, org, job;
-		uint32_t rg = 0, pp = 0, vips = 0; int32_t money = 0; bool group = false; uint32_t keys = 0;
+		uint32_t rg = 0, pp = 0, vips = 0; int32_t money = 0; bool group = false; uint32_t keys = 0; uint32_t bank = 0;
 		std::vector<int> cats; std::vector<std::string> tabs;
 	};
 
@@ -97,6 +97,7 @@ namespace
 	const CatDef kCats[] = {
 		{ "Titãs do investimento", "MB Pontos acumulados", "Quem mais acumulou MB Pontos", 64, 22, 96, 214, 52, 122, 0 },
 		{ "Clube da Coroa", "VIPs adquiridos", "Quem mais adquiriu VIPs", 86, 58, 12, 226, 168, 44, 1 },
+		{ "Magnatas", "Patrimônio total", "Top-50 jogadores: dinheiro + banco + empresas", 120, 80, 8, 244, 190, 40, 3 },
 	};
 	const CatDef kCatUnknown = { "Ranking", "Valor", "Classificação dos jogadores", 30, 70, 110, 70, 150, 200, 2 };
 	const CatDef& CatOf(int id) { return (id >= 0 && id < (int)(sizeof(kCats) / sizeof(kCats[0]))) ? kCats[id] : kCatUnknown; }
@@ -104,6 +105,7 @@ namespace
 	{
 		if (c.kind == 0) return "MB " + Dots(v);
 		if (c.kind == 1) return Dots(v) + (v == 1 ? " VIP" : " VIPs");
+		if (c.kind == 3) return "R$ " + Dots(v);
 		return Dots(v);
 	}
 
@@ -173,6 +175,7 @@ bool PerfilPanel::OnOpen(RakNet::BitStream& bs)
 	for (int i = 0; i < nc; i++) { uint8_t id = 0; if (!bs.Read(id)) return false; d.cats.push_back((int)id); }
 	if (!bs.Read(nt) || nt > 8) return false;
 	for (int i = 0; i < nt; i++) { std::string s; if (!RdStr(bs, s)) return false; d.tabs.push_back(s); }
+	{ uint32_t bank = 0; if (bs.Read(bank)) d.bank = bank; }        // (fim do pacote, opcional) saldo do banco; servidor antigo nao manda
 	if (seq == 0) return false;
 	d.seq = seq;
 	std::lock_guard<std::mutex> l(g_mtx);
@@ -184,7 +187,7 @@ bool PerfilPanel::OnOpen(RakNet::BitStream& bs)
 bool PerfilPanel::OnRank(RakNet::BitStream& bs)
 {
 	uint16_t seq = 0; uint8_t cat = 0, n = 0;
-	if (!bs.Read(seq) || !bs.Read(cat) || !bs.Read(n) || n > 20) return false;
+	if (!bs.Read(seq) || !bs.Read(cat) || !bs.Read(n) || n > 50) return false;
 	RankState d;
 	for (int i = 0; i < n; i++)
 	{
@@ -386,7 +389,7 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 		card(CX0, 372.0f, X1, 470.0f);
 		{
 			struct Row { const char* label; std::string val; bool dim; int icon; };
-			const Row rows[3] = { { "Dinheiro em mãos", MoneyBR(g_i.money), false, 0 }, { "Banco", "Em breve", true, 1 }, { "MB Pontos", "MB " + Dots(g_i.pp), false, 2 } };
+			const Row rows[3] = { { "Dinheiro em mãos", MoneyBR(g_i.money), false, 0 }, { "Banco", MoneyBR(g_i.bank), false, 1 }, { "MB Pontos", "MB " + Dots(g_i.pp), false, 2 } };
 			for (int k = 0; k < 3; k++)
 			{
 				const float y = 372.0f + 12.0f + (float)k * 27.0f;
@@ -471,10 +474,10 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 			for (int k = 0; k < ncat; k++)
 			{
 				const CatDef& cd = CatOf(g_i.cats[(size_t)k]);
-				const float w = txtW(cd.name, 10.0f) + 34.0f;
-				pill(x, 158.0f, x + w, 188.0f, k == g_rankCat, g_down.kind == K_RTAB && g_down.idx == k, cd.name, 10.0f);
-				addHit(x, 152.0f, x + w, 194.0f, K_RTAB, k);
-				x += w + 10.0f;
+				const float w = txtW(cd.name, 12.6f) + 46.0f;                       // abas maiores (texto 12.6, altura 42)
+				pill(x, 154.0f, x + w, 196.0f, k == g_rankCat, g_down.kind == K_RTAB && g_down.idx == k, cd.name, 12.6f);
+				addHit(x, 148.0f, x + w, 200.0f, K_RTAB, k);
+				x += w + 12.0f;
 			}
 		}
 		if (g_rankCat >= ncat) g_rankCat = 0;
@@ -482,15 +485,21 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 		const CatDef& cd = CatOf(catId);
 		// faixa da categoria (por codigo)
 		{
-			const float by0 = 204.0f, by1 = 270.0f;
-			r->drawRoundedRect(V(CX0, by0), V(X1, by1), A(cd.r0, cd.g0, cd.b0, 255), 12.0f * u, true);
-			r->drawRectFilledMulticolor(V(CX0 + 3, by0 + 3), V(X1 - 3, by1 - 3), A(cd.r0, cd.g0, cd.b0, 255), A(cd.r1, cd.g1, cd.b1, 255), A(cd.r1, cd.g1, cd.b1, 255), A(cd.r0, cd.g0, cd.b0, 255));
-			r->drawRoundedRect(V(CX0, by0), V(X1, by1), A(255, 255, 255, 70), 12.0f * u, false, std::max(1.0f, 1.0f * u));
-			txt(CX0 + 24.0f, by0 + 9.0f, A(255, 255, 255, 235), cd.name, 22.0f, true);
-			txt(CX0 + 24.0f, by0 + 40.0f, A(255, 255, 255, 190), cd.sub, 9.6f);
+			const float by0 = 204.0f, by1 = by0 + CW / 8.0f;                      // moldura de arte (1024x128 = 8:1); sem a textura = faixa por codigo
+			void* btex = PerfilRankBanner(catId);
+			if (btex) r->drawImage(V(CX0, by0), V(X1, by1), (ImTextureID)btex, ImColor(255, 255, 255, (int)(255 * f)), ImVec2(0, 0), ImVec2(1, 1));
+			else
+			{
+				r->drawRoundedRect(V(CX0, by0), V(X1, by1), A(cd.r0, cd.g0, cd.b0, 255), 12.0f * u, true);
+				r->drawRectFilledMulticolor(V(CX0 + 3, by0 + 3), V(X1 - 3, by1 - 3), A(cd.r0, cd.g0, cd.b0, 255), A(cd.r1, cd.g1, cd.b1, 255), A(cd.r1, cd.g1, cd.b1, 255), A(cd.r0, cd.g0, cd.b0, 255));
+				r->drawRoundedRect(V(CX0, by0), V(X1, by1), A(255, 255, 255, 70), 12.0f * u, false, std::max(1.0f, 1.0f * u));
+			}
+			const float tx0 = btex ? CX0 + 190.0f : CX0 + 24.0f;                   // com arte: o titulo fica depois da figura da esquerda
+			txt(tx0, by0 + 16.0f, A(255, 255, 255, 240), cd.name, 22.0f, true);
+			txt(tx0, by0 + 50.0f, A(255, 255, 255, 205), cd.sub, 9.6f);
 		}
 		// tabela
-		const float TY0 = 282.0f, TY1 = 634.0f;
+		const float TY0 = 204.0f + CW / 8.0f + 12.0f, TY1 = 634.0f;
 		card(CX0, TY0, X1, TY1);
 		txt(CX0 + 20.0f, TY0 + 10.0f, A(176, 198, 230, 210), "Posição", 8.8f);
 		txt(CX0 + 100.0f, TY0 + 10.0f, A(176, 198, 230, 210), "Jogador", 8.8f);
@@ -604,19 +613,19 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 			{
 				const float rowX0 = CX0, rowX1 = X1;
 				float total = 0.0f; std::vector<float> w((size_t)ntab);
-				for (int k = 0; k < ntab; k++) { w[(size_t)k] = txtW(g_i.tabs[(size_t)k], 9.6f) + 30.0f; total += w[(size_t)k] + 10.0f; }
-				const float maxS = std::max(0.0f, total - 10.0f - (rowX1 - rowX0));
+				for (int k = 0; k < ntab; k++) { w[(size_t)k] = txtW(g_i.tabs[(size_t)k], 12.0f) + 40.0f; total += w[(size_t)k] + 12.0f; }
+				const float maxS = std::max(0.0f, total - 12.0f - (rowX1 - rowX0));
 				g_tabsScroll = std::clamp(g_tabsScroll, 0.0f, maxS);
-				const ImVec2 c0 = V(rowX0, 150.0f), c1 = V(rowX1, 196.0f);
+				const ImVec2 c0 = V(rowX0, 148.0f), c1 = V(rowX1, 200.0f);
 				g_tabsR[0] = c0.x; g_tabsR[1] = c0.y; g_tabsR[2] = c1.x; g_tabsR[3] = c1.y;
 				r->pushClipRect(c0, c1, false);
 				float x = rowX0 - g_tabsScroll;
 				for (int k = 0; k < ntab; k++)
 				{
-					pill(x, 158.0f, x + w[(size_t)k], 188.0f, k == g_ruleTab, g_down.kind == K_UTAB && g_down.idx == k, g_i.tabs[(size_t)k], 9.6f);
+					pill(x, 154.0f, x + w[(size_t)k], 196.0f, k == g_ruleTab, g_down.kind == K_UTAB && g_down.idx == k, g_i.tabs[(size_t)k], 12.0f);
 					const float hx0 = std::max(x, rowX0), hx1 = std::min(x + w[(size_t)k], rowX1);
-					if (hx1 > hx0) addHit(hx0, 152.0f, hx1, 194.0f, K_UTAB, k);
-					x += w[(size_t)k] + 10.0f;
+					if (hx1 > hx0) addHit(hx0, 148.0f, hx1, 200.0f, K_UTAB, k);
+					x += w[(size_t)k] + 12.0f;
 				}
 				r->popClipRect();
 			}

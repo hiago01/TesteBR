@@ -1090,6 +1090,12 @@ void* PerfilBannerTexture(int which)
 
 // icones do cartao de dinheiro do menu jogador (perfilpanel.cpp): 0 = dinheiro em maos, 1 = banco, 2 = moeda MB Pontos (mesmo banco texdb/perfil).
 // nullptr = textura ausente no banco: o menu usa o desenho antigo (por codigo)
+void* PerfilRankBanner(int catId)
+{
+	RwTexture* t = PerfilTexDb::Texture(catId == 2 ? "rank_magnatas" : (catId == 0 ? "rank_titas" : (catId == 1 ? "rank_coroa" : "")));
+	return (t && t->raster) ? (void*)t->raster : nullptr;
+}
+
 void* PerfilMoneyTexture(int which)
 {
 	RwTexture* t = PerfilTexDb::Texture(which == 0 ? "dinheiro_maos" : (which == 1 ? "dinheiro_banco" : "dinheiro_mb"));
