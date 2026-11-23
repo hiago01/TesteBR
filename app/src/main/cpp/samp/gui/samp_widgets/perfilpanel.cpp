@@ -21,7 +21,7 @@
 
 namespace
 {
-	struct RankRow { uint32_t pos = 0; std::string name; uint32_t val = 0; };
+	struct RankRow { uint32_t pos = 0; std::string name; uint32_t val = 0; bool online = false; };
 	struct RankState { bool have = false, loading = false; std::vector<RankRow> rows; uint32_t mePos = 0, meVal = 0; int64_t t = 0, reqT = 0; };
 	struct RuleLine { int style = 0; std::string text; };
 	struct WLine { int style = 0; float y = 0.0f, h = 0.0f; std::string text; bool first = true; };
@@ -197,6 +197,7 @@ bool PerfilPanel::OnRank(RakNet::BitStream& bs)
 		d.rows.push_back(std::move(w));
 	}
 	if (!bs.Read(d.mePos) || !bs.Read(d.meVal)) return false;
+	for (auto& rw : d.rows) { uint8_t on = 0; if (!bs.Read(on)) break; rw.online = on != 0; }     // (fim do pacote, opcional) 1 = jogador online agora; servidor antigo nao manda
 	d.have = true; d.t = NowMs();
 	std::lock_guard<std::mutex> l(g_mtx);
 	if (seq == 0 || seq != g_netInfo.seq) return true;                       // resposta de uma tela que ja foi trocada: ignora (nao e erro)
@@ -338,6 +339,13 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 	{
 		r->drawRoundedRect(V(x0, y0), V(x1, y1), A(92, 120, 166, 70), 14.0f * u, true);
 		r->drawRoundedRect(V(x0, y0), V(x1, y1), A(170, 196, 232, 70), 14.0f * u, false, std::max(1.0f, 1.0f * u));
+	};
+	auto onlineDot = [&](float cx, float cy)
+	{
+		const ImVec2 c = V(cx, cy);
+		r->drawRoundedRect(ImVec2(c.x - 7.0f * u, c.y - 7.0f * u), ImVec2(c.x + 7.0f * u, c.y + 7.0f * u), A(60, 230, 120, 50), 7.0f * u, true);       // brilho
+		r->drawRoundedRect(ImVec2(c.x - 4.5f * u, c.y - 4.5f * u), ImVec2(c.x + 4.5f * u, c.y + 4.5f * u), A(70, 235, 125, 255), 4.5f * u, true);
+		r->drawRoundedRect(ImVec2(c.x - 4.5f * u, c.y - 4.5f * u), ImVec2(c.x + 4.5f * u, c.y + 4.5f * u), A(210, 255, 225, 200), 4.5f * u, false, std::max(1.0f, 1.0f * u));
 	};
 	auto pill = [&](float x0, float y0, float x1, float y1, bool on, bool dn, const std::string& label, float fs)
 	{
@@ -535,6 +543,7 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 				const std::string val = rs->mePos ? CatValue(cd, rs->meVal) : (rs->meVal ? CatValue(cd, rs->meVal) : "-");
 				const float ty = y + (RH - 4 - txtH(nm, 11.0f)) * 0.5f;
 				txt(CX0 + 22.0f, ty, A(244, 250, 255, 255), pos, 11.0f, true);
+				onlineDot(CX0 + 84.0f, y + (RH - 4) * 0.5f);                          // eu estou online
 				txt(CX0 + 100.0f, ty, A(244, 250, 255, 255), fit(nm, 11.0f, CW - 100.0f - 170.0f), 11.0f, true);
 				txt(X1 - 24.0f - txtW(val, 11.0f), ty, A(244, 250, 255, 255), val, 11.0f, true);
 			}
@@ -559,6 +568,7 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 				const float ty = ry + (RH - 4 - txtH(rw.name, 11.0f)) * 0.5f;
 				const ImColor pc = rw.pos == 1 ? A(255, 214, 90, 255) : (rw.pos == 2 ? A(214, 224, 238, 255) : (rw.pos == 3 ? A(226, 160, 100, 255) : A(226, 236, 252, 255)));
 				txt(CX0 + 22.0f, ty, pc, std::to_string(rw.pos), 11.0f, true);
+				if (rw.online) onlineDot(CX0 + 84.0f, ry + (RH - 4) * 0.5f);              // bolinha verde = jogador online agora
 				txt(CX0 + 100.0f, ty, A(236, 244, 255, 255), fit(rw.name, 11.0f, CW - 100.0f - 170.0f), 11.0f);
 				const std::string val = CatValue(cd, rw.val);
 				txt(X1 - 24.0f - txtW(val, 11.0f), ty, A(226, 238, 255, 255), val, 11.0f, true);
