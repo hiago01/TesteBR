@@ -26,20 +26,37 @@ namespace
 	}
 
 	// ramo de louro: 7 folhas ao longo de um arco (lado -1 = esquerdo, +1 = direito) em volta da foto
-	void Laurel(ImGuiRenderer* r, float cx, float cy, float rad, int side, const ImColor& col, float u)
+	ImColor Mix(const ImColor& a, const ImColor& b, float w)
 	{
+		return ImColor(a.Value.x + (b.Value.x - a.Value.x) * w, a.Value.y + (b.Value.y - a.Value.y) * w, a.Value.z + (b.Value.z - a.Value.z) * w, 1.0f);
+	}
+
+	// ANIMADO: as folhas balancam, "respiram" e um brilho corre pelo ramo; saem faiscas (confetes) que sobem e somem
+	void Laurel(ImGuiRenderer* r, float cx, float cy, float radBase, int side, const ImColor& col, const ImColor& shine, float u, double t)
+	{
+		const float tf = (float)t;
 		for (int i = 0; i < 7; i++)
 		{
 			const float k = (float)i / 6.0f;
-			const float ang = 1.5708f + (float)side * (0.55f + k * 2.35f);            // de baixo, subindo pelos lados
+			const float wave = 0.5f + 0.5f * std::sin(tf * 3.4f - (float)i * 0.95f + (side > 0 ? 1.1f : 0.0f));   // brilho percorrendo o ramo
+			const float sway = std::sin(tf * 1.9f + (float)i * 1.2f + (float)side) * 0.07f;                      // balanco
+			const float rad = radBase + std::sin(tf * 2.6f + (float)i * 1.7f) * 1.1f * u;
+			const float ang = 1.5708f + (float)side * (0.55f + k * 2.35f) + sway;
+			const ImColor lc = Mix(col, shine, wave);
 			const float px = cx + std::cos(ang) * rad, py = cy + std::sin(ang) * rad;
 			const float tx = -std::sin(ang) * (float)(-side), ty = std::cos(ang) * (float)(-side);   // tangente (sentido da subida)
 			const float nx = std::cos(ang), ny = std::sin(ang);                        // normal (para fora)
-			const float L = (6.5f - 1.8f * k) * u, W = (2.8f - 0.6f * k) * u;
+			const float L = (6.5f - 1.8f * k) * u * (1.0f + 0.30f * wave), W = (2.8f - 0.6f * k) * u * (1.0f + 0.25f * wave);
 			// folha = losango inclinado para fora
 			const float dx = tx * L + nx * L * 0.35f, dy = ty * L + ny * L * 0.35f;
 			ImVec2 p[4] = { ImVec2(px, py), ImVec2(px + dx * 0.5f + nx * W, py + dy * 0.5f + ny * W), ImVec2(px + dx, py + dy), ImVec2(px + dx * 0.5f - nx * W, py + dy * 0.5f - ny * W) };
-			r->drawConvexPolyFilled(p, 4, col);
+			r->drawConvexPolyFilled(p, 4, lc);
+			// confete: faisca que nasce na folha, sobe e some (cada folha com seu ritmo)
+			float ph = tf * (0.55f + 0.07f * (float)i) + (float)i * 0.37f + (side > 0 ? 0.5f : 0.0f); ph -= std::floor(ph);
+			const float fx = px + nx * ph * 6.0f * u + std::sin(ph * 9.0f + (float)i) * 1.6f * u, fy = py - ph * 14.0f * u;
+			ImVec2 d[5]; const float rd = (1.5f - 0.9f * ph) * u;
+			for (int q = 0; q < 5; q++) { const float aq = 6.2831853f * (float)q / 5.0f + ph * 6.0f; d[q] = ImVec2(fx + std::cos(aq) * rd, fy + std::sin(aq) * rd); }
+			r->drawConvexPolyFilled(d, 5, ImColor(shine.Value.x, shine.Value.y, shine.Value.z, 0.95f * (1.0f - ph)));
 		}
 	}
 
@@ -69,6 +86,7 @@ void RankPodium::Draw(ImGuiRenderer* r, float x0, float y0, float w, float u, do
 {
 	if (!r) return;
 	Avatar::Tick();                                  // fotos de outras contas viram textura aqui
+	t = std::fmod(t, 3600.0);                        // tempo pequeno: precisao das animacoes em float
 	const float H = kHeight * u, base = y0 + H - 2.0f * u;
 	// brilho do palco atras do podio
 	for (int g = 3; g >= 1; g--) Ellipse(r, x0 + w * 0.5f, base - 20.0f * u, w * (0.18f + 0.09f * (float)g), (22.0f + 9.0f * (float)g) * u, ImColor(150, 110, 255, 12));
@@ -118,8 +136,8 @@ void RankPodium::Draw(ImGuiRenderer* r, float x0, float y0, float w, float u, do
 
 		// foto + moldura do avatar + louros + coroa
 		const float R = s.photoR * u, pcy = pa.y - 3.0f * u - R;
-		Laurel(r, cx, pcy, R + 6.5f * u, -1, m.mid, u);
-		Laurel(r, cx, pcy, R + 6.5f * u, +1, m.mid, u);
+		Laurel(r, cx, pcy, R + 6.5f * u, -1, m.mid, m.light, u, t);
+		Laurel(r, cx, pcy, R + 6.5f * u, +1, m.mid, m.light, u, t);
 		Avatar::DrawPhotoOf(r, en.acc, cx, pcy, R);
 		Avatar::DrawBorder(r, en.border, cx, pcy, R, u * 0.75f, t);
 		Crown(r, cx, pcy - R - 2.0f * u, R * 1.15f, R * 0.78f, m);
