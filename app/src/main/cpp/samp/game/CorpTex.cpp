@@ -945,9 +945,11 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& lookIn)
         RwTexture* tBrow = P("eyebrown/1");                          // mesmo arquivo do masculino (config.lua: clothes/7/eyebrown), sobrancelha 1
         auto starts = [](const std::string& k, const char* q) { return k.compare(0, std::strlen(q), q) == 0; };
         int nF = 0;
+        std::vector<size_t> femUnnamed;
         for (size_t i = 0; i < mats.size(); ++i) {
             const std::string& k = keys[i];
-            if (k.empty() || !mats[i] || over.count(k)) continue;
+            if (!mats[i] || over.count(k)) continue;
+            if (k.empty()) { femUnnamed.push_back(i); continue; }      // material sem nome: tambem fica oculto (nunca branco)
             RwTexture* t = nullptr; bool hide = false;
             if (starts(k, "body.") && (covered.count(k) || (k == "body.feets2" && !boot5))) { over[k] = hideTex; ++nF; ++nHidden; continue; }   // coberto por roupa (ou pe alternativo sem bota jump)
             if (starts(k, "body.torso") || starts(k, "body.arm") || starts(k, "body.shoulder") || k == "body.hand") t = tTor;
@@ -958,13 +960,18 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& lookIn)
             else if (hs && k == hairMat) t = tHair;
             else if (starts(k, "body.head") || starts(k, "body.eyebrown") || starts(k, "body.makeup") || starts(k, "fantasy_f_")
                      || starts(k, "fantasy_tatto_")) hide = true;      // sem textura/escolha: oculto (nunca branco)
-            if (t) { over[k] = t; ++nF; } else if (hide) { over[k] = hideTex; ++nF; ++nHidden; }
+            else hide = true;                                          // QUALQUER outro material sem textura atribuida: oculto (corrige as marcas brancas)
+            if (!t && !hide) hide = true;
+            if (t) { over[k] = t; ++nF; }
+            else { if (starts(k, "body.torso") || starts(k, "body.leg") || k == "body.head1") FLog("[CORPTEX] AVISO: textura de '%s' nao encontrada no banco: oculto", k.c_str()); over[k] = hideTex; ++nF; ++nHidden; }
         }
         FLog("[CORPTEX] jogador %d modelo %d (feminino): tom %d rosto %d cabelo %d/%d bota %d/%d calca %d/%d camisa %d/%d: %d material(is)",
              (int)id, model, tone, face, hs, hc, (int)look.bootSet, (int)look.bootVar, (int)look.pantsSet, (int)look.pantsVar, (int)look.shirtSet, (int)look.shirtVar, nF);
     }
 
     Entry en{id, e, e->m_pRwClump, look, {}, false, 0};
+    if (byIndex && IsFemModel(model) && hideTex)
+        for (size_t i = 0; i < mats.size(); ++i) if (mats[i] && keys[i].empty()) en.swaps.push_back({mats[i], hideTex, nullptr});
     for (size_t i = 0; i < mats.size(); ++i) {
         if (keys[i].empty() || !mats[i]) continue;
         auto it = over.find(keys[i]);
