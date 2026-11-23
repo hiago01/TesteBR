@@ -8,7 +8,7 @@
 //
 //    u8 op
 //    op 1  aviso     : u8 tipo (0 sucesso, 1 erro, 2 aviso) | string titulo | string texto | u16 duracao em ms
-//    op 2  veiculo   : u8 combustivel (0..100) | u8 flags (bit0 motor ligado, bit1 trancado)
+//    op 2  veiculo   : u8 combustivel (0..100) | u8 flags (bit0 motor ligado, bit1 trancado) | [opcional, no fim] u32 hodometro em decimos de km
 //    string = u8 tamanho + bytes
 //
 //  Os botoes mandam "/motor" e "/trancar" ao servidor (mesmo caminho de quem digita o comando no chat).

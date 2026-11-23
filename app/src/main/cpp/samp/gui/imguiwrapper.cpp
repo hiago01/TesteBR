@@ -4,6 +4,7 @@
 #include "imguiwrapper.h"
 #include "uisettings.h"
 #include "sffonts.h"
+#include "vehfonts.h"
 #include <stdio.h>
 
 #include "../game/game.h"
@@ -84,6 +85,26 @@ bool ImGuiWrapper::initialize()
 			ImFontConfig sfCfg;
 			sfCfg.OversampleH = 1; sfCfg.OversampleV = 1;   // padrao do ImGui (3x1) multiplicava o atlas por ~30: de 0,5 MB para 16-32 MB na GPU + copias
 			SfFonts::table()[r] = io.Fonts->AddFontFromFileTTF(fp.c_str(), UISettings::fontSize(), &sfCfg, sfRanges);
+		}
+	}
+
+	// Velocimetro (VehHud): Barlow Condensed + Rajdhani, so os caracteres usados, cada um assado no seu tamanho; arquivo ausente = fonte antiga
+	{
+		static const ImWchar rngDigits[] = { 0x0030, 0x0039, 0 };                  // numero da velocidade: so algarismos
+		static const ImWchar rngUnit[]   = { 0x0020, 0x007E, 0 };                  // "KM/H"
+		static const ImWchar rngAux[]    = { 0x0020, 0x007E, 0 };                  // hodometro / auxiliares
+		const ImWchar* rng[VehFonts::Count] = { rngDigits, rngUnit, rngAux };
+		const size_t slash = m_fontPath.find_last_of("/\\");
+		const std::string dir = slash == std::string::npos ? std::string() : m_fontPath.substr(0, slash + 1);
+		for (int r = 0; r < VehFonts::Count; r++)
+		{
+			const std::string fp = dir + VehFonts::fileName(r);
+			FILE* ff = fopen(fp.c_str(), "rb");
+			if (!ff) { Log::addParameter("Fonte do velocimetro ausente: %s", fp.c_str()); continue; }
+			fclose(ff);
+			ImFontConfig vCfg;
+			vCfg.OversampleH = 1; vCfg.OversampleV = 1;
+			VehFonts::table()[r] = io.Fonts->AddFontFromFileTTF(fp.c_str(), VehFonts::bakeSize(r), &vCfg, rng[r]);
 		}
 	}
 
