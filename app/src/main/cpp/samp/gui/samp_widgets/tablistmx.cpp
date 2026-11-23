@@ -67,7 +67,7 @@ namespace
 		const long st = ini.GetLongValue("tablistmx", "estilo", TL::kDefaultStyle);
 		g_style.store((st >= 0 && st <= 2) ? (int)st : TL::kDefaultStyle);
 		if (g_style.load() != 0) g_lastStyle.store(g_style.load());
-		const long py = ini.GetLongValue("tablistmx", "pos", TL::kDefaultPosY);
+		const long py = ini.GetLongValue("tablistmx", "layout", 0) >= 2 ? ini.GetLongValue("tablistmx", "pos", TL::kDefaultPosY) : TL::kDefaultPosY;   // layout antigo (base da tela): usa a nova posicao padrao
 		g_posY.store((int)std::min<long>(std::max<long>(py, TL::kMinPosY), TL::kMaxPosY));
 		std::lock_guard<std::mutex> l(g_cmdMu);
 		for (int i = 0; i < TL::kTabs; i++) g_cmd[i] = TL::SanitizeCommand(ini.GetValue("tablistmx", kCmdKey[i], i == TL::Perfil ? "/perfil" : ""));
@@ -83,6 +83,7 @@ namespace
 		ini.LoadFile(path.c_str());                       // se nao existir, cria so esta secao
 		ini.SetLongValue("tablistmx", "estilo", g_style.load());
 		ini.SetLongValue("tablistmx", "pos", g_posY.load());
+		ini.SetLongValue("tablistmx", "layout", 2);
 		if (ini.SaveFile(path.c_str()) < 0) FLog("[TABLISTMX] falha ao gravar %s", path.c_str());
 	}
 

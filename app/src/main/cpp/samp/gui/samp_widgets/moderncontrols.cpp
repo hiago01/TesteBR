@@ -458,7 +458,7 @@ void ModernControls::draw(ImGuiRenderer* r)
 			if (JobsUI_ScooterFolded()) showEnter = false;   // patinete dobrado na mao: sem P1/P2
 			if (!showEnter) g_ctl.disabledMask |= (1u << B_P1) | (1u << B_P2);
 		}
-		if (!editing) { if (!g_ctl.cfg.showInv) g_ctl.disabledMask |= (1u << B_INV); if (!g_ctl.cfg.showSlots) g_ctl.disabledMask |= (1u << B_SLOTS); }   // desligados nos ajustes (no editor continuam visiveis)
+		if (!editing) { if (!g_ctl.cfg.showInv) g_ctl.disabledMask |= (1u << B_INV); if (!g_ctl.cfg.showRunLock) { g_ctl.disabledMask |= (1u << B_RUNLOCK); g_runLock.store(false); }   /* escondido: nao deixa o lock de corrida ligado sem botao */ if (!g_ctl.cfg.showSlots) g_ctl.disabledMask |= (1u << B_SLOTS); }   // desligados nos ajustes (no editor continuam visiveis)
 		// pulando/na parede: bloqueia TODOS os botoes, menos o PULO (que vale uma vez so); o joystick segue livre
 		// CARREGANDO alguem (/carregar): somem (nao desenham nem recebem toque) todos os botoes de acao; ficam so MIC, INVENTARIO e SLOTS.
 		// Joystick e camera seguem normais. O LOCK de corrida e a mira sao soltos para nada ficar ligado escondido.

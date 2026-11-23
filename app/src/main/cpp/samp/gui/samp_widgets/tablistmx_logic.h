@@ -21,7 +21,7 @@ namespace TabLogic
 
 	constexpr int kDefaultStyle = 1;
 	constexpr int kDefaultSel   = Perfil;     // como no print 1: "Perfil" levantado
-	constexpr int kDefaultPosY  = 93;         // centro da barra em % da altura da tela (base, centralizada)
+	constexpr int kDefaultPosY  = 33;         // centro da barra em % da altura da tela: na altura do botao INVENTARIO (0.333), abaixo do minimapa; encostada na esquerda
 	constexpr int kMinPosY = 6, kMaxPosY = 96;
 
 	struct Rect
@@ -69,7 +69,7 @@ namespace TabLogic
 		const float W = refW * k; H = refH * k;
 		const float cy  = sh * (float)std::min(std::max(posY, kMinPosY), kMaxPosY) / 100.0f;
 		const float pad = 14.0f * k;
-		L.bar.l = (sw - W) * 0.5f; L.bar.r = L.bar.l + W;
+		L.bar.l = std::max(pad, sw * 0.012f); L.bar.r = L.bar.l + W;          // encostada na esquerda (onde ficava o botao Inventario)
 		L.bar.t = Clamp(cy - H * 0.5f, pad, sh - H - pad); L.bar.b = L.bar.t + H;
 		const float cw = W / (float)kTabs;
 		for (int i = 0; i < kTabs; i++)

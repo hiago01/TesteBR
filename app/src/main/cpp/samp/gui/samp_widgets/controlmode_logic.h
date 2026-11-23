@@ -79,7 +79,8 @@ namespace CtlLogic
 		float sens     = 1.0f;             // 0.5 .. 2.0 (sensibilidade da intensidade)
 		float deadzone = 0.12f;            // 0 .. 0.45
 		float maxDist  = 1.0f;             // 0.6 .. 1.6 (distancia analogica maxima, x raio da base)
-		bool  showInv   = true;            // mostra o botao INVENTARIO (abaixo do minimapa)
+		bool  showInv   = false;           // mostra o botao INVENTARIO (abaixo do minimapa); padrao ESCONDIDO (liga em Menu jogador > Configuracoes)
+		bool  showRunLock = false;         // mostra o botao CORRIDA-LOCK (liga/desliga correr reto); padrao ESCONDIDO (idem)
 		bool  showSlots = true;            // mostra a barra de SLOTS RAPIDOS (embaixo)
 		bool  aimDrag  = true;             // Ataque tambem arrasta a mira (estilo Free Fire); desligado = Ataque so atira
 		float aimSens  = 1.0f;             // 0.3 .. 3.0 (sensibilidade do arrasto da mira)

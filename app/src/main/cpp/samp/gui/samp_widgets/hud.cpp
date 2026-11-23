@@ -1,5 +1,6 @@
 #include "../../main.h"
 #include "../gui.h"
+#include "../UiPrefs.h"
 #include "../../game/game.h"
 #include "../../game/RW/RenderWare.h"
 #include "../../net/netgame.h"
@@ -67,6 +68,7 @@ namespace Hud
 	// minimapa + nome do local: so o MOTORISTA dentro de um veiculo (desligavel: /hud mapa sempre)
 	bool MapAllowed()
 	{
+		if (!UiPrefs::MapOn()) return false;                 // Configuracoes: minimapa desligado pelo jogador
 		if (!g.mapOnlyDriving.load()) return true;
 		if (!pNetGame || !pNetGame->GetPlayerPool()) return false;
 		CLocalPlayer* lp = pNetGame->GetPlayerPool()->GetLocalPlayer();

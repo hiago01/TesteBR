@@ -61,6 +61,8 @@ namespace
 			g_cfg.aimDrag  = ini.GetLongValue(s, "mira_arrastavel", g_cfg.aimDrag ? 1 : 0) != 0;
 			g_cfg.showInv   = ini.GetLongValue(s, "mostrar_inventario", g_cfg.showInv ? 1 : 0) != 0;
 			g_cfg.showSlots = ini.GetLongValue(s, "mostrar_slots", g_cfg.showSlots ? 1 : 0) != 0;
+			g_cfg.showRunLock = ini.GetLongValue(s, "mostrar_corrida_lock", g_cfg.showRunLock ? 1 : 0) != 0;
+			if (ini.GetLongValue(s, "botoes_ocultos_v", 0) < 1) { g_cfg.showInv = false; g_cfg.showRunLock = false; }   // 1a abertura desta versao: Inventario e Corrida-lock comecam DESLIGADOS (quem quiser liga em Configuracoes)
 			g_cfg.aimSens  = (float)ini.GetDoubleValue(s, "mira_sensibilidade", g_cfg.aimSens);
 			g_cfg.aimSmooth = (float)ini.GetDoubleValue(s, "mira_suavizacao", g_cfg.aimSmooth);
 			// Layouts HUD 1..4: chaves hud<N>_*. O HUD 1 usa as chaves antigas (joy_x, b_<botao>_x, transparencia...) como
@@ -131,6 +133,8 @@ namespace
 		ini.SetLongValue(s, "mira_arrastavel", g_cfg.aimDrag ? 1 : 0);
 		ini.SetLongValue(s, "mostrar_inventario", g_cfg.showInv ? 1 : 0);
 		ini.SetLongValue(s, "mostrar_slots", g_cfg.showSlots ? 1 : 0);
+		ini.SetLongValue(s, "mostrar_corrida_lock", g_cfg.showRunLock ? 1 : 0);
+		ini.SetLongValue(s, "botoes_ocultos_v", 1);
 		ini.Delete(s, "fade_freada", true);     // chave removida: o fade na freada agora e sempre ativo; limpa o que versoes antigas gravaram
 		ini.SetDoubleValue(s, "mira_sensibilidade", g_cfg.aimSens);
 		ini.SetDoubleValue(s, "mira_suavizacao", g_cfg.aimSmooth);

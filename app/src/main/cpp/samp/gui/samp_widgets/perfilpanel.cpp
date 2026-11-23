@@ -3,6 +3,8 @@
 #include "../../vendor/raknet/BitStream.h"
 #include "perfilpanel.h"
 #include "../PanelAlpha.h"          // transparencia compartilhada (Menu jogador + Gerenciador de grupo)
+#include "../UiPrefs.h"             // minimapa ligado/desligado
+#include "controlmode.h"            // botoes Inventario / Corrida-lock (ModernConfig)
 
 #include <algorithm>
 #include <chrono>
@@ -52,7 +54,7 @@ namespace
 	float      g_rankScroll = 0.0f, g_ruleScroll = 0.0f, g_tabsScroll = 0.0f;
 
 	// ---- toque ----
-	enum { K_NONE = 0, K_CLOSE, K_NAV, K_RTAB, K_UTAB, K_BAN_G, K_BAN_V, K_TSLD, K_TMIN, K_TPLUS };
+	enum { K_NONE = 0, K_CLOSE, K_NAV, K_RTAB, K_UTAB, K_BAN_G, K_BAN_V, K_TSLD, K_TMIN, K_TPLUS, K_TOG };
 	struct Target { int kind = K_NONE; int idx = 0; };
 	struct HitR { float x0, y0, x1, y1; Target t; };
 	std::vector<HitR> g_hits;
@@ -341,7 +343,11 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 	{
 		if (on) { for (int g = 2; g >= 1; g--) r->drawRoundedRect(V(x0 - g, y0 - g), V(x1 + g, y1 + g), A(80, 230, 250, 24), ((y1 - y0) * 0.5f + g) * u, true); }
 		r->drawRoundedRect(V(x0, y0), V(x1, y1), on ? A(98, 232, 250, 255) : A(56, 78, 114, dn ? 230 : 170), (y1 - y0) * 0.5f * u, true);
-		r->drawRoundedRect(V(x0, y0), V(x1, y1), on ? A(190, 250, 255, 200) : A(160, 188, 226, 90), (y1 - y0) * 0.5f * u, false, std::max(1.0f, 1.0f * u));
+		{
+			const float th = std::max(1.5f, 1.5f * u);                                           // contorno centrado na borda do preenchimento (colado), raio = meia altura (pilula perfeita)
+			const float hr = (y1 - y0) * 0.5f * u - th * 0.5f;
+			r->drawRoundedRect(ImVec2(V(x0, y0).x + th * 0.5f, V(x0, y0).y + th * 0.5f), ImVec2(V(x1, y1).x - th * 0.5f, V(x1, y1).y - th * 0.5f), on ? A(190, 250, 255, 220) : A(170, 198, 236, 120), std::max(1.0f, hr), false, th);
+		}
 		txt(x0 + ((x1 - x0) - txtW(label, fs)) * 0.5f, y0 + ((y1 - y0) - txtH(label, fs)) * 0.5f, on ? A(24, 50, 74, 255) : A(226, 238, 255, 255), label, fs, true);
 	};
 
@@ -494,9 +500,12 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 				r->drawRectFilledMulticolor(V(CX0 + 3, by0 + 3), V(X1 - 3, by1 - 3), A(cd.r0, cd.g0, cd.b0, 255), A(cd.r1, cd.g1, cd.b1, 255), A(cd.r1, cd.g1, cd.b1, 255), A(cd.r0, cd.g0, cd.b0, 255));
 				r->drawRoundedRect(V(CX0, by0), V(X1, by1), A(255, 255, 255, 70), 12.0f * u, false, std::max(1.0f, 1.0f * u));
 			}
-			const float tx0 = btex ? CX0 + 190.0f : CX0 + 24.0f;                   // com arte: o titulo fica depois da figura da esquerda
-			txt(tx0, by0 + 16.0f, A(255, 255, 255, 240), cd.name, 22.0f, true);
-			txt(tx0, by0 + 50.0f, A(255, 255, 255, 205), cd.sub, 9.6f);
+			// titulo + subtitulo: bloco centralizado na vertical, dentro da faixa escura da moldura (depois da figura da esquerda, antes da silhueta da direita)
+			const float tfs = btex ? 17.0f : 22.0f, sfs = btex ? 9.0f : 9.6f, gap = btex ? 5.0f : 8.0f;
+			const float tx0 = btex ? CX0 + 176.0f : CX0 + 24.0f, tw = btex ? 205.0f : CW - 48.0f;
+			const float blkH = txtH(cd.name, tfs) + gap + txtH(cd.sub, sfs), ty0 = by0 + ((by1 - by0) - blkH) * 0.5f;
+			txt(tx0, ty0, A(255, 255, 255, 245), fit(cd.name, tfs, tw), tfs, true);
+			txt(tx0, ty0 + txtH(cd.name, tfs) + gap, A(255, 255, 255, 215), fit(cd.sub, sfs, tw), sfs);
 		}
 		// tabela
 		const float TY0 = 204.0f + CW / 8.0f + 12.0f, TY1 = 634.0f;
@@ -594,6 +603,34 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 		addHit(CX0 + 22.0f, TY - 14.0f, CX0 + 62.0f, TY + 14.0f, K_TMIN, 0);
 		addHit(X1 - 62.0f, TY - 14.0f, X1 - 22.0f, TY + 14.0f, K_TPLUS, 0);
 		txt(CX0 + 22.0f, 304.0f, A(150, 176, 214, 190), "30% = bem transparente   |   100% = fundo sólido   (salvo automaticamente)", 8.6f);
+
+		// ---- interruptores: botoes escondidos por padrao + minimapa ----
+		{
+			const CtlLogic::ModernConfig mc = ControlMode::GetConfig();
+			struct Tg { const char* name; const char* sub; bool on; };
+			const Tg tg[3] = {
+				{ "Botão Inventário", "Botão da mochila na tela (controles modernos). Padrão: desativado.", mc.showInv },
+				{ "Botão Corrida (lock)", "Botão que liga/desliga correr reto sozinho (controles modernos). Padrão: desativado.", mc.showRunLock },
+				{ "Minimapa", "Minimapa e nome do local na tela, a pé e de carro. Padrão: ativado.", UiPrefs::MapOn() },
+			};
+			const float cy0 = 346.0f, cy1 = cy0 + 16.0f + 3 * 50.0f;
+			card(CX0, cy0, X1, cy1);
+			for (int k = 0; k < 3; k++)
+			{
+				const float ry = cy0 + 12.0f + (float)k * 50.0f;
+				txt(CX0 + 22.0f, ry + 2.0f, A(240, 246, 255, 255), tg[k].name, 13.0f, true);
+				txt(CX0 + 22.0f, ry + 23.0f, A(176, 198, 230, 200), fit(tg[k].sub, 8.8f, CW - 44.0f - 90.0f), 8.8f);
+				const float sw0 = X1 - 22.0f - 52.0f, sw1 = X1 - 22.0f, sy0 = ry + 6.0f, sy1 = sy0 + 26.0f;
+				const bool down = g_down.kind == K_TOG && g_down.idx == k;
+				const ImColor trk = tg[k].on ? A(98, 232, 250, 255) : A(88, 108, 142, down ? 230 : 190);
+				r->drawRoundedRect(V(sw0, sy0), V(sw1, sy1), trk, 13.0f * u, true);
+				const float kx = tg[k].on ? sw1 - 13.0f : sw0 + 13.0f;
+				r->drawRoundedRect(V(kx - 10.0f, sy0 + 3.0f), V(kx + 10.0f, sy1 - 3.0f), A(246, 252, 255, 255), 10.0f * u, true);
+				const std::string st = tg[k].on ? "ON" : "OFF";
+				txt(tg[k].on ? sw0 + 9.0f : sw1 - 9.0f - txtW(st, 8.4f), sy0 + (26.0f - txtH(st, 8.4f)) * 0.5f, tg[k].on ? A(24, 50, 74, 255) : A(214, 226, 246, 255), st, 8.4f, true);
+				addHit(CX0 + 6.0f, ry - 4.0f, X1 - 6.0f, ry + 44.0f, K_TOG, k);
+			}
+		}
 	}
 	else
 	{
@@ -752,6 +789,14 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 				const NavDef& nv = kNav[was.idx];
 				if (nv.soon) { ShopPanel::LocalToast(2, "Em breve."); break; }
 				if (g_page != nv.page) { g_page = nv.page; g_rankScroll = 0.0f; g_ruleScroll = 0.0f; }
+				break;
+			}
+			case K_TOG:
+			{
+				if (was.idx == 2) { UiPrefs::SetMapOn(!UiPrefs::MapOn()); UiPrefs::Save(); break; }
+				CtlLogic::ModernConfig c = ControlMode::GetConfig();
+				if (was.idx == 0) c.showInv = !c.showInv; else c.showRunLock = !c.showRunLock;
+				ControlMode::SetConfig(c, true);
 				break;
 			}
 			case K_TMIN:  PanelAlpha::Set(PanelAlpha::Get() - PanelAlpha::kStep); PanelAlpha::Save(); break;
