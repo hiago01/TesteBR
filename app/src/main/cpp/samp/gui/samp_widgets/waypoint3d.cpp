@@ -263,16 +263,39 @@ void Waypoint3D::Draw(ImGuiRenderer* r, float k)
 		}
 		// fora da tela ou atras: seta na borda apontando para onde virar
 		it.off = true;
-		if (front) { it.dir = ImVec2(it.p.x - cen.x, it.p.y - cen.y); }
-		else
 		{
+			// SEMPRE no espaco da camera (direita / cima / frente): antes usava a projecao quando estava na frente e o espaco da camera quando
+			// estava atras; as duas dao angulos diferentes, entao a seta "pulava" para o lado errado ao girar a camera.
 			const float wx = p.x - cam.pos.x, wy = p.y - cam.pos.y, wz = (p.z + 1.9f) - cam.pos.z;
 			const float cxr = wx * cam.right.x + wy * cam.right.y + wz * cam.right.z;     // para a direita da camera
 			const float czu = wx * cam.at.x + wy * cam.at.y + wz * cam.at.z;              // para cima da camera
-			it.dir = ImVec2(cxr, -czu);
+			const float cfw = wx * cam.up.x + wy * cam.up.y + wz * cam.up.z;              // para a frente da camera
+			float dxs = cxr, dys = -czu;                                                   // tela: x para a direita, y para baixo
+			if (cfw < 0.0f)                                                                // atras: indica para que lado GIRAR (nao sobe/desce)
+			{
+				const float hz = std::sqrt(cxr * cxr + cfw * cfw);
+				dxs = hz > 1e-3f ? cxr / hz : 0.0f;
+				dys = hz > 1e-3f ? -czu / hz : 0.0f;
+				static float s_side = 1.0f;                                                // quase exatamente atras: mantem o ultimo lado (sem tremer)
+				if (std::fabs(dxs) > 0.05f) s_side = dxs > 0.0f ? 1.0f : -1.0f;
+				else dxs = 0.05f * s_side;
+				dxs *= 4.0f;                                                               // pesa mais o lado do que a altura
+			}
+			it.dir = ImVec2(dxs, dys);
 		}
 		const float ln = std::sqrt(it.dir.x * it.dir.x + it.dir.y * it.dir.y);
 		if (ln < 1e-3f) it.dir = ImVec2(0.0f, 1.0f); else it.dir = ImVec2(it.dir.x / ln, it.dir.y / ln);
+		{   // suaviza o angulo por marcacao (tira o tremor quando a camera gira)
+			struct Sm { float x, y; ImVec2 d; };
+			static std::vector<Sm> sm;
+			Sm* e = nullptr;
+			for (Sm& q : sm) if (q.x == p.x && q.y == p.y) { e = &q; break; }
+			if (!e) { if (sm.size() >= 24) sm.erase(sm.begin()); sm.push_back({p.x, p.y, it.dir}); e = &sm.back(); }
+			ImVec2 nd(e->d.x + (it.dir.x - e->d.x) * 0.45f, e->d.y + (it.dir.y - e->d.y) * 0.45f);
+			const float nl = std::sqrt(nd.x * nd.x + nd.y * nd.y);
+			if (nl > 1e-3f) { nd.x /= nl; nd.y /= nl; e->d = nd; it.dir = nd; }
+			else e->d = it.dir;
+		}
 		it.hasGround = false;
 		items.push_back(it);
 	}
@@ -346,21 +369,36 @@ void Waypoint3D::Draw(ImGuiRenderer* r, float k)
 		}
 		used.push_back(P);
 
-		// seta (triangulo) fora do disco, apontando para a direcao da marcacao
-		const ImVec2 tip(P.x + it.dir.x * (R + 15.0f * k), P.y + it.dir.y * (R + 15.0f * k));
-		const ImVec2 b1(P.x + it.dir.x * (R + 1.0f * k) + perp.x * 9.0f * k, P.y + it.dir.y * (R + 1.0f * k) + perp.y * 9.0f * k);
-		const ImVec2 b2(P.x + it.dir.x * (R + 1.0f * k) - perp.x * 9.0f * k, P.y + it.dir.y * (R + 1.0f * k) - perp.y * 9.0f * k);
-		r->drawTriangle(tip, b1, b2, ImColor(255, 255, 255, 240), true);
-		// disco escuro com o ID "(1)"
-		constexpr int N = 28;
-		ImVec2 c[N];
-		for (int i = 0; i < N; i++) { const float a = (float)i * 6.2831853f / (float)N; c[i] = ImVec2(P.x + std::cos(a) * R, P.y + std::sin(a) * R); }
-		r->drawConvexPolyFilled(c, N, ImColor(16, 16, 20, 215));
-		r->drawPolyline(c, N, ImColor(255, 255, 255, 235), true, 1.8f * k);
+		// ---- disco do ID: fundo azul em degrade + moldura dupla + brilho pulsante (sem o fundo preto) ----
+		const float tt = (float)(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count() % 2000) / 2000.0f;
+		const float pul = 0.5f - 0.5f * std::cos(tt * 6.2831853f);                  // 0..1..0 a cada 2 s
+		auto circle = [&](float rad, const ImColor& col, bool fillIt, float lw)
+		{
+			constexpr int NC = 32;
+			ImVec2 q[NC];
+			for (int a = 0; a < NC; a++) { const float an = (float)a * 6.2831853f / (float)NC; q[a] = ImVec2(P.x + std::cos(an) * rad, P.y + std::sin(an) * rad); }
+			if (fillIt) r->drawConvexPolyFilled(q, NC, col); else r->drawPolyline(q, NC, col, true, lw);
+		};
+		circle(R + (5.0f + 7.0f * pul) * k, ImColor(80, 170, 255, (int)(70.0f * (1.0f - pul))), false, 2.2f * k);     // onda que se expande
+		circle(R + 3.0f * k, ImColor(70, 150, 255, 60 + (int)(50.0f * pul)), true, 0.0f);                              // brilho externo
+		// seta: triangulo claro com contorno azul, apontando para a direcao
+		const ImVec2 tip(P.x + it.dir.x * (R + 17.0f * k), P.y + it.dir.y * (R + 17.0f * k));
+		const ImVec2 b1(P.x + it.dir.x * (R + 2.0f * k) + perp.x * 10.0f * k, P.y + it.dir.y * (R + 2.0f * k) + perp.y * 10.0f * k);
+		const ImVec2 b2(P.x + it.dir.x * (R + 2.0f * k) - perp.x * 10.0f * k, P.y + it.dir.y * (R + 2.0f * k) - perp.y * 10.0f * k);
+		r->drawTriangle(tip, b1, b2, ImColor(40, 120, 235, 255), true);
+		r->drawTriangle(tip, b1, b2, ImColor(255, 255, 255, 245), false, 1.6f * k);
+		circle(R, ImColor(18, 52, 120, 255), true, 0.0f);                                                              // degrade: 3 discos
+		circle(R * 0.80f, ImColor(34, 92, 190, 255), true, 0.0f);
+		circle(R * 0.52f, ImColor(66, 140, 235, 150), true, 0.0f);
+		circle(R, ImColor(255, 255, 255, 250), false, 2.8f * k);                                                       // moldura externa branca
+		circle(R - 4.2f * k, ImColor(120, 200, 255, 220), false, 1.3f * k);                                            // moldura interna ciano
+		// brilho no topo (reflexo)
+		r->drawLine(ImVec2(P.x - R * 0.42f, P.y - R * 0.62f), ImVec2(P.x + R * 0.18f, P.y - R * 0.78f), ImColor(255, 255, 255, 120), 2.0f * k);
 		const std::string idt = "(" + std::to_string(it.id) + ")";
 		const float fi = 14.0f * k;
 		const ImVec2 ti = r->calculateTextSize(idt, fi);
-		r->drawText(ImVec2(P.x - ti.x * 0.5f, P.y - ti.y * 0.5f), ImColor(250, 250, 252, 255), idt, true, fi);
+		r->drawText(ImVec2(P.x - ti.x * 0.5f + 0.8f * k, P.y - ti.y * 0.5f + 0.8f * k), ImColor(0, 20, 60, 200), idt, false, fi);   // sombra
+		r->drawText(ImVec2(P.x - ti.x * 0.5f, P.y - ti.y * 0.5f), ImColor(255, 255, 255, 255), idt, true, fi);
 		// nome + distancia do lado de dentro da tela
 		std::string nm = it.pin->name;
 		if (nm.size() > 22) nm = nm.substr(0, 21) + "...";
@@ -370,7 +408,8 @@ void Waypoint3D::Draw(ImGuiRenderer* r, float k)
 		const float bw = std::max(tn2.x, td2.x) + 12.0f * k, bh = tn2.y + td2.y + 8.0f * k;
 		float bx = P.x - bw * 0.5f, by = P.y > cen.y ? P.y - R - bh - 4.0f * k : P.y + R + 4.0f * k;
 		bx = std::min(std::max(bx, 4.0f * k), scr.x - bw - 4.0f * k);
-		r->drawRoundedRect(ImVec2(bx, by), ImVec2(bx + bw, by + bh), ImColor(16, 16, 20, 190), 7.0f * k, true);
+		r->drawRoundedRect(ImVec2(bx, by), ImVec2(bx + bw, by + bh), ImColor(14, 30, 70, 205), 7.0f * k, true);
+		r->drawRoundedRect(ImVec2(bx, by), ImVec2(bx + bw, by + bh), ImColor(120, 200, 255, 150), 7.0f * k, false, 1.2f);
 		r->drawText(ImVec2(bx + (bw - tn2.x) * 0.5f, by + 4.0f * k), ImColor(250, 250, 252, 255), nm, false, fn);
 		r->drawText(ImVec2(bx + (bw - td2.x) * 0.5f, by + 4.0f * k + tn2.y), ImColor(168, 170, 178, 255), ds, false, fd);
 	}
