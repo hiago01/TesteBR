@@ -288,6 +288,15 @@ void TextCentered(Canvas& c, const char* s, float cu, float capTopV, float capH,
     }
 }
 
+// carro sem placa: so o suporte (chapa escura com dois furos), sem texto e sem fonte
+void DrawNoPlate(Canvas& c)
+{
+    c.Rect(0, 0, kPW, 1.f, 28, 29, 31);
+    c.RoundRect(0.04f, 0.06f, kPW - 0.04f, 0.94f, 0.07f, 40, 41, 44);
+    c.Circle(0.30f, 0.5f, 0.045f, 18, 18, 20);
+    c.Circle(kPW - 0.30f, 0.5f, 0.045f, 18, 18, 20);
+}
+
 void DrawPlate(Canvas& c, const std::string& text)
 {
     // moldura escura + fundo claro
@@ -307,13 +316,24 @@ void DrawPlate(Canvas& c, const std::string& text)
     c.Circle(0.265f, 0.15f, 0.014f, 255, 255, 255);
     // caracteres
     const int n = (int)text.size();
-    const float u0 = 0.20f, u1 = kPW - 0.20f;
+    const float u0 = 0.30f, u1 = kPW - 0.17f;
     const float cell = (u1 - u0) / (float)n;
     const float capH = 0.52f, capTop = 0.33f;
     for (int i = 0; i < n; ++i)
-        Glyph(c, (unsigned char)text[i], u0 + cell * (i + 0.5f), capTop, capH, cell * 0.94f, 20, 20, 22);
+        Glyph(c, (unsigned char)text[i], u0 + cell * (i + 0.5f), capTop, capH, cell * 0.94f, 16, 22, 66);   // azul-escuro (FE-Schrift das placas Mercosul)
+    // QR code decorativo (quadradinhos fixos) a esquerda dos caracteres
+    {
+        uint32_t h = 0x51ED2701u;
+        const float q0u = 0.075f, q0v = 0.40f, cs = 0.026f;
+        for (int gy = 0; gy < 7; ++gy)
+            for (int gx = 0; gx < 7; ++gx) {
+                h = Hash32(h + (uint32_t)(gy * 7 + gx));
+                const bool corner = (gx < 2 && gy < 2) || (gx > 4 && gy < 2) || (gx < 2 && gy > 4);
+                if (corner || (h & 3u) == 0u) c.Rect(q0u + gx * cs * 0.64f, q0v + gy * cs, q0u + (gx + 1) * cs * 0.64f - 0.002f, q0v + (gy + 1) * cs - 0.002f, 16, 22, 66);
+            }
+    }
     // "BR" pequeno no canto inferior esquerdo
-    TextCentered(c, "BR", 0.20f, 0.86f, 0.065f, 20, 20, 22);
+    TextCentered(c, "BR", 0.16f, 0.82f, 0.065f, 16, 22, 66);
 }
 
 // ---------------------------------------------------------------- RwTexture --------------------------------------------
@@ -377,7 +397,11 @@ RwTexture* GetPlateTexture(const std::string& text)
     auto it = s_cache.find(text);
     if (it != s_cache.end()) { it->second.last = now; return it->second.tex; }   // tex == nullptr: falhou antes, nao tenta de novo
     CacheEnt e; e.last = now;
-    if (EnsureFont()) {
+    if (text == "-") {
+        Canvas c; DrawNoPlate(c);
+        e.tex = MakeTexture(c.px, "mx_plate");
+        PLOG("[PLACA] carro sem placa: suporte vazio (tex=%p)", (void*)e.tex);
+    } else if (EnsureFont()) {
         Canvas c;
         DrawPlate(c, text);
         e.tex = MakeTexture(c.px, "mx_plate");
@@ -391,7 +415,7 @@ RwTexture* GetPlateTexture(const std::string& text)
 
 // ---------------------------------------------------------------- veiculo -> texto -------------------------------------
 std::string PlateOfVehicle(CVehicleGTA* veh, int* idOut)
-{
+{   // texto "-" (servidor: placa removida pelo jogador) = carro SEM placa: desenha so o suporte vazio
     int id = -1;
     const char* raw = nullptr;
     if (pNetGame && pNetGame->GetVehiclePool()) {
@@ -404,6 +428,7 @@ std::string PlateOfVehicle(CVehicleGTA* veh, int* idOut)
     }
     if (id < 0) id = (int)(((uintptr_t)veh >> 4) & 0xFFFFu) + 5000;   // carro fora do SAMP (transito): texto estavel pelo endereco
     if (idOut) *idOut = id;
+    if (raw && raw[0] == '-' && raw[1] == '\0') return "-";
     return NormalizePlate(raw, id);
 }
 
@@ -544,7 +569,14 @@ void ApplyImgPatch(const std::string& root)
     uint8_t cur[8];
     if (fseeko(f, (off_t)at, SEEK_SET) != 0 || fread(cur, 1, 8, f) != 8) { FLog("[PLACA] patch: nao li a entrada no IMG"); return; }
     uint32_t ct, cs; memcpy(&ct, cur, 4); memcpy(&cs, cur + 4, 4);
-    if (ct == 0x10 && cs == s0) { FLog("[PLACA] patch: viaturas.img ja tem o mx_cheetah com placa (posn=%u)", off); return; }
+    // marca do patch ja aplicado: tamanho + data do arquivo (um DFF novo de mesmo tamanho, ex. so a posicao da placa mudou, tambem e reaplicado)
+    char tag[96]; snprintf(tag, sizeof tag, "%lld %lld", (long long)st.st_size, (long long)st.st_mtime);
+    const std::string sidecar = root + "texdb/patch/mx_cheetah_plate.applied";
+    {
+        char prev[96] = {0};
+        if (FILE* sf = fopen(sidecar.c_str(), "r")) { if (!fgets(prev, sizeof prev, sf)) prev[0] = 0; fclose(sf); }
+        if (ct == 0x10 && cs == s0 && strcmp(prev, tag) == 0) { FLog("[PLACA] patch: viaturas.img ja tem este mx_cheetah com placa (posn=%u)", off); return; }
+    }
     if (ct != 0x10 || (uint64_t)cs + 12 > slot) { FLog("[PLACA] patch: a entrada no IMG nao parece um DFF (tipo=%u tam=%u): ignorado", ct, cs); return; }
 
     std::vector<uint8_t> nw;
@@ -563,6 +595,7 @@ void ApplyImgPatch(const std::string& root)
     uint64_t left = slot - nw.size();
     while (ok && left > 0) { const size_t n = (size_t)std::min<uint64_t>(left, zeros.size()); ok = fwrite(zeros.data(), 1, n, f) == n; left -= n; }
     ok = ok && fflush(f) == 0;
+    if (ok) { if (FILE* sf = fopen(sidecar.c_str(), "w")) { fputs(tag, sf); fclose(sf); } }
     FLog("[PLACA] patch: mx_cheetah.dff (posn=%u, espaco %llu B) substituido por %zu B: %s", off, (unsigned long long)slot, nw.size(), ok ? "OK" : "FALHOU (IMG pode estar incompleto: apague texdb/patch/mx_cheetah_plate.dff e restaure o viaturas.img)");
 }
 

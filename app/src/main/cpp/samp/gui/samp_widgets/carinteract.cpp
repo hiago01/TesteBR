@@ -19,7 +19,7 @@ extern CNetGame* pNetGame;
 
 namespace
 {
-	struct State { bool active = false; int veh = 0; bool moto = false; bool locked = false; int trunk = 0; };   // trunk: 0 sem porta-malas | 1 fechado | 2 aberto
+	struct State { bool active = false; int veh = 0; bool moto = false; bool locked = false; int trunk = 0; int plate = -1; };   // trunk: 0 sem porta-malas | 1 fechado | 2 aberto | plate: -1 servidor antigo/sem placa | 0 com placa | 1 placa removida
 	std::mutex g_mtx;
 	State      g_net;
 	bool       g_menu = false;       // so a thread de desenho mexe
@@ -47,11 +47,13 @@ namespace
 
 void CarInteract::OnPacket(RakNet::BitStream& bs)
 {
-	uint8_t on = 0, moto = 0, lk = 0, tk = 0; uint16_t veh = 0;
+	uint8_t on = 0, moto = 0, lk = 0, tk = 0, pl = 255; uint16_t veh = 0;
 	if (!bs.Read(on) || !bs.Read(veh) || !bs.Read(moto) || !bs.Read(lk)) return;
 	if (!bs.Read(tk)) tk = 0;                                            // extensao opcional no fim (servidor antigo = sem porta-malas)
+	if (!bs.Read(pl)) pl = 255;                                          // extensao opcional: 0 com placa | 1 placa removida (servidor antigo = sem o item)
 	std::lock_guard<std::mutex> l(g_mtx);
 	g_net.active = on != 0 && veh > 0; g_net.veh = g_net.active ? (int)veh : 0; g_net.moto = moto != 0; g_net.locked = lk != 0; g_net.trunk = (g_net.active && !moto) ? std::min<int>(tk, 2) : 0;
+	g_net.plate = (g_net.active && !moto && pl <= 1) ? (int)pl : -1;
 }
 
 void CarInteract::Reset()
@@ -80,12 +82,14 @@ bool CarInteract::Draw(ImGuiRenderer* r, float k, bool hasTap, float tx, float t
 	const float pxm = std::max(18.0f * k, std::fabs(ctr.y - top.y));          // pixels por metro (aprox.) neste ponto
 	const float carR = (s.moto ? 1.0f : 1.9f) * pxm;
 
-	// itens do menu (carro): 1 Trancar/Destrancar | 2 Abrir/Fechar porta-malas (so com porta-malas) | 3 Ver porta-malas (so com ele aberto)
+	// itens do menu (carro): 1 Trancar/Destrancar | 2 Abrir/Fechar porta-malas (so com porta-malas) | 3 Ver porta-malas (so com ele aberto) | 4 Remover placa | 5 Colocar placa
 	struct Row { int act; const char* txt; };
-	Row rows[3]; int nRows = 0;
+	Row rows[4]; int nRows = 0;
 	rows[nRows++] = { 1, s.locked ? (s.moto ? "Destrancar" : "Destrancar veículo") : (s.moto ? "Trancar" : "Trancar veículo") };
 	if (s.trunk > 0) rows[nRows++] = { 2, s.trunk == 2 ? "Fechar porta-malas" : "Abrir porta-malas" };
 	if (s.trunk == 2) rows[nRows++] = { 3, "Ver porta-malas" };
+	if (s.plate == 0) rows[nRows++] = { 4, "Remover placa" };          // a placa vai para o inventario
+	else if (s.plate == 1) rows[nRows++] = { 5, "Colocar placa" };     // usa a placa deste carro que esta no inventario
 	const float fs = 9.5f * k;
 	const float rowH = 26.0f * k, rowW = (s.moto ? 104.0f : 160.0f) * k, gap = 2.0f * k;
 	const ImVec2 ma(dot.x + 12.0f * k, dot.y - rowH * 0.5f), mb(ma.x + rowW, ma.y + rowH);   // 1a linha

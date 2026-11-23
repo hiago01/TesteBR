@@ -484,7 +484,7 @@ void JobsUI::draw(ImGuiRenderer* r)
 	{
 		int lockVeh = 0, carAct = 0;
 		if (CarInteract::Draw(r, k, g_tapReq.load(), g_tapX.load(), g_tapY.load(), lockVeh, carAct)) g_tapReq.store(false);
-		if (lockVeh > 0) Send(carAct == 2 ? 30 : carAct == 3 ? 31 : 13, lockVeh);     // 13 trancar | 30 abrir/fechar porta-malas | 31 ver porta-malas
+		if (lockVeh > 0) Send(carAct == 2 ? 30 : carAct == 3 ? 31 : carAct == 4 ? 32 : carAct == 5 ? 33 : 13, lockVeh);     // 13 trancar | 30 abrir/fechar porta-malas | 31 ver porta-malas | 32 remover placa | 33 colocar placa
 	}
 	else CarInteract::CloseMenu();
 
