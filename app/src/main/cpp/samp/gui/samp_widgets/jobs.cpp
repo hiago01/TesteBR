@@ -108,7 +108,7 @@ namespace
 		FLog("[JOBS3D] Send op %d arg %d", op, arg);
 		RakNet::BitStream bs;
 		bs.Write((uint8_t)op);
-		if (op == 1 || op == 2 || op == 12 || op == 13 || (op >= 14 && op <= 17) || op == 19 || op == 30 || op == 31) bs.Write((uint16_t)arg);   // 30/31 = porta-malas (abrir-fechar / ver): u16 veiculo   // 14/15/16 = nota fiscal: u16 numero da nota; 17 = loja abriu | 19 = loja fechou: u16 numero da loja
+		if (op == 1 || op == 2 || op == 12 || op == 13 || (op >= 14 && op <= 17) || op == 19 || op == 30 || op == 31 || op == 32 || op == 33) bs.Write((uint16_t)arg);   // 30/31 = porta-malas (abrir-fechar / ver) | 32/33 = remover/colocar placa: u16 veiculo   // 14/15/16 = nota fiscal: u16 numero da nota; 17 = loja abriu | 19 = loja fechou: u16 numero da loja
 		pNetGame->GetRakClient()->RPC(&RPC_JobsRequest, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
 	}
 

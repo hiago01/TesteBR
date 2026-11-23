@@ -140,11 +140,14 @@ std::string NormalizePlate(const char* raw, int vehicleId)
 
 namespace {
 // ---------------------------------------------------------------- fonte ------------------------------------------------
-std::vector<unsigned char> s_fontData;
-stbtt_fontinfo             s_font;
-bool                       s_fontTried = false, s_fontOk = false;
+// s_fontA = caracteres da placa (FE-FONT.TTF = fonte das placas Mercosul; senao Barlow Condensed Black; senao a fonte padrao)
+// s_fontB = textos pequenos ("BRASIL", "BR"): Barlow Condensed Black se existir, senao a mesma da placa
+struct LoadedFont { std::vector<unsigned char> data; stbtt_fontinfo info; bool ok = false; std::string name; };
+LoadedFont  s_fA, s_fB;
+stbtt_fontinfo* s_cur = nullptr;      // fonte usada pelas funcoes de desenho abaixo
+bool        s_fontTried = false, s_fontOk = false;
 
-bool LoadFontFile(const std::string& path)
+bool LoadFontFile(const std::string& path, LoadedFont& lf)
 {
     FILE* f = fopen(path.c_str(), "rb");
     if (!f) return false;
@@ -152,11 +155,12 @@ bool LoadFontFile(const std::string& path)
     const long sz = ftell(f);
     fseek(f, 0, SEEK_SET);
     if (sz <= 0 || sz > 8 * 1024 * 1024) { fclose(f); return false; }
-    s_fontData.resize((size_t)sz);
-    const size_t rd = fread(s_fontData.data(), 1, (size_t)sz, f);
+    lf.data.resize((size_t)sz);
+    const size_t rd = fread(lf.data.data(), 1, (size_t)sz, f);
     fclose(f);
     if (rd != (size_t)sz) return false;
-    return stbtt_InitFont(&s_font, s_fontData.data(), stbtt_GetFontOffsetForIndex(s_fontData.data(), 0)) != 0;
+    lf.ok = stbtt_InitFont(&lf.info, lf.data.data(), stbtt_GetFontOffsetForIndex(lf.data.data(), 0)) != 0;
+    return lf.ok;
 }
 
 bool EnsureFont()
@@ -165,12 +169,15 @@ bool EnsureFont()
     s_fontTried = true;
     const std::string r = Root();
     if (r.empty()) return false;
-    const char* cand[] = { "fonts/BarlowCondensed-Black.ttf", "fonts/" FONT_NAME };
-    for (const char* c : cand) {
-        if (LoadFontFile(r + c)) { s_fontOk = true; FLog("[PLACA] fonte: %s", c); return true; }
-    }
-    FLog("[PLACA] AVISO: nenhuma fonte encontrada em %sfonts/ (placa dinamica desligada, fica a placa do DFF)", r.c_str());
-    return false;
+    const char* candA[] = { "fonts/FE-FONT.TTF", "fonts/FE-Font.ttf", "fonts/fe-font.ttf", "fonts/BarlowCondensed-Black.ttf", "fonts/" FONT_NAME };
+    for (const char* c : candA)
+        if (LoadFontFile(r + c, s_fA)) { s_fA.name = c; break; }
+    if (!s_fA.ok) { FLog("[PLACA] AVISO: nenhuma fonte encontrada em %sfonts/ (placa dinamica desligada, fica a placa do DFF)", r.c_str()); return false; }
+    if (!LoadFontFile(r + "fonts/BarlowCondensed-Black.ttf", s_fB)) { s_fB.data = s_fA.data; s_fB.ok = stbtt_InitFont(&s_fB.info, s_fB.data.data(), stbtt_GetFontOffsetForIndex(s_fB.data.data(), 0)) != 0; s_fB.name = s_fA.name; }
+    else s_fB.name = "fonts/BarlowCondensed-Black.ttf";
+    s_fontOk = s_fA.ok && s_fB.ok;
+    FLog("[PLACA] fontes: caracteres=%s textos=%s", s_fA.name.c_str(), s_fB.name.c_str());
+    return s_fontOk;
 }
 
 // ---------------------------------------------------------------- desenho da placa -------------------------------------
@@ -234,7 +241,7 @@ int NextCp(const char*& s) { const unsigned char c = (unsigned char)*s; ++s; ret
 float CapScaleY(float capH)   // escala stb para que a altura de 'H' valha capH unidades
 {
     int x0, y0, x1, y1;
-    stbtt_GetCodepointBitmapBox(&s_font, 'H', 1.f, 1.f, &x0, &y0, &x1, &y1);
+    stbtt_GetCodepointBitmapBox(s_cur, 'H', 1.f, 1.f, &x0, &y0, &x1, &y1);
     const float capPx = (float)(y1 - y0);
     return capPx > 0.f ? (capH * kSY) / capPx : 0.01f;
 }
@@ -245,13 +252,13 @@ void Glyph(Canvas& c, int cp, float cu, float capTopV, float capH, float maxW, u
     const float sy = CapScaleY(capH);
     float sx = sy * (kSX / kSY);
     int ax, ay, bx, by;
-    stbtt_GetCodepointBitmapBox(&s_font, cp, sx, sy, &ax, &ay, &bx, &by);
+    stbtt_GetCodepointBitmapBox(s_cur, cp, sx, sy, &ax, &ay, &bx, &by);
     float gwU = (bx - ax) / kSX;
-    if (gwU > maxW && gwU > 0.f) { sx *= maxW / gwU; stbtt_GetCodepointBitmapBox(&s_font, cp, sx, sy, &ax, &ay, &bx, &by); }
+    if (gwU > maxW && gwU > 0.f) { sx *= maxW / gwU; stbtt_GetCodepointBitmapBox(s_cur, cp, sx, sy, &ax, &ay, &bx, &by); }
     const int gw = bx - ax, gh = by - ay;
     if (gw <= 0 || gh <= 0 || gw > 400 || gh > 300) return;
     std::vector<unsigned char> bmp((size_t)gw * gh);
-    stbtt_MakeCodepointBitmap(&s_font, bmp.data(), gw, gh, gw, sx, sy, cp);
+    stbtt_MakeCodepointBitmap(s_cur, bmp.data(), gw, gh, gw, sx, sy, cp);
     const int baseline = (int)lroundf((capTopV + capH) * kSY);
     const int x0 = (int)lroundf(cu * kSX - gw * 0.5f) ;
     for (int yy = 0; yy < gh; ++yy)
@@ -267,17 +274,17 @@ void TextCentered(Canvas& c, const char* s, float cu, float capTopV, float capH,
     const float sy = CapScaleY(capH);
     const float sx = sy * (kSX / kSY);
     float w = 0.f;
-    for (const char* p = s; *p;) { int cp = NextCp(p), adv = 0, lsb = 0; stbtt_GetCodepointHMetrics(&s_font, cp, &adv, &lsb); w += adv * sx; }
+    for (const char* p = s; *p;) { int cp = NextCp(p), adv = 0, lsb = 0; stbtt_GetCodepointHMetrics(s_cur, cp, &adv, &lsb); w += adv * sx; }
     float x = cu * kSX - w * 0.5f;
     const int baseline = (int)lroundf((capTopV + capH) * kSY);
     for (const char* p = s; *p;) {
         const int cp = NextCp(p); int adv = 0, lsb = 0;
-        stbtt_GetCodepointHMetrics(&s_font, cp, &adv, &lsb);
-        int ax, ay, bx, by; stbtt_GetCodepointBitmapBox(&s_font, cp, sx, sy, &ax, &ay, &bx, &by);
+        stbtt_GetCodepointHMetrics(s_cur, cp, &adv, &lsb);
+        int ax, ay, bx, by; stbtt_GetCodepointBitmapBox(s_cur, cp, sx, sy, &ax, &ay, &bx, &by);
         const int gw = bx - ax, gh = by - ay;
         if (gw > 0 && gh > 0 && gw < 400 && gh < 300) {
             std::vector<unsigned char> bmp((size_t)gw * gh);
-            stbtt_MakeCodepointBitmap(&s_font, bmp.data(), gw, gh, gw, sx, sy, cp);
+            stbtt_MakeCodepointBitmap(s_cur, bmp.data(), gw, gh, gw, sx, sy, cp);
             for (int yy = 0; yy < gh; ++yy)
                 for (int xx = 0; xx < gw; ++xx) {
                     const float a = bmp[(size_t)yy * gw + xx] / 255.f;
@@ -306,6 +313,7 @@ void DrawPlate(Canvas& c, const std::string& text)
     c.RoundRect(0.03f, 0.03f, kPW - 0.03f, 0.34f, 0.08f, 0, 52, 160);
     c.Rect(0.03f, 0.26f, kPW - 0.03f, 0.40f, 238, 238, 236);
     // "BRASIL"
+    s_cur = &s_fB.info;
     TextCentered(c, "BRASIL", kPW * .5f, 0.085f, 0.115f, 255, 255, 255);
     // bandeira (direita da faixa)
     c.Rect(2.72f, 0.085f, 2.95f, 0.215f, 0, 140, 60);
@@ -314,7 +322,8 @@ void DrawPlate(Canvas& c, const std::string& text)
     // emblema do Mercosul (esquerda da faixa): aro + ponto
     c.Ring(0.265f, 0.15f, 0.052f, 0.012f, 255, 255, 255);
     c.Circle(0.265f, 0.15f, 0.014f, 255, 255, 255);
-    // caracteres
+    // caracteres (fonte da placa)
+    s_cur = &s_fA.info;
     const int n = (int)text.size();
     const float u0 = 0.30f, u1 = kPW - 0.17f;
     const float cell = (u1 - u0) / (float)n;
@@ -333,6 +342,7 @@ void DrawPlate(Canvas& c, const std::string& text)
             }
     }
     // "BR" pequeno no canto inferior esquerdo
+    s_cur = &s_fB.info;
     TextCentered(c, "BR", 0.16f, 0.82f, 0.065f, 16, 22, 66);
 }
 
