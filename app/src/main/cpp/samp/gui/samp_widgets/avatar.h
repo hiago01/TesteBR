@@ -15,7 +15,10 @@ namespace Avatar
 	void OnPickFailed();                                         // JNI: usuario cancelou / erro ao ler a foto
 	void RequestPick();                                          // abre a Galeria (thread de desenho)
 	void Tick();                                                 // thread de desenho: textura, envio pendente, pedido ao servidor
-	RwRaster* Raster();                                          // nullptr = sem avatar
+	RwRaster* Raster();
+	RwRaster* PhotoOf(uint32_t acc);                              // foto de uma conta (podio do ranking); avatar padrao enquanto a foto nao chega
+	void DrawPhotoOf(ImGuiRenderer* r, uint32_t acc, float cx, float cy, float ar);   // foto da conta recortada em circulo
+	void DrawPhotoRas(ImGuiRenderer* r, RwRaster* ras, float cx, float cy, float ar);                                          // nullptr = sem avatar
 	uint32_t AccountId();                                        // 0 = ainda nao recebido
 	bool PopMessage(std::string& out);                           // aviso curto para o toast do inventario
 	void Reset();

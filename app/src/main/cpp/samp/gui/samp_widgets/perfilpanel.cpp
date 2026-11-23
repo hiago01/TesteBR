@@ -6,6 +6,7 @@
 #include "../UiPrefs.h"             // minimapa ligado/desligado
 #include "controlmode.h"            // botoes Inventario / Corrida-lock (ModernConfig)
 #include "avatarpicker.h"           // foto + moldura + fundo da linha (pagina Personalizar)
+#include "rankpodium.h"              // podio dos 3 primeiros do ranking
 
 #include <algorithm>
 #include <chrono>
@@ -23,7 +24,8 @@
 namespace
 {
 	struct RankRow { uint32_t pos = 0; std::string name; uint32_t val = 0; bool online = false; };
-	struct RankState { bool have = false, loading = false; std::vector<RankRow> rows; uint32_t mePos = 0, meVal = 0; int64_t t = 0, reqT = 0; };
+	struct PodInfo { bool ok = false; uint32_t acc = 0; uint8_t border = 0, style = 0; };
+	struct RankState { bool have = false, loading = false; std::vector<RankRow> rows; uint32_t mePos = 0, meVal = 0; int64_t t = 0, reqT = 0; PodInfo pod[3]; };
 	struct RuleLine { int style = 0; std::string text; };
 	struct WLine { int style = 0; float y = 0.0f, h = 0.0f; std::string text; bool first = true; };
 	struct RuleState { bool have = false, loading = false; int64_t reqT = 0; std::vector<RuleLine> lines; float layU = 0.0f, layW = 0.0f, total = 0.0f; std::vector<WLine> wl; };
@@ -200,6 +202,12 @@ bool PerfilPanel::OnRank(RakNet::BitStream& bs)
 	}
 	if (!bs.Read(d.mePos) || !bs.Read(d.meVal)) return false;
 	for (auto& rw : d.rows) { uint8_t on = 0; if (!bs.Read(on)) break; rw.online = on != 0; }     // (fim do pacote, opcional) 1 = jogador online agora; servidor antigo nao manda
+	for (int k = 0; k < 3 && k < n; k++)                                                          // (fim do pacote, opcional) PODIO: conta, moldura do avatar, fundo da linha dos 3 primeiros
+	{
+		uint32_t acc = 0; uint8_t bd = 0, st = 0;
+		if (!bs.Read(acc) || !bs.Read(bd) || !bs.Read(st)) break;
+		d.pod[k].ok = true; d.pod[k].acc = acc; d.pod[k].border = bd; d.pod[k].style = st;
+	}
 	d.have = true; d.t = NowMs();
 	std::lock_guard<std::mutex> l(g_mtx);
 	if (seq == 0 || seq != g_netInfo.seq) return true;                       // resposta de uma tela que ja foi trocada: ignora (nao e erro)
@@ -518,13 +526,27 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 			txt(tx0, ty0 + txtH(cd.name, tfs) + gap, A(255, 255, 255, 215), fit(cd.sub, sfs, tw), sfs);
 		}
 		// tabela
-		const float TY0 = 204.0f + CW / 8.0f + 12.0f, TY1 = 634.0f;
+		RankState* rs = nullptr; { auto it = g_rank.find(catId); if (it != g_rank.end()) rs = &it->second; }
+		const bool haveData = rs && rs->have;
+		const bool showPod = haveData && !rs->rows.empty();                           // podio dos 3 primeiros (foto + moldura + fundo de linha); a tabela segue do 4o em diante
+		const float PODY = 204.0f + CW / 8.0f + 6.0f;
+		const float TY0 = 204.0f + CW / 8.0f + 12.0f + (showPod ? RankPodium::kHeight : 0.0f), TY1 = 634.0f;
+		if (showPod)
+		{
+			RankPodium::Entry pe[3];
+			for (int k = 0; k < 3 && k < (int)rs->rows.size(); k++)
+			{
+				const RankRow& rw = rs->rows[(size_t)k];
+				pe[k].ok = true; pe[k].acc = rs->pod[k].ok ? rs->pod[k].acc : 0; pe[k].border = rs->pod[k].border; pe[k].style = rs->pod[k].style;
+				pe[k].name = rw.name; pe[k].value = CatValue(cd, rw.val);
+			}
+			const ImVec2 po = V(CX0, PODY);
+			RankPodium::Draw(r, po.x, po.y, CW * u, u, (double)now / 1000.0, pe);
+		}
 		card(CX0, TY0, X1, TY1);
 		txt(CX0 + 20.0f, TY0 + 10.0f, A(176, 198, 230, 210), "Posição", 8.8f);
 		txt(CX0 + 100.0f, TY0 + 10.0f, A(176, 198, 230, 210), "Jogador", 8.8f);
 		txt(X1 - 22.0f - txtW(cd.metric, 8.8f), TY0 + 10.0f, A(176, 198, 230, 210), cd.metric, 8.8f);
-		RankState* rs = nullptr; { auto it = g_rank.find(catId); if (it != g_rank.end()) rs = &it->second; }
-		const bool haveData = rs && rs->have;
 		if (!haveData)
 		{
 			const std::string m = "Carregando ranking...";
@@ -534,7 +556,8 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 		else
 		{
 			if (now - rs->t > 600000) wantRank = catId;                      // dado velho (>10 min): pede de novo sem apagar o que ja esta na tela
-			const float RH = 34.0f;
+			const float RH = showPod ? 30.0f : 34.0f;
+			const int k0 = showPod ? std::min(3, (int)rs->rows.size()) : 0;     // com podio: a tabela comeca no 4o lugar
 			float y = TY0 + 34.0f;
 			// minha linha (fixa no topo da tabela)
 			{
@@ -551,7 +574,7 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 			}
 			const float LY0 = y + RH + 2.0f, LY1 = TY1 - 8.0f;
 			const int n = (int)rs->rows.size();
-			const float content = (float)n * RH, view = LY1 - LY0, maxS = std::max(0.0f, content - view);
+			const float content = (float)(n - k0) * RH, view = LY1 - LY0, maxS = std::max(0.0f, content - view);
 			g_rankScroll = std::clamp(g_rankScroll, 0.0f, maxS);
 			const ImVec2 c0 = V(CX0 + 6, LY0), c1 = V(X1 - 6, LY1);
 			g_rankR[0] = c0.x; g_rankR[1] = c0.y; g_rankR[2] = c1.x; g_rankR[3] = c1.y;
@@ -561,10 +584,10 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 				txt(CX0 + (CW - txtW(m, 11.0f)) * 0.5f, LY0 + 70.0f, A(190, 208, 236, 200), m, 11.0f);
 			}
 			r->pushClipRect(c0, c1, false);
-			for (int k = 0; k < n; k++)
+			for (int k = k0; k < n; k++)
 			{
 				const RankRow& rw = rs->rows[(size_t)k];
-				const float ry = LY0 + (float)k * RH - g_rankScroll;
+				const float ry = LY0 + (float)(k - k0) * RH - g_rankScroll;
 				if (ry + RH < LY0 || ry > LY1) continue;
 				r->drawRoundedRect(V(CX0 + 10, ry), V(X1 - 10, ry + RH - 4), A(110, 138, 184, (k % 2) ? 44 : 78), 8.0f * u, true);
 				const float ty = ry + (RH - 4 - txtH(rw.name, 11.0f)) * 0.5f;

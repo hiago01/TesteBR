@@ -17,6 +17,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <map>
 #include <mutex>
 #include <vector>
 
@@ -43,6 +44,10 @@ namespace
 	int                   g_reqTries = 0;
 	int64_t               g_lastReq = 0;
 	RwRaster*             g_raster = nullptr;
+	// fotos de OUTRAS contas (podio do ranking): servidor manda por RPC 251 op 6/7; thread de rede monta, thread de desenho vira textura
+	std::map<uint32_t, AvatarLogic::Assembler> g_phAsm;
+	std::map<uint32_t, std::vector<uint8_t>>   g_phDecode;
+	std::map<uint32_t, RwRaster*>              g_phRas;          // so a thread de desenho mexe
 
 	int64_t NowMs()
 	{
@@ -180,6 +185,29 @@ void Avatar::OnServerPacket(const unsigned char* data, int bytes)
 			g_asm.Reset();
 		}
 	}
+	else if (op == 6)    // BEGIN da foto de outra conta
+	{
+		uint32_t acc = 0, total = 0; uint16_t n = 0;
+		if (!bs.Read(acc) || !bs.Read(total) || !bs.Read(n) || acc == 0) return;
+		if (g_phAsm.size() > 12) g_phAsm.clear();
+		if (!g_phAsm[acc].Begin(total, n)) g_phAsm.erase(acc);
+	}
+	else if (op == 7)    // CHUNK da foto de outra conta
+	{
+		uint32_t acc = 0; uint16_t idx = 0, len = 0;
+		if (!bs.Read(acc) || !bs.Read(idx) || !bs.Read(len)) return;
+		auto it = g_phAsm.find(acc);
+		if (it == g_phAsm.end()) return;
+		if (len == 0 || len > AvatarLogic::kChunk) { g_phAsm.erase(it); return; }
+		uint8_t tmp[AvatarLogic::kChunk];
+		for (int i = 0; i < len; i++) { if (!bs.Read(tmp[i])) { g_phAsm.erase(it); return; } }
+		if (!it->second.Chunk(idx, tmp, len)) { g_phAsm.erase(it); return; }
+		if (it->second.Done())
+		{
+			if (AvatarLogic::LooksLikeJpeg(it->second.buf.data(), it->second.buf.size())) g_phDecode[acc] = it->second.buf;
+			g_phAsm.erase(it);
+		}
+	}
 	else if (op == 4)    // RESULT do envio
 	{
 		uint8_t code = 0;
@@ -243,6 +271,17 @@ void Avatar::Tick()
 			if (g_lastReq == 0 || now - g_lastReq > 6000) { g_lastReq = now; g_reqTries++; doReq = true; }
 		}
 	}
+	{   // fotos de outras contas (podio): vira textura na thread de desenho
+		std::map<uint32_t, std::vector<uint8_t>> ph;
+		{ std::lock_guard<std::mutex> l(g_m); ph.swap(g_phDecode); }
+		for (auto& kv : ph)
+			if (RwRaster* nr = MakeRaster(kv.second.data(), (int)kv.second.size()))
+			{
+				RwRaster*& slot = g_phRas[kv.first];
+				if (slot && RwRasterDestroy) RwRasterDestroy(slot);
+				slot = nr;
+			}
+	}
 	if (doUp && Connected()) SendUpload(up);
 	else if (doUp) { std::lock_guard<std::mutex> l(g_m); g_candidate.clear(); Say("Sem conexao com o servidor"); }
 	if (doReq) SendSimple(3);
@@ -257,12 +296,26 @@ void Avatar::Tick()
 	}
 }
 
-RwRaster* Avatar::Raster()
+static RwRaster* DefaultAvatar()
 {
-	if (g_raster) return g_raster;
 	static RwRaster* s_def = nullptr; static bool s_defFailed = false;      // avatar padrao (logo Maximo RP) quando o jogador nao tem foto
 	if (!s_def && !s_defFailed) { s_def = MakeRaster(kAvatarDefaultJpg, kAvatarDefaultJpgSize); if (!s_def) s_defFailed = true; }
 	return s_def;
+}
+
+RwRaster* Avatar::Raster()
+{
+	if (g_raster) return g_raster;
+	return DefaultAvatar();
+}
+
+// foto de uma conta qualquer (podio): a minha, a que o servidor mandou, ou o avatar padrao enquanto nao chega
+RwRaster* Avatar::PhotoOf(uint32_t acc)
+{
+	if (acc != 0 && acc == g_id.load()) return Raster();
+	auto it = g_phRas.find(acc);
+	if (it != g_phRas.end() && it->second) return it->second;
+	return DefaultAvatar();
 }
 uint32_t  Avatar::AccountId() { return g_id.load(); }
 
@@ -442,10 +495,12 @@ void Avatar::DrawBorder(ImGuiRenderer* r, int idx, float cx, float cy, float ar,
 	Ring(r, cx, cy, ar + 0.5f * u, 1.0f * u, ImColor(205, 205, 214, 150));
 }
 
-void Avatar::DrawPhoto(ImGuiRenderer* r, float cx, float cy, float ar)
+void Avatar::DrawPhoto(ImGuiRenderer* r, float cx, float cy, float ar) { DrawPhotoRas(r, Raster(), cx, cy, ar); }
+void Avatar::DrawPhotoOf(ImGuiRenderer* r, uint32_t acc, float cx, float cy, float ar) { DrawPhotoRas(r, PhotoOf(acc), cx, cy, ar); }
+
+void Avatar::DrawPhotoRas(ImGuiRenderer* r, RwRaster* ras, float cx, float cy, float ar)
 {
 	if (!r) return;
-	RwRaster* ras = Raster();
 	if (!ras) { Disc(r, cx, cy, ar, ImColor(190, 190, 200, 255)); return; }
 	constexpr int N = 40;
 	ImVec2 ap[N], au[N];
