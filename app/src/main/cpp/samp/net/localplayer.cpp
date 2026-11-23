@@ -2177,12 +2177,19 @@ void CLocalPlayer::SendUnoccupiedData(VEHICLEID vehicleId, CVehicle *pVehicle)
 
     matVehicle = pVehicle->m_pVehicle->GetMatrix().ToRwMatrix();
 
-	CompressNormalVector(&unSync.vecRoll, matVehicle.right);
-	CompressNormalVector(&unSync.vecDirection, matVehicle.up);
+	// o servidor (open.mp) monta a rotacao do carro com estes dois vetores: precisam ser os vetores UNITARIOS da matriz.
+	// Antes iam multiplicados por 10000 (CompressNormalVector), o que corrompia a rotacao do carro empurrado no servidor.
+	unSync.vecRoll = matVehicle.right;
+	unSync.vecDirection = matVehicle.up;
 
     unSync.vehicleId = vehicleId;
 
-	unSync.byteSeatId = m_pPlayerPed->GetVehicleSeatID();
+	// Banco: 0 = jogador a pe empurrando / motorista; 1..7 = passageiro. O servidor RECUSA o pacote quando o banco e > 0 e o
+	// jogador nao esta como passageiro desse carro; antes um jogador a pe mandava 255 (GetVehicleSeatID() = -1) e tudo era descartado.
+	{
+		const int seat = m_pPlayerPed->GetVehicleSeatID();
+		unSync.byteSeatId = (seat > 0 && seat <= 7) ? (uint8_t)seat : (uint8_t)0;
+	}
 
     unSync.vecMoveSpeed = pVehicle->m_pVehicle->GetMoveSpeed();
     unSync.vecTurnSpeed = pVehicle->m_pVehicle->GetTurnSpeed();
