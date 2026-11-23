@@ -1,3 +1,4 @@
+#include "../game/CarBau.h"
 #include "../game/Diag.h"
 #include "../vendor/armhook/patch.h"
 #include "../game/util.h"
@@ -2273,6 +2274,7 @@ void RegisterScriptRPCs(RakClientInterface *pRakClient)
 	PhoneWidget::Reset();    // nova conexao: celular sem numero/ligacao
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrGiroflex, ScrGiroflex);
 	Giroflex_Reset();      // nova conexao: giroflex desligado
+	CarBau::Reset();       // baus da moto 1194: lista vazia
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrWeapSkin, ScrWeapSkin);
 	Weapskin_Reset();      // nova conexao: sem skins de arma
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrFlag, ScrFlag);
@@ -2356,6 +2358,7 @@ void UnregisterScriptRPCs(RakClientInterface *pRakClient)
 	VehHud::Reset();
 	PhoneWidget::Reset();
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrGiroflex);
+	CarBau::Reset();
 	Giroflex_Reset();
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrWeapSkin);
 	Weapskin_Reset();

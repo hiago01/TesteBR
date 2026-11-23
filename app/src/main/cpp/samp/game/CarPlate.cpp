@@ -184,8 +184,10 @@ bool EnsureFont()
 // Espaco da placa: largura PW x altura 1.0 (proporcao real ~3.1:1). A tela da textura e 512x256, entao x e esticado na
 // quad; todo desenho e feito nesse espaco (circulos viram elipses na textura e voltam a ser redondos no carro).
 constexpr int   kW = 512, kH = 256;
-constexpr float kPW = 3.10f;
-constexpr float kSX = kW / kPW, kSY = (float)kH;     // pixels por unidade da placa
+float kPW = 3.10f;                                    // largura da placa em unidades (altura = 1): 3.10 carro, 1.375 moto
+float kSX = kW / 3.10f;                               // pixels por unidade (x)
+constexpr float kSY = (float)kH;                      // pixels por unidade (y)
+void SetAspect(float pw) { kPW = pw; kSX = kW / pw; }
 
 struct Canvas {
     std::vector<uint8_t> px = std::vector<uint8_t>((size_t)kW * kH * 4, 0);
@@ -346,6 +348,34 @@ void DrawPlate(Canvas& c, const std::string& text)
     TextCentered(c, "BR", 0.16f, 0.82f, 0.065f, 16, 22, 66);
 }
 
+// placa de MOTO (Mercosul, 2 linhas, ~187x136 mm => proporcao 1.375:1): faixa azul, 3 letras em cima, 4 caracteres embaixo
+void DrawPlateMoto(Canvas& c, const std::string& text)
+{
+    const float W = kPW;
+    c.Rect(0, 0, W, 1.f, 22, 22, 24);
+    c.RoundRect(0.03f, 0.03f, W - 0.03f, 0.97f, 0.08f, 238, 238, 236);
+    c.RoundRect(0.03f, 0.03f, W - 0.03f, 0.27f, 0.08f, 0, 52, 160);
+    c.Rect(0.03f, 0.19f, W - 0.03f, 0.30f, 238, 238, 236);
+    s_cur = &s_fB.info;
+    TextCentered(c, "BRASIL", W * .5f, 0.075f, 0.12f, 255, 255, 255);
+    c.Rect(W - 0.30f, 0.075f, W - 0.11f, 0.195f, 0, 140, 60);                 // bandeira
+    c.Diamond(W - 0.205f, 0.135f, 0.075f, 0.043f, 255, 214, 0);
+    c.Circle(W - 0.205f, 0.135f, 0.030f, 0, 48, 152);
+    c.Ring(0.20f, 0.135f, 0.048f, 0.011f, 255, 255, 255);                       // emblema do Mercosul
+    c.Circle(0.20f, 0.135f, 0.013f, 255, 255, 255);
+    s_cur = &s_fA.info;
+    const std::string l1 = text.substr(0, std::min<size_t>(3, text.size()));
+    const std::string l2 = text.size() > 3 ? text.substr(3) : std::string();
+    auto line = [&](const std::string& t, float capTop, float capH) {
+        const int n = (int)t.size(); if (n <= 0) return;
+        const float u0 = 0.11f, u1 = W - 0.11f, cell = (u1 - u0) / (float)std::max(n, 4);
+        const float used = cell * (float)n, start = (W - used) * .5f;           // 3 letras ficam centradas na linha de cima
+        for (int i = 0; i < n; ++i) Glyph(c, (unsigned char)t[i], start + cell * (i + 0.5f), capTop, capH, cell * 0.94f, 16, 22, 66);
+    };
+    line(l1, 0.33f, 0.27f);
+    line(l2, 0.655f, 0.27f);
+}
+
 // ---------------------------------------------------------------- RwTexture --------------------------------------------
 RwTexture* MakeTexture(const std::vector<uint8_t>& rgba, const char* name)
 {
@@ -401,10 +431,12 @@ void Evict(uint64_t now)
     }
 }
 
-RwTexture* GetPlateTexture(const std::string& text)
+RwTexture* GetPlateTexture(const std::string& text, bool moto)
 {
     const uint64_t now = NowMs();
-    auto it = s_cache.find(text);
+    const std::string key = (moto ? "M:" : "C:") + text;
+    SetAspect(moto ? 1.375f : 3.10f);
+    auto it = s_cache.find(key);
     if (it != s_cache.end()) { it->second.last = now; return it->second.tex; }   // tex == nullptr: falhou antes, nao tenta de novo
     CacheEnt e; e.last = now;
     if (text == "-") {
@@ -413,12 +445,12 @@ RwTexture* GetPlateTexture(const std::string& text)
         PLOG("[PLACA] carro sem placa: suporte vazio (tex=%p)", (void*)e.tex);
     } else if (EnsureFont()) {
         Canvas c;
-        DrawPlate(c, text);
+        if (moto) DrawPlateMoto(c, text); else DrawPlate(c, text);
         e.tex = MakeTexture(c.px, "mx_plate");
         if (!e.tex && !s_genWarned) { s_genWarned = true; FLog("[PLACA] AVISO: nao consegui criar a RwTexture da placa '%s'", text.c_str()); }
         PLOG("[PLACA] placa '%s' gerada em %llu ms (tex=%p)", text.c_str(), (unsigned long long)(NowMs() - now), (void*)e.tex);
     }
-    s_cache[text] = e;
+    s_cache[key] = e;
     Evict(now);
     return e.tex;
 }
@@ -480,7 +512,7 @@ void Hook_Before(CVehicleGTA* veh, void* /*modelInfo*/)
     if (!clump) return;
     int id = -1;
     const std::string text = PlateOfVehicle(veh, &id);
-    RwTexture* tex = GetPlateTexture(text);
+    RwTexture* tex = GetPlateTexture(text, veh->m_nVehicleType == VEHICLE_TYPE_BIKE || veh->m_nVehicleType == VEHICLE_TYPE_BMX);
     if (!tex) return;                         // sem textura: fica a placa do DFF
     ScanCtx c{ tex, 0 };
     RpClumpForAllAtomics(clump, AtomicCB, &c);
@@ -540,10 +572,11 @@ bool WriteFileIfAbsent(const std::string& p, const uint8_t* data, size_t n)
 }
 }
 
-void ApplyImgPatch(const std::string& root)
+// Aplica UM patch: troca a entrada 'entry' de texdb/viaturas.img pelo DFF 'patchRel' (so se couber no espaco da entrada).
+static void ApplyOne(const std::string& root, const char* entry, const char* patchRel, const char* sideRel, const char* origRel)
 {
     if (root.empty()) return;
-    const std::string dff = root + "texdb/patch/mx_cheetah_plate.dff";
+    const std::string dff = root + patchRel;
     struct stat st{};
     if (stat(dff.c_str(), &st) != 0) return;                      // sem arquivo = nada a fazer
     uint8_t ph[8];
@@ -569,9 +602,9 @@ void ApplyImgPatch(const std::string& root)
         uint8_t e[32];
         if (fread(e, 1, 32, f) != 32) break;
         char name[25]; memcpy(name, e + 8, 24); name[24] = 0;
-        if (strcasecmp(name, "mx_cheetah.dff") == 0) { memcpy(&off, e, 4); uint16_t a, b; memcpy(&a, e + 4, 2); memcpy(&b, e + 6, 2); sz = b ? b : a; found = true; break; }
+        if (strcasecmp(name, entry) == 0) { memcpy(&off, e, 4); uint16_t a, b; memcpy(&a, e + 4, 2); memcpy(&b, e + 6, 2); sz = b ? b : a; found = true; break; }
     }
-    if (!found) { FLog("[PLACA] patch: 'mx_cheetah.dff' nao existe em viaturas.img: ignorado"); return; }
+    if (!found) { FLog("[PLACA] patch: '%s' nao existe em viaturas.img: ignorado", entry); return; }
     const uint64_t slot = (uint64_t)sz * 2048u, at = (uint64_t)off * 2048u;
     if ((uint64_t)st.st_size > slot) { FLog("[PLACA] patch: DFF novo (%lld B) maior que o espaco da entrada (%llu B): ignorado", (long long)st.st_size, (unsigned long long)slot); return; }
 
@@ -581,11 +614,11 @@ void ApplyImgPatch(const std::string& root)
     uint32_t ct, cs; memcpy(&ct, cur, 4); memcpy(&cs, cur + 4, 4);
     // marca do patch ja aplicado: tamanho + data do arquivo (um DFF novo de mesmo tamanho, ex. so a posicao da placa mudou, tambem e reaplicado)
     char tag[96]; snprintf(tag, sizeof tag, "%lld %lld", (long long)st.st_size, (long long)st.st_mtime);
-    const std::string sidecar = root + "texdb/patch/mx_cheetah_plate.applied";
+    const std::string sidecar = root + sideRel;
     {
         char prev[96] = {0};
         if (FILE* sf = fopen(sidecar.c_str(), "r")) { if (!fgets(prev, sizeof prev, sf)) prev[0] = 0; fclose(sf); }
-        if (ct == 0x10 && cs == s0 && strcmp(prev, tag) == 0) { FLog("[PLACA] patch: viaturas.img ja tem este mx_cheetah com placa (posn=%u)", off); return; }
+        if (ct == 0x10 && cs == s0 && strcmp(prev, tag) == 0) { FLog("[PLACA] patch: viaturas.img ja tem este %s com placa (posn=%u)", entry, off); return; }
     }
     if (ct != 0x10 || (uint64_t)cs + 12 > slot) { FLog("[PLACA] patch: a entrada no IMG nao parece um DFF (tipo=%u tam=%u): ignorado", ct, cs); return; }
 
@@ -595,8 +628,8 @@ void ApplyImgPatch(const std::string& root)
     // guarda o original (so 1 vez) para poder voltar
     std::vector<uint8_t> old((size_t)cs + 12);
     if (fseeko(f, (off_t)at, SEEK_SET) != 0 || fread(old.data(), 1, old.size(), f) != old.size()) { FLog("[PLACA] patch: nao li o DFF original"); return; }
-    if (!WriteFileIfAbsent(root + "texdb/patch/mx_cheetah.orig.dff", old.data(), old.size()))
-        FLog("[PLACA] AVISO: nao salvei texdb/patch/mx_cheetah.orig.dff (sem backup do original)");
+    if (!WriteFileIfAbsent(root + origRel, old.data(), old.size()))
+        FLog("[PLACA] AVISO: nao salvei %s (sem backup do original)", origRel);
 
     if (fseeko(f, (off_t)at, SEEK_SET) != 0) return;
     bool ok = fwrite(nw.data(), 1, nw.size(), f) == nw.size();
@@ -606,7 +639,14 @@ void ApplyImgPatch(const std::string& root)
     while (ok && left > 0) { const size_t n = (size_t)std::min<uint64_t>(left, zeros.size()); ok = fwrite(zeros.data(), 1, n, f) == n; left -= n; }
     ok = ok && fflush(f) == 0;
     if (ok) { if (FILE* sf = fopen(sidecar.c_str(), "w")) { fputs(tag, sf); fclose(sf); } }
-    FLog("[PLACA] patch: mx_cheetah.dff (posn=%u, espaco %llu B) substituido por %zu B: %s", off, (unsigned long long)slot, nw.size(), ok ? "OK" : "FALHOU (IMG pode estar incompleto: apague texdb/patch/mx_cheetah_plate.dff e restaure o viaturas.img)");
+    FLog("[PLACA] patch: %s (posn=%u, espaco %llu B) substituido por %zu B: %s", entry, off, (unsigned long long)slot, nw.size(), ok ? "OK" : "FALHOU (IMG pode estar incompleto: apague os arquivos texdb/patch/*_plate.dff e restaure o viaturas.img)");
+}
+
+void ApplyImgPatch(const std::string& root)
+{
+    ApplyOne(root, "mx_cheetah.dff", "texdb/patch/mx_cheetah_plate.dff", "texdb/patch/mx_cheetah_plate.applied", "texdb/patch/mx_cheetah.orig.dff");
+    // moto 1194 (mx_bf400): placa traseira (a placa dinamica da moto usa o mesmo gancho; o DFF original nao tem placa)
+    ApplyOne(root, "mx_bf400.dff", "texdb/patch/mx_bf400_plate.dff", "texdb/patch/mx_bf400_plate.applied", "texdb/patch/mx_bf400.orig.dff");
 }
 
 } // namespace CarPlate

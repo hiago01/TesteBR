@@ -15,6 +15,7 @@
 #include "../../vendor/armhook/patch.h"
 #include "jobs.h"
 #include "garagepanel.h"
+#include "../../game/CarBau.h"
 #include "notafiscal.h"
 #include "shoppanel.h"
 #include "perfilpanel.h"
@@ -353,6 +354,7 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	if (op == 19) { if (g_shop.load()) JobsUI::Close(false); return; }                    // o servidor fecha a loja (compra aceita, ou o cliente da loja tinha a tela antiga)
 	if (op == 20) { if (!ShopPanel::OnToast(bs)) FLog("[JOBS3D] aviso (op 20) invalido (%d bytes)", bytes); return; }   // aviso "Informacao" (compra feita / erro)
 	if (op == 17) { if (g_invoice.load()) JobsUI::Close(false); return; }                 // o servidor fecha a nota (ex.: o cliente da loja tinha a tela antiga por baixo)
+	if (op == 30) { CarBau::OnPacket(bs); return; }   // baus da moto 1194: lista de veiculos COM bau
 	if (op == 15) { CarInteract::OnPacket(bs); return; }   // interacao com o proprio carro (chave): ponto "Abrir interacao"
 	if (op == 14) { if (g_garage.load()) JobsUI::Close(false); return; }                                                                 // o servidor fecha a garagem (carro retirado)
 	if (op == 12) { uint8_t a = 0; if (bs.Read(a)) ProvadorSetAllowed(a != 0); return; }   // u8: libera o /provador

@@ -53,7 +53,7 @@ void CarInteract::OnPacket(RakNet::BitStream& bs)
 	if (!bs.Read(pl)) pl = 255;                                          // extensao opcional: 0 com placa | 1 placa removida (servidor antigo = sem o item)
 	std::lock_guard<std::mutex> l(g_mtx);
 	g_net.active = on != 0 && veh > 0; g_net.veh = g_net.active ? (int)veh : 0; g_net.moto = moto != 0; g_net.locked = lk != 0; g_net.trunk = (g_net.active && !moto) ? std::min<int>(tk, 2) : 0;
-	g_net.plate = (g_net.active && !moto && pl <= 1) ? (int)pl : -1;
+	g_net.plate = (g_net.active && pl <= 1) ? (int)pl : -1;   // a moto 1194 tambem tem placa (o servidor manda 255 nas outras motos)
 }
 
 void CarInteract::Reset()
@@ -91,7 +91,8 @@ bool CarInteract::Draw(ImGuiRenderer* r, float k, bool hasTap, float tx, float t
 	if (s.plate == 0) rows[nRows++] = { 4, "Remover placa" };          // a placa vai para o inventario
 	else if (s.plate == 1) rows[nRows++] = { 5, "Colocar placa" };     // usa a placa deste carro que esta no inventario
 	const float fs = 9.5f * k;
-	const float rowH = 26.0f * k, rowW = (s.moto ? 104.0f : 160.0f) * k, gap = 2.0f * k;
+	const bool oneBtn = s.moto && nRows == 1;          // moto sem placa: um unico botao; moto com placa: lista como a do carro
+	const float rowH = 26.0f * k, rowW = (oneBtn ? 104.0f : 160.0f) * k, gap = 2.0f * k;
 	const ImVec2 ma(dot.x + 12.0f * k, dot.y - rowH * 0.5f), mb(ma.x + rowW, ma.y + rowH);   // 1a linha
 	auto rowA = [&](int i) { return ImVec2(ma.x, ma.y + (float)i * (rowH + gap)); };
 	auto rowB = [&](int i) { return ImVec2(mb.x, mb.y + (float)i * (rowH + gap)); };
@@ -122,7 +123,7 @@ bool CarInteract::Draw(ImGuiRenderer* r, float k, bool hasTap, float tx, float t
 	}
 
 	Disc(r, dot, 4.5f * k, ImColor(232, 45, 70, 255), ImColor(255, 255, 255, 230), 1.4f * k);
-	if (s.moto)       // moto: um unico botao
+	if (oneBtn)       // moto: um unico botao
 	{
 		r->drawRoundedRect(ma, mb, ImColor(200, 36, 62, 235), 6.0f * k, true);
 		const ImVec2 ts = r->calculateTextSize(rows[0].txt, fs);

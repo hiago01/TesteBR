@@ -1,3 +1,4 @@
+#include "../game/CarBau.h"
 #include "../main.h"
 #include "../game/game.h"
 #include "netgame.h"
@@ -38,6 +39,7 @@ bool CVehiclePool::New(NEW_VEHICLE* new_veh)
     }
 
     CVehicle* pNewVehicle = nullptr;
+    CarBau::BeforeCreate((int)new_veh->iVehicleType);     // moto 1194: o bau (extra1) deixa de ser sorteado pelo jogo
     try {
         pNewVehicle = pGame->NewVehicle(
                 new_veh->iVehicleType,
@@ -50,6 +52,8 @@ bool CVehiclePool::New(NEW_VEHICLE* new_veh)
         FLog("[TOUCH] falha ao criar veiculo id=%d modelo=%d (modelo nao carregou)", (int)new_veh->VehicleID, (int)new_veh->iVehicleType);
         pNewVehicle = nullptr;
     }
+
+    CarBau::AfterCreate((int)new_veh->VehicleID, pNewVehicle ? pNewVehicle->m_pVehicle : nullptr);   // restaura o sorteio e aplica o bau pedido pelo servidor
 
     m_pVehicles[new_veh->VehicleID] = pNewVehicle;
 

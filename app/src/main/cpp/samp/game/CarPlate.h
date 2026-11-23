@@ -32,6 +32,9 @@ namespace CarPlate
     bool InstallHooks();
     bool Installed();
 
+    // MOTO 1194 (mx_bf400): igual, com texdb/patch/mx_bf400_plate.dff (o DFF original nao tem placa; o novo ganha um suporte de
+    // placa traseira de moto, 187x136 mm, material "brasil mercosul"). O desenho da placa de moto (2 linhas) e escolhido pelo
+    // tipo do veiculo (bike/bmx) no gancho.
     // Troca de DFF dentro do IMG ja existente (nunca cria IMG): se existir <storage>/texdb/patch/mx_cheetah_plate.dff,
     // o conteudo da entrada "mx_cheetah.dff" de texdb/viaturas.img e substituido no MESMO lugar (o DFF novo e menor, o resto do
     // espaco e zerado; a entrada do indice nao muda). Guarda o original em texdb/patch/mx_cheetah.orig.dff.

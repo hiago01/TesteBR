@@ -2,6 +2,7 @@
 #include "CarryTuner.h"
 #include "TargetMenu.h"
 #include "CarPlate.h"
+#include "CarBau.h"
 #include <cmath>
 #include <algorithm>
 #include "Diag.h"
@@ -686,6 +687,7 @@ void RenderEffects() {
     CHook::CallFunction<void>(g_libGTASA + 0x6CA5D0);
     CVisibilityPlugins::RenderReallyDrawLastObjects();
     Weapskin_Process();   // skin de arma: reaplica o modelo na mao quando o servidor muda
+    CarBau::Tick();       // baus da moto 1194 (lista do servidor)
     Giroflex_Render();    // giroflex: registra as coronas animadas dos veiculos com sirene ligada (antes do desenho)
     CCoronas::Render();
 
