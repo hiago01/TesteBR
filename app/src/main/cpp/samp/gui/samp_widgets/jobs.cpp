@@ -19,6 +19,7 @@
 #include "notafiscal.h"
 #include "shoppanel.h"
 #include "perfilpanel.h"
+#include "missoespanel.h"
 #include "avatar.h"
 #include "../../game/PerfilTexDb.h"
 #include "hudstate.h"
@@ -56,6 +57,7 @@ namespace
 	std::atomic<bool> g_garage{false};               // a tela aberta e a GARAGEM (RPC 245 op 13), nao a agencia
 	std::atomic<bool> g_shop{false};                 // a tela aberta e a LOJA com carrinho (RPC 245 op 18; shoppanel.cpp), nao a agencia
 	std::atomic<bool> g_perfil{false};               // a tela aberta e o MENU JOGADOR (RPC 245 op 21; perfilpanel.cpp)
+	std::atomic<bool> g_missoes{false};              // a tela aberta e a das MISSOES (RPC 245 op 40; missoespanel.cpp)
 	std::atomic<bool> g_invoice{false};              // a tela aberta e a NOTA FISCAL da loja (RPC 245 op 16; notafiscal.cpp), nao a agencia
 	std::atomic<bool> g_claimed[4] = {{false}, {false}, {false}, {false}};
 	std::atomic<uint32_t> g_ver{0}, g_mkVer{0};
@@ -121,6 +123,18 @@ namespace
 		bs.Write((uint8_t)op);
 		bs.Write((uint16_t)seq);
 		if (op == 21 || op == 22) bs.Write((uint8_t)arg);
+		pNetGame->GetRakClient()->RPC(&RPC_JobsRequest, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
+	}
+
+	// missoes (RPC 246): op 40 u16 numero (abriu) | 41 u16 numero + u8 aba | 42 u16 numero + u16 id (COLETAR) | 43 u16 numero + u16 id (IR) | 44 u16 numero (fechou)
+	void SendMissoes(int op, int seq, int arg = -1)
+	{
+		if (!pNetGame || pNetGame->GetGameState() != GAMESTATE_CONNECTED || !pNetGame->GetRakClient()) return;
+		RakNet::BitStream bs;
+		bs.Write((uint8_t)op);
+		bs.Write((uint16_t)seq);
+		if (op == 41) bs.Write((uint8_t)arg);
+		else if (op == 42 || op == 43) bs.Write((uint16_t)arg);
 		pNetGame->GetRakClient()->RPC(&RPC_JobsRequest, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
 	}
 
@@ -226,6 +240,13 @@ void JobsUI::Close(bool notifyServer)
 		if (notifyServer && sq > 0) Send(19, sq);
 		return;
 	}
+	if (g_missoes.exchange(false))                   // missoes: fechar = op 44
+	{
+		const int sq = MissoesPanel::Seq();
+		MissoesPanel::Reset();
+		if (notifyServer && sq > 0) SendMissoes(44, sq);
+		return;
+	}
 	if (g_perfil.exchange(false))                    // menu jogador: fechar = op 23
 	{
 		const int sq = PerfilPanel::Seq();
@@ -243,11 +264,11 @@ void JobsUI::Close(bool notifyServer)
 	if (notifyServer) Send(4);
 }
 bool JobsUI_ScooterFolded() { return g_scFolded.load(); }
-bool GarageIsOpenNow() { return g_open.load() && (g_garage.load() || g_invoice.load() || g_shop.load() || g_perfil.load()); }   // a nota fiscal esconde o HUD como a garagem
+bool GarageIsOpenNow() { return g_open.load() && (g_garage.load() || g_invoice.load() || g_shop.load() || g_perfil.load() || g_missoes.load()); }   // a nota fiscal esconde o HUD como a garagem
 void JobsUI::Reset()
 {
 	RunStyle::Reset();   // nova conexao: estilo de andar/correr volta ao nativo ate o servidor mandar
-	g_open.store(false); g_garage.store(false); g_invoice.store(false); g_shop.store(false); g_perfil.store(false); GaragePanel::Reset(); InvoicePanel::Reset(); ShopPanel::Reset(); PerfilPanel::Reset(); g_confirm = 0; g_drag = Drag(); g_tapReq.store(false); for (WorldTap& w : g_wt) w.valid = false;
+	g_open.store(false); g_garage.store(false); g_invoice.store(false); g_shop.store(false); g_perfil.store(false); g_missoes.store(false); GaragePanel::Reset(); InvoicePanel::Reset(); ShopPanel::Reset(); PerfilPanel::Reset(); MissoesPanel::Reset(); g_confirm = 0; g_drag = Drag(); g_tapReq.store(false); for (WorldTap& w : g_wt) w.valid = false;
 	{ std::lock_guard<std::mutex> l(g_mkMutex); g_mkNetA.clear(); g_mkNetB.clear(); g_mkNetC.clear(); g_mkNetD.clear(); g_mkNet.clear(); }
 	g_scFolded.store(false);
 	CarInteract::Reset();
@@ -314,7 +335,8 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	if (op == 16)      // nota fiscal da loja: abre a tela e confirma ao servidor (op 14) que este cliente a mostra
 	{
 		if (!InvoicePanel::OnShow(bs)) { FLog("[JOBS3D] nota fiscal (op 16) invalida (%d bytes)", bytes); return; }
-		if (g_perfil.exchange(false)) PerfilPanel::Reset(); else if (g_open.load() && !g_invoice.load() && !g_garage.load() && !g_shop.load()) Send(4);   // a agencia estava aberta: o servidor precisa saber que fechou
+		const bool misWas16 = g_missoes.exchange(false); if (misWas16) MissoesPanel::Reset();
+		if (g_perfil.exchange(false)) PerfilPanel::Reset(); else if (g_open.load() && !g_invoice.load() && !g_garage.load() && !g_shop.load() && !misWas16) Send(4);   // a agencia estava aberta: o servidor precisa saber que fechou
 		if (g_shop.exchange(false)) ShopPanel::Reset();                                  // Finalizar Compra da loja: a nota fiscal toma o lugar da loja
 		g_garage.store(false); g_invoice.store(true);
 		if (!g_open.exchange(true)) { g_flush.store(true); g_resetView.store(true); }
@@ -324,7 +346,8 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	if (op == 18)      // loja com carrinho: abre a tela e confirma ao servidor (op 17) que este cliente a mostra
 	{
 		if (!ShopPanel::OnShow(bs)) { FLog("[JOBS3D] loja (op 18) invalida (%d bytes)", bytes); return; }
-		if (g_perfil.exchange(false)) PerfilPanel::Reset(); else if (g_open.load() && !g_shop.load() && !g_invoice.load() && !g_garage.load()) Send(4);   // a agencia estava aberta: o servidor precisa saber que fechou
+		const bool misWas18 = g_missoes.exchange(false); if (misWas18) MissoesPanel::Reset();
+		if (g_perfil.exchange(false)) PerfilPanel::Reset(); else if (g_open.load() && !g_shop.load() && !g_invoice.load() && !g_garage.load() && !misWas18) Send(4);   // a agencia estava aberta: o servidor precisa saber que fechou
 		g_garage.store(false); g_invoice.store(false); g_shop.store(true);
 		if (!g_open.exchange(true)) { g_flush.store(true); g_resetView.store(true); }
 		Send(17, ShopPanel::Seq());
@@ -333,7 +356,8 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	if (op == 21)      // menu jogador: abre a tela e confirma ao servidor (op 20)
 	{
 		if (!PerfilPanel::OnOpen(bs)) { FLog("[JOBS3D] menu jogador (op 21) invalido (%d bytes)", bytes); return; }
-		const bool agencyOpen = g_open.load() && !g_perfil.load() && !g_shop.load() && !g_invoice.load() && !g_garage.load();
+		const bool agencyOpen = g_open.load() && !g_perfil.load() && !g_shop.load() && !g_invoice.load() && !g_garage.load() && !g_missoes.load();
+		if (g_missoes.exchange(false)) MissoesPanel::Reset();
 		if (g_shop.exchange(false)) ShopPanel::Reset();
 		if (g_invoice.exchange(false)) InvoicePanel::Reset();
 		g_garage.store(false);
@@ -343,6 +367,27 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 		SendPerfil(20, PerfilPanel::Seq());
 		return;
 	}
+	if (op == 40)      // missoes: abre a tela (ou ATUALIZA os dados se o numero for o mesmo) e confirma ao servidor (op 40)
+	{
+		const bool wasOpen = g_missoes.load();
+		if (!MissoesPanel::OnOpen(bs)) { FLog("[JOBS3D] missoes (op 40) invalido (%d bytes)", bytes); return; }
+		if (!wasOpen)
+		{
+			const bool agencyOpen = g_open.load() && !g_perfil.load() && !g_shop.load() && !g_invoice.load() && !g_garage.load();
+			if (g_perfil.exchange(false)) PerfilPanel::Reset();
+			if (g_shop.exchange(false)) ShopPanel::Reset();
+			if (g_invoice.exchange(false)) InvoicePanel::Reset();
+			g_garage.store(false);
+			if (agencyOpen) Send(4);
+			g_missoes.store(true);
+			if (!g_open.exchange(true)) { g_flush.store(true); g_resetView.store(true); }
+		}
+		SendMissoes(40, MissoesPanel::Seq());
+		return;
+	}
+	if (op == 41) { if (!MissoesPanel::OnList(bs)) FLog("[JOBS3D] missoes lista (op 41) invalida (%d bytes)", bytes); return; }
+	if (op == 42) { if (!MissoesPanel::OnClaim(bs)) FLog("[JOBS3D] missoes coleta (op 42) invalida (%d bytes)", bytes); return; }
+	if (op == 43) { if (g_missoes.load()) JobsUI::Close(false); return; }
 	if (op == 22) { if (!PerfilPanel::OnRank(bs)) FLog("[JOBS3D] ranking (op 22) invalido (%d bytes)", bytes); return; }
 	if (op == 23) { if (!PerfilPanel::OnRules(bs)) FLog("[JOBS3D] regras (op 23) invalidas (%d bytes)", bytes); return; }
 	// marcacoes 3D do GPS / sede do grupo / sedes no mapa (org.pwn). Ops 27-29: as antigas 20-22 passaram a ser da loja/menu jogador e o servidor as renumerou.
@@ -558,6 +603,20 @@ void JobsUI::draw(ImGuiRenderer* r)
 		GaragePanel::Draw(r, scr.x, scr.y, ge, closeReq, pull);
 		if (pull > 0) Send(12, pull);
 		if (closeReq) JobsUI::Close(false);
+		return;
+	}
+	if (g_missoes.load())
+	{
+		std::vector<TouchEv> evs; std::vector<ShopTouch> se;
+		{ std::lock_guard<std::mutex> l(g_evMutex); evs.swap(g_events); }
+		for (const TouchEv& e : evs) se.push_back({e.type, e.num, e.x, e.y, e.cancel});
+		int answer = 0, arg = 0;
+		MissoesPanel::Draw(r, scr.x, scr.y, se, answer, arg);
+		const int sq = MissoesPanel::Seq();
+		if (answer == 1) JobsUI::Close(true);
+		else if (answer == 2 && sq > 0) SendMissoes(41, sq, arg);
+		else if (answer == 3 && sq > 0) SendMissoes(42, sq, arg);
+		else if (answer == 4 && sq > 0) { SendMissoes(43, sq, arg); JobsUI::Close(true); }
 		return;
 	}
 	if (g_perfil.load())
