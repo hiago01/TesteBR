@@ -2092,7 +2092,8 @@ int CLocalPlayer::GetOptimumUnoccupiedSendRate()
 
 bool CLocalPlayer::ProcessUnoccupiedSync(VEHICLEID vehicleId, CVehicle *pVehicle)
 {
-	if((GetTickCount() - m_dwLastSendTick) > (unsigned int)GetOptimumUnoccupiedSendRate())
+	static uint32_t s_dwLastUnoccupiedSend = 0;      // relogio proprio: o do a-pe (m_dwLastSendTick) e zerado a cada envio e travava este
+	if(pVehicle && (GetTickCount() - s_dwLastUnoccupiedSend) > (unsigned int)GetOptimumUnoccupiedSendRate())
 	//if(vehicleId <= 2000 && pVehicle)
 	{
 		CPlayerPool *pPlayerPool = pNetGame->GetPlayerPool();
@@ -2112,7 +2113,7 @@ bool CLocalPlayer::ProcessUnoccupiedSync(VEHICLEID vehicleId, CVehicle *pVehicle
 			}
 
 			float fDistance = 0.0f, fSmallest = 1000000.0f;
-			PLAYERID iClosestPlayerId = 0;
+			PLAYERID iClosestPlayerId = 0xFFFF;
 
 			for(int i = 0; i < 7; i++)
 			{
@@ -2126,7 +2127,7 @@ bool CLocalPlayer::ProcessUnoccupiedSync(VEHICLEID vehicleId, CVehicle *pVehicle
 
 			for(PLAYERID i = 0; i < MAX_PLAYERS; i++)
 			{
-				CPlayerPed* pPlayerPed;
+				CPlayerPed* pPlayerPed = nullptr;      // (antes sem inicializar: lixo quando o jogador i nao existe)
 
 				if(i == pPlayerPool->GetLocalPlayerID())
 					pPlayerPed = m_pPlayerPed;
@@ -2136,18 +2137,14 @@ bool CLocalPlayer::ProcessUnoccupiedSync(VEHICLEID vehicleId, CVehicle *pVehicle
 					if(pTmpPlayer) pPlayerPed = pTmpPlayer->GetPlayerPed();
 				}
 
-				if(pVehicle && pPlayerPed && pPlayerPed->m_pPed->IsAdded())
+				if(pVehicle && pPlayerPed && pPlayerPed->m_pPed && pPlayerPed->m_pPed->IsAdded())
 				{
 					fDistance = pPlayerPed->GetDistanceFromVehicle(pVehicle);
-					if(i)
+					if(fDistance < fSmallest)       // o jogador mais proximo do carro vazio e quem envia (inclusive o id 0)
 					{
-						if(fDistance < fSmallest)
-						{
-							fSmallest = fDistance;
-							iClosestPlayerId = i;
-						}
+						fSmallest = fDistance;
+						iClosestPlayerId = i;
 					}
-					else fSmallest = fDistance;
 				}
 			}
 
@@ -2155,7 +2152,7 @@ bool CLocalPlayer::ProcessUnoccupiedSync(VEHICLEID vehicleId, CVehicle *pVehicle
 			{
 				sync:
 				SendUnoccupiedData(vehicleId, pVehicle);
-                m_dwLastSendTick = GetTickCount();
+				s_dwLastUnoccupiedSend = GetTickCount();
 				return true;
 			}
 		}

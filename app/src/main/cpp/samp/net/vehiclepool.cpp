@@ -17,6 +17,8 @@ CVehiclePool::CVehiclePool()
         m_bIsWasted[i] = false;
         m_bIsMarker[i] = 0;
         m_dwWastedTime[i] = 0;
+        m_dwLastUndrivenProcessTick[i] = 0;      // sem isto o relogio do sync de carro vazio comecava com lixo
+        m_lastUndrivenId[i] = 0;
     }
 }
 // 0.3.7
@@ -215,14 +217,16 @@ void CVehiclePool::Process()
                         pVehicle->HasSunk()) {
                         NotifyVehicleDeath(VehicleID);
                     } else {
-                        /*if ((GetTickCount() - m_dwLastUndrivenProcessTick[VehicleID]) > 100 &&
+                        // veiculo SEM motorista: o jogador mais proximo envia a posicao dele ao servidor (empurrar / bater num carro vazio).
+                        // Estava comentado: o carro empurrado so mexia na tela de quem empurrava e o servidor ficava com a posicao antiga.
+                        if ((GetTickCount() - m_dwLastUndrivenProcessTick[VehicleID]) > 100 &&
                             byteSentUndrivenSync < 3 &&
                             pLocalPlayer && pLocalPlayer->ProcessUnoccupiedSync(VehicleID,
                                                                                 m_pVehicles[VehicleID])) {
                             m_lastUndrivenId[VehicleID] = pNetGame->GetPlayerPool()->GetLocalPlayerID();
                             m_dwLastUndrivenProcessTick[VehicleID] = GetTickCount();
                             byteSentUndrivenSync++;
-                        }*/
+                        }
 
                         if (pNetGame->m_pNetSet->bManualVehicleEngineAndLight) {
                             pVehicle->ApplyEngineState(pVehicle->GetEngineState());
