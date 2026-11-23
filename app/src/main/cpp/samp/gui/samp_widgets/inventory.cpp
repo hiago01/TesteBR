@@ -432,6 +432,7 @@ void InventoryUI::OnServerPacket(const unsigned char* data, int bytes)
 			if (!bs.Read(w) || !bs.Read(cap)) { w = 0; cap = 0; }
 		}
 		std::lock_guard<std::mutex> l(g_dm);
+		if (reg > 0 && g_state.trunkReg == 0) g_tab.store(1);   // porta-malas acabou de abrir: a selecao vai SEMPRE para a aba Porta-malas (nao para o Chao)
 		g_state.trunk.swap(g); g_state.trunkReg = reg; g_state.trunkW = w; g_state.trunkCap = cap;
 	}
 	else if (op == 4)   // TRADE
@@ -653,10 +654,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 	}
 
 	// painel direito: Chao ou Porta-malas (aba). A aba abre sozinha quando o servidor abre o porta-malas e some se ele fecha.
-	static int s_prevTrunk = 0;
-	if (S.trunkReg > 0 && s_prevTrunk == 0) g_tab.store(1);
 	if (S.trunkReg == 0) g_tab.store(0);
-	s_prevTrunk = S.trunkReg;
 	const bool trunkTab = S.trunkReg > 0 && g_tab.load() == 1;
 	const std::vector<Drop>& GR = trunkTab ? S.trunk : S.ground;
 
