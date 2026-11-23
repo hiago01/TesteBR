@@ -942,6 +942,24 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& lookIn)
                 while (*q) { const char* e = std::strchr(q, ','); std::string part = e ? std::string(q, (size_t)(e - q)) : std::string(q); covered.insert(part); if (!e) break; q = e + 1; }
             }
         }
+        // REGRA SO DA 272 (policial feminina): com farda visivel, esconde o corpo exposto por baixo (pele aparecendo nas coxas, cintura,
+        // bracos). Calca/short da corp -> pernas; camisa/colete da corp -> tronco, bracos e ombros. Maos, cabeca e pes continuam.
+        if (cop) {
+            bool cPants = false, cTorso = false;
+            for (const auto& kv : over) {
+                if (kv.second == hideTex || kv.first.compare(0, 14, "fantasy_f_cop_") != 0) continue;
+                const std::string nm = kv.first.substr(14);
+                if (nm.compare(0, 5, "pants") == 0 || nm.compare(0, 5, "short") == 0) cPants = true;
+                else if (nm.compare(0, 5, "torso") == 0 || nm.compare(0, 4, "vest") == 0) cTorso = true;
+            }
+            for (size_t i = 0; i < mats.size(); ++i) {
+                const std::string& k = keys[i];
+                if (k.compare(0, 5, "body.") != 0) continue;
+                const bool leg = k.compare(0, 8, "body.leg") == 0;
+                const bool top = k.compare(0, 10, "body.torso") == 0 || k.compare(0, 8, "body.arm") == 0 || k.compare(0, 13, "body.shoulder") == 0;
+                if ((leg && cPants) || (top && cTorso)) covered.insert(k);
+            }
+        }
         RwTexture* tBrow = P("eyebrown/1");                          // mesmo arquivo do masculino (config.lua: clothes/7/eyebrown), sobrancelha 1
         auto starts = [](const std::string& k, const char* q) { return k.compare(0, std::strlen(q), q) == 0; };
         int nF = 0;
