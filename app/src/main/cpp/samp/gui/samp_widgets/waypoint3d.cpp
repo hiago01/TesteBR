@@ -88,7 +88,7 @@ namespace
 		r->drawConvexPolyFilled(h, 20, hole);
 	}
 
-	struct Item { float dist; ImVec2 p, ground; bool hasGround; const Pin* pin; };
+	struct Item { float dist; ImVec2 p, ground; bool hasGround; const Pin* pin; int id = 0; bool off = false; ImVec2 dir = ImVec2(0, 1); };
 }
 
 void Waypoint3D::OnPacket(RakNet::BitStream& bs)
@@ -239,16 +239,41 @@ void Waypoint3D::Draw(ImGuiRenderer* r, float k)
 		p.z = e->z;
 	}
 
+	// camera: para marcacoes fora da tela / atras de voce (sem alcance maximo: a seta aparece a qualquer distancia)
+	static CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + 0xBBA8D0);
+	const RwMatrix cam = TheCamera.GetMatrix().ToRwMatrix();
+	const ImVec2 cen(scr.x * 0.5f, scr.y * 0.5f);
+
 	std::vector<Item> items;
+	int pinIdx = 0;
 	for (const Pin& p : pins)
 	{
+		const int id = ++pinIdx;                                           // ID da marcacao: (1), (2)... na ordem da lista (a sede / destino do mapa vem depois)
 		const float dx = p.x - px, dy = p.y - py, dz = p.z - pz;
 		const float d = std::sqrt(dx * dx + dy * dy + dz * dz);
 		if (d < 4.0f) continue;                                           // chegou: some
-		Item it; it.dist = d; it.pin = &p;
-		if (!Proj(p.x, p.y, p.z + 1.9f, it.p)) continue;                  // 1,9 m acima do ponto: o rotulo "flutua" sobre o local
-		if (it.p.x < -scr.x * 0.3f || it.p.x > scr.x * 1.3f || it.p.y < -scr.y * 0.3f || it.p.y > scr.y * 1.3f) continue;
-		it.hasGround = Proj(p.x, p.y, p.z, it.ground);
+		Item it; it.dist = d; it.pin = &p; it.id = id;
+		const bool front = Proj(p.x, p.y, p.z + 1.9f, it.p);              // 1,9 m acima do ponto: o rotulo "flutua" sobre o local
+		const float mg = 26.0f * k;
+		if (front && it.p.x >= mg && it.p.x <= scr.x - mg && it.p.y >= mg && it.p.y <= scr.y - mg)
+		{
+			it.hasGround = Proj(p.x, p.y, p.z, it.ground);
+			items.push_back(it);
+			continue;
+		}
+		// fora da tela ou atras: seta na borda apontando para onde virar
+		it.off = true;
+		if (front) { it.dir = ImVec2(it.p.x - cen.x, it.p.y - cen.y); }
+		else
+		{
+			const float wx = p.x - cam.pos.x, wy = p.y - cam.pos.y, wz = (p.z + 1.9f) - cam.pos.z;
+			const float cxr = wx * cam.right.x + wy * cam.right.y + wz * cam.right.z;     // para a direita da camera
+			const float czu = wx * cam.at.x + wy * cam.at.y + wz * cam.at.z;              // para cima da camera
+			it.dir = ImVec2(cxr, -czu);
+		}
+		const float ln = std::sqrt(it.dir.x * it.dir.x + it.dir.y * it.dir.y);
+		if (ln < 1e-3f) it.dir = ImVec2(0.0f, 1.0f); else it.dir = ImVec2(it.dir.x / ln, it.dir.y / ln);
+		it.hasGround = false;
 		items.push_back(it);
 	}
 	std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) { return a.dist > b.dist; });    // longe primeiro: o perto fica por cima
@@ -257,13 +282,15 @@ void Waypoint3D::Draw(ImGuiRenderer* r, float k)
 	std::vector<Box> placed;
 	for (const Item& it : items)
 	{
+		if (it.off) continue;
 		const float al = std::min(1.0f, (it.dist - 4.0f) / 6.0f);          // 4 m: invisivel; 10 m ou mais: opaco
 		if (al <= 0.02f) continue;
 		const std::string dist = Dist(it.dist);
+		const std::string label = "(" + std::to_string(it.id) + ") " + it.pin->name;
 		const float sc = it.dist <= 60.0f ? 1.0f : std::max(0.78f, 1.0f - (it.dist - 60.0f) / 1500.0f);       // de 60 m a ~400 m encolhe ate 78%
 		const float fsN = 17.0f * k * sc, fsD = 13.5f * k * sc;
 		const float pad = 10.0f * k * sc, ir = 10.0f * k * sc;       // ir = raio do pino
-		const ImVec2 tn = r->calculateTextSize(it.pin->name, fsN), td = r->calculateTextSize(dist, fsD);
+		const ImVec2 tn = r->calculateTextSize(label, fsN), td = r->calculateTextSize(dist, fsD);
 		const float tw = std::max(tn.x, td.x), th = tn.y + td.y;
 		const float w = pad + ir * 2.0f + 8.0f * k * sc + tw + pad, h = std::max(th + pad * 1.4f, ir * 3.6f + pad);
 		ImVec2 a(it.p.x - w * 0.5f, it.p.y - h * 0.5f), b(a.x + w, a.y + h);
@@ -294,7 +321,57 @@ void Waypoint3D::Draw(ImGuiRenderer* r, float k)
 		r->drawRoundedRect(a, b, ImColor(255, 255, 255, (int)(38.0f * al)), 9.0f * k, false, 1.0f);
 		DrawPin(r, a.x + pad + ir, (a.y + b.y) * 0.5f - ir * 0.30f, ir, al);
 		const float tx = a.x + pad + ir * 2.0f + 8.0f * k * sc, ty = a.y + (h - th) * 0.5f;
-		r->drawText(ImVec2(tx, ty), ImColor(250, 250, 252, (int)(255.0f * al)), it.pin->name, true, fsN);
+		r->drawText(ImVec2(tx, ty), ImColor(250, 250, 252, (int)(255.0f * al)), label, true, fsN);
 		r->drawText(ImVec2(tx, ty + tn.y), ImColor(168, 170, 178, (int)(255.0f * al)), dist, false, fsD);
+	}
+
+	// ---- setas na borda da tela: marcacao fora da tela / atras, a QUALQUER distancia. A seta gira pela borda inteira seguindo a direcao ----
+	std::vector<ImVec2> used;
+	const float R = 19.0f * k, m = R + 30.0f * k;
+	for (const Item& it : items)
+	{
+		if (!it.off) continue;
+		const float adx = std::fabs(it.dir.x) < 1e-4f ? 1e-4f : std::fabs(it.dir.x), ady = std::fabs(it.dir.y) < 1e-4f ? 1e-4f : std::fabs(it.dir.y);
+		const float hx = scr.x * 0.5f - m, hy = scr.y * 0.5f - m;
+		const float t = std::min(hx / adx, hy / ady);
+		ImVec2 P(cen.x + it.dir.x * t, cen.y + it.dir.y * t);
+		const ImVec2 perp(-it.dir.y, it.dir.x);
+		for (int tries = 0; tries < 6; tries++)                           // dois no mesmo lugar: o seguinte desliza pela borda
+		{
+			bool hit = false;
+			for (const ImVec2& u : used) if ((u.x - P.x) * (u.x - P.x) + (u.y - P.y) * (u.y - P.y) < (R * 2.2f) * (R * 2.2f)) { hit = true; break; }
+			if (!hit) break;
+			P.x = std::min(std::max(P.x + perp.x * R * 2.4f, m), scr.x - m);
+			P.y = std::min(std::max(P.y + perp.y * R * 2.4f, m), scr.y - m);
+		}
+		used.push_back(P);
+
+		// seta (triangulo) fora do disco, apontando para a direcao da marcacao
+		const ImVec2 tip(P.x + it.dir.x * (R + 15.0f * k), P.y + it.dir.y * (R + 15.0f * k));
+		const ImVec2 b1(P.x + it.dir.x * (R + 1.0f * k) + perp.x * 9.0f * k, P.y + it.dir.y * (R + 1.0f * k) + perp.y * 9.0f * k);
+		const ImVec2 b2(P.x + it.dir.x * (R + 1.0f * k) - perp.x * 9.0f * k, P.y + it.dir.y * (R + 1.0f * k) - perp.y * 9.0f * k);
+		r->drawTriangle(tip, b1, b2, ImColor(255, 255, 255, 240), true);
+		// disco escuro com o ID "(1)"
+		constexpr int N = 28;
+		ImVec2 c[N];
+		for (int i = 0; i < N; i++) { const float a = (float)i * 6.2831853f / (float)N; c[i] = ImVec2(P.x + std::cos(a) * R, P.y + std::sin(a) * R); }
+		r->drawConvexPolyFilled(c, N, ImColor(16, 16, 20, 215));
+		r->drawPolyline(c, N, ImColor(255, 255, 255, 235), true, 1.8f * k);
+		const std::string idt = "(" + std::to_string(it.id) + ")";
+		const float fi = 14.0f * k;
+		const ImVec2 ti = r->calculateTextSize(idt, fi);
+		r->drawText(ImVec2(P.x - ti.x * 0.5f, P.y - ti.y * 0.5f), ImColor(250, 250, 252, 255), idt, true, fi);
+		// nome + distancia do lado de dentro da tela
+		std::string nm = it.pin->name;
+		if (nm.size() > 22) nm = nm.substr(0, 21) + "...";
+		const std::string ds = Dist(it.dist);
+		const float fn = 12.0f * k, fd = 11.0f * k;
+		const ImVec2 tn2 = r->calculateTextSize(nm, fn), td2 = r->calculateTextSize(ds, fd);
+		const float bw = std::max(tn2.x, td2.x) + 12.0f * k, bh = tn2.y + td2.y + 8.0f * k;
+		float bx = P.x - bw * 0.5f, by = P.y > cen.y ? P.y - R - bh - 4.0f * k : P.y + R + 4.0f * k;
+		bx = std::min(std::max(bx, 4.0f * k), scr.x - bw - 4.0f * k);
+		r->drawRoundedRect(ImVec2(bx, by), ImVec2(bx + bw, by + bh), ImColor(16, 16, 20, 190), 7.0f * k, true);
+		r->drawText(ImVec2(bx + (bw - tn2.x) * 0.5f, by + 4.0f * k), ImColor(250, 250, 252, 255), nm, false, fn);
+		r->drawText(ImVec2(bx + (bw - td2.x) * 0.5f, by + 4.0f * k + tn2.y), ImColor(168, 170, 178, 255), ds, false, fd);
 	}
 }
