@@ -16,6 +16,7 @@
 #include "phone.h"
 #include "jobs.h"
 #include "garagepanel.h"
+#include "vehicleexit.h"
 #include "../../game/Models/VehicleModelInfo.h"
 #include "../../game/PlayerCarry.h"
 
@@ -413,6 +414,7 @@ bool ModernControls::onRawTouch(int type, int num, int x, int y)
 void ModernControls::draw(ImGuiRenderer* r)
 {
 	ControlMode::EnsureLoaded();
+	VehicleExit::Draw(r);   // botao SAIR: silhueta do veiculo atual + efeito da garagem (nativo fica com alpha 0)
 
 	CPedGTA* ped = nullptr;
 	const bool pedOk = LocalPed(ped);

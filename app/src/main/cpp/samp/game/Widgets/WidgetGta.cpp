@@ -15,6 +15,7 @@
 bool JobsUI_ScooterFolded();   // gui/samp_widgets/jobs.cpp (jobs.h nao e incluivel aqui sem o resto da GUI)
 #include <cstdio>
 #include "gui/samp_widgets/controlmode.h"
+#include "gui/samp_widgets/vehicleexit.h"
 
 extern CNetGame *pNetGame;
 extern CGame *pGame;
@@ -225,6 +226,11 @@ void CTouchInterface__Update_hook()
             buf[n < (int)sizeof(buf) ? n : (int)sizeof(buf) - 1] = 0;
             FLog("[CONTROLES] widgets nativos ligados a pe no moderno: %s", buf);
         }
+    }
+    if(VehicleExit::NativeHidden())
+    {   // SAIR do veiculo: o desenho e do ImGui (vehicleexit.cpp); aqui so o alpha do nativo (o toque continua nativo)
+        CWidgetGta* ex = CTouchInterface::m_pWidgets[WidgetIDs::WIDGET_ENTER_CAR];
+        if(ex) ex->m_Color.a = 0;
     }
     for(int i = 0; i < WidgetIDs::NUM_WIDGETS; i++)
     {

@@ -68,6 +68,21 @@ namespace
 		}
 	}
 
+	void DrawIconIdx(ImGuiRenderer* r, int icon, ImVec2 cc, float sc, float ang, const ImColor& fg, const ImColor& bg)
+	{
+		using namespace GarageIcons;
+		switch (icon)
+		{
+			case 0: DrawIconLayers(r, k_moto_layers, (int)(sizeof(k_moto_layers) / sizeof(k_moto_layers[0])), cc, sc, ang, fg, bg); break;
+			case 1: DrawIconLayers(r, k_scooter_layers, (int)(sizeof(k_scooter_layers) / sizeof(k_scooter_layers[0])), cc, sc, ang, fg, bg); break;
+			case 2: DrawIconLayers(r, k_carro_layers, (int)(sizeof(k_carro_layers) / sizeof(k_carro_layers[0])), cc, sc, ang, fg, bg); break;
+			case 3: DrawIconLayers(r, k_patinete_layers, (int)(sizeof(k_patinete_layers) / sizeof(k_patinete_layers[0])), cc, sc, ang, fg, bg); break;
+			case 4: DrawIconLayers(r, k_bike_layers, (int)(sizeof(k_bike_layers) / sizeof(k_bike_layers[0])), cc, sc, ang, fg, bg); break;
+			case 5: DrawIconLayers(r, k_van_layers, (int)(sizeof(k_van_layers) / sizeof(k_van_layers[0])), cc, sc, ang, fg, bg); break;
+			default: DrawIconLayers(r, k_hoverboard_layers, (int)(sizeof(k_hoverboard_layers) / sizeof(k_hoverboard_layers[0])), cc, sc, ang, fg, bg); break;
+		}
+	}
+
 	void DrawHeaderIconSlot(ImGuiRenderer* r, ImVec2 c, float half, const ImColor& fg, const ImColor& bg, int slot)
 	{
 		using namespace GarageIcons;
@@ -100,20 +115,12 @@ namespace
 		const float sc = std::max(0.0f, scale) * half;
 		if (sc < 0.5f) return;
 		const ImVec2 cc(c.x, c.y + bob);
-		switch (icon)
-		{
-			case 0: DrawIconLayers(r, k_moto_layers, (int)(sizeof(k_moto_layers) / sizeof(k_moto_layers[0])), cc, sc, ang, fg, bg); break;
-			case 1: DrawIconLayers(r, k_scooter_layers, (int)(sizeof(k_scooter_layers) / sizeof(k_scooter_layers[0])), cc, sc, ang, fg, bg); break;
-			case 2: DrawIconLayers(r, k_carro_layers, (int)(sizeof(k_carro_layers) / sizeof(k_carro_layers[0])), cc, sc, ang, fg, bg); break;
-			case 3: DrawIconLayers(r, k_patinete_layers, (int)(sizeof(k_patinete_layers) / sizeof(k_patinete_layers[0])), cc, sc, ang, fg, bg); break;
-			case 4: DrawIconLayers(r, k_bike_layers, (int)(sizeof(k_bike_layers) / sizeof(k_bike_layers[0])), cc, sc, ang, fg, bg); break;
-			case 5: DrawIconLayers(r, k_van_layers, (int)(sizeof(k_van_layers) / sizeof(k_van_layers[0])), cc, sc, ang, fg, bg); break;
-			default: DrawIconLayers(r, k_hoverboard_layers, (int)(sizeof(k_hoverboard_layers) / sizeof(k_hoverboard_layers[0])), cc, sc, ang, fg, bg); break;
-		}
+		DrawIconIdx(r, icon, cc, sc, ang, fg, bg);
 	}
 	void DrawHeaderIcon(ImGuiRenderer* r, ImVec2 c, float half, const ImColor& fg, const ImColor& bg) { DrawHeaderIconSlot(r, c, half, fg, bg, 0); }
 }
 
+void GaragePanel::DrawIcon(ImGuiRenderer* r, int icon, ImVec2 c, float half, float ang, const ImColor& fg, const ImColor& bg) { DrawIconIdx(r, icon, c, half, ang, fg, bg); }
 void GaragePanel::DrawCycleIcon(ImGuiRenderer* r, ImVec2 c, float half, const ImColor& fg, const ImColor& bg, int slot) { DrawHeaderIconSlot(r, c, half, fg, bg, slot); }
 
 void GaragePanel::OnList(RakNet::BitStream& bs)
