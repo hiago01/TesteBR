@@ -10,5 +10,9 @@ class ImGuiRenderer;
 namespace VehicleExit
 {
 	void Draw(ImGuiRenderer* r);   // 1x por quadro (ModernControls::draw)
-	bool NativeHidden();           // true = o botao nativo deve ficar com alpha 0 (lido na thread do jogo, WidgetGta.cpp)
+	bool NativeHidden();
+	bool PadDrawn(int widgetId);   // acelerar(2)/freio(3)/derrapagem(4): true = desenhado pelo ImGui neste quadro (alpha 0 no nativo)
+	void SetPressed(unsigned mask);// thread do jogo: bit (1<<id) = widget nativo tocado
+	void SetRing(int nativeAlpha); // thread do jogo: alpha que o jogo deu ao anel hud_analognub (0 = escondido)
+	bool RingDrawn();              // true = anel desenhado pelo ImGui (nativo fica com alpha 0)           // true = o botao nativo deve ficar com alpha 0 (lido na thread do jogo, WidgetGta.cpp)
 }

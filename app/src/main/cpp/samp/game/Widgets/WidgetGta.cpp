@@ -209,7 +209,12 @@ void CTouchInterface__Update_hook()
         // (segue o toque sintetico do Ataque); no CLASSICO (e em veiculo/jetpack) fica escondido. So o desenho: alpha 0 depois do
         // Update do jogo (Draw nao desenha com alpha 0); a logica do widget nao e tocada.
         CWidgetGta* ring = CTouchInterface::m_pWidgets[WidgetIDs::WIDGET_THUMB_CIRCLE];
-        if(ring && !modernFoot) ring->m_Color.a = 0;
+        // v25: o anel e desenhado pelo cliente (vehicleexit.cpp); aqui so le o alpha do jogo (>0 = ativo) e zera o desenho nativo.
+        if(ring)
+        {
+            VehicleExit::SetRing(modernFoot ? (int)ring->m_Color.a : 0);
+            if(VehicleExit::RingDrawn() || !modernFoot) ring->m_Color.a = 0;
+        }
     }
     {   // diagnostico (1x por entrada no moderno): quais widgets nativos seguem ligados a pe -> samp_log.txt
         static bool s_logged = false;
@@ -227,6 +232,20 @@ void CTouchInterface__Update_hook()
             FLog("[CONTROLES] widgets nativos ligados a pe no moderno: %s", buf);
         }
     }
+    if(inVeh)
+    {   // ACELERAR / FREIO / DERRAPAGEM: desenho do cliente (vehicleexit.cpp); o nativo so recebe o toque (alpha 0)
+        unsigned pm = 0;
+        for(int id = WidgetIDs::WIDGET_ACCELERATE; id <= WidgetIDs::WIDGET_HANDBRAKE; id++)
+        {
+            CWidgetGta* pw = CTouchInterface::m_pWidgets[id];
+            if(!pw || !pw->m_bEnabled) continue;
+            CVector2D tv;
+            if(pw->IsTouched(&tv)) pm |= 1u << id;
+            if(VehicleExit::PadDrawn(id)) pw->m_Color.a = 0;
+        }
+        VehicleExit::SetPressed(pm);
+    }
+    else VehicleExit::SetPressed(0);
     if(VehicleExit::NativeHidden())
     {   // SAIR do veiculo: o desenho e do ImGui (vehicleexit.cpp); aqui so o alpha do nativo (o toque continua nativo)
         CWidgetGta* ex = CTouchInterface::m_pWidgets[WidgetIDs::WIDGET_ENTER_CAR];

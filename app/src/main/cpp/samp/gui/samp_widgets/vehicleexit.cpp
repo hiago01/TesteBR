@@ -116,8 +116,13 @@ namespace
 }
 
 bool VehicleExit::NativeHidden() { return g_hide.load(); }
+namespace { std::atomic<unsigned> g_padMask{ 0 }, g_press{ 0 }; std::atomic<int> g_ringNat{ 0 }; std::atomic<bool> g_ringOn{ false }; }
+bool VehicleExit::PadDrawn(int id) { return (g_padMask.load() >> id) & 1u; }
+void VehicleExit::SetPressed(unsigned m) { g_press.store(m); }
+void VehicleExit::SetRing(int a) { g_ringNat.store(a); }
+bool VehicleExit::RingDrawn() { return g_ringOn.load(); }
 
-void VehicleExit::Draw(ImGuiRenderer* r)
+static void DrawExit(ImGuiRenderer* r)
 {
 	static bool wasIn = false, haveRect = false;
 	static int64_t tIn = 0, tOut = 0;
@@ -174,4 +179,134 @@ void VehicleExit::Draw(ImGuiRenderer* r)
 	const float half = R * 0.62f;
 	if (lastIcon >= I_BARCO) DrawExtra(r, lastIcon, ImVec2(cx, cy), half, ang, fg, bg);
 	else GaragePanel::DrawIcon(r, lastIcon, ImVec2(cx, cy), half, ang, fg, bg);
+}
+
+// =====================================================================================================================
+//  ACELERAR / FREIO / DERRAPAGEM (widgets nativos 2,3,4) e ANEL hud_analognub (0xA4): desenho do cliente por cima do nativo
+// =====================================================================================================================
+namespace
+{
+	bool WidgetRect(int id, float sw, float sh, float& l, float& t, float& r, float& b)
+	{
+		if (!CTouchInterface::m_pWidgets) return false;
+		CWidgetGta* w = CTouchInterface::m_pWidgets[id];
+		if (!w || !w->m_bEnabled) return false;
+		const float gw = (float)RsGlobal->maximumWidth, gh = (float)RsGlobal->maximumHeight;
+		if (!(gw > 1.0f) || !(gh > 1.0f)) return false;
+		const float kx = sw / gw, ky = sh / gh;
+		l = w->m_RectScreen.left * kx; r = w->m_RectScreen.right * kx;
+		const float ya = w->m_RectScreen.top * ky, yb = w->m_RectScreen.bottom * ky;
+		t = std::min(ya, yb); b = std::max(ya, yb);
+		return PassengerLogic::NativeRectOk(l, t, r, b, sw, sh);
+	}
+
+	void Pedal(ImGuiRenderer* r, ImVec2 c, float u, bool tall, const ImColor& fg, const ImColor& bg)
+	{   // pedal com ranhuras; acelerar = estreito e alto (+ seta para cima), freio = largo e baixo (+ duas ranhuras grandes)
+		const float w = tall ? 0.52f * u : 1.00f * u, h = tall ? 0.95f * u : 0.60f * u;
+		r->drawRoundedRect(ImVec2(c.x - w, c.y - h), ImVec2(c.x + w, c.y + h), fg, u * 0.22f, true);
+		const float lw = std::max(1.5f, u * 0.10f);
+		if (tall) {
+			for (int i = 0; i < 4; i++) { const float y = c.y - h * 0.15f + (float)i * h * 0.26f; r->drawLine(ImVec2(c.x - w * 0.62f, y), ImVec2(c.x + w * 0.62f, y), bg, lw); }
+			ImVec2 a[3] = { ImVec2(c.x, c.y - h * 0.82f), ImVec2(c.x + w * 0.55f, c.y - h * 0.40f), ImVec2(c.x - w * 0.55f, c.y - h * 0.40f) };
+			r->drawConvexPolyFilled(a, 3, bg);
+		} else {
+			for (int i = 0; i < 3; i++) { const float y = c.y - h * 0.50f + (float)i * h * 0.50f; r->drawLine(ImVec2(c.x - w * 0.80f, y), ImVec2(c.x + w * 0.80f, y), bg, lw); }
+		}
+	}
+
+	void Skid(ImGuiRenderer* r, ImVec2 c, float u, const ImColor& fg, const ImColor& bg)
+	{   // derrapagem: pneu (retangulo arredondado) + duas marcas de freada em S saindo dele
+		const float lw = std::max(2.0f, u * 0.17f);
+		for (int k = 0; k < 2; k++) {
+			ImVec2 pts[14];
+			for (int i = 0; i < 14; i++) {
+				const float t = (float)i / 13.0f;
+				pts[i] = ImVec2(c.x - u * 0.55f + (k ? u * 0.42f : 0.0f) + std::sin(t * 3.4f) * u * 0.42f, c.y + u * 0.95f - t * u * 1.85f);
+			}
+			r->drawPolyline(pts, 14, fg, false, lw);
+		}
+		r->drawRoundedRect(ImVec2(c.x + u * 0.05f, c.y - u * 1.0f), ImVec2(c.x + u * 0.95f, c.y - u * 0.15f), fg, u * 0.16f, true);
+		r->drawLine(ImVec2(c.x + u * 0.25f, c.y - u * 0.88f), ImVec2(c.x + u * 0.25f, c.y - u * 0.27f), bg, std::max(1.5f, u * 0.09f));
+		r->drawLine(ImVec2(c.x + u * 0.50f, c.y - u * 0.88f), ImVec2(c.x + u * 0.50f, c.y - u * 0.27f), bg, std::max(1.5f, u * 0.09f));
+		r->drawLine(ImVec2(c.x + u * 0.75f, c.y - u * 0.88f), ImVec2(c.x + u * 0.75f, c.y - u * 0.27f), bg, std::max(1.5f, u * 0.09f));
+	}
+
+	void DrawPads(ImGuiRenderer* r, bool inVeh, const ImVec2& screen)
+	{
+		unsigned mask = 0;
+		if (inVeh)
+		{
+			const unsigned press = g_press.load();
+			for (int id = 2; id <= 4; id++)
+			{
+				float l, t, rr, b;
+				if (!WidgetRect(id, screen.x, screen.y, l, t, rr, b)) continue;
+				mask |= 1u << id;
+				const bool dn = (press >> id) & 1u;
+				const float w = rr - l, h = b - t, m = std::min(w, h) * 0.04f;
+				const ImVec2 a(l + m, t + m), e(rr - m, b - m), c((l + rr) * 0.5f, (t + b) * 0.5f);
+				const float rnd = std::min(w, h) * (id == 4 ? 0.5f : 0.30f);
+				r->drawRoundedRect(a, e, dn ? ImColor(255, 255, 255, 235) : ImColor(20, 20, 20, 170), rnd, true);
+				r->drawRoundedRect(a, e, ImColor(255, 255, 255, 235), rnd, false, std::max(2.0f, std::min(w, h) * 0.05f));
+				const ImColor fg = dn ? ImColor(20, 20, 20, 255) : ImColor(255, 255, 255, 255), bg = dn ? ImColor(255, 255, 255, 255) : ImColor(20, 20, 20, 230);
+				const float u = std::min(w, h) * 0.34f;
+				if (id == 2) Pedal(r, c, u, true, fg, bg);
+				else if (id == 3) Pedal(r, c, u, false, fg, bg);
+				else Skid(r, c, u, fg, bg);
+			}
+		}
+		g_padMask.store(mask);
+	}
+
+	void DrawRing(ImGuiRenderer* r, const ImVec2& screen)
+	{   // anel hud_analognub (indicador da mira no controle moderno): anel preto grosso com fio branco, aparece/some suave
+		static float a = 0.0f; static int64_t last = 0;
+		const int64_t now = NowMs(); const float dt = last ? std::min(0.1f, (float)(now - last) / 1000.0f) : 0.016f; last = now;
+		const bool want = g_ringNat.load() > 0;
+		a += ((want ? 1.0f : 0.0f) - a) * std::min(1.0f, dt * 14.0f);
+		float l, t, rr, b;
+		bool ok = false;
+		if (CTouchInterface::m_pWidgets && CTouchInterface::m_pWidgets[WIDGET_THUMB_CIRCLE])
+		{
+			CWidgetGta* w = CTouchInterface::m_pWidgets[WIDGET_THUMB_CIRCLE];
+			const float gw = (float)RsGlobal->maximumWidth, gh = (float)RsGlobal->maximumHeight;
+			if (gw > 1.0f && gh > 1.0f) {
+				const float kx = screen.x / gw, ky = screen.y / gh;
+				l = w->m_RectScreen.left * kx; rr = w->m_RectScreen.right * kx;
+				const float ya = w->m_RectScreen.top * ky, yb = w->m_RectScreen.bottom * ky;
+				t = std::min(ya, yb); b = std::max(ya, yb);
+				ok = PassengerLogic::NativeRectOk(l, t, rr, b, screen.x, screen.y);
+			}
+		}
+		g_ringOn.store(ok);
+		if (!ok || a < 0.02f) return;
+		const float cx = (l + rr) * 0.5f, cy = (t + b) * 0.5f, R = std::min(rr - l, b - t) * 0.5f;
+		const int A = (int)(255.0f * a);
+		constexpr int N = 40;
+		ImVec2 p[N], q[N], s[N];
+		for (int i = 0; i < N; i++) {
+			const float ang = (float)i * 6.2831853f / (float)N, co = std::cos(ang), si = std::sin(ang);
+			p[i] = ImVec2(cx + co * R * 0.86f, cy + si * R * 0.86f);
+			q[i] = ImVec2(cx + co * R * 0.98f, cy + si * R * 0.98f);
+			s[i] = ImVec2(cx + co * R * 0.74f, cy + si * R * 0.74f);
+		}
+		r->drawPolyline(q, N, ImColor(255, 255, 255, A / 2), true, std::max(1.5f, R * 0.04f));
+		r->drawPolyline(s, N, ImColor(255, 255, 255, A / 2), true, std::max(1.5f, R * 0.04f));
+		r->drawPolyline(p, N, ImColor(0, 0, 0, A), true, std::max(3.0f, R * 0.14f));
+	}
+}
+
+void VehicleExit::Draw(ImGuiRenderer* r)
+{
+	DrawExit(r);
+	CPedGTA* ped = nullptr;
+	if (pNetGame && pNetGame->GetPlayerPool())
+	{
+		CLocalPlayer* lp = pNetGame->GetPlayerPool()->GetLocalPlayer();
+		if (lp && lp->GetPlayerPed() && lp->GetPlayerPed()->m_pPed) ped = lp->GetPlayerPed()->m_pPed;
+	}
+	const bool inVeh = ped && ped->IsInVehicle() && ped->m_fHealth > 0.0f && !(pGame && pGame->IsGamePaused());
+	const ImVec2 screen = ImGui::GetIO().DisplaySize;
+	DrawPads(r, inVeh, screen);
+	DrawRing(r, screen);
 }
