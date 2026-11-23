@@ -41,6 +41,7 @@ namespace Hud
 		std::atomic<int>   slotB{0};               // pilula "pessoa": maximo (0 = nao mostra "/max")
 		std::atomic<bool>  peopleManual{false};    // true = slotA/slotB foram postos a mao (/hud set pessoa, /hud teste); false = a pilula mostra quantos jogadores estao online
 		std::atomic<int>   extra{0};               // pilula "estrela"
+		std::atomic<bool>  shop{false};            // jogador dentro da area de uma loja (RPC 245 op 26): mostra o carrinho (toque = /comprar)
 		std::atomic<float> scale{1.0f};            // multiplicador de tamanho (/hud escala)
 		std::atomic<bool>  lights{true};           // luzes de natal sobre o logo (/hud luzes on|off)
 		std::atomic<bool>  mapOnlyDriving{true};   // true = minimapa + nome do local SO aparecem para o MOTORISTA dentro de um veiculo (/hud mapa carro|sempre)

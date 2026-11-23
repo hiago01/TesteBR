@@ -129,6 +129,7 @@ namespace Hud
 		g.slotB.store(0);
 		g.peopleManual.store(false);
 		g.extra.store(0);
+		g.shop.store(false);
 	}
 
 	bool CoordsGet(float& x, float& y, float& z, float& ang, bool& veh)
@@ -834,10 +835,16 @@ namespace
 {
 	std::atomic<float>   g_pplRect[4] = {{0.0f}, {0.0f}, {0.0f}, {0.0f}};   // x0,y0,x1,y1 do bloco (circulo + pilula), na ultima vez que a HUD foi desenhada
 	std::atomic<int64_t> g_pplStamp{0};
+	std::atomic<float>   g_cartRect[4] = {{0.0f}, {0.0f}, {0.0f}, {0.0f}};  // carrinho da loja (so aparece dentro da area de uma loja)
+	std::atomic<int64_t> g_cartStamp{0};
 	int64_t PplNowMs() { using namespace std::chrono; return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count(); }
 	bool PplInside(float x, float y)
 	{
 		return x >= g_pplRect[0].load() && x <= g_pplRect[2].load() && y >= g_pplRect[1].load() && y <= g_pplRect[3].load();
+	}
+	bool CartInside(float x, float y)
+	{
+		return x >= g_cartRect[0].load() && x <= g_cartRect[2].load() && y >= g_cartRect[1].load() && y <= g_cartRect[3].load();
 	}
 }
 
@@ -846,13 +853,16 @@ bool HudHandleRawTouch(int type, int num, int x, int y, bool blockNew)
 	static int   s_finger = -1;
 	static float s_sx = 0.0f, s_sy = 0.0f;
 	static bool  s_moved = false;
+	static bool  s_cart = false;                     // o dedo caiu no carrinho (/comprar) e nao no circulo de pessoas (/central)
 	const int n = num & 3;
 	if (type == 2)                                   // dedo desceu
 	{
 		if (s_finger >= 0 || blockNew) return false;
 		if (!Hud::g.visible.load() || JobsUI::IsOpen()) return false;
 		if (PplNowMs() - g_pplStamp.load() > 250) return false;                  // HUD nao foi desenhada agora (oculta / outra tela por cima)
-		if (!PplInside((float)x, (float)y)) return false;
+		const bool inCart = Hud::g.shop.load() && PplNowMs() - g_cartStamp.load() <= 250 && CartInside((float)x, (float)y);
+		if (!inCart && !PplInside((float)x, (float)y)) return false;
+		s_cart = inCart;
 		s_finger = n; s_sx = (float)x; s_sy = (float)y; s_moved = false;
 		return true;
 	}
@@ -864,9 +874,9 @@ bool HudHandleRawTouch(int type, int num, int x, int y, bool blockNew)
 	}
 	if (type == 1)                                   // soltou: toque valido = abre a Central (mesmo caminho do /central digitado)
 	{
-		const bool ok = !s_moved && !g_bTouchCancel && PplInside((float)x, (float)y);
+		const bool ok = !s_moved && !g_bTouchCancel && (s_cart ? CartInside((float)x, (float)y) : PplInside((float)x, (float)y));
 		s_finger = -1; s_moved = false;
-		if (ok && pNetGame) pNetGame->SendChatCommand("/central");
+		if (ok && pNetGame) pNetGame->SendChatCommand(s_cart ? "/comprar" : "/central");   // carrinho = mesmo caminho do /comprar digitado
 		return true;
 	}
 	return true;
@@ -1021,6 +1031,28 @@ void HudInfo::draw(ImGuiRenderer* r)
 			r->drawText(ImVec2(x + (bl.pillW - ts.x) * 0.5f, y2 - ts.y * 0.5f), kWhite, std::string(bl.text), true, fs);
 
 			x += bl.pillW + kItemGap * S;
+		}
+
+		// ---- linha 3: carrinho (so dentro da area de uma loja): toque = /comprar ----
+		if (Hud::g.shop.load())
+		{
+			const float cy = y2 + (kRadius * 2.0f + kRowGap) * S;
+			const float cx = right - R - (kRingGap + kRingW) * S * 0.5f;                 // alinhado ao ultimo circulo da linha 1
+			FillCircle(r, ImVec2(cx, cy), R, ImColor(34, 150, 90, 255));
+			DrawArc(r, ImVec2(cx, cy), R - 1.5f * S, 1.0f, ImColor(255, 255, 255, 200), 2.0f * S);
+			const ImColor wh(255, 255, 255, 255);
+			// carrinho de compras desenhado por codigo: alca, cesto e duas rodas
+			r->drawLine(ImVec2(cx - 11.0f * S, cy - 9.0f * S), ImVec2(cx - 7.0f * S, cy - 9.0f * S), wh, 2.2f * S);
+			r->drawLine(ImVec2(cx - 7.0f * S, cy - 9.0f * S), ImVec2(cx - 4.0f * S, cy + 3.0f * S), wh, 2.2f * S);
+			r->drawLine(ImVec2(cx - 4.0f * S, cy + 3.0f * S), ImVec2(cx + 8.0f * S, cy + 3.0f * S), wh, 2.2f * S);
+			r->drawLine(ImVec2(cx - 6.0f * S, cy - 4.0f * S), ImVec2(cx + 10.0f * S, cy - 4.0f * S), wh, 2.2f * S);
+			r->drawLine(ImVec2(cx + 10.0f * S, cy - 4.0f * S), ImVec2(cx + 8.0f * S, cy + 3.0f * S), wh, 2.2f * S);
+			FillCircle(r, ImVec2(cx - 2.0f * S, cy + 8.0f * S), 2.2f * S, wh);
+			FillCircle(r, ImVec2(cx + 7.0f * S, cy + 8.0f * S), 2.2f * S, wh);
+			const float pad = 8.0f * S;
+			g_cartRect[0].store(cx - R - pad); g_cartRect[1].store(cy - R - pad);
+			g_cartRect[2].store(cx + R + pad); g_cartRect[3].store(cy + R + pad);
+			g_cartStamp.store(PplNowMs());
 		}
 	}
 }

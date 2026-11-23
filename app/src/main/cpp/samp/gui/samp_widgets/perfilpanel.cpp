@@ -391,13 +391,16 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 			{
 				const float y = 372.0f + 12.0f + (float)k * 27.0f;
 				void* mtex = PerfilMoneyTexture(k);                           // icone de arte (banco texdb/perfil): maos / banco / moeda MB; sem a textura = desenho antigo
-				if (!mtex)
 				{
-					r->drawRoundedRect(V(CX0 + 18, y), V(CX0 + 42, y + 21), A(54, 150, 190, 200), 6.0f * u, true);
-					r->drawRoundedRect(V(CX0 + 18, y), V(CX0 + 42, y + 21), A(150, 226, 250, 190), 6.0f * u, false, std::max(1.0f, 1.0f * u));
+					// moldura melhorada (mesmo tamanho da antiga, 24x21): fundo escuro com brilho no topo, borda ciano dupla e aro suave por fora
+					r->drawRoundedRect(V(CX0 + 17, y - 1), V(CX0 + 43, y + 22), A(98, 232, 250, 34), 7.5f * u, true);
+					r->drawRoundedRect(V(CX0 + 18, y), V(CX0 + 42, y + 21), A(18, 40, 70, 235), 6.0f * u, true);
+					r->drawRoundedRect(V(CX0 + 19, y + 1), V(CX0 + 41, y + 8), A(120, 190, 240, 46), 5.0f * u, true);
+					r->drawRoundedRect(V(CX0 + 18, y), V(CX0 + 42, y + 21), A(98, 232, 250, 235), 6.0f * u, false, std::max(1.0f, 1.3f * u));
+					r->drawRoundedRect(V(CX0 + 19.5f, y + 1.5f), V(CX0 + 40.5f, y + 19.5f), A(190, 244, 255, 70), 5.0f * u, false, std::max(1.0f, 0.8f * u));
 				}
 				const ImVec2 c = V(CX0 + 30.0f, y + 10.5f);
-				if (mtex) r->drawImage(ImVec2(c.x - 13 * u, c.y - 13 * u), ImVec2(c.x + 13 * u, c.y + 13 * u), (ImTextureID)mtex, ImColor(255, 255, 255, (int)(255 * f)), ImVec2(0, 0), ImVec2(1, 1));
+				if (mtex) r->drawImage(ImVec2(c.x - 9.5f * u, c.y - 9.5f * u), ImVec2(c.x + 9.5f * u, c.y + 9.5f * u), (ImTextureID)mtex, ImColor(255, 255, 255, (int)(255 * f)), ImVec2(0, 0), ImVec2(1, 1));
 				else if (k == 0) { r->drawRoundedRect(ImVec2(c.x - 7 * u, c.y - 4 * u), ImVec2(c.x + 7 * u, c.y + 4 * u), A(236, 250, 255, 255), 1.5f * u, false, std::max(1.0f, 1.2f * u)); r->drawRoundedRect(ImVec2(c.x - 2 * u, c.y - 2 * u), ImVec2(c.x + 2 * u, c.y + 2 * u), A(236, 250, 255, 255), 2.0f * u, true); }
 				else if (k == 1) { ImVec2 roof[3] = { ImVec2(c.x - 7 * u, c.y - 1 * u), ImVec2(c.x, c.y - 6 * u), ImVec2(c.x + 7 * u, c.y - 1 * u) }; r->drawConvexPolyFilled(roof, 3, A(236, 250, 255, 255)); r->drawRoundedRect(ImVec2(c.x - 5.5f * u, c.y), ImVec2(c.x + 5.5f * u, c.y + 5 * u), A(236, 250, 255, 255), 0.5f * u, true); }
 				else

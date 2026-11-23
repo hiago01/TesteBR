@@ -20,6 +20,7 @@
 #include "perfilpanel.h"
 #include "avatar.h"
 #include "../../game/PerfilTexDb.h"
+#include "hudstate.h"
 #include "../../game/runstyle.h"
 #include "carinteract.h"
 #include "maximomenu.h"
@@ -341,6 +342,7 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	}
 	if (op == 22) { if (!PerfilPanel::OnRank(bs)) FLog("[JOBS3D] ranking (op 22) invalido (%d bytes)", bytes); return; }
 	if (op == 23) { if (!PerfilPanel::OnRules(bs)) FLog("[JOBS3D] regras (op 23) invalidas (%d bytes)", bytes); return; }
+	if (op == 26) { uint8_t a = 0; if (bs.Read(a)) Hud::g.shop.store(a != 0); return; }   // u8: 1 = jogador dentro da area de uma loja (mostra o carrinho da HUD), 0 = saiu
 	if (op == 24) { if (g_perfil.load()) JobsUI::Close(false); return; }
 	if (op == 19) { if (g_shop.load()) JobsUI::Close(false); return; }                    // o servidor fecha a loja (compra aceita, ou o cliente da loja tinha a tela antiga)
 	if (op == 20) { if (!ShopPanel::OnToast(bs)) FLog("[JOBS3D] aviso (op 20) invalido (%d bytes)", bytes); return; }   // aviso "Informacao" (compra feita / erro)
