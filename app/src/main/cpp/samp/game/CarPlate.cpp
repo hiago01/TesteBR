@@ -528,6 +528,50 @@ void Hook_After(CVehicleGTA* /*veh*/, void* /*modelInfo*/)
     ++s_callsAfter;
     if (s_nSaved) Restore();
 }
+
+// ---- MOTOS: o jogo so chama CustomCarPlate_Before/After para AUTOMOVEL (CVehicle::SetupRender testa m_nVehicleType == 0).
+// Para moto, ganchamos SetupRender (troca a textura logo depois do original) e ResetAfterRender (devolve a original).
+void (*orig_Setup)(CVehicleGTA*)  = nullptr;
+void (*orig_Reset)(CVehicleGTA*)  = nullptr;
+
+RpAtomic* HasPlateCB(RpAtomic* a, void* d)
+{
+    RpGeometry* g = a ? a->geometry : nullptr;
+    if (!g || !g->matList.materials || g->matList.numMaterials <= 0 || g->matList.numMaterials > 64) return a;
+    for (int i = 0; i < g->matList.numMaterials; ++i) {
+        RpMaterial* m = g->matList.materials[i];
+        if (m && m->texture && IsPlateName(m->texture->name)) { *(bool*)d = true; break; }
+    }
+    return a;
+}
+
+bool BikeModelHasPlate(CVehicleGTA* veh)
+{   // 1x por modelo: so motos cujo DFF tem material de placa (ex.: mx_bf400, 1194) pagam o custo
+    static std::unordered_map<int, bool> s_has;
+    const int mid = (int)veh->m_nModelIndex;
+    auto it = s_has.find(mid);
+    if (it != s_has.end()) return it->second;
+    bool has = false;
+    if (veh->m_pRwClump) RpClumpForAllAtomics(veh->m_pRwClump, HasPlateCB, &has);
+    s_has[mid] = has;
+    if (s_debug) FLog("[PLACA] moto modelo=%d: material de placa no DFF = %s", mid, has ? "SIM" : "nao");
+    return has;
+}
+
+void Hook_SetupRender(CVehicleGTA* veh)
+{
+    orig_Setup(veh);
+    if (!s_enabled || !veh) return;
+    if (veh->m_nVehicleType != VEHICLE_TYPE_BIKE && veh->m_nVehicleType != VEHICLE_TYPE_BMX) return;
+    if (!veh->m_pRwClump || !BikeModelHasPlate(veh)) return;
+    Hook_Before(veh, nullptr);
+}
+
+void Hook_ResetAfterRender(CVehicleGTA* veh)
+{
+    if (s_nSaved) Restore();
+    orig_Reset(veh);
+}
 } // namespace
 
 bool Installed() { return s_installed; }
@@ -542,6 +586,11 @@ bool InstallHooks()
     if (!CHook::getSymSoft(kBefore) || !CHook::getSymSoft(kAfter)) return false;   // ja registrou no log; os "ret" nativos continuam
     CHook::InlineHook(kBefore, &Hook_Before, &orig_Before);
     CHook::InlineHook(kAfter,  &Hook_After,  &orig_After);
+    if (CHook::getSymSoft("_ZN8CVehicle11SetupRenderEv") && CHook::getSymSoft("_ZN8CVehicle16ResetAfterRenderEv")) {
+        CHook::InlineHook("_ZN8CVehicle11SetupRenderEv", &Hook_SetupRender, &orig_Setup);
+        CHook::InlineHook("_ZN8CVehicle16ResetAfterRenderEv", &Hook_ResetAfterRender, &orig_Reset);
+        FLog("[PLACA] ganchos de MOTO instalados (CVehicle::SetupRender/ResetAfterRender)");
+    }
     s_installed = true;
     FLog("[PLACA] ganchos instalados (CAutomobile::CustomCarPlate_BeforeRenderingStart/AfterRenderingStop). O original nao e chamado.");
     return true;
