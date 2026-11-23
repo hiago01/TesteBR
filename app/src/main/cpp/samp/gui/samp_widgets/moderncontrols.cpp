@@ -15,6 +15,8 @@
 #include "passengerbutton_logic.h"
 #include "phone.h"
 #include "jobs.h"
+#include "garagepanel.h"
+#include "../../game/Models/VehicleModelInfo.h"
 #include "../../game/PlayerCarry.h"
 
 #include <atomic>
@@ -445,18 +447,41 @@ void ModernControls::draw(ImGuiRenderer* r)
 		// P1/P2 (entrar como motorista/passageiro): so a pe, vivo, sem UI e com um veiculo do SA-MP a ate kShowDist metros; no editor aparecem sempre.
 		if (!editing)
 		{
-			bool showEnter = false;
-			if (pedOk && pNetGame && pNetGame->GetVehiclePool())
+			bool showP1 = false, showP2 = false; float bestD = 1e9f;
+			if (pedOk && pNetGame && pNetGame->GetVehiclePool() && !UiBlocked() && !vehicle && alive && !(ped->IsEnteringCar() || ped->IsExitingVehicle()))
 			{
+				// P1/P2 por PORTA: percorre os veiculos ate ~6 m e testa a distancia do jogador ate a porta do motorista (P1) e as do passageiro (P2).
 				CVehiclePool* vp = pNetGame->GetVehiclePool();
-				CVehicle* v = vp->GetAt(vp->FindNearestToLocalPlayerPed());
-				const float dist = (v && v->m_pVehicle) ? v->m_pVehicle->GetDistanceFromLocalPlayerPed() : -1.0f;
-				const bool busyEnter = ped->IsEnteringCar() || ped->IsExitingVehicle();
-				showEnter = PassengerLogic::ShouldShow(true, UiBlocked(), vehicle, alive, dist, busyEnter);
-				if (v && v->m_bDoorsLocked) showEnter = false;   // carro TRANCADO: P1 e P2 somem (o dono destranca pela interacao com a chave)
+				const CVector pp = ped->GetPosition();
+				for (int id = 0; id < MAX_VEHICLES; id++)
+				{
+					CVehicle* v = vp->GetAt((VEHICLEID)id);
+					if (!v || !v->m_pVehicle || v->m_bDoorsLocked) continue;       // carro TRANCADO: P1 e P2 somem (o dono destranca pela interacao com a chave)
+					CVehicleGTA* gv = v->m_pVehicle;
+					if (!gv->m_matrix) continue;
+					const CVector vp3 = gv->GetPosition();
+					const float ddx = pp.x - vp3.x, ddy = pp.y - vp3.y, ddz = pp.z - vp3.z;
+					if (ddx * ddx + ddy * ddy > PassengerLogic::kShowDist * PassengerLogic::kShowDist || std::fabs(ddz) > 3.0f) continue;
+					float hw = 0.0f, seatY = 0.0f, rearY = 0.0f; bool hasRear = false;
+					CBaseModelInfo* mi = gv->GetModelInfo();
+					if (!mi || !mi->GetColModel()) continue;
+					hw = mi->GetColModel()->m_boundBox.m_vecMax.x;
+					{
+						CVehicleModelInfo* vmi = static_cast<CVehicleModelInfo*>(mi);
+						const CVector* sf = vmi->GetModelDummyPosition(DUMMY_SEAT_FRONT);
+						const CVector* sr = vmi->GetModelDummyPosition(DUMMY_SEAT_REAR);
+						if (sf) seatY = sf->y;
+						if (sr && std::fabs(sr->x) > 0.01f && sr->y < seatY - 0.4f) { rearY = sr->y; hasRear = true; }
+					}
+					const CVector rgt = gv->m_matrix->GetRight(), fwd = gv->m_matrix->GetForward();
+					const float lx = ddx * rgt.x + ddy * rgt.y + ddz * rgt.z, ly = ddx * fwd.x + ddy * fwd.y + ddz * fwd.z;
+					const PassengerLogic::DoorShowRes dr = PassengerLogic::DoorShow(lx, ly, hw, seatY, rearY, hasRear);
+					if ((dr.p1 || dr.p2) && dr.d < bestD) { bestD = dr.d; showP1 = dr.p1; showP2 = dr.p2; }   // vale a porta mais proxima entre todos os veiculos
+				}
 			}
-			if (JobsUI_ScooterFolded()) showEnter = false;   // patinete dobrado na mao: sem P1/P2
-			if (!showEnter) g_ctl.disabledMask |= (1u << B_P1) | (1u << B_P2);
+			if (JobsUI_ScooterFolded()) { showP1 = false; showP2 = false; }   // patinete dobrado na mao: sem P1/P2
+			if (!showP1) g_ctl.disabledMask |= (1u << B_P1);
+			if (!showP2) g_ctl.disabledMask |= (1u << B_P2);
 		}
 		if (!editing) { if (!g_ctl.cfg.showInv) g_ctl.disabledMask |= (1u << B_INV); if (!g_ctl.cfg.showRunLock) { g_ctl.disabledMask |= (1u << B_RUNLOCK); g_runLock.store(false); }   /* escondido: nao deixa o lock de corrida ligado sem botao */ if (!g_ctl.cfg.showSlots) g_ctl.disabledMask |= (1u << B_SLOTS); }   // desligados nos ajustes (no editor continuam visiveis)
 		// pulando/na parede: bloqueia TODOS os botoes, menos o PULO (que vale uma vez so); o joystick segue livre
@@ -681,6 +706,12 @@ void ModernControls::draw(ImGuiRenderer* r)
 				case B_P1:      ic = CtlIcons::I_P1; break;
 				case B_P2:      ic = CtlIcons::I_P2; break;
 				default: break;
+			}
+			if (i == B_P1)   // P1: silhuetas (moto, scooter, carro, patinete, bike, van, hoverboard) trocando ao acaso, mesmo efeito do topo da garagem
+			{
+				GaragePanel::DrawCycleIcon(r, ImVec2(b.cx, b.cy), b.r * 0.62f, down ? Cb(20, 20, 20, 255) : Cb(255, 255, 255, std::min(255, A + 120)), down ? Cb(255, 255, 255, 255) : Cb(20, 20, 20, A), 1);
+				if (editing && snap.sel == i) ring(b, 1.18f, std::max(3.0f, b.r * 0.08f));
+				continue;
 			}
 			const float half = b.r * 0.78f;                 // icone (com o contorno preto) ocupa ~78% do raio de cada lado
 			const float iw = 1.0f / (float)CtlIcons::kWidth, ih = 1.0f / (float)CtlIcons::kHeight;

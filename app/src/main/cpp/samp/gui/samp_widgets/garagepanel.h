@@ -2,6 +2,7 @@
 
 #include <vector>
 
+#include "../../vendor/imgui/imgui.h"
 class ImGuiRenderer;
 namespace RakNet { class BitStream; }
 
@@ -18,6 +19,8 @@ namespace GaragePanel
 {
 	void OnList(RakNet::BitStream& bs);            // op 13 (depois do byte da op). false no pacote invalido = lista mantida
 	void Reset();
+	// Silhuetas (moto, scooter, carro, patinete, bike, van, hoverboard) trocando ao acaso, mesmo efeito do topo da garagem. slot 0 = topo, 1 = botao P1 (estados separados).
+	void DrawCycleIcon(ImGuiRenderer* r, ImVec2 c, float half, const ImColor& fg, const ImColor& bg, int slot);
 	// Desenha e processa os toques. close = tocou em fechar; pullReg > 0 = tocou em Retirar veiculo (registro do carro).
 	void Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vector<GarageTouch>& events, bool& close, int& pullReg);
 }

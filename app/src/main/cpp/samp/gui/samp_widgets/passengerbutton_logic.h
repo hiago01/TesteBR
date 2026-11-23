@@ -5,6 +5,7 @@
 
 namespace PassengerLogic
 {
+	constexpr float kDoorDist = 1.8f;      // metros ate a PORTA (nao ate o centro do carro) para P1/P2 aparecerem
 	constexpr float kShowDist = 6.0f;      // metros ate o veiculo mais proximo para o botao aparecer (a entrada em si aceita ate 8 m)
 	constexpr int   kCooldownMs = 1200;    // depois de usar, ignora novos toques (a entrada leva um instante)
 
@@ -43,5 +44,25 @@ namespace PassengerLogic
 	{
 		// busy = ja entrando/saindo de veiculo: o botao some (nao da para acumular toques durante a animacao)
 		return pedOk && !blockedUi && !inVehicle && alive && !busy && nearestDist >= 0.0f && nearestDist <= kShowDist;
+	}
+
+	// Qual botao aparece conforme a posicao do jogador no espaco LOCAL do veiculo (lx = lado direito+, ly = frente+).
+	//  hw = meia largura do carro; seatY = y dos bancos da frente; rearY/hasRear = y do banco traseiro.
+	//  P1 = porta do MOTORISTA (esquerda, frente). P2 = porta do passageiro (direita, frente) e portas traseiras (as duas).
+	//  Veiculo estreito (moto/bike/patinete, hw < 0.7): sem portas, aparece quando esta junto ao veiculo.
+	struct DoorShowRes { bool p1, p2; float d; };   // d = distancia ate a porta mais proxima (so vale se p1 || p2)
+	// Vale a porta MAIS PROXIMA: portas vizinhas (motorista e traseira esquerda ficam a menos de 1 m) nao acendem os dois botoes juntos.
+	inline DoorShowRes DoorShow(float lx, float ly, float hw, float seatY, float rearY, bool hasRear, float maxDist = kDoorDist)
+	{
+		DoorShowRes r{ false, false, 1e9f };
+		if (!std::isfinite(lx) || !std::isfinite(ly) || !(hw > 0.0f)) return r;
+		auto dist = [&](float side, float y) { const float dx = lx - side * hw, dy = ly - y; return std::sqrt(dx * dx + dy * dy); };
+		if (hw < 0.7f) { r.d = std::sqrt(lx * lx + ly * ly); r.p1 = r.p2 = r.d <= maxDist * 1.1f; return r; }
+		const float dDrv = dist(-1.0f, seatY);
+		float dPas = dist(+1.0f, seatY);
+		if (hasRear) dPas = std::min(dPas, std::min(dist(-1.0f, rearY), dist(+1.0f, rearY)));
+		if (dDrv <= dPas) { r.d = dDrv; r.p1 = dDrv <= maxDist; }
+		else              { r.d = dPas; r.p2 = dPas <= maxDist; }
+		return r;
 	}
 }

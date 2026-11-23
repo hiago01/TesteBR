@@ -45,7 +45,7 @@ namespace
 namespace
 {
 	int64_t HdrNowMs() { return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
-	struct HdrAnim { int cur = 0, prev = -1; int64_t t0 = 0, next = 0, lastDraw = 0; std::mt19937 rng{ std::random_device{}() }; } g_hdr;
+	struct HdrAnim { int cur = 0, prev = -1; int64_t t0 = 0, next = 0, lastDraw = 0; std::mt19937 rng{ std::random_device{}() }; } g_hdrs[2];   // [0] = topo da garagem, [1] = botao P1 do HUD
 
 	template <class L>
 	void DrawIconLayers(ImGuiRenderer* r, const L* layers, int nLayers, ImVec2 c, float half, float ang, const ImColor& fg, const ImColor& bg)
@@ -68,9 +68,10 @@ namespace
 		}
 	}
 
-	void DrawHeaderIcon(ImGuiRenderer* r, ImVec2 c, float half, const ImColor& fg, const ImColor& bg)
+	void DrawHeaderIconSlot(ImGuiRenderer* r, ImVec2 c, float half, const ImColor& fg, const ImColor& bg, int slot)
 	{
 		using namespace GarageIcons;
+		HdrAnim& g_hdr = g_hdrs[slot ? 1 : 0];
 		const int64_t now = HdrNowMs();
 		if (g_hdr.lastDraw == 0 || now - g_hdr.lastDraw > 700)          // a tela acabou de abrir: comeca numa silhueta ao acaso, sem transicao
 		{
@@ -110,7 +111,10 @@ namespace
 			default: DrawIconLayers(r, k_hoverboard_layers, (int)(sizeof(k_hoverboard_layers) / sizeof(k_hoverboard_layers[0])), cc, sc, ang, fg, bg); break;
 		}
 	}
+	void DrawHeaderIcon(ImGuiRenderer* r, ImVec2 c, float half, const ImColor& fg, const ImColor& bg) { DrawHeaderIconSlot(r, c, half, fg, bg, 0); }
 }
+
+void GaragePanel::DrawCycleIcon(ImGuiRenderer* r, ImVec2 c, float half, const ImColor& fg, const ImColor& bg, int slot) { DrawHeaderIconSlot(r, c, half, fg, bg, slot); }
 
 void GaragePanel::OnList(RakNet::BitStream& bs)
 {
