@@ -243,6 +243,7 @@ void Waypoint3D::Draw(ImGuiRenderer* r, float k)
 	static CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + 0xBBA8D0);
 	const RwMatrix cam = TheCamera.GetMatrix().ToRwMatrix();
 	const ImVec2 cen(scr.x * 0.5f, scr.y * 0.5f);
+	static float g_fx = -1.0f, g_fy = 1.0f;     // sinais da matriz da camera (valor inicial = o observado no aparelho; depois se calibra sozinho)
 
 	std::vector<Item> items;
 	int pinIdx = 0;
@@ -257,6 +258,14 @@ void Waypoint3D::Draw(ImGuiRenderer* r, float k)
 		const float mg = 26.0f * k;
 		if (front && it.p.x >= mg && it.p.x <= scr.x - mg && it.p.y >= mg && it.p.y <= scr.y - mg)
 		{
+			{   // calibra os sinais da matriz da camera com esta marcacao visivel
+				const float wx = p.x - cam.pos.x, wy = p.y - cam.pos.y, wz = (p.z + 1.9f) - cam.pos.z;
+				const float pr = wx * cam.right.x + wy * cam.right.y + wz * cam.right.z;
+				const float pu = wx * cam.at.x + wy * cam.at.y + wz * cam.at.z;
+				const float ax = it.p.x - cen.x, ay = it.p.y - cen.y;
+				if (std::fabs(pr) > 1.0f && std::fabs(ax) > 60.0f * k) g_fx = (pr * ax > 0.0f) ? 1.0f : -1.0f;
+				if (std::fabs(pu) > 1.0f && std::fabs(ay) > 40.0f * k) g_fy = (-pu * ay > 0.0f) ? 1.0f : -1.0f;
+			}
 			it.hasGround = Proj(p.x, p.y, p.z, it.ground);
 			items.push_back(it);
 			continue;
@@ -264,22 +273,19 @@ void Waypoint3D::Draw(ImGuiRenderer* r, float k)
 		// fora da tela ou atras: seta na borda apontando para onde virar
 		it.off = true;
 		{
-			// SEMPRE no espaco da camera (direita / cima / frente): antes usava a projecao quando estava na frente e o espaco da camera quando
-			// estava atras; as duas dao angulos diferentes, entao a seta "pulava" para o lado errado ao girar a camera.
+			// direcao no espaco da camera. Os SINAIS (direita/cima) da matriz da camera nao batiam com a tela (a seta saia invertida), entao
+			// eles sao CALIBRADOS sozinhos: cada vez que uma marcacao aparece na tela, compara-se onde ela esta com onde a matriz diz que esta.
 			const float wx = p.x - cam.pos.x, wy = p.y - cam.pos.y, wz = (p.z + 1.9f) - cam.pos.z;
-			const float cxr = wx * cam.right.x + wy * cam.right.y + wz * cam.right.z;     // para a direita da camera
-			const float czu = wx * cam.at.x + wy * cam.at.y + wz * cam.at.z;              // para cima da camera
-			const float cfw = wx * cam.up.x + wy * cam.up.y + wz * cam.up.z;              // para a frente da camera
-			float dxs = cxr, dys = -czu;                                                   // tela: x para a direita, y para baixo
-			if (cfw < 0.0f)                                                                // atras: indica para que lado GIRAR (nao sobe/desce)
+			const float cxr = wx * cam.right.x + wy * cam.right.y + wz * cam.right.z;     // "direita" segundo a matriz
+			const float czu = wx * cam.at.x + wy * cam.at.y + wz * cam.at.z;              // "cima" segundo a matriz
+			float dxs = cxr * g_fx, dys = -czu * g_fy;                                     // tela: x para a direita, y para baixo
+			if (!front)                                                                    // atras: indica o lado para GIRAR (altura pesa pouco)
 			{
-				const float hz = std::sqrt(cxr * cxr + cfw * cfw);
-				dxs = hz > 1e-3f ? cxr / hz : 0.0f;
-				dys = hz > 1e-3f ? -czu / hz : 0.0f;
-				static float s_side = 1.0f;                                                // quase exatamente atras: mantem o ultimo lado (sem tremer)
-				if (std::fabs(dxs) > 0.05f) s_side = dxs > 0.0f ? 1.0f : -1.0f;
-				else dxs = 0.05f * s_side;
-				dxs *= 4.0f;                                                               // pesa mais o lado do que a altura
+				static float s_side = 1.0f;                                                // quase exatamente atras: mantem o ultimo lado
+				const float hz = std::fabs(dxs) + std::fabs(dys) * 0.25f + 1e-3f;
+				float nx = dxs / hz, ny = dys * 0.25f / hz;
+				if (std::fabs(nx) > 0.05f) s_side = nx > 0.0f ? 1.0f : -1.0f; else nx = 0.05f * s_side;
+				dxs = nx * 4.0f; dys = ny;
 			}
 			it.dir = ImVec2(dxs, dys);
 		}
