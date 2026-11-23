@@ -8,10 +8,10 @@
 //
 //    u8 op
 //    op 1  aviso     : u8 tipo (0 sucesso, 1 erro, 2 aviso) | string titulo | string texto | u16 duracao em ms
-//    op 2  veiculo   : u8 combustivel (0..100) | u8 flags (bit0 motor ligado, bit1 trancado) | [opcional, no fim] u32 hodometro em decimos de km
+//    op 2  veiculo   : u8 combustivel (0..100) | u8 flags (bit0 motor ligado, bit1 trancado, bit2 farol, bit3 pisca alerta) | [opcional, no fim] u32 hodometro em decimos de km
 //    string = u8 tamanho + bytes
 //
-//  Os botoes mandam "/motor" e "/trancar" ao servidor (mesmo caminho de quem digita o comando no chat).
+//  As teclas mandam "/motor", "/trancar", "/farol" e "/pisca" ao servidor (mesmo caminho de quem digita o comando no chat).
 // =====================================================================================
 
 namespace VehHud
@@ -33,7 +33,7 @@ public:
 
 private:
 	// botoes (centro/raio do ultimo frame; raio 0 = escondido)
-	ImVec2 m_btnC[2];
+	ImVec4 m_key[4];   // x0,y0,x1,y1 das 4 teclas do painel (motor, trava, farol, pisca)
 	float  m_btnR = 0.0f;
 	int    m_down = -1;
 	int64_t m_lastTap = 0;

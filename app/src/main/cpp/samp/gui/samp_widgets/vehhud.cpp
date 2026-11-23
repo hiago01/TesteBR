@@ -316,6 +316,44 @@ namespace
 		if (locked) Arc(r, ImVec2(c.x, c.y - s * 0.15f), sh, kPi, 2.0f * kPi, col, t);
 		else        Arc(r, ImVec2(c.x + sh * 1.1f, c.y - s * 0.15f), sh, kPi, 1.75f * kPi, col, t);
 	}
+
+	// ---- painel de teclas 2x2 (motor, trava, farol, pisca alerta)
+	void KeyIconPower(ImGuiRenderer* r, const ImVec2& c, float s, bool on)
+	{
+		const ImColor col = on ? ImColor(52, 230, 96, 255) : ImColor(226, 226, 232, 255);
+		if (on) { DrawPower(r, c, s, ImColor(52, 230, 96, 60), s * 0.55f); }
+		DrawPower(r, c, s, col, s * 0.24f);
+	}
+	void KeyIconLock(ImGuiRenderer* r, const ImVec2& c, float s, bool locked)
+	{
+		DrawLock(r, ImVec2(c.x, c.y + s * 0.1f), s, locked ? ImColor(244, 244, 248, 255) : ImColor(150, 150, 158, 255), s * 0.22f, locked);
+	}
+	void KeyIconBeam(ImGuiRenderer* r, const ImVec2& c, float s, bool on)
+	{
+		const ImColor col = on ? ImColor(132, 200, 255, 255) : ImColor(226, 226, 232, 255);
+		const float t = s * 0.2f;
+		ImVec2 p[16]; int n = 0;                                          // "D": haste vertical + meia-lua para a direita
+		const ImVec2 o(c.x + s * 0.2f, c.y);
+		for (int i = 0; i <= 12; i++) { const float a = -kPi * 0.5f + kPi * (float)i / 12.0f; p[n++] = ImVec2(o.x + std::cos(a) * s * 0.62f * 0.8f, o.y + std::sin(a) * s * 0.62f); }
+		p[n++] = ImVec2(o.x, o.y - s * 0.62f);
+		if (on) r->drawPolyline(p, n, ImColor(132, 200, 255, 60), true, t * 2.4f);
+		r->drawPolyline(p, n, col, true, t);
+		for (int i = 0; i < 3; i++)                                       // raios para a esquerda
+		{
+			const float y = c.y + ((float)i - 1.0f) * s * 0.42f;
+			r->drawLine(ImVec2(o.x - s * 0.3f, y + s * 0.06f), ImVec2(o.x - s * 0.95f, y - s * 0.06f), col, t);
+		}
+	}
+	void KeyIconHazard(ImGuiRenderer* r, const ImVec2& c, float s, bool on)
+	{
+		const ImColor col = on ? ImColor(255, 56, 56, 255) : ImColor(150, 150, 158, 255);
+		const float t = s * 0.2f;
+		const ImVec2 p[3] = { ImVec2(c.x, c.y - s * 0.78f), ImVec2(c.x + s * 0.92f, c.y + s * 0.62f), ImVec2(c.x - s * 0.92f, c.y + s * 0.62f) };
+		if (on) r->drawPolyline(p, 3, ImColor(255, 56, 56, 60), true, t * 2.4f);
+		r->drawPolyline(p, 3, col, true, t);
+		r->drawLine(ImVec2(c.x, c.y - s * 0.22f), ImVec2(c.x, c.y + s * 0.18f), col, t * 0.9f);
+		Disc(r, ImVec2(c.x, c.y + s * 0.4f), t * 0.55f, col);
+	}
 }
 
 namespace VehHud
@@ -358,7 +396,7 @@ namespace VehHud
 
 VehHudWidget::VehHudWidget()
 {
-	m_btnC[0] = m_btnC[1] = ImVec2(0.0f, 0.0f);
+	for (int i = 0; i < 4; i++) m_key[i] = ImVec4(0, 0, 0, 0);
 }
 
 void VehHudWidget::draw(ImGuiRenderer* r)
@@ -390,7 +428,7 @@ void VehHudWidget::draw(ImGuiRenderer* r)
 
 	// painel (layout do banner): 300 x 84, a esquerda dos pedais nativos
 	const float W = 300.0f * k, H = 84.0f * k;
-	const float px = scr.x - 300.0f * k - W, py = scr.y - H - 26.0f * k;
+	const float px = (scr.x - W) * 0.5f, py = scr.y - H - 22.0f * k;          // centro da tela, na base
 	r->drawRoundedRect(ImVec2(px, py), ImVec2(px + W, py + H), ImColor(16, 16, 20, 205), 9.0f * k, true);
 
 	const ImColor kGrey(106, 106, 112, 255), kWhite(255, 255, 255, 255), kBox(6, 6, 9, 190);
@@ -466,22 +504,29 @@ void VehHudWidget::draw(ImGuiRenderer* r)
 			                   low ? ImColor(255, 78, 78, 255) : ImColor(240, 128, 60, 255), bh * 0.5f, true);
 	}
 
-	// botoes de motor e trava (so se o servidor mandou o estado do veiculo), acima do painel
+	// painel de teclas 2x2 ao lado direito do velocimetro (so se o servidor mandou o estado do veiculo): motor | trava / farol | pisca alerta
 	if (haveState)
 	{
-		const float br = 21.0f * k;
-		m_btnR = br;
-		const float bcx = px + W * 0.5f;
-		m_btnC[0] = ImVec2(bcx - 30.0f * k, py - 26.0f * k);
-		m_btnC[1] = ImVec2(bcx + 30.0f * k, py - 26.0f * k);
-		for (int i = 0; i < 2; i++)
+		m_btnR = 1.0f;
+		const float bs = 36.0f * k, gp = 5.0f * k, pad = 6.0f * k;
+		const float S = pad * 2.0f + bs * 2.0f + gp;
+		const float x0 = px + W + 12.0f * k, y0 = py + H - S;
+		r->drawRoundedRect(ImVec2(x0, y0), ImVec2(x0 + S, y0 + S), ImColor(20, 20, 24, 235), 14.0f * k, true);
+		r->drawRoundedRect(ImVec2(x0, y0), ImVec2(x0 + S, y0 + S), ImColor(255, 255, 255, 26), 14.0f * k, false, 1.0f * k);
+		const bool st[4] = { (flags & 1) != 0, (flags & 2) != 0, (flags & 4) != 0, (flags & 8) != 0 };
+		for (int i = 0; i < 4; i++)
 		{
-			const bool on = (i == 0) ? (flags & 1) != 0 : (flags & 2) != 0;
-			const ImColor ac = (i == 0) ? ImColor(52, 199, 89, 255) : ImColor(240, 62, 110, 255);
-			Disc(r, m_btnC[i], br, ImColor(20, 20, 24, m_down == i ? 235 : 190));
-			Arc(r, m_btnC[i], br, 0.0f, 2.0f * kPi, on ? ac : ImColor(110, 110, 118, 255), 2.0f * k);
-			if (i == 0) DrawPower(r, m_btnC[i], 7.5f * k, on ? ac : ImColor(235, 235, 240, 255), 2.0f * k);
-			else        DrawLock(r, m_btnC[i], 7.0f * k, on ? ac : ImColor(235, 235, 240, 255), 2.0f * k, on);
+			const float bx = x0 + pad + (float)(i & 1) * (bs + gp), by = y0 + pad + (float)(i >> 1) * (bs + gp);
+			m_key[i] = ImVec4(bx, by, bx + bs, by + bs);
+			const bool dn = (m_down == i);
+			r->drawRoundedRect(ImVec2(bx, by), ImVec2(bx + bs, by + bs), dn ? ImColor(26, 26, 30, 255) : ImColor(40, 40, 45, 255), 10.0f * k, true);
+			r->drawRoundedRect(ImVec2(bx + 1.0f * k, by + 1.0f * k), ImVec2(bx + bs - 1.0f * k, by + bs * 0.5f), ImColor(255, 255, 255, dn ? 4 : 14), 9.0f * k, true);   // brilho de cima
+			const ImVec2 c(bx + bs * 0.5f, by + bs * 0.5f + (dn ? 0.8f * k : 0.0f));
+			const float is = 9.5f * k;
+			if (i == 0)      KeyIconPower(r, c, is, st[0]);
+			else if (i == 1) KeyIconLock(r, c, is * 0.95f, st[1]);
+			else if (i == 2) KeyIconBeam(r, c, is, st[2]);
+			else             KeyIconHazard(r, c, is, st[3]);
 		}
 	}
 }
@@ -489,18 +534,20 @@ void VehHudWidget::draw(ImGuiRenderer* r)
 void VehHudWidget::touchEvent(const ImVec2& pos, TouchType type)
 {
 	if (m_btnR <= 0.0f) { m_down = -1; return; }
-	auto hit = [&](int i) { const float dx = pos.x - m_btnC[i].x, dy = pos.y - m_btnC[i].y; return dx * dx + dy * dy <= m_btnR * m_btnR * 1.44f; };
+	auto hit = [&](int i) { const ImVec4& q = m_key[i]; const float m = 4.0f; return pos.x >= q.x - m && pos.x <= q.z + m && pos.y >= q.y - m && pos.y <= q.w + m; };
 	if (type == TouchType::push)
 	{
-		m_down = hit(0) ? 0 : (hit(1) ? 1 : -1);
+		m_down = -1;
+		for (int i = 0; i < 4; i++) if (hit(i)) { m_down = i; break; }
 	}
 	else if (type == TouchType::pop)
 	{
 		const int d = m_down; m_down = -1;
 		if (d < 0 || !hit(d) || !pNetGame) return;
 		const int64_t now = NowMs();
-		if (now - m_lastTap < 700) return;                           // anti-repeticao
+		if (now - m_lastTap < 500) return;                           // anti-repeticao
 		m_lastTap = now;
-		pNetGame->SendChatCommand(d == 0 ? "/motor" : "/trancar");
+		static const char* kCmd[4] = { "/motor", "/trancar", "/farol", "/pisca" };
+		pNetGame->SendChatCommand(kCmd[d]);
 	}
 }
