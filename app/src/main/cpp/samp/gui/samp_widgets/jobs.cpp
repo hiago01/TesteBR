@@ -23,6 +23,7 @@
 #include "hudstate.h"
 #include "../../game/runstyle.h"
 #include "carinteract.h"
+#include "waypoint3d.h"
 #include "maximomenu.h"
 
 #include <algorithm>
@@ -249,6 +250,7 @@ void JobsUI::Reset()
 	{ std::lock_guard<std::mutex> l(g_mkMutex); g_mkNetA.clear(); g_mkNetB.clear(); g_mkNetC.clear(); g_mkNetD.clear(); g_mkNet.clear(); }
 	g_scFolded.store(false);
 	CarInteract::Reset();
+	Waypoint3D::Reset();
 	ChatSetAllowed(false);
 	ProvadorSetAllowed(false);
 	g_mkVer.fetch_add(1);
@@ -342,6 +344,10 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	}
 	if (op == 22) { if (!PerfilPanel::OnRank(bs)) FLog("[JOBS3D] ranking (op 22) invalido (%d bytes)", bytes); return; }
 	if (op == 23) { if (!PerfilPanel::OnRules(bs)) FLog("[JOBS3D] regras (op 23) invalidas (%d bytes)", bytes); return; }
+	// marcacoes 3D do GPS / sede do grupo / sedes no mapa (org.pwn). Ops 27-29: as antigas 20-22 passaram a ser da loja/menu jogador e o servidor as renumerou.
+	if (op == 29) { Waypoint3D::OnHq(bs); return; }     // sedes de todos os grupos (categoria "Grupos" do mapa aberto)
+	if (op == 28) { Waypoint3D::OnSede(bs); return; }   // marcacao temporaria "SEDE (grupo)" (/grupo > Marcar no GPS)
+	if (op == 27) { Waypoint3D::OnPacket(bs); return; } // marcacoes 3D de GPS do jogador (/marcar)
 	if (op == 26) { uint8_t a = 0; if (bs.Read(a)) Hud::g.shop.store(a != 0); return; }   // u8: 1 = jogador dentro da area de uma loja (mostra o carrinho da HUD), 0 = saiu
 	if (op == 24) { if (g_perfil.load()) JobsUI::Close(false); return; }
 	if (op == 19) { if (g_shop.load()) JobsUI::Close(false); return; }                    // o servidor fecha a loja (compra aceita, ou o cliente da loja tinha a tela antiga)
@@ -469,6 +475,9 @@ void JobsUI::draw(ImGuiRenderer* r)
 	// ---- marcadores no mundo (anel no chao, circulo com icone, seta, texto sobre o NPC) ----
 	if (!g_open.load()) DrawMarkers(r, k, now);
 	else g_mkHit.clear();
+
+	// ---- marcacoes 3D de GPS do jogador (pino + nome + distancia); a tela aberta (agencia/garagem) cobre o mundo ----
+	if (!g_open.load()) Waypoint3D::Draw(r, k);
 
 	// ---- interacao com o proprio carro (chave): ponto "Abrir interacao" + menu Trancar/Destrancar; o toque dele vem antes dos demais ----
 	if (!g_open.load())
