@@ -18,6 +18,8 @@ namespace UiPrefs
     namespace detail
     {
         inline bool& Map() { static bool v = true; return v; }
+        inline bool& Loc() { static bool v = true; return v; }
+        inline bool& IdT() { static bool v = true; return v; }
         inline bool& Loaded() { static bool l = false; return l; }
         inline std::string Path()
         {
@@ -39,6 +41,8 @@ namespace UiPrefs
                 {
                     int v = 0;
                     if (std::sscanf(line, "mapa=%d", &v) == 1) Map() = (v != 0);
+                    else if (std::sscanf(line, "tarjaloc=%d", &v) == 1) Loc() = (v != 0);
+                    else if (std::sscanf(line, "tarjaid=%d", &v) == 1) IdT() = (v != 0);
                 }
                 std::fclose(f);
             }
@@ -47,10 +51,14 @@ namespace UiPrefs
 
     inline bool MapOn() { detail::Load(); return detail::Map(); }
     inline void SetMapOn(bool on) { detail::Load(); detail::Map() = on; }
+    inline bool LocOn() { detail::Load(); return detail::Loc(); }      // tarja do local (cidade | zona + bussola)
+    inline void SetLocOn(bool on) { detail::Load(); detail::Loc() = on; }
+    inline bool IdOn() { detail::Load(); return detail::IdT(); }       // tarja de ID da conta + hora + data (topo direito)
+    inline void SetIdOn(bool on) { detail::Load(); detail::IdT() = on; }
     inline void Save()
     {
         const std::string p = detail::Path();
         if (p.empty()) return;
-        if (FILE* f = std::fopen(p.c_str(), "wb")) { std::fprintf(f, "mapa=%d\n", detail::Map() ? 1 : 0); std::fclose(f); }
+        if (FILE* f = std::fopen(p.c_str(), "wb")) { std::fprintf(f, "mapa=%d\ntarjaloc=%d\ntarjaid=%d\n", detail::Map() ? 1 : 0, detail::Loc() ? 1 : 0, detail::IdT() ? 1 : 0); std::fclose(f); }
     }
 }

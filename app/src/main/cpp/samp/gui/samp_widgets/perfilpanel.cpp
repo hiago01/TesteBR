@@ -618,14 +618,16 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 		{
 			const CtlLogic::ModernConfig mc = ControlMode::GetConfig();
 			struct Tg { const char* name; const char* sub; bool on; };
-			const Tg tg[3] = {
+			const Tg tg[5] = {
 				{ "Botão Inventário", "Botão da mochila na tela (controles modernos). Padrão: desativado.", mc.showInv },
 				{ "Botão Corrida (lock)", "Botão que liga/desliga correr reto sozinho (controles modernos). Padrão: desativado.", mc.showRunLock },
 				{ "Minimapa", "Minimapa e nome do local na tela, a pé e de carro. Padrão: ativado.", UiPrefs::MapOn() },
+				{ "Tarja do local", "Nome do local (cidade | zona) e bússola na tela. Padrão: ativada.", UiPrefs::LocOn() },
+				{ "Tarja de ID e horário", "ID da conta, hora e data no topo direito. Padrão: ativada.", UiPrefs::IdOn() },
 			};
-			const float cy0 = 346.0f, cy1 = cy0 + 16.0f + 3 * 50.0f;
+			const float cy0 = 346.0f, cy1 = cy0 + 16.0f + 5 * 50.0f;
 			card(CX0, cy0, X1, cy1);
-			for (int k = 0; k < 3; k++)
+			for (int k = 0; k < 5; k++)
 			{
 				const float ry = cy0 + 12.0f + (float)k * 50.0f;
 				txt(CX0 + 22.0f, ry + 2.0f, A(240, 246, 255, 255), tg[k].name, 13.0f, true);
@@ -804,6 +806,8 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 			case K_TOG:
 			{
 				if (was.idx == 2) { UiPrefs::SetMapOn(!UiPrefs::MapOn()); UiPrefs::Save(); break; }
+				if (was.idx == 3) { UiPrefs::SetLocOn(!UiPrefs::LocOn()); UiPrefs::Save(); break; }
+				if (was.idx == 4) { UiPrefs::SetIdOn(!UiPrefs::IdOn()); UiPrefs::Save(); break; }
 				CtlLogic::ModernConfig c = ControlMode::GetConfig();
 				if (was.idx == 0) c.showInv = !c.showInv; else c.showRunLock = !c.showRunLock;
 				ControlMode::SetConfig(c, true);

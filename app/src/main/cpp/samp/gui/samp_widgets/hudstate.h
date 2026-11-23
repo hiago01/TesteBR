@@ -44,6 +44,7 @@ namespace Hud
 		std::atomic<bool>  shop{false};            // jogador dentro da area de uma loja (RPC 245 op 26): mostra o carrinho (toque = /comprar)
 		std::atomic<float> scale{1.0f};            // multiplicador de tamanho (/hud escala)
 		std::atomic<bool>  lights{true};           // luzes de natal sobre o logo (/hud luzes on|off)
+		std::atomic<int>   accountId{0};           // ID da conta (.ini) enviado pelo servidor (RPC 247 op 6); 0 = ainda nao recebido
 		std::atomic<bool>  mapOnlyDriving{false};   // true = minimapa + nome do local SO aparecem para o MOTORISTA dentro de um veiculo (/hud mapa carro|sempre)
 	};
 

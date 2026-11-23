@@ -390,6 +390,12 @@ namespace VehHud
 			if (!bs.Read(on) || !bs.Read(x) || !bs.Read(y) || !bs.Read(z) || !bs.Read(in)) return;
 			g_mkX.store(x); g_mkY.store(y); g_mkZ.store(z); g_mkIn.store(in ? 1 : 0); g_mkOn.store(on ? 1 : 0);
 		}
+		else if (op == 6)
+		{
+			uint32_t id = 0;
+			if (!bs.Read(id)) return;
+			Hud::g.accountId.store((int)(id > 99999999u ? 0u : id));
+		}
 		else if (op == 4)
 		{
 			uint8_t st = 0;

@@ -24,6 +24,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <string>
 
 extern CNetGame* pNetGame;
@@ -119,6 +120,7 @@ namespace Hud
 		g.hunger.store(100);
 		g.thirst.store(100);
 		g.energy.store(100);
+		g.accountId.store(0);
 		{
 			std::lock_guard<std::mutex> lk(g_stMutex);
 			g_st.Reset();
@@ -706,6 +708,7 @@ namespace
 	void DrawLocationTag(ImGuiRenderer* r, const ImVec2& screen, float S)
 	{
 		const bool allowed = Hud::MapAllowed();                                       // true = minimapa visivel (motorista)
+		if (!UiPrefs::LocOn()) return;                                                // jogador desligou a tarja do local (Configuracoes)
 		const bool mapOpen = WorldMapWidget::IsOpen();                                // mapa aberto: so o local; fechado: local + bussola
 		if (mapOpen) return;                                                          // mapa grande aberto: some a etiqueta (o minimapa tambem some)
 		using namespace std::chrono;
@@ -959,6 +962,23 @@ void HudInfo::draw(ImGuiRenderer* r)
 		float cx = right - R - (kRingGap + kRingW) * S * 0.5f;
 		for (int i = 4; i >= 0; i--, cx -= step)
 			StatusCircle(r, tex, *items[i].icon, ImVec2(cx, y1), S, items[i].col, items[i].pct, items[i].alert);
+	}
+
+	// ------------------------------------------------------------------ tarja de ID + hora + data (topo direito, acima dos circulos)
+	if (UiPrefs::IdOn() && Hud::g.accountId.load() > 0)
+	{
+		char t1[64], t2[32];
+		snprintf(t1, sizeof t1, "ID: %d", Hud::g.accountId.load());
+		const time_t tt = time(nullptr); struct tm lt; localtime_r(&tt, &lt);
+		snprintf(t2, sizeof t2, "%02d:%02d  %02d/%02d/%04d", lt.tm_hour, lt.tm_min, lt.tm_mday, lt.tm_mon + 1, lt.tm_year + 1900);
+		const float fs = 13.0f * S, padX = 9.0f * S, padY = 4.0f * S;
+		const ImVec2 s1 = r->calculateTextSize(std::string(t1), fs), s2 = r->calculateTextSize(std::string(t2), fs * 0.88f);
+		const float w = std::max(s1.x, s2.x) + padX * 2.0f, h = s1.y + s2.y + padY * 2.0f + 2.0f * S;
+		const float bx1 = right, bx0 = bx1 - w, by1 = y1 - R - 8.0f * S, by0 = by1 - h;
+		r->drawRoundedRect(ImVec2(bx0, by0), ImVec2(bx1, by1), ImColor(10, 14, 22, 190), 7.0f * S, true);
+		r->drawRoundedRect(ImVec2(bx0, by0), ImVec2(bx1, by1), ImColor(98, 232, 250, 150), 7.0f * S, false, std::max(1.0f, 1.2f * S));
+		r->drawText(ImVec2(bx1 - padX - s1.x, by0 + padY), ImColor(98, 232, 250, 255), std::string(t1), true, fs);
+		r->drawText(ImVec2(bx1 - padX - s2.x, by0 + padY + s1.y + 2.0f * S), ImColor(225, 232, 244, 235), std::string(t2), false, fs * 0.88f);
 	}
 
 	// ------------------------------------------------------------------ linha 2: valores
