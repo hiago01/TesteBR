@@ -726,9 +726,10 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		if (!tradeMode && S.trunkReg > 0)
 		{
 			char t2[48]; snprintf(t2, sizeof(t2), "Porta-malas veículo %d", S.trunkReg);
-			const float w1 = r->calculateTextSize("Chão", 14.0f * u).x, x2 = xr + w1 + 16.0f * u, w2 = r->calculateTextSize(t2, 14.0f * u).x;
-			btns.push_back({B_TRKG, ImVec2(xr - 4.0f * u, PY(86.0f)), ImVec2(xr + w1 + 8.0f * u, PY(112.0f)), "", true});
-			btns.push_back({B_TRKT, ImVec2(x2 - 6.0f * u, PY(86.0f)), ImVec2(x2 + w2 + 6.0f * u, PY(112.0f)), "", true});
+			// ordem fixa das abas: Porta-malas primeiro, Chao sempre por ultimo
+			const float w2 = r->calculateTextSize(t2, 14.0f * u).x, x2 = xr + w2 + 16.0f * u, w1 = r->calculateTextSize("Chão", 14.0f * u).x;
+			btns.push_back({B_TRKT, ImVec2(xr - 4.0f * u, PY(86.0f)), ImVec2(xr + w2 + 8.0f * u, PY(112.0f)), "", true});
+			btns.push_back({B_TRKG, ImVec2(x2 - 6.0f * u, PY(86.0f)), ImVec2(x2 + w1 + 6.0f * u, PY(112.0f)), "", true});
 		}
 		btns.push_back({B_CLOSE, ImVec2(PX(1100.0f), PY(26.0f)), ImVec2(PX(1220.0f), PY(58.0f)), "", true});
 
@@ -1118,12 +1119,12 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		{
 			const float fh = 14.0f * u;
 			char t2[48]; snprintf(t2, sizeof(t2), "Porta-malas veículo %d", S.trunkReg);
-			const float w1 = r->calculateTextSize("Chão", fh).x, x2 = xr + w1 + 16.0f * u, w2 = r->calculateTextSize(t2, fh).x;
-			r->drawText(ImVec2(xr, PY(95.0f)), trunkTab ? cMute : cText, "Chão", false, fh);
-			r->drawText(ImVec2(x2, PY(95.0f)), trunkTab ? cText : cMute, t2, false, fh);
-			const float ux = trunkTab ? x2 : xr, uw = trunkTab ? w2 : w1;
+			const float w2 = r->calculateTextSize(t2, fh).x, x2 = xr + w2 + 16.0f * u, w1 = r->calculateTextSize("Chão", fh).x;
+			r->drawText(ImVec2(xr, PY(95.0f)), trunkTab ? cText : cMute, t2, false, fh);          // 1a aba: Porta-malas
+			r->drawText(ImVec2(x2, PY(95.0f)), trunkTab ? cMute : cText, "Chão", false, fh);      // ultima aba: Chao
+			const float ux = trunkTab ? xr : x2, uw = trunkTab ? w2 : w1;
 			r->drawLine(ImVec2(ux, PY(109.0f)), ImVec2(ux + uw, PY(109.0f)), cPink, std::max(1.5f, 2.0f * u));
-			tw = x2 + w2 - xr;
+			tw = x2 + w1 - xr;
 		}
 		else tw = header(xr, "Chão");
 		lineTo(xr + tw + 10.0f * u, PX(S.trunkReg > 0 ? 953.0f : 873.0f));

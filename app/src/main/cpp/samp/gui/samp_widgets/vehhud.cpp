@@ -42,6 +42,8 @@ namespace
 	std::vector<Note> g_active;              // so o draw mexe
 	std::atomic<int>  g_fuel{100};
 	std::atomic<int>  g_flags{0};
+	std::atomic<int>  g_enterVeh{0};         // veiculo com porta-malas aberto ao alcance (0 = nenhum)
+	std::atomic<int>  g_inside{0};           // 0 fora | 1 dentro do porta-malas (aberto) | 2 dentro (fechado: tela escura)
 	std::atomic<int64_t> g_km10{-1};         // hodometro do carro em decimos de km (garagem); -1 = servidor nao mandou
 	std::atomic<int64_t> g_stateAt{0};       // 0 = o servidor nunca mandou o estado do veiculo (botoes escondidos)
 	constexpr int64_t kStateFresh = 6000;    // sem atualizacao por 6 s = servidor sem veiculo.pwn / saiu do carro
@@ -373,6 +375,18 @@ namespace VehHud
 			std::lock_guard<std::mutex> l(g_mx);
 			if (g_pending.size() < 8) g_pending.push_back(n);
 		}
+		else if (op == 3)
+		{
+			uint8_t on = 0; uint16_t veh = 0;
+			if (!bs.Read(on) || !bs.Read(veh)) return;
+			g_enterVeh.store(on ? (int)veh : 0);
+		}
+		else if (op == 4)
+		{
+			uint8_t st = 0;
+			if (!bs.Read(st)) return;
+			g_inside.store(std::min<int>(st, 2));
+		}
 		else if (op == 2)
 		{
 			uint8_t fuel = 100, flags = 0;
@@ -391,6 +405,8 @@ namespace VehHud
 		g_active.clear();
 		g_stateAt.store(0);
 		g_km10.store(-1);
+		g_enterVeh.store(0);
+		g_inside.store(0);
 	}
 }
 
@@ -405,6 +421,40 @@ void VehHudWidget::draw(ImGuiRenderer* r)
 	const ImVec2 scr = ImGui::GetIO().DisplaySize;
 	if (pUI && pUI->splashscreen() && pUI->splashscreen()->visible()) return;
 	DrawNotes(r, scr);
+
+	// ---- porta-malas: dentro dele = tela escura se fechado + botao Sair; fora, com um aberto ao alcance = botao Entrar ----
+	m_xOn = false;
+	{
+		const float kk = scr.y / 720.0f;
+		const int ins = g_inside.load();
+		if (ins > 0)
+		{
+			if (ins == 2)      // fechado: nao enxerga nada
+			{
+				r->drawRect(ImVec2(0, 0), scr, ImColor(0, 0, 0, 255), true);
+				const char* t = "Porta-malas fechado";
+				const ImVec2 ts = r->calculateTextSize(t, 13.0f * kk);
+				r->drawText(ImVec2((scr.x - ts.x) * 0.5f, scr.y * 0.5f - ts.y * 0.5f), ImColor(150, 150, 158, 255), t, false, 13.0f * kk);
+			}
+			m_xOn = true; m_xCmd = 1; m_xVeh = 0;
+		}
+		else if (g_enterVeh.load() > 0 && Hud::g.visible.load() && !UiBlocked() && !LocalVeh().ok)
+		{
+			m_xOn = true; m_xCmd = 0; m_xVeh = g_enterVeh.load();
+		}
+		if (m_xOn)
+		{
+			const char* lab = m_xCmd == 1 ? "Sair do porta-malas" : "Entrar no porta-malas";
+			const float fs = 12.0f * kk, w = 190.0f * kk, h = 38.0f * kk;
+			const float x0 = (scr.x - w) * 0.5f, y0 = scr.y - 150.0f * kk;
+			m_xb = ImVec4(x0, y0, x0 + w, y0 + h);
+			const bool dn = (m_down == 10);
+			r->drawRoundedRect(ImVec2(x0, y0), ImVec2(x0 + w, y0 + h), dn ? ImColor(26, 80, 46, 245) : ImColor(36, 120, 64, 235), 10.0f * kk, true);
+			r->drawRoundedRect(ImVec2(x0, y0), ImVec2(x0 + w, y0 + h), ImColor(255, 255, 255, 60), 10.0f * kk, false, 1.2f * kk);
+			const ImVec2 ts = r->calculateTextSize(lab, fs);
+			r->drawText(ImVec2(x0 + (w - ts.x) * 0.5f, y0 + (h - ts.y) * 0.5f), ImColor(255, 255, 255, 255), lab, false, fs);
+		}
+	}
 
 	if (!Hud::g.visible.load() || UiBlocked()) return;
 	const Veh v = LocalVeh();
@@ -533,6 +583,24 @@ void VehHudWidget::draw(ImGuiRenderer* r)
 
 void VehHudWidget::touchEvent(const ImVec2& pos, TouchType type)
 {
+	if (m_xOn)       // botao de tela do porta-malas (tem prioridade)
+	{
+		const bool in = pos.x >= m_xb.x && pos.x <= m_xb.z && pos.y >= m_xb.y && pos.y <= m_xb.w;
+		if (type == TouchType::push && in) { m_down = 10; return; }
+		if (type == TouchType::pop && m_down == 10)
+		{
+			m_down = -1;
+			const int64_t now = NowMs();
+			if (in && pNetGame && now - m_lastTap >= 700)
+			{
+				m_lastTap = now;
+				if (m_xCmd == 1) pNetGame->SendChatCommand("/malasair");
+				else { char b[32]; snprintf(b, sizeof b, "/entrarmalas %d", m_xVeh); pNetGame->SendChatCommand(b); }
+			}
+			return;
+		}
+		if (m_down == 10) return;
+	}
 	if (m_btnR <= 0.0f) { m_down = -1; return; }
 	auto hit = [&](int i) { const ImVec4& q = m_key[i]; const float m = 4.0f; return pos.x >= q.x - m && pos.x <= q.z + m && pos.y >= q.y - m && pos.y <= q.w + m; };
 	if (type == TouchType::push)
