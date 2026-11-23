@@ -7,9 +7,9 @@
 
 namespace CenLogic
 {
-	constexpr int kStyles = 9;               // igual ao servidor: CEN_STYLES
+	constexpr int kStyles = 12;              // igual ao servidor: CEN_STYLES (IDs 0..11; so o 0 Padrao e gratis, o resto precisa estar liberado na conta)
 	constexpr int kMaxRows = 1100;
-	enum Effect { E_None = 0, E_Shimmer, E_Pulse, E_Wave, E_Rainbow, E_Lights };
+	enum Effect { E_None = 0, E_Shimmer, E_Pulse, E_Wave, E_Rainbow, E_Lights, E_Fireworks, E_Champagne, E_Countdown };
 
 	struct StyleDef { const char* name; uint8_t c1[3], c2[3], edge[3]; int effect; };
 
@@ -25,6 +25,9 @@ namespace CenLogic
 			{ "Fogo",       {  96,  16,   8 }, { 240, 110,  20 }, { 255, 176,  64 }, E_Wave },
 			{ "Arco-iris",  {  24,  24,  32 }, {  44,  44,  58 }, { 255, 255, 255 }, E_Rainbow },
 			{ "Natal",      { 104,  10,  20 }, {  20,  92,  42 }, { 255, 232, 130 }, E_Lights },
+			{ "Fogos 2027", {   8,  12,  46 }, {  44,  22,  98 }, { 255, 214,  90 }, E_Fireworks },
+			{ "Champagne",  {  70,  48,  10 }, { 226, 184,  84 }, { 255, 240, 170 }, E_Champagne },
+			{ "Contagem 2027", {  10,  12,  30 }, {  46,  34,  80 }, { 255, 220, 110 }, E_Countdown },
 		};
 		return k[(idx >= 0 && idx < kStyles) ? idx : 0];
 	}

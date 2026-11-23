@@ -9,6 +9,7 @@
 #include "central.h"
 #include "central_logic.h"
 #include "avatar.h"
+#include "avatarpicker.h"
 #include "central_icons.h"
 
 #include <algorithm>
@@ -117,6 +118,57 @@ namespace
 					for (int k = 0; k < 8; k++) { const float an = 6.2831853f * k / 8.0f; d[k] = ImVec2(x + std::cos(an) * 2.0f * u, y + std::sin(an) * 2.0f * u); }
 					r->drawConvexPolyFilled(d, 8, ImColor(c[0], c[1], c[2], on ? 255 : 60));
 				}
+			}
+		}
+		if (s.effect == CL::E_Fireworks)      // FOGOS 2027: explosoes coloridas que abrem e somem
+		{
+			static const int col[4][3] = { { 255, 214, 70 }, { 255, 96, 120 }, { 110, 230, 255 }, { 190, 130, 255 } };
+			for (int k = 0; k < 3; k++)
+			{
+				float ph = (float)(t * 0.55 + k * 0.33); ph -= std::floor(ph);
+				const float cx = a.x + w * (0.22f + 0.28f * (float)k), cy = a.y + h * (0.38f + 0.2f * (float)((k * 5) % 3) * 0.5f);
+				const float rr = ph * h * 0.9f;
+				for (int j = 0; j < 10; j++)
+				{
+					const float an = 6.2831853f * (float)j / 10.0f + (float)k;
+					const int* c = col[(j + k) & 3];
+					const float px = cx + std::cos(an) * rr, py = cy + std::sin(an) * rr * 0.8f + ph * ph * h * 0.25f;   // cai um pouco (gravidade)
+					ImVec2 d[6]; const float rd = (1.9f - 1.0f * ph) * u;
+					for (int q = 0; q < 6; q++) { const float aq = 6.2831853f * q / 6.0f; d[q] = ImVec2(px + std::cos(aq) * rd, py + std::sin(aq) * rd); }
+					r->drawConvexPolyFilled(d, 6, ImColor(c[0], c[1], c[2], (int)(255 * (1.0f - ph))));
+				}
+			}
+		}
+		if (s.effect == CL::E_Champagne)      // CHAMPAGNE: bolhas subindo + brilho passando
+		{
+			const float ph = (float)std::fmod(t * 0.35, 1.8);
+			const float sx = a.x + (ph - 0.4f) * w, bw = w * 0.14f, sk = h * 0.6f;
+			ImVec2 p[4] = { ImVec2(sx, a.y), ImVec2(sx + bw, a.y), ImVec2(sx + bw - sk, b.y), ImVec2(sx - sk, b.y) };
+			r->drawConvexPolyFilled(p, 4, ImColor(255, 246, 200, 70));
+			for (int i = 0; i < 16; i++)
+			{
+				float f = (float)(t * 0.22 + i * 0.137); f -= std::floor(f);
+				float xx = (float)i * 0.6180339f; xx -= std::floor(xx);
+				const float bx = a.x + xx * w + std::sin(f * 12.0f + (float)i) * 1.5f * u, by = b.y - f * h;
+				ImVec2 d[8]; const float rd = (1.0f + 0.9f * (float)(i % 3) * 0.5f) * u;
+				for (int q = 0; q < 8; q++) { const float aq = 6.2831853f * q / 8.0f; d[q] = ImVec2(bx + std::cos(aq) * rd, by + std::sin(aq) * rd); }
+				r->drawConvexPolyFilled(d, 8, ImColor(255, 244, 196, (int)(200 * (1.0f - f))));
+			}
+		}
+		if (s.effect == CL::E_Countdown)      // CONTAGEM 2027: "2027" dourado pulsando + estrelas piscando
+		{
+			const float pls = 0.55f + 0.45f * (float)std::sin(t * 2.2);
+			const float fs = h * 0.62f;
+			const ImVec2 ts = r->calculateTextSize(std::string("2027"), fs);
+			r->drawText(ImVec2(a.x + (w - ts.x) * 0.5f, a.y + (h - ts.y) * 0.5f), ImColor(255, 214, 90, (int)(70 + 90 * pls)), std::string("2027"), true, fs);
+			for (int i = 0; i < 9; i++)
+			{
+				float xx = (float)i * 0.7548777f; xx -= std::floor(xx);
+				float yy = (float)i * 0.5698403f; yy -= std::floor(yy);
+				const float tw = 0.5f + 0.5f * (float)std::sin(t * 3.0 + i * 1.7);
+				const float sx = a.x + xx * w, sy = a.y + (0.12f + 0.76f * yy) * h, sr = (1.0f + 1.4f * tw) * u;
+				r->drawLine(ImVec2(sx - sr, sy), ImVec2(sx + sr, sy), ImColor(255, 236, 160, (int)(255 * tw)), 1.0f * u);
+				r->drawLine(ImVec2(sx, sy - sr), ImVec2(sx, sy + sr), ImColor(255, 236, 160, (int)(255 * tw)), 1.0f * u);
 			}
 		}
 		r->popClipRect();
@@ -241,6 +293,12 @@ void CentralUI::Close()
 	g_ev.clear();
 }
 
+int  CentralUI::MyStyle() { std::lock_guard<std::mutex> l(g_m); return (int)g_list.myStyle; }
+bool CentralUI::HaveList() { std::lock_guard<std::mutex> l(g_m); return g_list.have; }
+void CentralUI::RequestList() { SendReq(1); }
+void CentralUI::ChooseStyle(int idx) { if (idx >= 0 && idx < CL::kStyles) SendReq(2, idx); }
+void CentralUI::DrawStylePreview(ImGuiRenderer* r, ImVec2 a, ImVec2 b, int idx, float u, double tsec) { DrawStyleBg(r, a, b, idx, u, tsec, 6.0f * u); }
+
 void CentralUI::Reset()
 {
 	g_open.store(false); g_askOpen.store(false);
@@ -342,7 +400,7 @@ void CentralUI::draw(ImGuiRenderer* r)
 	auto cellA = [&](int i) { return ImVec2(PX(446.0f + (i % 3) * 130.0f), PY(262.0f + (i / 3) * 70.0f)); };
 	auto cellB = [&](int i) { const ImVec2 a = cellA(i); return ImVec2(a.x + 124.0f * u, a.y + 54.0f * u); };
 	auto orgAt = [&](float x, float y) { if (!In(x, y, oa, ob)) return 0; const int i = (int)((x - oa.x) / ((ob.x - oa.x) / 3.0f)); return 1 + std::min(2, std::max(0, i)); };
-	auto cellAt = [&](float x, float y) { for (int i = 0; i < CL::kStyles; i++) if (In(x, y, cellA(i), cellB(i))) return i; return -1; };
+	auto cellAt = [&](float x, float y) { return AvatarPicker::HitTest(PX(446.0f), PY(262.0f), 388.0f * u, u, x, y); };     // seletor padronizado: 0 nada | 1 foto | 100+ moldura | 200+ fundo
 
 	g_scroll = CL::ClampScroll(g_scroll, content, vb.y - va.y);
 
@@ -353,7 +411,7 @@ void CentralUI::draw(ImGuiRenderer* r)
 		{
 			g_f = Fing(); g_f.num = e.num; g_f.sx = e.x; g_f.sy = e.y; g_f.s0 = g_scroll;
 			if (!In(e.x, e.y, pa, pb)) g_f.kind = 3;
-			else if (In(e.x, e.y, xa, xb) || In(e.x, e.y, ga, gb) || (g_settings && cellAt(e.x, e.y) >= 0) || (!g_settings && orgAt(e.x, e.y) > 0) || (!g_settings && In(e.x, e.y, sa, sb))) g_f.kind = 2;
+			else if (In(e.x, e.y, xa, xb) || In(e.x, e.y, ga, gb) || (g_settings && cellAt(e.x, e.y) > 0) || (!g_settings && orgAt(e.x, e.y) > 0) || (!g_settings && In(e.x, e.y, sa, sb))) g_f.kind = 2;
 			else if (!g_settings && In(e.x, e.y, va, vb)) g_f.kind = 1;
 			else g_f.kind = 4;
 		}
@@ -382,7 +440,7 @@ void CentralUI::draw(ImGuiRenderer* r)
 				}
 				{ const int o0 = g_settings ? 0 : orgAt(f.sx, f.sy), o1 = g_settings ? 0 : orgAt(e.x, e.y); if (o0 > 0 && o0 == o1) { g_orgSel = (g_orgSel == o0) ? 0 : o0; continue; } }       // chip: filtra pela org (toque de novo = todos)
 				const int c0 = cellAt(f.sx, f.sy), c1 = cellAt(e.x, e.y);
-				if (g_settings && c0 >= 0 && c0 == c1) { SendReq(2, c0); g_lastReq = 0; }   // escolhe o modelo; a lista volta com ele aplicado
+				if (g_settings && c0 > 0 && c0 == c1) { AvatarPicker::Activate(c0); g_lastReq = 0; }   // foto / moldura / fundo (o servidor confere o cadeado)
 			}
 		}
 	}
@@ -486,18 +544,9 @@ void CentralUI::draw(ImGuiRenderer* r)
 
 	if (g_settings)
 	{
-		r->drawText(ImVec2(PX(446.0f), PY(218.0f)), cText, "Modelo de fundo da sua linha", false, 12.0f * u);
-		r->drawText(ImVec2(PX(446.0f), PY(236.0f)), cMute, "Todos na Central veem o modelo que voce escolher.", false, 9.5f * u);
-		for (int i = 0; i < CL::kStyles; i++)
-		{
-			const ImVec2 a = cellA(i), b = cellB(i);
-			const bool sel = (int)L.myStyle == i;
-			DrawStyleBg(r, a, b, i, u, t);
-			if (sel) r->drawRect(ImVec2(a.x - 2.5f * u, a.y - 2.5f * u), ImVec2(b.x + 2.5f * u, b.y + 2.5f * u), cPink, false, 2.0f * u);
-			const char* nm = CL::Style(i).name;
-			const ImVec2 ts = r->calculateTextSize(nm, 11.0f * u);
-			r->drawText(ImVec2((a.x + b.x - ts.x) * 0.5f, (a.y + b.y - ts.y) * 0.5f), ImColor(255, 255, 255, 255), nm, true, 11.0f * u);
-		}
+		r->drawText(ImVec2(PX(446.0f), PY(218.0f)), cText, "Personalizar seu perfil", false, 12.0f * u);
+		r->drawText(ImVec2(PX(446.0f), PY(236.0f)), cMute, "Todos na Central veem sua moldura e o fundo da sua linha.", false, 9.5f * u);
+		AvatarPicker::Draw(r, PX(446.0f), PY(262.0f), 388.0f * u, u, t, (g_f.num >= 0 && g_f.kind == 2) ? cellAt(g_f.sx, g_f.sy) : 0);
 		return;
 	}
 

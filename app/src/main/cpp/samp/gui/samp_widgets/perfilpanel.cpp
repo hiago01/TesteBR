@@ -5,6 +5,7 @@
 #include "../PanelAlpha.h"          // transparencia compartilhada (Menu jogador + Gerenciador de grupo)
 #include "../UiPrefs.h"             // minimapa ligado/desligado
 #include "controlmode.h"            // botoes Inventario / Corrida-lock (ModernConfig)
+#include "avatarpicker.h"           // foto + moldura + fundo da linha (pagina Personalizar)
 
 #include <algorithm>
 #include <chrono>
@@ -54,7 +55,7 @@ namespace
 	float      g_rankScroll = 0.0f, g_ruleScroll = 0.0f, g_tabsScroll = 0.0f;
 
 	// ---- toque ----
-	enum { K_NONE = 0, K_CLOSE, K_NAV, K_RTAB, K_UTAB, K_BAN_G, K_BAN_V, K_TSLD, K_TMIN, K_TPLUS, K_TOG };
+	enum { K_NONE = 0, K_CLOSE, K_NAV, K_RTAB, K_UTAB, K_BAN_G, K_BAN_V, K_TSLD, K_TMIN, K_TPLUS, K_TOG, K_AVP };
 	struct Target { int kind = K_NONE; int idx = 0; };
 	struct HitR { float x0, y0, x1, y1; Target t; };
 	std::vector<HitR> g_hits;
@@ -62,6 +63,7 @@ namespace
 	int    g_finger = -1;
 	Target g_down;
 	float  g_sx = 0, g_sy = 0, g_lx = 0, g_ly = 0;
+	float  g_avp[3] = {0, 0, 0};                   // pagina Personalizar: origem x,y e largura (px) do seletor (avatarpicker.h), para o HitTest do toque
 	bool   g_moved = false;
 	int    g_area = 0;                             // 1 = tabela do ranking | 2 = texto das regras | 3 = fileira de abas das regras
 
@@ -113,7 +115,7 @@ namespace
 
 	struct NavDef { const char* name; int icon; int page; bool soon; bool tagNew; };
 	const NavDef kNav[] = {
-		{ "Início", 0, 0, false, false }, { "Loja premium", 1, -1, true, false }, { "Ranking", 2, 1, false, false }, { "Regras", 3, 2, false, false },
+		{ "Início", 0, 0, false, false }, { "Loja premium", 1, -1, true, false }, { "Ranking", 2, 1, false, false }, { "Regras", 3, 2, false, false }, { "Personalizar", 5, 4, false, true },
 		{ "Comandos e funções", 4, -1, true, false }, { "Configurações", 5, 3, false, true }, { "Dúvidas frequentes", 6, -1, true, false },
 	};
 
@@ -582,6 +584,21 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 			}
 		}
 	}
+	else if (g_page == 4)
+	{
+		// ================= PERSONALIZAR (foto + moldura do avatar + fundo da linha; seletor padronizado) =================
+		const float CW = 668.0f, X1 = CX0 + CW;
+		NavIcon(r, 5, V(CX0 + 14.0f, 134.0f).x, V(CX0 + 14.0f, 134.0f).y, 1.9f * u, A(226, 238, 255, 235));
+		txt(CX0 + 40.0f, 120.0f, A(240, 246, 255, 255), "Personalizar", 19.0f, true);
+		txt(CX0 + 40.0f, 146.0f, A(176, 198, 230, 220), fit("Foto, moldura do avatar e fundo da sua linha. Cadeado = bloqueado: só a administração libera.", 9.4f, CW - 40.0f), 9.4f);
+		const ImVec2 po = V(CX0 + 22.0f, 190.0f);
+		g_avp[0] = po.x; g_avp[1] = po.y; g_avp[2] = (CW - 44.0f) * u;
+		const float ph = AvatarPicker::Height(g_avp[2], u) / u;
+		card(CX0, 172.0f, X1, 190.0f + ph + 14.0f);
+		const int prs = (g_down.kind == K_AVP) ? AvatarPicker::HitTest(g_avp[0], g_avp[1], g_avp[2], u, g_sx, g_sy) : 0;
+		AvatarPicker::Draw(r, g_avp[0], g_avp[1], g_avp[2], u, (double)now / 1000.0, prs);
+		addHit(CX0 + 22.0f, 190.0f, X1 - 22.0f, 190.0f + ph, K_AVP, 0);
+	}
 	else if (g_page == 3)
 	{
 		// ================= CONFIGURACOES =================
@@ -811,6 +828,12 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 				CtlLogic::ModernConfig c = ControlMode::GetConfig();
 				if (was.idx == 0) c.showInv = !c.showInv; else c.showRunLock = !c.showRunLock;
 				ControlMode::SetConfig(c, true);
+				break;
+			}
+			case K_AVP:
+			{
+				const int c0 = AvatarPicker::HitTest(g_avp[0], g_avp[1], g_avp[2], u, g_sx, g_sy), c1 = AvatarPicker::HitTest(g_avp[0], g_avp[1], g_avp[2], u, e.x, e.y);
+				if (c0 > 0 && c0 == c1) AvatarPicker::Activate(c0);
 				break;
 			}
 			case K_TMIN:  PanelAlpha::Set(PanelAlpha::Get() - PanelAlpha::kStep); PanelAlpha::Save(); break;

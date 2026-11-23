@@ -28,6 +28,7 @@ namespace
 	std::mutex g_m;
 	std::atomic<uint32_t> g_id{0};
 	std::atomic<int>      g_border{0};
+	std::atomic<uint32_t> g_bdMask{1}, g_lnMask{1};   // molduras / modelos de linha LIBERADOS na conta (bit 0 = gratis); vem do servidor (RPC 251 op 1)
 	int64_t               g_lastBorderSend = 0;
 	bool                  g_infoKnown = false;      // INFO do servidor ja chegou
 	AvatarLogic::Assembler g_asm;                   // avatar que o servidor esta mandando
@@ -136,7 +137,7 @@ namespace
 void Avatar::Reset()
 {
 	std::lock_guard<std::mutex> l(g_m);
-	g_id.store(0); g_border.store(0); g_infoKnown = false; g_asm.Reset();
+	g_id.store(0); g_border.store(0); g_bdMask.store(1); g_lnMask.store(1); g_infoKnown = false; g_asm.Reset();
 	g_decode.clear(); g_decodePending = false; g_clear = true;
 	g_candidate.clear(); g_upload.clear(); g_uploadPending = false;
 	g_msg.clear(); g_msgPending = false; g_reqTries = 0; g_lastReq = 0;
@@ -154,6 +155,8 @@ void Avatar::OnServerPacket(const unsigned char* data, int bytes)
 		uint32_t id = 0; uint8_t has = 0, bd = 0;
 		if (!bs.Read(id) || !bs.Read(has)) return;
 		if (bs.Read(bd) && bd < kBorderCount) g_border.store(bd);        // borda escolhida (campo opcional, servidor novo)
+		{ uint32_t bm = 0, lm = 0; if (bs.Read(bm) && bs.Read(lm)) { g_bdMask.store(bm | 1u); g_lnMask.store(lm | 1u); } }   // campos opcionais no fim (servidor novo)
+		if (g_border.load() >= 0 && g_border.load() < 32 && !((g_bdMask.load() >> g_border.load()) & 1u)) g_border.store(0);   // borda nao liberada: natural
 		g_id.store(id); g_infoKnown = true;
 		if (!has) g_clear = true;
 	}
@@ -279,6 +282,7 @@ int Avatar::Border() { const int b = g_border.load(); return (b >= 0 && b < kBor
 void Avatar::SetBorder(int idx)
 {
 	if (idx < 0 || idx >= kBorderCount) return;
+	if (!BorderUnlocked(idx)) { std::lock_guard<std::mutex> l(g_m); Say("Moldura bloqueada: só a administração libera."); return; }
 	g_border.store(idx);                                         // aplica ja; o servidor confirma no INFO
 	if (!Connected()) return;
 	const int64_t now = NowMs();
@@ -287,9 +291,12 @@ void Avatar::SetBorder(int idx)
 	RakNet::BitStream bs; bs.Write((uint8_t)5); bs.Write((uint8_t)idx); SendBs(bs);
 }
 
+bool Avatar::BorderUnlocked(int idx) { return idx == 0 || (idx > 0 && idx < kBorderCount && ((g_bdMask.load() >> idx) & 1u)); }
+bool Avatar::LineUnlocked(int idx)   { return idx == 0 || (idx > 0 && idx < 32 && ((g_lnMask.load() >> idx) & 1u)); }
+
 const char* Avatar::BorderName(int idx)
 {
-	static const char* n[kBorderCount] = { "Natural", "Guirlanda", "Noel", "Neon", "Arco-iris" };
+	static const char* n[kBorderCount] = { "Natural", "Guirlanda", "Noel", "Neon", "Arco-iris", "Fogos 2027", "Champagne", "Contagem 2027" };
 	return (idx >= 0 && idx < kBorderCount) ? n[idx] : "";
 }
 
@@ -370,6 +377,64 @@ void Avatar::DrawBorder(ImGuiRenderer* r, int idx, float cx, float cy, float ar,
 			float h = (float)i / (float)N + (float)(t * 0.25); h -= std::floor(h);
 			r->drawLine(ImVec2(cx + std::cos(a0) * rad, cy + std::sin(a0) * rad), ImVec2(cx + std::cos(a1) * rad, cy + std::sin(a1) * rad), ImColor::HSV(h, 0.85f, 1.0f), 3.4f * u);
 		}
+		return;
+	}
+	if (idx == 5)        // FOGOS 2027: anel azul-noite com fagulhas coloridas explodindo para fora
+	{
+		Ring(r, cx, cy, ar + 1.6f * u, 2.6f * u, ImColor(40, 52, 120, 255));
+		Ring(r, cx, cy, ar + 1.0f * u, 1.0f * u, ImColor(150, 175, 255, 170));
+		static const int col[4][3] = { { 255, 214, 70 }, { 255, 96, 120 }, { 110, 230, 255 }, { 190, 130, 255 } };
+		for (int k = 0; k < 4; k++)
+		{
+			float ph = (float)(t * 0.9 + k * 0.25); ph -= std::floor(ph);                  // 0..1: nasce no anel e abre
+			const float baseA = 6.2831853f * (0.13f + 0.27f * k) + (float)k * 0.7f;
+			for (int j = 0; j < 7; j++)
+			{
+				const float a = baseA + 6.2831853f * j / 7.0f * 0.12f - 0.36f;
+				const float d = ar + (2.0f + ph * 11.0f) * u;
+				const int* c = col[(k + j) & 3];
+				const int al = (int)(255 * (1.0f - ph));
+				Disc(r, cx + std::cos(a) * d, cy + std::sin(a) * d, (1.6f - ph) * u + 0.6f * u, ImColor(c[0], c[1], c[2], al));
+			}
+		}
+		return;
+	}
+	if (idx == 6)        // CHAMPAGNE: anel dourado com brilho passando e bolhas subindo
+	{
+		const float sh = (float)std::fmod(t * 0.5, 1.0);
+		constexpr int N = 56;
+		const float rad = ar + 2.0f * u;
+		for (int i = 0; i < N; i++)
+		{
+			const float a0 = 6.2831853f * (float)i / (float)N, a1 = 6.2831853f * (float)(i + 1) / (float)N;
+			float d = std::fabs((float)i / (float)N - sh); d = std::min(d, 1.0f - d);
+			const float g = std::max(0.0f, 1.0f - d * 7.0f);                                // faixa de brilho que gira
+			r->drawLine(ImVec2(cx + std::cos(a0) * rad, cy + std::sin(a0) * rad), ImVec2(cx + std::cos(a1) * rad, cy + std::sin(a1) * rad), ImColor(190 + (int)(65 * g), 140 + (int)(100 * g), 40 + (int)(120 * g), 255), 3.4f * u);
+		}
+		for (int k = 0; k < 6; k++)
+		{
+			float ph = (float)(t * 0.45 + k * 0.17); ph -= std::floor(ph);
+			const float a = -1.5708f + (k - 2.5f) * 0.34f;                                  // sai do topo do anel
+			Disc(r, cx + std::cos(a) * (ar + 3.0f * u) + std::sin(ph * 9.0f + k) * 1.4f * u, cy + std::sin(a) * (ar + 3.0f * u) - ph * 10.0f * u, 1.4f * u, ImColor(255, 238, 170, (int)(220 * (1.0f - ph))));
+		}
+		return;
+	}
+	if (idx == 7)        // CONTAGEM 2027: anel de ponteiros com "2027" dourado
+	{
+		Ring(r, cx, cy, ar + 1.8f * u, 2.4f * u, ImColor(20, 22, 40, 255));
+		const float rot = (float)(t * 1.4);
+		for (int i = 0; i < 12; i++)                                                         // 12 marcas, a "ativa" gira
+		{
+			const float a = 6.2831853f * (float)i / 12.0f - 1.5708f;
+			const bool on = ((int)(t * 4.0) % 12) == i;
+			const float r0 = ar + 0.8f * u, r1 = ar + (on ? 5.2f : 3.4f) * u;
+			r->drawLine(ImVec2(cx + std::cos(a) * r0, cy + std::sin(a) * r0), ImVec2(cx + std::cos(a) * r1, cy + std::sin(a) * r1), on ? ImColor(255, 226, 120, 255) : ImColor(190, 160, 70, 200), (on ? 2.8f : 1.8f) * u);
+		}
+		(void)rot;
+		const ImVec2 ts = r->calculateTextSize(std::string("2027"), 7.0f * u);
+		const float bx = cx - ts.x * 0.5f, by = cy + ar + 1.0f * u;                         // plaquinha embaixo do avatar
+		r->drawRoundedRect(ImVec2(bx - 3.0f * u, by - 0.5f * u), ImVec2(bx + ts.x + 3.0f * u, by + ts.y + 0.5f * u), ImColor(18, 18, 30, 235), 3.0f * u, true);
+		r->drawText(ImVec2(bx, by), ImColor(255, 220, 110, 255), std::string("2027"), true, 7.0f * u);
 		return;
 	}
 	// 0: natural cinza

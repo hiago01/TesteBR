@@ -7,6 +7,7 @@
 #include "inventory.h"
 #include "inventory_atlas.h"
 #include "avatar.h"
+#include "avatarpicker.h"
 #include "../../util/CUtil.h"
 #include "../../game/IconTexDb.h"
 #include "../../game/WeaponIconDb.h"
@@ -568,11 +569,12 @@ namespace
 	enum { B_NONE = 0, B_USE, B_DROP, B_TRADE, B_QTY, B_PICK, B_OFFER, B_CLOSE,
 		   B_ACCEPT, B_REFUSE, B_CONFIRM, B_CANCEL, B_REFRESH,
 		   B_TABINV, B_TABCRAFT, B_TABROUPAS, B_TABADESIVOS,
-		   B_AVATAR, B_AVPHOTO, B_AVB0, B_AVB1, B_AVB2, B_AVB3, B_AVB4,
+		   B_AVATAR, B_AVPHOTO, B_AVB0, B_AVB1, B_AVB2, B_AVB3, B_AVB4, B_STK,
 		   B_TRKG, B_TRKT };                 // abas Chao / Porta-malas do painel direito (desenhadas no cabecalho)   // B_AVATAR: toque no circulo do personagem abre a Galeria (Avatar::RequestPick)
 	// abas do topo da tela PRINCIPAL (Craft/Roupas/Adesivos ainda nao existem: "Em breve")
 
 	struct Sel { int panel = 0; int idx = -1; } g_sel;      // idx: slot (inventario) ou posicao no vetor ground
+	bool    g_stkOpen = false;                              // aba Adesivos aberta: seletor padronizado de foto / moldura / fundo da linha (avatarpicker.h)
 	bool    g_avPanel = false;                              // painel do avatar (escolher foto / borda) aberto na tela PRINCIPAL
 	bool    g_allQty = true;                                // false = 1 unidade, true = tudo
 	float   g_scroll[3] = {0, 0, 0};                        // [P_INV], [P_GROUND]
@@ -759,10 +761,11 @@ void InventoryUI::draw(ImGuiRenderer* r)
 			if (g_avPanel)
 			{
 				btns.push_back({B_AVPHOTO, ImVec2(PX(80.0f), PY(318.0f)), ImVec2(PX(382.0f), PY(346.0f)), "ESCOLHER FOTO DA GALERIA", true});
-				for (int k = 0; k < Avatar::kBorderCount; k++)
+				for (int k = 0; k < 5; k++)          // painel pequeno antigo: so as 5 primeiras (as outras molduras: aba Adesivos / Menu jogador / Central)
 					btns.push_back({B_AVB0 + k, ImVec2(PX(80.0f + k * 62.0f), PY(374.0f)), ImVec2(PX(80.0f + k * 62.0f + 56.0f), PY(452.0f)), "", true});
 			}
 			btns.push_back({B_AVATAR,       ImVec2(PX(294.0f) - 39.0f * u, PY(199.0f) - 39.0f * u), ImVec2(PX(294.0f) + 39.0f * u, PY(199.0f) + 39.0f * u), "", true});
+			if (g_stkOpen) btns.insert(btns.begin(), Btn{B_STK, ImVec2(PX(430.0f), PY(70.0f)), ImVec2(PX(1190.0f), PY(650.0f)), "", true});   // aba Adesivos: cobre a mochila (toque tratado pelo seletor)
 		}
 	}
 	auto btnAt = [&](float x, float y) -> const Btn* {
@@ -859,18 +862,19 @@ void InventoryUI::draw(ImGuiRenderer* r)
 			case B_PICK:  if (g_sel.panel == P_GROUND) doPick(g_sel.idx); break;
 			case B_TRADE: Send("/invx trade -1"); break;
 			case B_QTY:   g_allQty = !g_allQty; break;            // so local, nao envia nada
-			case B_CLOSE: InventoryUI::Close(true); break;
+			case B_CLOSE: g_stkOpen = false; InventoryUI::Close(true); break;
 			case B_ACCEPT:  Send("/invx taccept"); break;
 			case B_REFUSE:  Send("/invx trefuse"); break;
 			case B_CONFIRM: Send("/invx tconfirm"); break;
 			case B_CANCEL:  Send("/invx tcancel"); break;
 			case B_REFRESH: Send("/invx sync"); break;
-			case B_TABCRAFT: case B_TABROUPAS: case B_TABADESIVOS:   // ainda nao existem: so avisa (nao mexe na selecao)
+			case B_TABADESIVOS: g_stkOpen = true; g_avPanel = false; break;   // Adesivos: molduras do avatar e fundos da linha (seletor padronizado)
+			case B_TABCRAFT: case B_TABROUPAS:   // ainda nao existem: so avisa (nao mexe na selecao)
 			{ std::lock_guard<std::mutex> l(g_dm); g_toastMsg = "Em breve"; g_toastType = 0; g_toastUntil = NowMs() + 1500; }
 			break;
 			case B_TRKG: g_tab.store(0); break;
 			case B_TRKT: g_tab.store(1); break;
-			case B_TABINV: break;
+			case B_TABINV: g_stkOpen = false; break;
 			case B_AVATAR: g_avPanel = !g_avPanel; break;                       // abre/fecha o painel do avatar (foto + borda)
 			case B_AVPHOTO: g_avPanel = false; Avatar::RequestPick(); break;    // abre a Galeria; o envio ao servidor e o toast saem por Avatar::Tick
 			case B_AVB0: case B_AVB1: case B_AVB2: case B_AVB3: case B_AVB4: Avatar::SetBorder(id - B_AVB0); break;   // escolhe a borda (servidor guarda por conta)
@@ -945,7 +949,16 @@ void InventoryUI::draw(ImGuiRenderer* r)
 			else if (t.kind == 3)                                                  // botao: solta sobre o mesmo botao
 			{
 				const Btn* b = btnAt(e.x, e.y);
-				if (b && b->id == t.btn && b->enabled) runButton(b->id);
+				if (b && b->id == t.btn && b->enabled)
+				{
+					if (b->id == B_STK)                                           // aba Adesivos: toque no seletor (foto / moldura / fundo); o cadeado e conferido la
+					{
+						const float ow = 730.0f * u;
+						const int c0 = AvatarPicker::HitTest(PX(450.0f), PY(130.0f), ow, u, t.sx, t.sy), c1 = AvatarPicker::HitTest(PX(450.0f), PY(130.0f), ow, u, e.x, e.y);
+						if (c0 > 0 && c0 == c1) AvatarPicker::Activate(c0);
+					}
+					else runButton(b->id);
+				}
 			}
 			else if ((t.kind == 1 || t.kind == 2) && t.dragging)             // soltou item arrastado
 			{
@@ -1227,7 +1240,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		for (int i = 0; i < 4; i++)
 		{
 			const TabDef& t = tabs[i];
-			const bool act = t.id == B_TABINV;
+			const bool act = g_stkOpen ? (t.id == B_TABADESIVOS) : (t.id == B_TABINV);
 			const bool pr = g_t.finger >= 0 && g_t.kind == 3 && g_t.btn == t.id;
 			const ImColor col = act ? cText : (pr ? cText : cMute);
 			const float cx = PX(t.ix), x0 = cx - isz * 0.5f, y0i = ty - isz * 0.5f, lw = std::max(1.0f, 1.4f * u);
@@ -1340,6 +1353,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 					const float pcx = (b.a.x + b.b.x) * 0.5f, pcy = b.a.y + 30.0f * u, par = 14.0f * u;
 					circle(pcx, pcy, par, ImColor(190, 190, 200, 255));
 					Avatar::DrawBorder(r, k, pcx, pcy, par, u * 0.7f, animT);
+					if (!Avatar::BorderUnlocked(k)) { r->drawRect(b.a, b.b, ImColor(8, 10, 18, 160), true); r->drawText(ImVec2(pcx - 4.0f * u, pcy - 6.0f * u), ImColor(255, 214, 96, 255), "x", true, 12.0f * u); }   // bloqueada
 					const char* bn = Avatar::BorderName(k);
 					const ImVec2 ts = r->calculateTextSize(bn, 9.0f * u);
 					r->drawText(ImVec2((b.a.x + b.b.x - ts.x) * 0.5f, b.b.y - ts.y - 4.0f * u), selB ? cText : cMute, bn, false, 9.0f * u);
@@ -1449,6 +1463,18 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		const float bfs = 11.5f * u;
 		const ImVec2 ts = r->calculateTextSize(b.label, bfs);
 		r->drawText(ImVec2((b.a.x + b.b.x - ts.x) * 0.5f, (b.a.y + b.b.y - ts.y) * 0.5f), b.enabled ? cText : cMute, b.label, false, bfs);
+	}
+
+	// ---- aba ADESIVOS: seletor padronizado (foto, moldura do avatar, fundo da linha); cadeado = nao liberado na conta ----
+	if (mainScr && g_stkOpen)
+	{
+		const ImVec2 sa(PX(430.0f), PY(70.0f)), sb(PX(1190.0f), PY(650.0f));
+		r->drawRect(sa, sb, ImColor(14, 14, 20, 246), true);
+		r->drawRect(sa, sb, cCellLn, false, 1.0f);
+		r->drawText(ImVec2(PX(450.0f), PY(84.0f)), cText, "Adesivos", true, 14.0f * u);
+		r->drawText(ImVec2(PX(450.0f), PY(106.0f)), cMute, "Molduras do avatar e fundos da sua linha. Cadeado = bloqueado: só a administração libera (/liberarmoldura, /liberarlinha).", false, 9.5f * u);
+		const int prs = (g_t.finger >= 0 && g_t.kind == 3 && g_t.btn == B_STK) ? AvatarPicker::HitTest(PX(450.0f), PY(130.0f), 730.0f * u, u, g_t.sx, g_t.sy) : 0;
+		AvatarPicker::Draw(r, PX(450.0f), PY(130.0f), 730.0f * u, u, (double)NowMs() / 1000.0, prs);
 	}
 
 	// ---- item sendo arrastado ----

@@ -25,6 +25,13 @@ public:
 	static bool OnBackPressed();                           // true se estava aberta (e foi fechada)
 	static void OnServerPacket(const unsigned char* data, int bytes);   // RPC 253
 
+	// ---- usados pelo seletor padronizado (avatarpicker.h): Menu jogador, Central e aba Adesivos do inventario ----
+	static int  MyStyle();                         // modelo de fundo da MINHA linha (0 = Padrao); so vale depois de HaveList()
+	static bool HaveList();                        // ja chegou alguma lista do servidor
+	static void RequestList();                     // pede a lista ("/cenx req"; o servidor limita a 1 pedido a cada 1,5 s)
+	static void ChooseStyle(int idx);              // escolhe o modelo (o servidor confere se esta liberado na conta)
+	static void DrawStylePreview(ImGuiRenderer* r, ImVec2 a, ImVec2 b, int idx, float u, double tsec);   // fundo de linha com o efeito
+
 	virtual void draw(ImGuiRenderer* renderer) override;
 	virtual void touchEvent(const ImVec2& pos, TouchType type) override { (void)pos; (void)type; }
 	virtual void keyboardEvent(const std::string& input) override;     // texto da caixa de pesquisa (Keyboard::show)

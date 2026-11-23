@@ -22,7 +22,10 @@ namespace Avatar
 	RwRaster* PngRaster(const unsigned char* png, int n);        // PNG (RGBA) -> textura; nullptr se falhar (thread de desenho)
 
 	// ---- bordas do avatar (globais; cada jogador escolhe a sua, o servidor guarda por conta) ----
-	constexpr int kBorderCount = 5;          // 0 Natural (cinza) | 1 Guirlanda (pisca-pisca) | 2 Papai Noel | 3 Neon pulsante | 4 Arco-iris
+	constexpr int kBorderCount = 8;          // IDs: 0 Natural (gratis) | 1 Guirlanda | 2 Papai Noel | 3 Neon | 4 Arco-iris | 5 Fogos 2027 | 6 Champagne | 7 Contagem 2027 (igual ao servidor AV_BORDERS)
+	constexpr int kLineCount = 12;           // modelos de fundo da linha (igual ao servidor AV_LINES)
+	bool BorderUnlocked(int idx);            // moldura liberada na conta (0 e sempre gratis)
+	bool LineUnlocked(int idx);              // modelo de fundo liberado na conta (0 e sempre gratis)
 	int  Border();                           // borda escolhida (0..kBorderCount-1)
 	void SetBorder(int idx);                 // aplica na hora e avisa o servidor (RPC 252 op 5)
 	const char* BorderName(int idx);
