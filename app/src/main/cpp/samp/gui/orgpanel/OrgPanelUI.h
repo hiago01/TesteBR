@@ -7,6 +7,7 @@
 //  Quem decide o que pode e o SERVIDOR (permissoes por cargo no PostgreSQL): os botoes escurecidos so avisam; o servidor recusa de qualquer jeito.
 // =====================================================================================
 #include "OrgPanelModel.h"
+#include "../PanelAlpha.h"          // transparencia compartilhada com o Menu jogador (Configuracoes)
 #include "../maximoos/Canvas.h"
 #include "../maximoos/Components.h"
 #include "../phone/PhoneKeyboard.h"
@@ -610,7 +611,7 @@ namespace OrgPanel
 
 		void drawBackground(Canvas& cv)
 		{
-			cv.fillGradientV({ 0, 0, m_sw, m_sh }, Pal::BgTop.alpha(0.84f), Pal::BgBot.alpha(0.86f));      // um pouco transparente: da para ver o jogo atras
+			cv.fillGradientV({ 0, 0, m_sw, m_sh }, Pal::BgTop.alpha(PanelAlpha::Get()), Pal::BgBot.alpha(PanelAlpha::Get()));   // opacidade do fundo = a MESMA do Menu jogador (Menu jogador > Configuracoes)
 			// luzes suaves (efeito de desfoque do original, sem shader)
 			cv.fillCircle({ m_ox + S(250), m_oy + S(120) }, S(360), Color(90, 150, 230, 16));
 			cv.fillCircle({ m_ox + S(1150), m_oy + S(640) }, S(420), Color(70, 120, 210, 14));

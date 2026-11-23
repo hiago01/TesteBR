@@ -1086,6 +1086,14 @@ void* PerfilBannerTexture(int which)
 	return (t && t->raster) ? (void*)t->raster : nullptr;
 }
 
+// icones do cartao de dinheiro do menu jogador (perfilpanel.cpp): 0 = dinheiro em maos, 1 = banco, 2 = moeda MB Pontos (mesmo banco texdb/perfil).
+// nullptr = textura ausente no banco: o menu usa o desenho antigo (por codigo)
+void* PerfilMoneyTexture(int which)
+{
+	RwTexture* t = PerfilTexDb::Texture(which == 0 ? "dinheiro_maos" : (which == 1 ? "dinheiro_banco" : "dinheiro_mb"));
+	return (t && t->raster) ? (void*)t->raster : nullptr;
+}
+
 // foto de perfil + moldura do Central da Cidade para o Menu Jogador (perfilpanel.cpp).
 // Mesmo desenho do Central da Cidade (central.cpp): Avatar::DrawPhoto + Avatar::DrawBorder com a borda escolhida pela conta.
 // Devolve false so se nao houver renderer (o menu entao desenha o circulo com a inicial do nome).

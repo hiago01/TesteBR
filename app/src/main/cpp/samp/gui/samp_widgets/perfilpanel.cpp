@@ -2,6 +2,7 @@
 #include "../imguirenderer.h"
 #include "../../vendor/raknet/BitStream.h"
 #include "perfilpanel.h"
+#include "../PanelAlpha.h"          // transparencia compartilhada (Menu jogador + Gerenciador de grupo)
 
 #include <algorithm>
 #include <chrono>
@@ -43,7 +44,7 @@ namespace
 	Info       g_i;
 	unsigned   g_seen = ~0u;
 	int64_t    g_t0 = 0;
-	int        g_page = 0;                         // 0 Inicio | 1 Ranking | 2 Regras
+	int        g_page = 0;                         // 0 Inicio | 1 Ranking | 2 Regras | 3 Configuracoes
 	int        g_rankCat = 0;                      // indice em g_i.cats
 	int        g_ruleTab = 0;
 	std::map<int, RankState> g_rank;               // por id de categoria
@@ -51,11 +52,11 @@ namespace
 	float      g_rankScroll = 0.0f, g_ruleScroll = 0.0f, g_tabsScroll = 0.0f;
 
 	// ---- toque ----
-	enum { K_NONE = 0, K_CLOSE, K_NAV, K_RTAB, K_UTAB, K_BAN_G, K_BAN_V };
+	enum { K_NONE = 0, K_CLOSE, K_NAV, K_RTAB, K_UTAB, K_BAN_G, K_BAN_V, K_TSLD, K_TMIN, K_TPLUS };
 	struct Target { int kind = K_NONE; int idx = 0; };
 	struct HitR { float x0, y0, x1, y1; Target t; };
 	std::vector<HitR> g_hits;
-	float g_rankR[4] = {0, 0, 0, 0}, g_ruleR[4] = {0, 0, 0, 0}, g_tabsR[4] = {0, 0, 0, 0};
+	float g_rankR[4] = {0, 0, 0, 0}, g_ruleR[4] = {0, 0, 0, 0}, g_tabsR[4] = {0, 0, 0, 0}, g_sldR[4] = {0, 0, 0, 0};   // g_sldR = trilho do controle de transparencia
 	int    g_finger = -1;
 	Target g_down;
 	float  g_sx = 0, g_sy = 0, g_lx = 0, g_ly = 0;
@@ -109,7 +110,7 @@ namespace
 	struct NavDef { const char* name; int icon; int page; bool soon; bool tagNew; };
 	const NavDef kNav[] = {
 		{ "Início", 0, 0, false, false }, { "Loja premium", 1, -1, true, false }, { "Ranking", 2, 1, false, false }, { "Regras", 3, 2, false, false },
-		{ "Comandos e funções", 4, -1, true, false }, { "Configurações", 5, -1, true, true }, { "Dúvidas frequentes", 6, -1, true, false },
+		{ "Comandos e funções", 4, -1, true, false }, { "Configurações", 5, 3, false, true }, { "Dúvidas frequentes", 6, -1, true, false },
 	};
 
 	// ---- icones pequenos da barra lateral e dos cartoes (desenhados por codigo) ----
@@ -276,8 +277,9 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 	g_hits.clear();
 
 	// ---- fundo: tela inteira, azul-acinzentado com brilho no canto (como o video) ----
-	r->drawRect(ImVec2(0, 0), ImVec2(scrW, scrH), A(24, 36, 60, 246), true);
-	r->drawRectFilledMulticolor(ImVec2(0, 0), ImVec2(scrW, scrH), A(76, 104, 150, 150), A(52, 72, 112, 110), A(22, 32, 56, 0), A(36, 52, 86, 70));
+	const float bgA = PanelAlpha::Get();      // opacidade = Configuracoes (a mesma do Gerenciador de grupo)
+	r->drawRect(ImVec2(0, 0), ImVec2(scrW, scrH), A(24, 36, 60, (int)(255.0f * bgA)), true);
+	r->drawRectFilledMulticolor(ImVec2(0, 0), ImVec2(scrW, scrH), A(76, 104, 150, (int)(150.0f * bgA)), A(52, 72, 112, (int)(110.0f * bgA)), A(22, 32, 56, 0), A(36, 52, 86, (int)(70.0f * bgA)));
 
 	// ---- titulo + Sair ----
 	txt(30.0f, 26.0f, A(236, 244, 255, 255), "Menu jogador", 36.0f, true);
@@ -307,9 +309,9 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 			const ImColor ic = active ? A(24, 50, 74, 255) : A(214, 228, 248, nv.soon ? 150 : 235);
 			const ImVec2 c = V(SX0 + 22.0f, y + IH * 0.5f);
 			NavIcon(r, nv.icon, c.x, c.y, 1.15f * u, ic);
-			const float tagW = nv.soon ? txtW(nv.tagNew ? "NOVO" : "EM BREVE", 7.0f) + 14.0f + 14.0f : 8.0f;      // reserva o espaco da etiqueta: o nome nunca passa por cima dela
+			const float tagW = (nv.soon || nv.tagNew) ? txtW(nv.tagNew ? "NOVO" : "EM BREVE", 7.0f) + 14.0f + 14.0f : 8.0f;      // reserva o espaco da etiqueta: o nome nunca passa por cima dela
 			txt(SX0 + 44.0f, y + (IH - txtH(nv.name, 12.5f)) * 0.5f, active ? A(24, 50, 74, 255) : A(232, 240, 255, nv.soon ? 170 : 255), fit(nv.name, 12.5f, (SX1 - SX0) - 44.0f - tagW), 12.5f, true);
-			if (nv.soon)
+			if (nv.soon || nv.tagNew)
 			{
 				const std::string sb = nv.tagNew ? "NOVO" : "EM BREVE";
 				const float tw = txtW(sb, 7.0f) + 14.0f, bx1 = SX1 - 8.0f, bx0 = bx1 - tw;
@@ -340,7 +342,7 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 		txt(x0 + ((x1 - x0) - txtW(label, fs)) * 0.5f, y0 + ((y1 - y0) - txtH(label, fs)) * 0.5f, on ? A(24, 50, 74, 255) : A(226, 238, 255, 255), label, fs, true);
 	};
 
-	g_rankR[0] = g_rankR[1] = g_rankR[2] = g_rankR[3] = 0; g_ruleR[0] = g_ruleR[1] = g_ruleR[2] = g_ruleR[3] = 0; g_tabsR[0] = g_tabsR[1] = g_tabsR[2] = g_tabsR[3] = 0;
+	g_rankR[0] = g_rankR[1] = g_rankR[2] = g_rankR[3] = 0; g_ruleR[0] = g_ruleR[1] = g_ruleR[2] = g_ruleR[3] = 0; g_tabsR[0] = g_tabsR[1] = g_tabsR[2] = g_tabsR[3] = 0; g_sldR[0] = g_sldR[1] = g_sldR[2] = g_sldR[3] = 0;
 	int wantRank = -1, wantRule = -1;
 
 	if (g_page == 0)
@@ -388,10 +390,15 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 			for (int k = 0; k < 3; k++)
 			{
 				const float y = 372.0f + 12.0f + (float)k * 27.0f;
-				r->drawRoundedRect(V(CX0 + 18, y), V(CX0 + 42, y + 21), A(54, 150, 190, 200), 6.0f * u, true);
-				r->drawRoundedRect(V(CX0 + 18, y), V(CX0 + 42, y + 21), A(150, 226, 250, 190), 6.0f * u, false, std::max(1.0f, 1.0f * u));
+				void* mtex = PerfilMoneyTexture(k);                           // icone de arte (banco texdb/perfil): maos / banco / moeda MB; sem a textura = desenho antigo
+				if (!mtex)
+				{
+					r->drawRoundedRect(V(CX0 + 18, y), V(CX0 + 42, y + 21), A(54, 150, 190, 200), 6.0f * u, true);
+					r->drawRoundedRect(V(CX0 + 18, y), V(CX0 + 42, y + 21), A(150, 226, 250, 190), 6.0f * u, false, std::max(1.0f, 1.0f * u));
+				}
 				const ImVec2 c = V(CX0 + 30.0f, y + 10.5f);
-				if (k == 0) { r->drawRoundedRect(ImVec2(c.x - 7 * u, c.y - 4 * u), ImVec2(c.x + 7 * u, c.y + 4 * u), A(236, 250, 255, 255), 1.5f * u, false, std::max(1.0f, 1.2f * u)); r->drawRoundedRect(ImVec2(c.x - 2 * u, c.y - 2 * u), ImVec2(c.x + 2 * u, c.y + 2 * u), A(236, 250, 255, 255), 2.0f * u, true); }
+				if (mtex) r->drawImage(ImVec2(c.x - 13 * u, c.y - 13 * u), ImVec2(c.x + 13 * u, c.y + 13 * u), (ImTextureID)mtex, ImColor(255, 255, 255, (int)(255 * f)), ImVec2(0, 0), ImVec2(1, 1));
+				else if (k == 0) { r->drawRoundedRect(ImVec2(c.x - 7 * u, c.y - 4 * u), ImVec2(c.x + 7 * u, c.y + 4 * u), A(236, 250, 255, 255), 1.5f * u, false, std::max(1.0f, 1.2f * u)); r->drawRoundedRect(ImVec2(c.x - 2 * u, c.y - 2 * u), ImVec2(c.x + 2 * u, c.y + 2 * u), A(236, 250, 255, 255), 2.0f * u, true); }
 				else if (k == 1) { ImVec2 roof[3] = { ImVec2(c.x - 7 * u, c.y - 1 * u), ImVec2(c.x, c.y - 6 * u), ImVec2(c.x + 7 * u, c.y - 1 * u) }; r->drawConvexPolyFilled(roof, 3, A(236, 250, 255, 255)); r->drawRoundedRect(ImVec2(c.x - 5.5f * u, c.y), ImVec2(c.x + 5.5f * u, c.y + 5 * u), A(236, 250, 255, 255), 0.5f * u, true); }
 				else
 				{
@@ -544,6 +551,38 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 			}
 		}
 	}
+	else if (g_page == 3)
+	{
+		// ================= CONFIGURACOES =================
+		const float CW = 668.0f, X1 = CX0 + CW;
+		NavIcon(r, 5, V(CX0 + 14.0f, 134.0f).x, V(CX0 + 14.0f, 134.0f).y, 1.9f * u, A(226, 238, 255, 235));
+		txt(CX0 + 40.0f, 120.0f, A(240, 246, 255, 255), "Configurações", 19.0f, true);
+		card(CX0, 170.0f, X1, 330.0f);
+		const float pa = PanelAlpha::Get();
+		const int pct = (int)std::lround(pa * 100.0f);
+		txt(CX0 + 22.0f, 190.0f, A(240, 246, 255, 255), "Transparência das telas", 13.0f, true);
+		txt(CX0 + 22.0f, 212.0f, A(176, 198, 230, 220), "Vale para o Menu jogador e para o Gerenciador de grupo (as duas telas usam o mesmo valor).", 9.2f);
+		const std::string pv = std::to_string(pct) + "% opaco";
+		txt(X1 - 22.0f - txtW(pv, 13.0f), 190.0f, A(98, 232, 250, 255), pv, 13.0f, true);
+		// trilho + controle (arrastar) e botoes - / +
+		const float TX0 = CX0 + 84.0f, TX1 = X1 - 84.0f, TY = 270.0f;
+		const float t = (pa - PanelAlpha::kMin) / (PanelAlpha::kMax - PanelAlpha::kMin);
+		const float kx = TX0 + (TX1 - TX0) * std::clamp(t, 0.0f, 1.0f);
+		r->drawRoundedRect(V(TX0, TY - 4.0f), V(TX1, TY + 4.0f), A(120, 150, 196, 90), 4.0f * u, true);
+		r->drawRoundedRect(V(TX0, TY - 4.0f), V(kx, TY + 4.0f), A(98, 232, 250, 235), 4.0f * u, true);
+		const bool sdn = g_down.kind == K_TSLD;
+		for (int g = 2; g >= 1; g--) r->drawRoundedRect(V(kx - 11.0f - g, TY - 11.0f - g), V(kx + 11.0f + g, TY + 11.0f + g), A(80, 230, 250, sdn ? 40 : 24), (11.0f + g) * u, true);
+		r->drawRoundedRect(V(kx - 11.0f, TY - 11.0f), V(kx + 11.0f, TY + 11.0f), A(236, 250, 255, 255), 11.0f * u, true);
+		r->drawRoundedRect(V(kx - 11.0f, TY - 11.0f), V(kx + 11.0f, TY + 11.0f), A(98, 232, 250, 255), 11.0f * u, false, std::max(1.0f, 1.5f * u));
+		const ImVec2 s0 = V(TX0, TY), s1 = V(TX1, TY);
+		g_sldR[0] = s0.x; g_sldR[1] = s0.y - 22.0f * u; g_sldR[2] = s1.x; g_sldR[3] = s1.y + 22.0f * u;
+		addHit(TX0 - 14.0f, TY - 22.0f, TX1 + 14.0f, TY + 22.0f, K_TSLD, 0);
+		pill(CX0 + 22.0f, TY - 14.0f, CX0 + 62.0f, TY + 14.0f, false, g_down.kind == K_TMIN, "-", 16.0f);
+		pill(X1 - 62.0f, TY - 14.0f, X1 - 22.0f, TY + 14.0f, false, g_down.kind == K_TPLUS, "+", 16.0f);
+		addHit(CX0 + 22.0f, TY - 14.0f, CX0 + 62.0f, TY + 14.0f, K_TMIN, 0);
+		addHit(X1 - 62.0f, TY - 14.0f, X1 - 22.0f, TY + 14.0f, K_TPLUS, 0);
+		txt(CX0 + 22.0f, 304.0f, A(150, 176, 214, 190), "30% = bem transparente   |   100% = fundo sólido   (salvo automaticamente)", 8.6f);
+	}
 	else
 	{
 		// ================= REGRAS =================
@@ -652,6 +691,12 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 			if (x >= g_hits[i].x0 && x <= g_hits[i].x1 && y >= g_hits[i].y0 && y <= g_hits[i].y1) return g_hits[i].t;
 		return Target();
 	};
+	auto setAlphaFromX = [&](float x)
+	{
+		if (g_sldR[2] <= g_sldR[0]) return;
+		const float tt = std::clamp((x - g_sldR[0]) / (g_sldR[2] - g_sldR[0]), 0.0f, 1.0f);
+		PanelAlpha::Set(PanelAlpha::kMin + tt * (PanelAlpha::kMax - PanelAlpha::kMin));
+	};
 	auto inR = [](const float rc[4], float x, float y) { return rc[2] > rc[0] && x >= rc[0] && x <= rc[2] && y >= rc[1] && y <= rc[3]; };
 	for (const ShopTouch& e : events)
 	{
@@ -661,6 +706,11 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 			g_finger = e.num; g_sx = g_lx = e.x; g_sy = g_ly = e.y; g_moved = false;
 			g_down = hitAt(e.x, e.y);
 			g_area = inR(g_rankR, e.x, e.y) ? 1 : (inR(g_ruleR, e.x, e.y) ? 2 : (inR(g_tabsR, e.x, e.y) ? 3 : 0));
+			if (g_down.kind == K_TSLD) setAlphaFromX(e.x);                          // tocar no trilho ja ajusta
+		}
+		else if (e.num == g_finger && e.type == 3 && g_down.kind == K_TSLD)
+		{
+			setAlphaFromX(e.x); g_lx = e.x; g_ly = e.y;                             // arrastando: ajusta ao vivo
 		}
 		else if (e.num == g_finger && e.type == 3)
 		{
@@ -675,6 +725,7 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 		{
 			const Target was = g_down; const bool mv = g_moved;
 			g_finger = -1; g_down = Target(); g_moved = false; g_area = 0;
+			if (was.kind == K_TSLD) { if (!e.cancel) setAlphaFromX(e.x); PanelAlpha::Save(); continue; }
 			if (e.cancel || mv || was.kind == K_NONE) continue;
 			const Target now2 = hitAt(e.x, e.y);
 			if (now2.kind != was.kind || now2.idx != was.idx) continue;
@@ -691,6 +742,8 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 				if (g_page != nv.page) { g_page = nv.page; g_rankScroll = 0.0f; g_ruleScroll = 0.0f; }
 				break;
 			}
+			case K_TMIN:  PanelAlpha::Set(PanelAlpha::Get() - PanelAlpha::kStep); PanelAlpha::Save(); break;
+			case K_TPLUS: PanelAlpha::Set(PanelAlpha::Get() + PanelAlpha::kStep); PanelAlpha::Save(); break;
 			case K_RTAB: if (was.idx >= 0 && was.idx < ncat && g_rankCat != was.idx) { g_rankCat = was.idx; g_rankScroll = 0.0f; } break;
 			case K_UTAB: if (was.idx >= 0 && was.idx < ntab && g_ruleTab != was.idx) { g_ruleTab = was.idx; g_ruleScroll = 0.0f; } break;
 			default: break;
