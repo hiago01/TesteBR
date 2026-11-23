@@ -19,7 +19,7 @@ extern CNetGame* pNetGame;
 
 namespace
 {
-	struct State { bool active = false; int veh = 0; bool moto = false; bool locked = false; };
+	struct State { bool active = false; int veh = 0; bool moto = false; bool locked = false; int trunk = 0; };   // trunk: 0 sem porta-malas | 1 fechado | 2 aberto
 	std::mutex g_mtx;
 	State      g_net;
 	bool       g_menu = false;       // so a thread de desenho mexe
@@ -47,10 +47,11 @@ namespace
 
 void CarInteract::OnPacket(RakNet::BitStream& bs)
 {
-	uint8_t on = 0, moto = 0, lk = 0; uint16_t veh = 0;
+	uint8_t on = 0, moto = 0, lk = 0, tk = 0; uint16_t veh = 0;
 	if (!bs.Read(on) || !bs.Read(veh) || !bs.Read(moto) || !bs.Read(lk)) return;
+	if (!bs.Read(tk)) tk = 0;                                            // extensao opcional no fim (servidor antigo = sem porta-malas)
 	std::lock_guard<std::mutex> l(g_mtx);
-	g_net.active = on != 0 && veh > 0; g_net.veh = g_net.active ? (int)veh : 0; g_net.moto = moto != 0; g_net.locked = lk != 0;
+	g_net.active = on != 0 && veh > 0; g_net.veh = g_net.active ? (int)veh : 0; g_net.moto = moto != 0; g_net.locked = lk != 0; g_net.trunk = (g_net.active && !moto) ? std::min<int>(tk, 2) : 0;
 }
 
 void CarInteract::Reset()
@@ -61,9 +62,9 @@ void CarInteract::Reset()
 
 void CarInteract::CloseMenu() { g_menu = false; }
 
-bool CarInteract::Draw(ImGuiRenderer* r, float k, bool hasTap, float tx, float ty, int& sendVeh)
+bool CarInteract::Draw(ImGuiRenderer* r, float k, bool hasTap, float tx, float ty, int& sendVeh, int& sendAct)
 {
-	sendVeh = 0;
+	sendVeh = 0; sendAct = 0;
 	State s;
 	{ std::lock_guard<std::mutex> l(g_mtx); s = g_net; }
 	if (!s.active || !pNetGame || !pNetGame->GetVehiclePool()) { g_menu = false; return false; }
@@ -79,10 +80,17 @@ bool CarInteract::Draw(ImGuiRenderer* r, float k, bool hasTap, float tx, float t
 	const float pxm = std::max(18.0f * k, std::fabs(ctr.y - top.y));          // pixels por metro (aprox.) neste ponto
 	const float carR = (s.moto ? 1.0f : 1.9f) * pxm;
 
-	const char* act = s.locked ? (s.moto ? "Destrancar" : "Destrancar veículo") : (s.moto ? "Trancar" : "Trancar veículo");
+	// itens do menu (carro): 1 Trancar/Destrancar | 2 Abrir/Fechar porta-malas (so com porta-malas) | 3 Ver porta-malas (so com ele aberto)
+	struct Row { int act; const char* txt; };
+	Row rows[3]; int nRows = 0;
+	rows[nRows++] = { 1, s.locked ? (s.moto ? "Destrancar" : "Destrancar veículo") : (s.moto ? "Trancar" : "Trancar veículo") };
+	if (s.trunk > 0) rows[nRows++] = { 2, s.trunk == 2 ? "Fechar porta-malas" : "Abrir porta-malas" };
+	if (s.trunk == 2) rows[nRows++] = { 3, "Ver porta-malas" };
 	const float fs = 9.5f * k;
-	const float rowH = 26.0f * k, rowW = (s.moto ? 104.0f : 150.0f) * k, gap = 2.0f * k;
-	const ImVec2 ma(dot.x + 12.0f * k, dot.y - rowH * 0.5f), mb(ma.x + rowW, ma.y + rowH);   // item do menu (1 so por enquanto)
+	const float rowH = 26.0f * k, rowW = (s.moto ? 104.0f : 160.0f) * k, gap = 2.0f * k;
+	const ImVec2 ma(dot.x + 12.0f * k, dot.y - rowH * 0.5f), mb(ma.x + rowW, ma.y + rowH);   // 1a linha
+	auto rowA = [&](int i) { return ImVec2(ma.x, ma.y + (float)i * (rowH + gap)); };
+	auto rowB = [&](int i) { return ImVec2(mb.x, mb.y + (float)i * (rowH + gap)); };
 
 	bool consumed = false;
 	if (g_menu)
@@ -90,7 +98,7 @@ bool CarInteract::Draw(ImGuiRenderer* r, float k, bool hasTap, float tx, float t
 		if (hasTap)
 		{
 			consumed = true;
-			if (In(ma, mb, tx, ty)) sendVeh = s.veh;
+			for (int i = 0; i < nRows; i++) if (In(rowA(i), rowB(i), tx, ty)) { sendVeh = s.veh; sendAct = rows[i].act; }
 			g_menu = false;                                 // escolheu ou tocou fora: fecha
 		}
 	}
@@ -113,17 +121,29 @@ bool CarInteract::Draw(ImGuiRenderer* r, float k, bool hasTap, float tx, float t
 	if (s.moto)       // moto: um unico botao
 	{
 		r->drawRoundedRect(ma, mb, ImColor(200, 36, 62, 235), 6.0f * k, true);
-		const ImVec2 ts = r->calculateTextSize(act, fs);
-		r->drawText(ImVec2((ma.x + mb.x - ts.x) * 0.5f, (ma.y + mb.y - ts.y) * 0.5f), ImColor(255, 255, 255, 255), act, false, fs);
+		const ImVec2 ts = r->calculateTextSize(rows[0].txt, fs);
+		r->drawText(ImVec2((ma.x + mb.x - ts.x) * 0.5f, (ma.y + mb.y - ts.y) * 0.5f), ImColor(255, 255, 255, 255), rows[0].txt, false, fs);
 	}
 	else              // carro: lista (fundo cinza translucido, barra de rolagem vermelha ao lado, como a referencia)
 	{
-		const ImVec2 la(ma.x - gap, ma.y - gap), lb(mb.x + gap + 4.0f * k, mb.y + gap);
+		const ImVec2 la(ma.x - gap, ma.y - gap), lb(mb.x + gap + 4.0f * k, rowB(nRows - 1).y + gap);
 		r->drawRect(la, lb, ImColor(28, 32, 36, 120), true);
-		r->drawRect(ma, mb, ImColor(74, 80, 86, 175), true);
-		r->drawRect(ImVec2(mb.x + gap, ma.y), ImVec2(mb.x + gap + 2.0f * k, mb.y), ImColor(220, 40, 70, 235), true);
-		const ImVec2 ts = r->calculateTextSize(act, fs);
-		r->drawText(ImVec2(ma.x + 10.0f * k, (ma.y + mb.y - ts.y) * 0.5f), ImColor(235, 238, 242, 255), act, false, fs);
+		for (int i = 0; i < nRows; i++)
+		{
+			const ImVec2 a = rowA(i), b = rowB(i);
+			const bool trunkRow = rows[i].act == 2;
+			r->drawRect(a, b, trunkRow && s.trunk == 2 ? ImColor(52, 110, 70, 185) : ImColor(74, 80, 86, 175), true);
+			float tx0 = a.x + 10.0f * k;
+			if (trunkRow)      // indicador: verde = porta-malas aberto, vermelho = fechado
+			{
+				const ImColor ind = s.trunk == 2 ? ImColor(60, 220, 100, 255) : ImColor(235, 55, 70, 255);
+				Disc(r, ImVec2(a.x + 12.0f * k, (a.y + b.y) * 0.5f), 4.0f * k, ind, ImColor(255, 255, 255, 190), 1.0f * k);
+				tx0 = a.x + 22.0f * k;
+			}
+			const ImVec2 ts = r->calculateTextSize(rows[i].txt, fs);
+			r->drawText(ImVec2(tx0, (a.y + b.y - ts.y) * 0.5f), ImColor(235, 238, 242, 255), rows[i].txt, false, fs);
+		}
+		r->drawRect(ImVec2(mb.x + gap, ma.y), ImVec2(mb.x + gap + 2.0f * k, rowB(nRows - 1).y), ImColor(220, 40, 70, 235), true);
 	}
 	return consumed;
 }

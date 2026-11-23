@@ -473,9 +473,9 @@ void JobsUI::draw(ImGuiRenderer* r)
 	// ---- interacao com o proprio carro (chave): ponto "Abrir interacao" + menu Trancar/Destrancar; o toque dele vem antes dos demais ----
 	if (!g_open.load())
 	{
-		int lockVeh = 0;
-		if (CarInteract::Draw(r, k, g_tapReq.load(), g_tapX.load(), g_tapY.load(), lockVeh)) g_tapReq.store(false);
-		if (lockVeh > 0) Send(13, lockVeh);
+		int lockVeh = 0, carAct = 0;
+		if (CarInteract::Draw(r, k, g_tapReq.load(), g_tapX.load(), g_tapY.load(), lockVeh, carAct)) g_tapReq.store(false);
+		if (lockVeh > 0) Send(carAct == 2 ? 30 : carAct == 3 ? 31 : 13, lockVeh);     // 13 trancar | 30 abrir/fechar porta-malas | 31 ver porta-malas
 	}
 	else CarInteract::CloseMenu();
 

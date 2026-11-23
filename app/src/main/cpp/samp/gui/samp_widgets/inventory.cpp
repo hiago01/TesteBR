@@ -52,6 +52,8 @@ namespace
 		uint32_t weight = 0, cap = 65000;
 		std::vector<Item> items;
 		std::vector<Drop> ground;
+		std::vector<Drop> trunk;             // porta-malas do carro (RPC 203 op 11); Drop.id = posicao na lista do porta-malas
+		int trunkReg = 0; uint32_t trunkW = 0, trunkCap = 0;   // trunkReg = registro do veiculo (0 = sem aba Porta-malas)
 		Trade trade;
 		std::unordered_map<int, int> dura;   // item (arma exclusiva) -> durabilidade 0..100 (0 = enferrujada); RPC 203 op 10
 	};
@@ -77,6 +79,7 @@ namespace
 	struct TouchEv { int type; int num; float x; float y; bool cancel; };
 	std::atomic<bool> g_fireLock{false};   // servidor: arma na mao sem municao -> botao de tiro travado
 	std::atomic<bool> g_open{false};
+	std::atomic<int>  g_tab{0};            // painel direito: 0 Chao | 1 Porta-malas (so existe com trunkReg > 0)
 	std::atomic<int>  g_screen{1};         // tela: 0 PRINCIPAL (mochila + abas) | 1 LOCAIS (mochila + chao; futuramente porta-malas/bau). Vem do servidor (RPC 203 op 2, 2o byte)
 	std::atomic<bool> g_flush{false};
 	std::atomic<bool> g_sendClose{false};
@@ -302,6 +305,8 @@ void InventoryUI::Open()
 void InventoryUI::Close(bool notifyServer)
 {
 	if (!g_open.exchange(false)) return;
+	{ std::lock_guard<std::mutex> l(g_dm); g_state.trunkReg = 0; g_state.trunk.clear(); }   // a aba Porta-malas so vale enquanto o servidor a mantem aberta
+	g_tab.store(0);
 	{
 		std::lock_guard<std::mutex> l(g_evMutex);
 		g_events.clear();
@@ -407,6 +412,27 @@ void InventoryUI::OnServerPacket(const unsigned char* data, int bytes)
 		}
 		std::lock_guard<std::mutex> l(g_dm);
 		g_state.ground.swap(g);
+	}
+	else if (op == 11)  // PORTA-MALAS: u16 reg (0 = sem aba) | u16 n | n x { u16 pos, u16 item, u16 qtd, u8 icone, str nome } | u32 peso | u32 cap
+	{
+		uint16_t reg = 0, n = 0; uint32_t w = 0, cap = 0;
+		if (!bs.Read(reg)) return;
+		std::vector<Drop> g;
+		if (reg)
+		{
+			if (!bs.Read(n) || n > 200) return;
+			for (int i = 0; i < n; i++)
+			{
+				Drop d; uint16_t id = 0, it = 0, q = 0; uint8_t ic = 0;
+				if (!bs.Read(id) || !bs.Read(it) || !bs.Read(q) || !bs.Read(ic) || !ReadStr(bs, d.name)) return;
+				SplitDesc(d.name, &d.desc);
+				d.id = id; d.item = it; d.qty = q; d.icon = ic;
+				g.push_back(std::move(d));
+			}
+			if (!bs.Read(w) || !bs.Read(cap)) { w = 0; cap = 0; }
+		}
+		std::lock_guard<std::mutex> l(g_dm);
+		g_state.trunk.swap(g); g_state.trunkReg = reg; g_state.trunkW = w; g_state.trunkCap = cap;
 	}
 	else if (op == 4)   // TRADE
 	{
@@ -541,7 +567,8 @@ namespace
 	enum { B_NONE = 0, B_USE, B_DROP, B_TRADE, B_QTY, B_PICK, B_OFFER, B_CLOSE,
 		   B_ACCEPT, B_REFUSE, B_CONFIRM, B_CANCEL, B_REFRESH,
 		   B_TABINV, B_TABCRAFT, B_TABROUPAS, B_TABADESIVOS,
-		   B_AVATAR, B_AVPHOTO, B_AVB0, B_AVB1, B_AVB2, B_AVB3, B_AVB4 };   // B_AVATAR: toque no circulo do personagem abre a Galeria (Avatar::RequestPick)
+		   B_AVATAR, B_AVPHOTO, B_AVB0, B_AVB1, B_AVB2, B_AVB3, B_AVB4,
+		   B_TRKG, B_TRKT };                 // abas Chao / Porta-malas do painel direito (desenhadas no cabecalho)   // B_AVATAR: toque no circulo do personagem abre a Galeria (Avatar::RequestPick)
 	// abas do topo da tela PRINCIPAL (Craft/Roupas/Adesivos ainda nao existem: "Em breve")
 
 	struct Sel { int panel = 0; int idx = -1; } g_sel;      // idx: slot (inventario) ou posicao no vetor ground
@@ -625,6 +652,14 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		for (int i = 0; i < 5; i++) hot[i] = g_hot[i];
 	}
 
+	// painel direito: Chao ou Porta-malas (aba). A aba abre sozinha quando o servidor abre o porta-malas e some se ele fecha.
+	static int s_prevTrunk = 0;
+	if (S.trunkReg > 0 && s_prevTrunk == 0) g_tab.store(1);
+	if (S.trunkReg == 0) g_tab.store(0);
+	s_prevTrunk = S.trunkReg;
+	const bool trunkTab = S.trunkReg > 0 && g_tab.load() == 1;
+	const std::vector<Drop>& GR = trunkTab ? S.trunk : S.ground;
+
 	const ImVec2 scr = pUI ? pUI->displaySize() : ImVec2(1920, 1080);
 	const float k = scr.y / 575.0f;
 
@@ -648,7 +683,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 	const float fs = 11.0f * u;
 
 	const int rowsL = (S.slots + cols - 1) / cols;
-	const int groundCells = std::max(cols * visRows, ((int)S.ground.size() + cols - 1) / cols * cols);
+	const int groundCells = std::max(cols * visRows, ((int)GR.size() + cols - 1) / cols * cols);
 	const int rowsR = groundCells / cols;
 	const float contentL = rowsL * pitch - gap, contentR = rowsR * pitch - gap;
 	const float maxL = std::max(0.0f, contentL - gridH), maxR = std::max(0.0f, contentR - gridH);
@@ -668,7 +703,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 
 	// selecao invalida (item sumiu apos sync do servidor) -> limpa
 	if (g_sel.panel == P_INV && (g_sel.idx < 0 || g_sel.idx >= S.slots || !bySlot[g_sel.idx])) g_sel = Sel();
-	if (g_sel.panel == P_GROUND && (g_sel.idx < 0 || g_sel.idx >= (int)S.ground.size())) g_sel = Sel();
+	if (g_sel.panel == P_GROUND && (g_sel.idx < 0 || g_sel.idx >= (int)GR.size())) g_sel = Sel();
 
 	// ---- botoes ----
 	std::vector<Btn> btns;
@@ -683,10 +718,18 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		if (grdSel) mk(0, B_PICK, "PEGAR", !tradeActive);
 		else        mk(0, B_USE, "USAR", invSel && !tradeActive);
 		if (tradeActive) mk(1, B_OFFER, "OFERTAR", invSel && !T.myConf);
-		else             mk(1, B_DROP, "DROPAR", invSel);
+		else             mk(1, B_DROP, trunkTab ? "GUARDAR" : "DROPAR", invSel);
 		mk(2, B_TRADE, "NEGOCIAR", !tradeMode);
 		btns.push_back({B_QTY, ImVec2(PX(474.0f), PY(87.0f)), ImVec2(PX(584.0f), PY(116.0f)), "", true});
-		btns.push_back({B_QTY, ImVec2(PX(883.0f), PY(87.0f)), ImVec2(PX(993.0f), PY(116.0f)), "", true});
+		const float qx = S.trunkReg > 0 ? 963.0f : 883.0f;       // com a aba Porta-malas o botao Quantidade vai para a ponta direita do painel
+		btns.push_back({B_QTY, ImVec2(PX(qx), PY(87.0f)), ImVec2(PX(qx + 110.0f), PY(116.0f)), "", true});
+		if (!tradeMode && S.trunkReg > 0)
+		{
+			char t2[48]; snprintf(t2, sizeof(t2), "Porta-malas veículo %d", S.trunkReg);
+			const float w1 = r->calculateTextSize("Chão", 14.0f * u).x, x2 = xr + w1 + 16.0f * u, w2 = r->calculateTextSize(t2, 14.0f * u).x;
+			btns.push_back({B_TRKG, ImVec2(xr - 4.0f * u, PY(86.0f)), ImVec2(xr + w1 + 8.0f * u, PY(112.0f)), "", true});
+			btns.push_back({B_TRKT, ImVec2(x2 - 6.0f * u, PY(86.0f)), ImVec2(x2 + w2 + 6.0f * u, PY(112.0f)), "", true});
+		}
 		btns.push_back({B_CLOSE, ImVec2(PX(1100.0f), PY(26.0f)), ImVec2(PX(1220.0f), PY(58.0f)), "", true});
 
 		// botoes do painel direito (negociacao)
@@ -768,8 +811,9 @@ void InventoryUI::draw(ImGuiRenderer* r)
 	auto doDrop  = [&](int s) { if (bySlot[s]) Send("/invx drop %d %d", s, qtyOfSlot(s)); };
 	auto doOffer = [&](int s) { if (bySlot[s]) Send("/invx tadd %d %d", s, qtyOfSlot(s)); };
 	auto doPick  = [&](int gi) {
-		if (gi >= 0 && gi < (int)S.ground.size()) Send("/invx pickup %d %d", S.ground[gi].id, g_allQty ? S.ground[gi].qty : 1);
+		if (gi >= 0 && gi < (int)GR.size()) Send(trunkTab ? "/invx tkout %d %d" : "/invx pickup %d %d", GR[gi].id, g_allQty ? GR[gi].qty : 1);
 	};
+	auto doDropR = [&](int s_) { if (trunkTab) { if (bySlot[s_]) Send("/invx tkin %d %d", s_, qtyOfSlot(s_)); } else doDrop(s_); };   // aba Porta-malas: "dropar" = guardar no porta-malas
 	// ---- menu da arma (dois toques) ----
 	const char* const kMenuLab[3] = { "Equipar Slot", "Retirar Munições", "Dropar" };
 	auto menuRect = [&](int i, ImVec2& a, ImVec2& b) {
@@ -811,7 +855,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		switch (id)
 		{
 			case B_USE:   if (g_sel.panel == P_INV) doUse(g_sel.idx); break;
-			case B_DROP:  if (g_sel.panel == P_INV) doDrop(g_sel.idx); break;
+			case B_DROP:  if (g_sel.panel == P_INV) doDropR(g_sel.idx); break;
 			case B_OFFER: if (g_sel.panel == P_INV) doOffer(g_sel.idx); break;
 			case B_PICK:  if (g_sel.panel == P_GROUND) doPick(g_sel.idx); break;
 			case B_TRADE: Send("/invx trade -1"); break;
@@ -825,12 +869,14 @@ void InventoryUI::draw(ImGuiRenderer* r)
 			case B_TABCRAFT: case B_TABROUPAS: case B_TABADESIVOS:   // ainda nao existem: so avisa (nao mexe na selecao)
 			{ std::lock_guard<std::mutex> l(g_dm); g_toastMsg = "Em breve"; g_toastType = 0; g_toastUntil = NowMs() + 1500; }
 			break;
+			case B_TRKG: g_tab.store(0); break;
+			case B_TRKT: g_tab.store(1); break;
 			case B_TABINV: break;
 			case B_AVATAR: g_avPanel = !g_avPanel; break;                       // abre/fecha o painel do avatar (foto + borda)
 			case B_AVPHOTO: g_avPanel = false; Avatar::RequestPick(); break;    // abre a Galeria; o envio ao servidor e o toast saem por Avatar::Tick
 			case B_AVB0: case B_AVB1: case B_AVB2: case B_AVB3: case B_AVB4: Avatar::SetBorder(id - B_AVB0); break;   // escolhe a borda (servidor guarda por conta)
 		}
-		if (id != B_QTY && id != B_CLOSE && !(id >= B_TABINV && id <= B_AVB4)) g_sel = Sel();
+		if (id != B_QTY && id != B_CLOSE && !(id >= B_TABINV && id <= B_TRKT)) g_sel = Sel();
 	};
 
 	// ---- toques acumulados ----
@@ -851,7 +897,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		else
 		{
 			const bool has = g_t.panel == P_INV ? (g_t.src >= 0 && g_t.src < S.slots && bySlot[g_t.src])
-												: (g_t.src >= 0 && g_t.src < (int)S.ground.size());
+												: (g_t.src >= 0 && g_t.src < (int)GR.size());
 			if (has) { g_t.dragging = true; g_sel.panel = g_t.panel; g_sel.idx = g_t.src; }
 		}
 	}
@@ -916,11 +962,11 @@ void InventoryUI::draw(ImGuiRenderer* r)
 							Send("/invx load %d %d %d", t.src, dstHot, g_allQty ? 999 : 1);                  // municao em cima da arma = carrega nela
 						else if (dstHot >= 0)                         Send("/invx bar %d %d", dstHot, t.src);   // atribui ao slot rapido
 					else if (b && b->enabled && b->id == B_USE)        doUse(t.src);          // arrastar ate "Usar"
-					else if (b && b->enabled && (b->id == B_DROP || b->id == B_OFFER)) { if (b->id == B_DROP) doDrop(t.src); else doOffer(t.src); }
+					else if (b && b->enabled && (b->id == B_DROP || b->id == B_OFFER)) { if (b->id == B_DROP) doDropR(t.src); else doOffer(t.src); }
 					else if (dstInv >= 0 && dstInv != t.src && !tradeActive) Send("/invx move %d %d", t.src, dstInv);
-					else if (!b && In(e.x, e.y, rightA, rightB))  { if (tradeActive) { if (!T.myConf) doOffer(t.src); } else doDrop(t.src); }
+					else if (!b && In(e.x, e.y, rightA, rightB))  { if (tradeActive) { if (!T.myConf) doOffer(t.src); } else doDropR(t.src); }
 				}
-				else if (!fromInv && t.src >= 0 && t.src < (int)S.ground.size())
+				else if (!fromInv && t.src >= 0 && t.src < (int)GR.size())
 				{
 					if (In(e.x, e.y, leftA, leftB) && !tradeActive) doPick(t.src);       // chao -> inventario
 				}
@@ -955,7 +1001,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 			{
 				bool ok = false;
 				if (t.panel == P_INV) ok = t.src >= 0 && t.src < S.slots && bySlot[t.src];
-				else                  ok = t.src >= 0 && t.src < (int)S.ground.size();
+				else                  ok = t.src >= 0 && t.src < (int)GR.size();
 				const bool wpn = ok && t.panel == P_INV && S.dura.count(bySlot[t.src]->id) > 0;      // arma exclusiva
 				if (wpn && g_lastTapPanel == t.panel && g_lastTapSrc == t.src && now - g_lastTapT < kDoubleTapMs)
 				{
@@ -1050,12 +1096,12 @@ void InventoryUI::draw(ImGuiRenderer* r)
 			else snprintf(b, sizeof(b), "%s  x%d  -  %s kg cada", it->name.c_str(), it->qty, Kg(it->unitW).c_str());
 			info = b;
 		}
-		else if (g_sel.panel == P_GROUND && g_sel.idx >= 0 && g_sel.idx < (int)S.ground.size())
+		else if (g_sel.panel == P_GROUND && g_sel.idx >= 0 && g_sel.idx < (int)GR.size())
 		{
-			const Drop& gd = S.ground[g_sel.idx];
+			const Drop& gd = GR[g_sel.idx];
 			char b[192];
-			if (!gd.desc.empty()) snprintf(b, sizeof(b), "No chão: %s  -  %s", gd.name.c_str(), gd.desc.c_str());
-			else snprintf(b, sizeof(b), "No chão: %s  x%d", gd.name.c_str(), gd.qty);
+			if (!gd.desc.empty()) snprintf(b, sizeof(b), trunkTab ? "No porta-malas: %s  -  %s" : "No chão: %s  -  %s", gd.name.c_str(), gd.desc.c_str());
+			else snprintf(b, sizeof(b), trunkTab ? "No porta-malas: %s  x%d" : "No chão: %s  x%d", gd.name.c_str(), gd.qty);
 			info = b;
 		}
 		r->pushClipRect(ImVec2(xl, infoY), ImVec2(xl + gridW, infoY + infoH), true);
@@ -1067,8 +1113,20 @@ void InventoryUI::draw(ImGuiRenderer* r)
 	if (mainScr) {}                      // tela PRINCIPAL: sem painel direito (tem abas, personagem, cartao do item e a faixa de lixo)
 	else if (!tradeMode)
 	{
-		const float tw = header(xr, "Chão");
-		lineTo(xr + tw + 10.0f * u, PX(873.0f));
+		float tw;
+		if (S.trunkReg > 0)      // abas: Chao | Porta-malas veiculo <registro>
+		{
+			const float fh = 14.0f * u;
+			char t2[48]; snprintf(t2, sizeof(t2), "Porta-malas veículo %d", S.trunkReg);
+			const float w1 = r->calculateTextSize("Chão", fh).x, x2 = xr + w1 + 16.0f * u, w2 = r->calculateTextSize(t2, fh).x;
+			r->drawText(ImVec2(xr, PY(95.0f)), trunkTab ? cMute : cText, "Chão", false, fh);
+			r->drawText(ImVec2(x2, PY(95.0f)), trunkTab ? cText : cMute, t2, false, fh);
+			const float ux = trunkTab ? x2 : xr, uw = trunkTab ? w2 : w1;
+			r->drawLine(ImVec2(ux, PY(109.0f)), ImVec2(ux + uw, PY(109.0f)), cPink, std::max(1.5f, 2.0f * u));
+			tw = x2 + w2 - xr;
+		}
+		else tw = header(xr, "Chão");
+		lineTo(xr + tw + 10.0f * u, PX(S.trunkReg > 0 ? 953.0f : 873.0f));
 		r->pushClipRect(vpRA, vpRB, true);
 		for (int i = 0; i < groundCells; i++)
 		{
@@ -1079,9 +1137,9 @@ void InventoryUI::draw(ImGuiRenderer* r)
 			const bool sel = g_sel.panel == P_GROUND && g_sel.idx == i;
 			r->drawRect(a, b, sel ? cPinkF : cCellBg, true);
 			r->drawRect(a, b, sel ? cPink : cCellLn, false, sel ? 2.0f : 1.0f);
-			if (i < (int)S.ground.size())
+			if (i < (int)GR.size())
 			{
-				const Drop& d = S.ground[i];
+				const Drop& d = GR[i];
 				const float m = 8.0f * u;
 				DrawIcon(r, d.icon, ImVec2(a.x + m, a.y + m + 3.0f * u), ImVec2(b.x - m, b.y - m + 3.0f * u));
 				drawQty(a, d.qty);
@@ -1091,7 +1149,8 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		scrollbar(gR.x + gridW + 9.0f * u, g_scroll[P_GROUND], maxR, contentR, false);
 		r->pushClipRect(ImVec2(xr, infoY), ImVec2(xr + gridW, infoY + infoH), true);
 		r->drawText(ImVec2(xr, infoY + (infoH - 10.0f * u) * 0.5f), cMute,
-					S.ground.empty() ? "Nada por perto. Arraste um item para cá para dropar." : "Itens a até 3 m. Toque e use PEGAR, ou arraste para a mochila.", false, 10.0f * u);
+					trunkTab ? (GR.empty() ? "Porta-malas vazio. Arraste um item da mochila para cá (ou use GUARDAR)." : "Toque e use PEGAR, ou arraste para a mochila. Arraste da mochila para guardar.")
+					: (GR.empty() ? "Nada por perto. Arraste um item para cá para dropar." : "Itens a até 3 m. Toque e use PEGAR, ou arraste para a mochila."), false, 10.0f * u);
 		r->popClipRect();
 	}
 	else
@@ -1363,7 +1422,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 	for (const Btn& b : btns)
 	{
 		const bool pressed = g_t.finger >= 0 && g_t.kind == 3 && g_t.btn == b.id;
-		if (b.id >= B_TABINV && b.id <= B_AVB4) continue;      // as abas sao desenhadas no bloco da tela principal
+		if (b.id >= B_TABINV && b.id <= B_TRKT) continue;      // as abas sao desenhadas no bloco da tela principal
 		if (b.id == B_CLOSE)
 		{
 			const char* lab = "Para fechar";
@@ -1398,7 +1457,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 	{
 		int icon = 8;
 		if (g_t.panel == P_INV && g_t.src >= 0 && g_t.src < S.slots && bySlot[g_t.src]) icon = bySlot[g_t.src]->icon;
-		else if (g_t.panel == P_GROUND && g_t.src >= 0 && g_t.src < (int)S.ground.size()) icon = S.ground[g_t.src].icon;
+		else if (g_t.panel == P_GROUND && g_t.src >= 0 && g_t.src < (int)GR.size()) icon = GR[g_t.src].icon;
 		else if (g_t.panel == P_HOT && g_t.src >= 0 && g_t.src < 5) icon = hot[g_t.src].icon;
 		const float h = slot * 0.5f;
 		DrawIcon(r, icon, ImVec2(g_t.cx - h, g_t.cy - h), ImVec2(g_t.cx + h, g_t.cy + h), 230);
