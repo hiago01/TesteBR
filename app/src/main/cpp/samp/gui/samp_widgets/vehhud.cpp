@@ -42,6 +42,9 @@ namespace
 	std::vector<Note> g_active;              // so o draw mexe
 	std::atomic<int>  g_fuel{100};
 	std::atomic<int>  g_flags{0};
+	std::atomic<int>   g_mkOn{0};             // circulo no chao atras do porta-malas aberto (0 = apagado)
+	std::atomic<int>   g_mkIn{0};             // 1 = o jogador esta dentro do circulo
+	std::atomic<float> g_mkX{0.f}, g_mkY{0.f}, g_mkZ{0.f};
 	std::atomic<int>  g_enterVeh{0};         // veiculo com porta-malas aberto ao alcance (0 = nenhum)
 	std::atomic<int>  g_inside{0};           // 0 fora | 1 dentro do porta-malas (aberto) | 2 dentro (fechado: tela escura)
 	std::atomic<int64_t> g_km10{-1};         // hodometro do carro em decimos de km (garagem); -1 = servidor nao mandou
@@ -381,6 +384,12 @@ namespace VehHud
 			if (!bs.Read(on) || !bs.Read(veh)) return;
 			g_enterVeh.store(on ? (int)veh : 0);
 		}
+		else if (op == 5)
+		{
+			uint8_t on = 0, in = 0; float x = 0, y = 0, z = 0;
+			if (!bs.Read(on) || !bs.Read(x) || !bs.Read(y) || !bs.Read(z) || !bs.Read(in)) return;
+			g_mkX.store(x); g_mkY.store(y); g_mkZ.store(z); g_mkIn.store(in ? 1 : 0); g_mkOn.store(on ? 1 : 0);
+		}
 		else if (op == 4)
 		{
 			uint8_t st = 0;
@@ -406,6 +415,7 @@ namespace VehHud
 		g_stateAt.store(0);
 		g_km10.store(-1);
 		g_enterVeh.store(0);
+		g_mkOn.store(0);
 		g_inside.store(0);
 	}
 }
@@ -421,6 +431,45 @@ void VehHudWidget::draw(ImGuiRenderer* r)
 	const ImVec2 scr = ImGui::GetIO().DisplaySize;
 	if (pUI && pUI->splashscreen() && pUI->splashscreen()->visible()) return;
 	DrawNotes(r, scr);
+
+	// ---- circulo no chao atras do porta-malas aberto: entre nele para aparecer o botao "Entrar no porta-malas" ----
+	if (g_mkOn.load() && g_inside.load() == 0 && Hud::g.visible.load() && !UiBlocked())
+	{
+		const float cx = g_mkX.load(), cy = g_mkY.load(), cz = g_mkZ.load();
+		const bool in = g_mkIn.load() != 0;
+		auto proj = [](float x, float y, float z, ImVec2& o) -> bool
+		{
+			CVector w(x, y, z), sc;
+			((void (*)(CVector*, CVector*, float*, float*, bool, bool))(g_libGTASA + 0x6E9DF8))(&w, &sc, 0, 0, 0, 0);   // CSprite::CalcScreenCoors
+			if (sc.z < 1.0f) return false;
+			o = ImVec2(sc.x, sc.y);
+			return true;
+		};
+		const ImColor fill = in ? ImColor(60, 220, 110, 70) : ImColor(255, 200, 60, 55);
+		const ImColor line = in ? ImColor(90, 255, 140, 235) : ImColor(255, 215, 90, 225);
+		constexpr int N = 36;
+		for (int ring = 0; ring < 2; ring++)
+		{
+			const float R = ring == 0 ? 1.0f : 0.55f;
+			ImVec2 p[N]; bool ok = true;
+			for (int i = 0; i < N && ok; i++)
+			{
+				const float a = (float)i * 6.2831853f / (float)N;
+				ok = proj(cx + std::cos(a) * R, cy + std::sin(a) * R, cz + 0.05f, p[i]);
+			}
+			if (!ok) continue;
+			if (ring == 0) r->drawConvexPolyFilled(p, N, fill);
+			r->drawPolyline(p, N, line, true, ring == 0 ? 3.0f : 1.6f);
+		}
+		ImVec2 c;
+		if (proj(cx, cy, cz + 0.35f, c))
+		{
+			const char* t = "Porta-malas";
+			const float fs = 11.0f * (scr.y / 720.0f);
+			const ImVec2 ts = r->calculateTextSize(t, fs);
+			r->drawText(ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.5f), line, t, false, fs);
+		}
+	}
 
 	// ---- porta-malas: dentro dele = tela escura se fechado + botao Sair; fora, com um aberto ao alcance = botao Entrar ----
 	m_xOn = false;
