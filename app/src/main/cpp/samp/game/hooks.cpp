@@ -1,6 +1,7 @@
 #include "sleek.h"
 #include "CarryTuner.h"
 #include "TargetMenu.h"
+#include "CarPlate.h"
 #include <cmath>
 #include <algorithm>
 #include "Diag.h"
@@ -4110,6 +4111,7 @@ CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
     CHook::InlineHook("_ZN17CTaskSimpleUseGun17RemoveStanceAnimsEP4CPedf", &CTaskSimpleUseGun__RemoveStanceAnims_hook, &CTaskSimpleUseGun__RemoveStanceAnims);
 
     Weapskin_InstallHooks();   // skin de arma: troca do modelo da mao + som proprio do tiro
+    CarPlate::InstallHooks();   // placa Mercosul dinamica por veiculo (se falhar, patches.cpp mantem os 'ret' nativos)
 
     // Bullet sync
     CHook::InlineHook("_ZN7CWeapon14FireInstantHitEP7CEntityP7CVectorS3_S1_S3_S3_bb", &CWeapon__FireInstantHit_hook, &CWeapon__FireInstantHit);

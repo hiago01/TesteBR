@@ -2,6 +2,7 @@
 // Created by x1y2z on 11.01.2023.
 //
 
+#include "CarPlate.h"
 #include <dirent.h>
 #include <sys/stat.h>
 #include <errno.h>
@@ -585,6 +586,9 @@ void CStreaming::InitImageList() {
     {
         FLog("[TOUCH] texdb/touch.img nao encontrado: ignorado");
     }
+
+    // Placa dinamica: se ha texdb/patch/mx_cheetah_plate.dff, troca o DFF dentro do viaturas.img ANTES de o IMG ser registrado/aberto
+    if (g_pszStorage && g_pszStorage[0]) CarPlate::ApplyImgPatch(std::string(g_pszStorage).back() == '/' ? std::string(g_pszStorage) : std::string(g_pszStorage) + "/");
 
     // IMGs EXTRAS (mapas/sistemas novos) SEM mexer no codigo: um nome por linha em SAMP/extra_imgs.txt (ex.: mapa_praia.img),
     // arquivo em texdb/. Linhas vazias ou com # sao ignoradas. Cada IMG so entra se o arquivo existe e ainda ha slot livre.

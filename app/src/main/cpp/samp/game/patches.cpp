@@ -2,6 +2,7 @@
 #include "../game/game.h"
 #include "../vendor/armhook/patch.h"
 #include "vehicleColoursTable.h"
+#include "CarPlate.h"
 #include "../settings.h"
 extern CSettings* pSettings;
 
@@ -287,8 +288,10 @@ void ApplyGlobalPatches()
     CHook::RET("_ZN6CRadar10DrawLegendEiii"); // CRadar::DrawLgegend (วาดคำอธิบายเรดาร์)
     CHook::RET("_ZN6CRadar19AddBlipToLegendListEhi"); // CRadar::AddBlipToLegendList (เพิ่ม blip ในรายการคำอธิบาย)
 
-    CHook::RET("_ZN11CAutomobile35CustomCarPlate_BeforeRenderingStartEP17CVehicleModelInfo"); // CAutomobile::CustomCarPlate_BeforeRenderingStart (ก่อนเริ่มเรนเดอร์ป้ายทะเบียน)
-    CHook::RET("_ZN11CAutomobile33CustomCarPlate_AfterRenderingStopEP17CVehicleModelInfo"); // CAutomobile::CustomCarPlate_AfterRenderingStop (หลังหยุดเรนเดอร์ป้ายทะเบียน)
+    if (!CarPlate::Installed()) {   // placa dinamica (game/CarPlate.cpp) assume essas duas funcoes; so vira "ret" se ela nao instalou
+        CHook::RET("_ZN11CAutomobile35CustomCarPlate_BeforeRenderingStartEP17CVehicleModelInfo"); // CAutomobile::CustomCarPlate_BeforeRenderingStart (ก่อนเริ่มเรนเดอร์ป้ายทะเบียน)
+        CHook::RET("_ZN11CAutomobile33CustomCarPlate_AfterRenderingStopEP17CVehicleModelInfo"); // CAutomobile::CustomCarPlate_AfterRenderingStop (หลังหยุดเรนเดอร์ป้ายทะเบียน)
+    }
     CHook::RET("_ZN7CCamera8CamShakeEffff"); // CCamera::CamShake (การสั่นของกล้อง)
     CHook::RET("_ZN7CEntity23PreRenderForGlassWindowEv"); // CEntity::PreRenderForGlassWindow (เตรียมเรนเดอร์สำหรับหน้าต่างกระจก)
     CHook::RET("_ZN8CMirrors16RenderReflBufferEb"); // CMirrors::RenderReflBuffer (เรนเดอร์บัฟเฟอร์สะท้อน)
