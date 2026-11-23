@@ -427,6 +427,14 @@ void VehHudWidget::draw(ImGuiRenderer* r)
 	{
 		const float kk = scr.y / 720.0f;
 		const int ins = g_inside.load();
+		{   // dentro do porta-malas o proprio corpo nao pode aparecer na camera: esconde o ped local (e devolve ao sair)
+			static bool s_hid = false;
+			CPedGTA* lped = nullptr;
+			if (pNetGame && pNetGame->GetPlayerPool() && pNetGame->GetPlayerPool()->GetLocalPlayer() && pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed())
+				lped = pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed()->m_pPed;
+			if (ins > 0 && lped) { lped->m_bIsVisible = false; s_hid = true; }
+			else if (ins == 0 && s_hid) { if (lped) lped->m_bIsVisible = true; s_hid = false; }
+		}
 		if (ins > 0)
 		{
 			if (ins == 2)      // fechado: nao enxerga nada
