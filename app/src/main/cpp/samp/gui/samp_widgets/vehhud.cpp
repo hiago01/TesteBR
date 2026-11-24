@@ -43,6 +43,7 @@ namespace
 	std::atomic<int>  g_fuel{100};
 	std::atomic<int>  g_flags{0};
 	std::atomic<int>   g_mkOn{0};             // circulo no chao atras do porta-malas aberto (0 = apagado)
+	std::atomic<int>   g_mkBau{0};            // 1 = o ponto e o BAU de uma moto (escreve "Acessar baú")
 	std::atomic<int>   g_mkIn{0};             // 1 = o jogador esta dentro do circulo
 	std::atomic<float> g_mkX{0.f}, g_mkY{0.f}, g_mkZ{0.f};
 	std::atomic<int>  g_enterVeh{0};         // veiculo com porta-malas aberto ao alcance (0 = nenhum)
@@ -388,7 +389,7 @@ namespace VehHud
 		{
 			uint8_t on = 0, in = 0; float x = 0, y = 0, z = 0;
 			if (!bs.Read(on) || !bs.Read(x) || !bs.Read(y) || !bs.Read(z) || !bs.Read(in)) return;
-			g_mkX.store(x); g_mkY.store(y); g_mkZ.store(z); g_mkIn.store(in ? 1 : 0); g_mkOn.store(on ? 1 : 0);
+			g_mkX.store(x); g_mkY.store(y); g_mkZ.store(z); g_mkIn.store((in & 1) ? 1 : 0); g_mkBau.store((in & 2) ? 1 : 0); g_mkOn.store(on ? 1 : 0);   // in: bit0 dentro do circulo | bit1 bau de moto
 		}
 		else if (op == 6)
 		{
@@ -470,7 +471,7 @@ void VehHudWidget::draw(ImGuiRenderer* r)
 		ImVec2 c;
 		if (proj(cx, cy, cz + 0.35f, c))
 		{
-			const char* t = "Porta-malas";
+			const char* t = g_mkBau.load() ? "Acessar baú" : "Porta-malas";
 			const float fs = 11.0f * (scr.y / 720.0f);
 			const ImVec2 ts = r->calculateTextSize(t, fs);
 			r->drawText(ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.5f), line, t, false, fs);
