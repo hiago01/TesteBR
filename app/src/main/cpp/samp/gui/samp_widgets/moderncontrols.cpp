@@ -5,6 +5,7 @@
 #include "../../net/netgame.h"
 #include "../../net/localplayer.h"
 #include "controlmode.h"
+#include "hudstate.h"
 #include "maximomenu.h"
 #include "controlsselector.h"
 #include "inventory.h"
@@ -504,6 +505,13 @@ void ModernControls::draw(ImGuiRenderer* r)
 		{
 			g_ctl.disabledMask = ((1u << B_COUNT) - 1u) & ~(1u << B_MIC);
 			g_ctl.blockedMask = 0u;
+		}
+		// LOJA (area de uma loja, RPC 245 op 26): somem Correr, Pulo, Agachar e Ataque (soco) e o personagem anda (walk, ver CMoveMode::ShopWalk). Fora da loja volta ao normal.
+		{
+			static bool s_shopWas = false;
+			const bool shopNow = !editing && Hud::g.shop.load();
+			if (shopNow != s_shopWas) { s_shopWas = shopNow; ReleaseAllLocked(); }      // solta botoes presos na troca (tambem desliga os locks de correr/mirar)
+			if (shopNow) g_ctl.disabledMask |= (1u << B_RUN) | (1u << B_JUMP) | (1u << B_CROUCH) | (1u << B_ATTACK) | (1u << B_RUNLOCK) | (1u << B_AIM);
 		}
 		// Celular aberto: HUD so com o joystick (nenhum botao). Fechou o celular: os botoes voltam ao normal.
 		{

@@ -64,4 +64,9 @@ namespace CMoveMode
 	//                  de correr: alterna WALK <-> SPRINT (ver ToggledMode).
 	void     ApplyToStick(int16_t& lr, int16_t& ud);
 	uint32_t ApplySprint(uint32_t original, int16_t lr, int16_t ud);
+
+	// LOJA: dentro da area de uma loja (Hud::g.shop) o jogador SEMPRE anda (walk), em qualquer sistema de controles (o MODERNO nao passa por
+	// ApplyToStick). Fora da loja nada muda. ShopActive: true dentro da loja a pe. ShopWalk: reduz o modulo do stick ao do walk.
+	bool ShopActive();
+	void ShopWalk(int16_t& lr, int16_t& ud);
 }

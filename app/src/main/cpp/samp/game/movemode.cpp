@@ -219,6 +219,7 @@ void CMoveMode::ApplyToStick(int16_t& lr, int16_t& ud)
 	if (!StickActive(lr, ud)) return;      // joystick solto: nada a fazer (o modo continua guardado)
 	LoadIfNeeded();
 	if (!Eligible()) return;
+	if (Hud::g.shop.load()) { ShopWalk(lr, ud); return; }      // loja: sempre walk, mesmo no modo SPRINT/JOG
 
 	int target;
 	switch ((eMoveMode)g_mode.load())
@@ -235,9 +236,27 @@ void CMoveMode::ApplyToStick(int16_t& lr, int16_t& ud)
 	ud = (int16_t)ClampStick(lrintf((float)ud * s));
 }
 
+bool CMoveMode::ShopActive()
+{
+	return Hud::g.shop.load() && Eligible();
+}
+
+void CMoveMode::ShopWalk(int16_t& lr, int16_t& ud)
+{
+	if (!Hud::g.shop.load() || !StickActive(lr, ud) || !Eligible()) return;
+	LoadIfNeeded();
+	const int target = g_walkMag.load();
+	const float mag = sqrtf((float)((int)lr * lr + (int)ud * ud));
+	if (mag <= (float)target) return;                  // ja esta devagar (joystick moderno proporcional): nao acelera
+	const float s = (float)target / mag;
+	lr = (int16_t)ClampStick(lrintf((float)lr * s));
+	ud = (int16_t)ClampStick(lrintf((float)ud * s));
+}
+
 uint32_t CMoveMode::ApplySprint(uint32_t original, int16_t lr, int16_t ud)
 {
 	LoadIfNeeded();
+	if (Hud::g.shop.load() && Eligible()) { Hud::StaminaTick(false); return 0; }      // loja: nunca corre (o botao de correr tambem some no moderno)
 
 	// Botao de correr: cada TOQUE alterna WALK <-> SPRINT (borda de subida; segurar nao fica trocando).
 	static SprintButtonEdge s_btn;
