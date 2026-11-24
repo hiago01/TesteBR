@@ -38,6 +38,7 @@ namespace
 	float g_dx = 0, g_dy = 0, g_lastY = 0;
 	int   g_tap = 0;                  // acao pendente (tratada no desenho)
 	int64_t g_lastSend = 0;
+	bool g_acked = false;             // ja avisou o servidor que o painel abriu (act 5)
 
 	void Send(int act, int a, int b)
 	{
@@ -63,14 +64,14 @@ namespace CharCreate
 		for (int i = 0; i < 4; ++i) if (!bs.Read(sel[i])) return false;
 		std::lock_guard<std::mutex> l(g_m);
 		if (mode == 0) { g_active = false; g_hits.clear(); return true; }
-		if (!g_active) g_scrollPx = 0.0f;
+		if (!g_active) { g_scrollPx = 0.0f; g_acked = false; }
 		g_active = true;
 		g_sex = sex ? 1 : 0; g_part = std::min<int>(part, 3);
 		for (int i = 0; i < 4; ++i) g_sel[i] = (sel[i] == 255) ? -1 : std::min<int>(sel[i], 1);
 		return true;
 	}
 
-	void Reset() { std::lock_guard<std::mutex> l(g_m); g_active = false; g_hits.clear(); g_down = false; g_tap = 0; g_scrollPx = 0.0f; }
+	void Reset() { std::lock_guard<std::mutex> l(g_m); g_active = false; g_hits.clear(); g_down = false; g_tap = 0; g_scrollPx = 0.0f; g_acked = false; }
 	bool Active() { std::lock_guard<std::mutex> l(g_m); return g_active; }
 
 	void OnTouch(int type, int x, int y)
@@ -187,6 +188,8 @@ namespace CharCreate
 		}
 		{ std::lock_guard<std::mutex> l(g_m); g_hits = hits; }
 
+		bool needAck; { std::lock_guard<std::mutex> l(g_m); needAck = !g_acked; g_acked = true; }
+		if (needAck) Send(5, 0, 0);       // avisa o servidor: o painel abriu (sem isso ele finaliza sozinho em 9 s)
 		int tap; { std::lock_guard<std::mutex> l(g_m); tap = g_tap; g_tap = 0; }
 		const int64_t now = NowMs();
 		if (tap && now - g_lastSend > 120)
