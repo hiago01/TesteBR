@@ -49,9 +49,9 @@ int8_t* CompsToUse()
 }
 
 // geometria do "extra1" do modelo 1194 (os atomicos clonados nos veiculos compartilham esta geometria)
-RpGeometry* ExtraGeometry()
+RpGeometry* ExtraGeometry(int model)
 {
-    CBaseModelInfo* bmi = CModelInfo::GetModelInfo(kModel);
+    CBaseModelInfo* bmi = CModelInfo::GetModelInfo(model);
     if (!bmi) return nullptr;
     CVehicleModelInfo* mi = static_cast<CVehicleModelInfo*>(bmi);
     auto* st = mi->m_pVehicleStruct;
@@ -74,8 +74,8 @@ RpAtomic* AtomicCB(RpAtomic* a, void* d)
 // liga/desliga o bau no veiculo; devolve quantos atomicos do extra existem no clump
 int Apply(CVehicleGTA* gv, bool show)
 {
-    if (!gv || !gv->m_pRwClump || (int)gv->m_nModelIndex != kModel) return -1;
-    RpGeometry* g = ExtraGeometry();
+    if (!gv || !gv->m_pRwClump || !IsBauModel((int)gv->m_nModelIndex)) return -1;
+    RpGeometry* g = ExtraGeometry((int)gv->m_nModelIndex);
     if (!g) return -1;
     Ctx c{ g, show, 0 };
     RpClumpForAllAtomics(gv->m_pRwClump, AtomicCB, &c);
@@ -96,7 +96,7 @@ void Sweep()
         CVehicle* v = vp->GetAt((VEHICLEID)id);
         if (!v || !v->m_pVehicle) continue;
         CVehicleGTA* gv = v->m_pVehicle;
-        if ((int)gv->m_nModelIndex != kModel) continue;
+        if (!IsBauModel((int)gv->m_nModelIndex)) continue;
         const int n = Apply(gv, Wanted(id));
         if (n == 0 && !s_warnedNoExtra) { s_warnedNoExtra = true; FLog("[BAU] veiculo id=%d (1194) sem o atomico do extra1: o bau nao pode ser mostrado", id); }
     }
@@ -122,7 +122,8 @@ void Reset()
 
 void BeforeCreate(int modelId)
 {
-    if (modelId != kModel) return;
+    if (!IsBauModel(modelId)) return;
+    if (modelId == kModel2 && !ExtraGeometry(modelId)) return;   // 1195: so força se o DFF ja carregado tiver extra1 (1194 segue como antes)
     if (int8_t* c = CompsToUse()) { c[0] = 0; c[1] = (int8_t)-1; s_forced = true; }
 }
 

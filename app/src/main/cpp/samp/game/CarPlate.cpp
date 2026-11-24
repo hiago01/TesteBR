@@ -372,8 +372,8 @@ void DrawPlateMoto(Canvas& c, const std::string& text)
         const float used = cell * (float)n, start = (W - used) * .5f;           // 3 letras ficam centradas na linha de cima
         for (int i = 0; i < n; ++i) Glyph(c, (unsigned char)t[i], start + cell * (i + 0.5f), capTop, capH, cell * 0.94f, 16, 22, 66);
     };
-    line(l1, 0.33f, 0.27f);
-    line(l2, 0.655f, 0.27f);
+    line(l1, 0.295f, 0.27f);       // subido um pouco (antes 0.33 / 0.655): a linha de baixo encostava na borda da placa
+    line(l2, 0.605f, 0.27f);
 }
 
 // ---------------------------------------------------------------- RwTexture --------------------------------------------

@@ -52,7 +52,7 @@ void CarInteract::OnPacket(RakNet::BitStream& bs)
 	if (!bs.Read(tk)) tk = 0;                                            // extensao opcional no fim (servidor antigo = sem porta-malas)
 	if (!bs.Read(pl)) pl = 255;                                          // extensao opcional: 0 com placa | 1 placa removida (servidor antigo = sem o item)
 	std::lock_guard<std::mutex> l(g_mtx);
-	g_net.active = on != 0 && veh > 0; g_net.veh = g_net.active ? (int)veh : 0; g_net.moto = moto != 0; g_net.locked = lk != 0; g_net.trunk = (g_net.active && !moto) ? std::min<int>(tk, 2) : 0;
+	g_net.active = on != 0 && veh > 0; g_net.veh = g_net.active ? (int)veh : 0; g_net.moto = moto != 0; g_net.locked = lk != 0; g_net.trunk = g_net.active ? std::min<int>(tk, 2) : 0;   // moto: tk>0 = tem BAU instalado (so entao aparece Abrir/Acessar bau); moto sem bau = tk 0
 	g_net.plate = (g_net.active && pl <= 1) ? (int)pl : -1;   // a moto 1194 tambem tem placa (o servidor manda 255 nas outras motos)
 }
 
@@ -86,12 +86,12 @@ bool CarInteract::Draw(ImGuiRenderer* r, float k, bool hasTap, float tx, float t
 	struct Row { int act; const char* txt; };
 	Row rows[4]; int nRows = 0;
 	rows[nRows++] = { 1, s.locked ? (s.moto ? "Destrancar" : "Destrancar veículo") : (s.moto ? "Trancar" : "Trancar veículo") };
-	if (s.trunk > 0) rows[nRows++] = { 2, s.trunk == 2 ? "Fechar porta-malas" : "Abrir porta-malas" };
-	if (s.trunk == 2) rows[nRows++] = { 3, "Ver porta-malas" };
+	if (s.trunk > 0) rows[nRows++] = { 2, s.moto ? (s.trunk == 2 ? "Fechar baú" : "Abrir baú") : (s.trunk == 2 ? "Fechar porta-malas" : "Abrir porta-malas") };
+	if (s.trunk == 2) rows[nRows++] = { 3, s.moto ? "Acessar baú" : "Ver porta-malas" };
 	if (s.plate == 0) rows[nRows++] = { 4, "Remover placa" };          // a placa vai para o inventario
 	else if (s.plate == 1) rows[nRows++] = { 5, "Colocar placa" };     // usa a placa deste carro que esta no inventario
 	const float fs = 9.5f * k;
-	const bool oneBtn = s.moto && nRows == 1;          // moto sem placa: um unico botao; moto com placa: lista como a do carro
+	const bool oneBtn = s.moto && nRows == 1;   // moto sem bau/placa          // moto sem placa: um unico botao; moto com placa: lista como a do carro
 	const float rowH = 26.0f * k, rowW = (oneBtn ? 104.0f : 160.0f) * k, gap = 2.0f * k;
 	const ImVec2 ma(dot.x + 12.0f * k, dot.y - rowH * 0.5f), mb(ma.x + rowW, ma.y + rowH);   // 1a linha
 	auto rowA = [&](int i) { return ImVec2(ma.x, ma.y + (float)i * (rowH + gap)); };

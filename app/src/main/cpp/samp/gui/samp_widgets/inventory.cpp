@@ -54,7 +54,7 @@ namespace
 		std::vector<Item> items;
 		std::vector<Drop> ground;
 		std::vector<Drop> trunk;             // porta-malas do carro (RPC 203 op 11); Drop.id = posicao na lista do porta-malas
-		int trunkReg = 0; uint32_t trunkW = 0, trunkCap = 0;   // trunkReg = registro do veiculo (0 = sem aba Porta-malas)
+		int trunkReg = 0; bool trunkBau = false; uint32_t trunkW = 0, trunkCap = 0;   // trunkBau: o container e o BAU de uma moto (servidor liga o bit 0x8000 no registro)   // trunkReg = registro do veiculo (0 = sem aba Porta-malas)
 		Trade trade;
 		std::unordered_map<int, int> dura;   // item (arma exclusiva) -> durabilidade 0..100 (0 = enferrujada); RPC 203 op 10
 	};
@@ -418,6 +418,7 @@ void InventoryUI::OnServerPacket(const unsigned char* data, int bytes)
 	{
 		uint16_t reg = 0, n = 0; uint32_t w = 0, cap = 0;
 		if (!bs.Read(reg)) return;
+		const bool bau = (reg & 0x8000) != 0; reg &= 0x7FFF;   // 0x8000 = bau de moto
 		std::vector<Drop> g;
 		if (reg)
 		{
@@ -434,7 +435,7 @@ void InventoryUI::OnServerPacket(const unsigned char* data, int bytes)
 		}
 		std::lock_guard<std::mutex> l(g_dm);
 		if (reg > 0 && g_state.trunkReg == 0) g_tab.store(1);   // porta-malas acabou de abrir: a selecao vai SEMPRE para a aba Porta-malas (nao para o Chao)
-		g_state.trunk.swap(g); g_state.trunkReg = reg; g_state.trunkW = w; g_state.trunkCap = cap;
+		g_state.trunk.swap(g); g_state.trunkReg = reg; g_state.trunkBau = reg > 0 && bau; g_state.trunkW = w; g_state.trunkCap = cap;
 	}
 	else if (op == 4)   // TRADE
 	{
@@ -725,7 +726,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		btns.push_back({B_QTY, ImVec2(PX(qx), PY(87.0f)), ImVec2(PX(qx + 110.0f), PY(116.0f)), "", true});
 		if (!tradeMode && S.trunkReg > 0)
 		{
-			char t2[48]; snprintf(t2, sizeof(t2), "Porta-malas veículo %d", S.trunkReg);
+			char t2[48]; snprintf(t2, sizeof(t2), S.trunkBau ? "Baú moto %d" : "Porta-malas veículo %d", S.trunkReg);
 			// ordem fixa das abas: Porta-malas primeiro, Chao sempre por ultimo
 			const float w2 = r->calculateTextSize(t2, 14.0f * u).x, x2 = xr + w2 + 16.0f * u, w1 = r->calculateTextSize("Chão", 14.0f * u).x;
 			btns.push_back({B_TRKT, ImVec2(xr - 4.0f * u, PY(86.0f)), ImVec2(xr + w2 + 8.0f * u, PY(112.0f)), "", true});
@@ -1112,8 +1113,8 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		{
 			const Drop& gd = GR[g_sel.idx];
 			char b[192];
-			if (!gd.desc.empty()) snprintf(b, sizeof(b), trunkTab ? "No porta-malas: %s  -  %s" : "No chão: %s  -  %s", gd.name.c_str(), gd.desc.c_str());
-			else snprintf(b, sizeof(b), trunkTab ? "No porta-malas: %s  x%d" : "No chão: %s  x%d", gd.name.c_str(), gd.qty);
+			if (!gd.desc.empty()) snprintf(b, sizeof(b), trunkTab ? (S.trunkBau ? "No baú: %s  -  %s" : "No porta-malas: %s  -  %s") : "No chão: %s  -  %s", gd.name.c_str(), gd.desc.c_str());
+			else snprintf(b, sizeof(b), trunkTab ? (S.trunkBau ? "No baú: %s  x%d" : "No porta-malas: %s  x%d") : "No chão: %s  x%d", gd.name.c_str(), gd.qty);
 			info = b;
 		}
 		r->pushClipRect(ImVec2(xl, infoY), ImVec2(xl + gridW, infoY + infoH), true);
@@ -1129,7 +1130,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		if (S.trunkReg > 0)      // abas: Chao | Porta-malas veiculo <registro>
 		{
 			const float fh = 14.0f * u;
-			char t2[48]; snprintf(t2, sizeof(t2), "Porta-malas veículo %d", S.trunkReg);
+			char t2[48]; snprintf(t2, sizeof(t2), S.trunkBau ? "Baú moto %d" : "Porta-malas veículo %d", S.trunkReg);
 			const float w2 = r->calculateTextSize(t2, fh).x, x2 = xr + w2 + 16.0f * u, w1 = r->calculateTextSize("Chão", fh).x;
 			r->drawText(ImVec2(xr, PY(95.0f)), trunkTab ? cText : cMute, t2, false, fh);          // 1a aba: Porta-malas
 			r->drawText(ImVec2(x2, PY(95.0f)), trunkTab ? cMute : cText, "Chão", false, fh);      // ultima aba: Chao
@@ -1161,7 +1162,7 @@ void InventoryUI::draw(ImGuiRenderer* r)
 		scrollbar(gR.x + gridW + 9.0f * u, g_scroll[P_GROUND], maxR, contentR, false);
 		r->pushClipRect(ImVec2(xr, infoY), ImVec2(xr + gridW, infoY + infoH), true);
 		r->drawText(ImVec2(xr, infoY + (infoH - 10.0f * u) * 0.5f), cMute,
-					trunkTab ? (GR.empty() ? "Porta-malas vazio. Arraste um item da mochila para cá (ou use GUARDAR)." : "Toque e use PEGAR, ou arraste para a mochila. Arraste da mochila para guardar.")
+					trunkTab ? (GR.empty() ? (S.trunkBau ? "Baú vazio. Arraste um item da mochila para cá (ou use GUARDAR)." : "Porta-malas vazio. Arraste um item da mochila para cá (ou use GUARDAR).") : "Toque e use PEGAR, ou arraste para a mochila. Arraste da mochila para guardar.")
 					: (GR.empty() ? "Nada por perto. Arraste um item para cá para dropar." : "Itens a até 3 m. Toque e use PEGAR, ou arraste para a mochila."), false, 10.0f * u);
 		r->popClipRect();
 	}

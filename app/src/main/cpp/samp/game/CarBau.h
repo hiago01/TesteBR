@@ -18,6 +18,8 @@ namespace RakNet { class BitStream; }
 namespace CarBau
 {
     constexpr int kModel = 1194;
+    constexpr int kModel2 = 1195;                  // 2a moto com bau (so age se o DFF tiver o extra1)
+    inline bool IsBauModel(int m) { return m == kModel || m == kModel2; }
     void OnPacket(RakNet::BitStream& bs);          // op 30 (depois do byte da op)
     void Reset();                                  // nova conexao/desconexao: lista vazia (baus escondidos)
     void BeforeCreate(int modelId);                // CVehiclePool::New, antes de criar o veiculo
