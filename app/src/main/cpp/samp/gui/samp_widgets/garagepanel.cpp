@@ -18,7 +18,7 @@
 
 namespace
 {
-	struct Car { int reg = 0, model = 0, cat = 1, state = 0, fuel = 0, engine = 0; unsigned km10 = 0; std::string name, desc; };
+	struct Car { int reg = 0, model = 0, cat = 2 /* mascara: 1 Motos | 2 Carros | 4 Vips | 8 Destaques */, state = 0, fuel = 0, engine = 0; unsigned km10 = 0; std::string name, desc; };
 	std::mutex       g_mtx;
 	std::vector<Car> g_net;
 	unsigned         g_ver = 0;
@@ -132,7 +132,7 @@ void GaragePanel::OnList(RakNet::BitStream& bs)
 	{
 		Car c; uint16_t reg = 0, model = 0; uint8_t cat = 1, st = 0, fuel = 0, eng = 0; uint32_t km = 0;
 		if (!bs.Read(reg) || !bs.Read(model) || !bs.Read(cat) || !bs.Read(st) || !bs.Read(fuel) || !bs.Read(eng) || !bs.Read(km) || !RdStr(bs, c.name) || !RdStr(bs, c.desc)) return;
-		c.reg = reg; c.model = model; c.cat = cat > 2 ? 1 : cat; c.state = st > 2 ? 2 : st; c.fuel = std::min<int>(fuel, 100); c.engine = std::min<int>(eng, 100); c.km10 = km;
+		c.reg = reg; c.model = model; c.cat = (cat & 15) ? (int)(cat & 15) : 2; c.state = st > 2 ? 2 : st; c.fuel = std::min<int>(fuel, 100); c.engine = std::min<int>(eng, 100); c.km10 = km;
 		v.push_back(std::move(c));
 	}
 	std::lock_guard<std::mutex> l(g_mtx);
@@ -194,8 +194,11 @@ void GaragePanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 	txt(124, 56, cText, "Garagem", 17.0f);
 
 	// ---- abas ----
-	const char* tabName[3] = {"Motos", "Carros", "Vips"};
-	for (int i = 0; i < 3; i++)
+	const char* tabName[4] = {"Motos", "Carros", "Vips", "Destaques"};
+	bool hasDest = false;
+	for (const Car& cc : g_cars) if (cc.cat & 8) hasDest = true;
+	if (!hasDest && g_tab == 3) g_tab = 1;
+	for (int i = 0; i < (hasDest ? 4 : 3); i++)      // Destaques so aparece quando algum veiculo seu estiver nela
 	{
 		const float x0 = 315.0f + i * 108.0f;
 		r->drawRoundedRect(V(x0, 45), V(x0 + 100, 78), g_tab == i ? cAcc : cOff, 5.0f * u, true);
@@ -205,7 +208,7 @@ void GaragePanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 
 	// ---- veiculos da aba ----
 	std::vector<int> idx;
-	for (int i = 0; i < (int)g_cars.size(); i++) if (g_cars[(size_t)i].cat == g_tab) idx.push_back(i);
+	for (int i = 0; i < (int)g_cars.size(); i++) if ((g_cars[(size_t)i].cat & (1 << g_tab))) idx.push_back(i);   // mesmo veiculo aparece em todas as abas marcadas
 	const int perPage = 8, pages = std::max(1, ((int)idx.size() + perPage - 1) / perPage);
 	g_page = std::clamp(g_page, 0, pages - 1);
 	int selI = -1;
@@ -227,7 +230,7 @@ void GaragePanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 		if (c.state == 1) txt(cx + 10, cy + 26, cAmber, "Na rua", 8.5f);
 		else if (c.state == 2) txt(cx + 10, cy + 26, cRed, "Desmanchado", 8.5f);
 		// imagem do veiculo: carro/moto coberto de preto; VIP coberto de vermelho (texturas car_preto / car_vip do banco texdb/icones)
-		if (RwTexture* tex = IconTexDb::Texture(c.cat == 2 ? "car_vip" : "car_preto"); tex && tex->raster)
+		if (RwTexture* tex = IconTexDb::Texture((c.cat & 4) ? "car_vip" : "car_preto"); tex && tex->raster)
 			r->drawImage(V(cx + 8, cy + 56), V(cx + 135, cy + 120), (ImTextureID)tex->raster, ImColor(255, 255, 255, 255));
 		r->drawRoundedRect(V(cx + 10, cy + 137), V(cx + 133, cy + 166), sel ? cAcc : ImColor(28, 44, 76, 220), 4.0f * u, true);
 		txtC(cx + 10, cx + 133, cy + 144, sel ? cText : cSub, sel ? "Selecionado" : "Selecionar", 10.0f);

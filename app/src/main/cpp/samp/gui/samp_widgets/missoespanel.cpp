@@ -432,16 +432,27 @@ void MissoesPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vec
 		{
 			const std::string h = g_cat == 0 ? "RECOMPENSA DO DIA" : "RECOMPENSA DA SEMANA";
 			txt((BX0 + BX1) * 0.5f - txtW(h, 12.0f) * 0.5f, BY0 + 12.0f, A(230, 240, 255, 255), h, 12.0f, true);
-			float yy = BY0 + 44.0f;
-			for (const Rw& w : bonus->rw)
+			// recompensas em "pilulas" que quebram de linha dentro da caixa (cabem 5 ou mais sem passar por cima da barra de progresso)
 			{
-				int cr, cg, cb; RwColor(w.type, cr, cg, cb);
-				const std::string s = "+ " + RwText(w);
-				const float cw = txtW(s, 14.0f) + 36.0f, cx = (BX0 + BX1) * 0.5f;
-				r->drawRoundedRect(V(cx - cw * 0.5f, yy), V(cx + cw * 0.5f, yy + 30), A(cr / 3, cg / 3, cb / 3, 235), 15.0f * u, true);
-				r->drawRoundedRect(V(cx - cw * 0.5f, yy), V(cx + cw * 0.5f, yy + 30), A(cr, cg, cb, 220), 15.0f * u, false, th1);
-				txt(cx - txtW(s, 14.0f) * 0.5f, yy + (30.0f - txtH(s, 14.0f)) * 0.5f, A(cr, cg, cb, 255), s, 14.0f, true);
-				yy += 38.0f;
+				const float inL = BX0 + 12.0f, inR = BX1 - 12.0f, rowH = 28.0f, gap = 6.0f;
+				std::vector<std::string> labs; std::vector<float> wid; std::vector<int> typ;
+				for (const Rw& w : bonus->rw) { labs.push_back("+ " + RwText(w)); wid.push_back(txtW(labs.back(), 11.5f) + 24.0f); typ.push_back(w.type); }
+				size_t i = 0; float yy = BY0 + 40.0f;
+				while (i < labs.size())
+				{
+					size_t j = i; float tw = 0.0f;
+					while (j < labs.size() && (j == i || tw + wid[j] + gap <= inR - inL)) { tw += wid[j] + (j > i ? gap : 0.0f); j++; }
+					float xx = (BX0 + BX1) * 0.5f - tw * 0.5f;
+					for (size_t k = i; k < j; k++)
+					{
+						int cr, cg, cb; RwColor(typ[k], cr, cg, cb);
+						r->drawRoundedRect(V(xx, yy), V(xx + wid[k], yy + rowH), A(cr / 3, cg / 3, cb / 3, 235), rowH * 0.5f * u, true);
+						r->drawRoundedRect(V(xx, yy), V(xx + wid[k], yy + rowH), A(cr, cg, cb, 220), rowH * 0.5f * u, false, th1);
+						txt(xx + 12.0f, yy + (rowH - txtH(labs[k], 11.5f)) * 0.5f, A(cr, cg, cb, 255), labs[k], 11.5f, true);
+						xx += wid[k] + gap;
+					}
+					yy += rowH + gap; i = j;
+				}
 			}
 			// progresso do premio (o botao COLETAR fica no pe do cartao)
 			const float py = BY1 - 70.0f;
