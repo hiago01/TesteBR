@@ -14,8 +14,9 @@ namespace RakNet { class BitStream; }
 //        op 40: u16 numero | u8 temTemporada | str nome | u16 nivel | u32 expNoNivel | u32 expProximo | u16 nivelMax | str grandePremio | u32 segFimTemporada | u16 semana | u8 5 + 5 x u8 (prontas para coletar por aba)
 //               (o mesmo numero ja aberto = so ATUALIZA os dados: a tela e a aba continuam onde estao)
 //        op 41: u16 numero | u8 aba | u8 n + n x { u16 id | str nome | str descricao | u32 meta | u32 progresso | u8 status | u8 rep | u8 repFeitas | u8 destino | u32 segundos | u8 icone | u8 bonus | u8 nPremios + nPremios x { u8 tipo | i32 arg | u32 qtd } }
-//        op 42: u16 numero | u16 id | u8 resultado | u8 nPremios + nPremios x { u8 tipo | i32 arg | u32 qtd }
-//   cliente -> servidor  RPC 246 op 40 + u16 numero (a tela abriu) | op 41 + u16 numero + u8 aba | op 42 + u16 numero + u16 id (COLETAR) | op 43 + u16 numero + u16 id (IR) | op 44 + u16 numero (fechou)
+//             (fim do pacote) u8 semanaAtual | u8 totalSemanas | u8 semanaMostrada (0 = aba sem semanas)
+//        op 42: u16 numero | u16 id (0 = COLETAR TUDO) | u8 resultado | u8 nPremios + nPremios x { u8 tipo | i32 arg | u32 qtd }
+//   cliente -> servidor  RPC 246 op 40 + u16 numero (a tela abriu) | op 41 + u16 numero + u8 aba + u8 semana (0 = atual) | op 45 + u16 numero + u8 aba + u8 semana (COLETAR TUDO) | op 42 + u16 numero + u16 id (COLETAR) | op 43 + u16 numero + u16 id (IR) | op 44 + u16 numero (fechou)
 //  O cliente so desenha e PEDE: progresso, status, premio e periodo vem do servidor/banco; o jogador nunca informa nada alem de "qual missao" e "qual aba".
 //  O botao IR so aparece quando o servidor manda destino > 0. Todo o desenho (icones, barras, cartoes) e feito por codigo: nenhum IMG novo, nenhuma textura nova.
 // =====================================================================================
@@ -28,6 +29,6 @@ namespace MissoesPanel
 	int  Seq();                            // numero da tela (0 = nenhuma)
 
 	// Desenha e processa os toques.
-	// answer: 0 nada | 1 Fechar | 2 pediu a lista de uma aba (arg = aba) | 3 COLETAR (arg = id da missao) | 4 IR (arg = id da missao)
+	// answer: 0 nada | 1 Fechar | 2 pediu a lista (arg = aba | semana << 4) | 3 COLETAR (arg = id da missao) | 4 IR (arg = id da missao) | 5 COLETAR TUDO (arg = aba | semana << 4)
 	void Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vector<ShopTouch>& events, int& answer, int& arg);
 }

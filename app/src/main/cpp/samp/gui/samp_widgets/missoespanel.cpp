@@ -35,7 +35,7 @@ namespace
 	std::mutex g_mtx;
 	Info       g_netInfo;
 	unsigned   g_infoVer = 0;
-	struct NetList { int seq; int cat; ListState d; };
+	struct NetList { int seq; int cat; int shown; int cur; ListState d; };
 	struct NetClaim { int seq; int id; int res; std::vector<Rw> rw; };
 	std::vector<NetList>  g_netLists;
 	std::vector<NetClaim> g_netClaims;
@@ -46,12 +46,17 @@ namespace
 	unsigned   g_seen = ~0u;
 	int64_t    g_t0 = 0;
 	int        g_cat = 0;
-	ListState  g_ls[kCats];
-	float      g_scroll[kCats] = {0, 0, 0, 0, 0};
+	// listas guardadas: abas 0,2,3,4 = 1 lista cada (indices 0,2,3,4); SEMANAL = 1 lista por semana (indices 5..8); 9 = semanal com a semana ainda desconhecida
+	constexpr int kSlots = 10;
+	ListState  g_ls[kSlots];
+	float      g_scroll[kSlots] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	int        g_week = 0;                         // semana mostrada no SEMANAL (1..4; 0 = ainda nao sei: o servidor responde com a atual)
+	int        g_curWeek = 1;                      // semana de hoje (vem do servidor)
+	int Slot(int cat) { return cat == 1 ? (g_week >= 1 && g_week <= 4 ? 5 + (g_week - 1) : 9) : cat; }
 	int        g_claimBusyId = 0; int64_t g_claimBusyT = 0;
 
 	// ---- toque ----
-	enum { K_NONE = 0, K_CLOSE, K_CAT, K_TAB, K_CLAIM, K_GO, K_BONUS };
+	enum { K_NONE = 0, K_CLOSE, K_CAT, K_TAB, K_CLAIM, K_GO, K_BONUS, K_WEEK, K_ALL };
 	struct Target { int kind = K_NONE; int idx = 0; };
 	struct HitR { float x0, y0, x1, y1; Target t; };
 	std::vector<HitR> g_hits;
@@ -189,7 +194,7 @@ bool MissoesPanel::OnList(RakNet::BitStream& bs)
 {
 	uint16_t seq = 0; uint8_t cat = 0, n = 0;
 	if (!bs.Read(seq) || !bs.Read(cat) || !bs.Read(n) || cat >= kCats || n > 16) return false;
-	NetList nl; nl.seq = seq; nl.cat = cat; nl.d.have = true; nl.d.recvT = NowMs();
+	NetList nl; nl.seq = seq; nl.cat = cat; nl.shown = 0; nl.cur = 1; nl.d.have = true; nl.d.recvT = NowMs();
 	for (int i = 0; i < n; i++)
 	{
 		Row w; uint16_t id = 0; uint8_t st = 0, rep = 0, rd = 0, dest = 0, icon = 0, bonus = 0;
@@ -197,6 +202,7 @@ bool MissoesPanel::OnList(RakNet::BitStream& bs)
 		w.id = id; w.status = st; w.rep = rep; w.repDone = rd; w.dest = dest; w.icon = icon; w.bonus = bonus != 0; if (w.target == 0) w.target = 1;
 		nl.d.rows.push_back(std::move(w));
 	}
+	{ uint8_t cw = 1, tw = 4, sw = 0; if (bs.Read(cw) && bs.Read(tw) && bs.Read(sw)) { nl.cur = cw; nl.shown = sw; } }
 	std::lock_guard<std::mutex> l(g_mtx);
 	g_netLists.push_back(std::move(nl));
 	return true;
@@ -228,11 +234,23 @@ void MissoesPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vec
 			if (!same)
 			{
 				g_finger = -1; g_down = Target(); g_moved = false; g_inList = false; g_t0 = now; g_cat = 0;
-				for (int c = 0; c < kCats; c++) { g_ls[c] = ListState(); g_scroll[c] = 0.0f; }
+				for (int c = 0; c < kSlots; c++) { g_ls[c] = ListState(); g_scroll[c] = 0.0f; }
+				g_week = 0; g_curWeek = 1;
 				g_claimBusyId = 0;
 			}
 		}
-		for (NetList& n : g_netLists) if (n.seq == g_i.seq && n.cat >= 0 && n.cat < kCats) { const int64_t rq = g_ls[n.cat].reqT; g_ls[n.cat] = std::move(n.d); g_ls[n.cat].reqT = rq; g_ls[n.cat].loading = false; }
+		for (NetList& n : g_netLists)
+		{
+			if (n.seq != g_i.seq || n.cat < 0 || n.cat >= kCats) continue;
+			int slot = n.cat;
+			if (n.cat == 1)
+			{
+				g_curWeek = n.cur;
+				if (n.shown >= 1 && n.shown <= 4) { slot = 5 + (n.shown - 1); if (g_week == 0) g_week = n.shown; g_ls[9].loading = false; }
+				else slot = 9;
+			}
+			const int64_t rq = g_ls[slot].reqT; g_ls[slot] = std::move(n.d); g_ls[slot].reqT = rq; g_ls[slot].loading = false;
+		}
 		g_netLists.clear();
 		claims.swap(g_netClaims);
 	}
@@ -253,7 +271,7 @@ void MissoesPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vec
 			kind = 0;
 			break;
 		}
-		case 1: msg = "Essa missão ainda não foi concluída."; kind = 1; break;
+		case 1: msg = (c.id == 0) ? "Nenhuma recompensa para coletar aqui." : "Essa missão ainda não foi concluída."; kind = (c.id == 0) ? 2 : 1; break;
 		case 2: msg = "Essa recompensa já foi coletada."; kind = 1; break;
 		case 3: msg = "Missão bloqueada: falta nível de temporada."; kind = 1; break;
 		case 4: msg = "Essa missão expirou."; kind = 1; break;
@@ -261,7 +279,7 @@ void MissoesPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vec
 		default: msg = "Não foi possível coletar agora. Tente de novo."; kind = 1; break;
 		}
 		ShopPanel::LocalToast(kind, msg.c_str());
-		for (int cc = 0; cc < kCats; cc++) g_ls[cc].stale = true;
+		for (int cc = 0; cc < kSlots; cc++) g_ls[cc].stale = true;
 	}
 
 	float f = std::clamp((float)(now - g_t0) / 220.0f, 0.0f, 1.0f);
@@ -326,24 +344,31 @@ void MissoesPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vec
 
 	// ---- menu lateral ----
 	{
-		const float SX0 = 30.0f, SX1 = 250.0f, IH = 60.0f, STEP = 72.0f, Y0 = 100.0f;
+		const float SX0 = 30.0f, SX1 = 250.0f, IH = 56.0f, STEP = 66.0f;
+		float y = 100.0f;
 		for (int k = 0; k < kCats; k++)
 		{
-			const float y = Y0 + (float)k * STEP;
 			const bool active = g_cat == k;
 			const bool dn = g_down.kind == K_CAT && g_down.idx == k;
-			const bool empty = g_ls[k].have && g_ls[k].rows.empty();
+			const bool empty = g_ls[Slot(k)].have && g_ls[Slot(k)].rows.empty() && k != 1;
 			if (active) { for (int g = 3; g >= 1; g--) r->drawRoundedRect(V(SX0 - g * 2, y - g * 2), V(SX1 + g * 2, y + IH + g * 2), A(70, 170, 255, 24), (10.0f + g * 2) * u, true); }
 			r->drawRoundedRect(V(SX0, y), V(SX1, y + IH), active ? A(70, 160, 255, 255) : A(24, 56, 116, dn ? 235 : 185), 10.0f * u, true);
 			r->drawRoundedRect(V(SX0, y), V(SX1, y + IH), active ? A(200, 232, 255, 230) : A(104, 150, 224, 110), 10.0f * u, false, th1);
-			Glyph(r, k == 0 ? 7 : (k == 1 ? 2 : (k == 2 ? 6 : (k == 3 ? 1 : 3))), V(SX0 + 32.0f, y + IH * 0.5f).x, V(SX0 + 32.0f, y + IH * 0.5f).y, 11.0f * u, active ? A(255, 255, 255, 255) : A(190, 216, 255, 230));
-			txt(SX0 + 62.0f, y + (IH - txtH(kCat[k].name, 14.0f)) * 0.5f, active ? A(255, 255, 255, 255) : A(214, 230, 255, empty ? 150 : 255), kCat[k].name, 14.0f, true);
+			Glyph(r, k == 0 ? 7 : (k == 1 ? 2 : (k == 2 ? 6 : (k == 3 ? 1 : 3))), V(SX0 + 30.0f, y + IH * 0.5f).x, V(SX0 + 30.0f, y + IH * 0.5f).y, 10.5f * u, active ? A(255, 255, 255, 255) : A(190, 216, 255, 230));
+			txt(SX0 + 58.0f, y + (IH - txtH(kCat[k].name, 13.5f)) * 0.5f, active ? A(255, 255, 255, 255) : A(214, 230, 255, empty ? 150 : 255), kCat[k].name, 13.5f, true);
 			if (g_i.ready[k] > 0)      // bolinha: tem recompensa para coletar
 			{
 				const ImVec2 c = V(SX1 - 20.0f, y + IH * 0.5f);
 				Circle(r, c.x, c.y, 12.0f * u, A(60, 200, 110, 255), true, 1.0f);
 				const std::string n = std::to_string(std::min(g_i.ready[k], 99));
 				txt(SX1 - 20.0f - txtW(n, 11.0f) * 0.5f, y + (IH - txtH(n, 11.0f)) * 0.5f, A(255, 255, 255, 255), n, 11.0f, true);
+			}
+			else if (k == 1)           // seta do submenu (aberto = para cima)
+			{
+				const ImVec2 c = V(SX1 - 22.0f, y + IH * 0.5f);
+				const float d = (g_cat == 1 ? -1.0f : 1.0f) * 4.0f * u;
+				ImVec2 pts[3] = { ImVec2(c.x - 7 * u, c.y - d), ImVec2(c.x, c.y + d), ImVec2(c.x + 7 * u, c.y - d) };
+				r->drawPolyline(pts, 3, A(214, 230, 255, 230), false, std::max(1.5f, 1.8f * u));
 			}
 			else if (empty)
 			{
@@ -352,11 +377,28 @@ void MissoesPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vec
 				Circle(r, c.x, c.y - 3.0f * u, 5.0f * u, A(190, 210, 240, 170), false, std::max(1.5f, 1.6f * u));
 			}
 			addHit(SX0, y, SX1, y + IH, K_CAT, k);
+			y += STEP;
+			if (k == 1 && g_cat == 1)  // submenu: SEMANA 1..4 (como no video); a de hoje tem um ponto; as futuras ficam apagadas
+			{
+				for (int w = 1; w <= 4; w++)
+				{
+					const bool sel = g_week == w, dn2 = g_down.kind == K_WEEK && g_down.idx == w;
+					const bool fut = w > g_curWeek, now2 = w == g_curWeek;
+					r->drawRoundedRect(V(SX0 + 14, y), V(SX1, y + 34), sel ? A(255, 210, 70, 255) : A(20, 46, 100, dn2 ? 235 : 190), 8.0f * u, true);
+					r->drawRoundedRect(V(SX0 + 14, y), V(SX1, y + 34), sel ? A(255, 240, 180, 230) : A(100, 146, 220, 100), 8.0f * u, false, th1);
+					const std::string wl = "SEMANA " + std::to_string(w);
+					txt(SX0 + 32.0f, y + (34.0f - txtH(wl, 11.5f)) * 0.5f, sel ? A(40, 30, 0, 255) : A(214, 230, 255, fut ? 150 : 255), wl, 11.5f, true);
+					if (now2) { const ImVec2 c = V(SX1 - 18.0f, y + 17.0f); Circle(r, c.x, c.y, 5.0f * u, sel ? A(40, 30, 0, 255) : A(60, 200, 110, 255), true, 1.0f); }
+					addHit(SX0 + 14, y, SX1, y + 34, K_WEEK, w);
+					y += 40.0f;
+				}
+				y += 4.0f;
+			}
 		}
 		r->drawLine(V(270, 100), V(270, 650), A(110, 160, 230, 90), th1);
 	}
 
-	const ListState& ls = g_ls[g_cat];
+	const ListState& ls = g_ls[Slot(g_cat)];
 	const Row* bonus = nullptr;
 	for (const Row& w : ls.rows) if (w.bonus) { bonus = &w; break; }
 
@@ -365,20 +407,21 @@ void MissoesPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vec
 		const float X0 = 290.0f, X1 = 580.0f;
 		r->drawRoundedRect(V(X0, 100), V(X1, 650), A(18, 46, 104, 215), 16.0f * u, true);
 		r->drawRoundedRect(V(X0, 100), V(X1, 650), A(110, 164, 238, 120), 16.0f * u, false, th1);
-		std::string title = g_cat == 0 ? "HOJE" : (g_cat == 1 ? "SEMANA " + std::to_string(g_i.week) : (g_cat == 2 ? (g_i.hasS ? g_i.sname : std::string("TEMPORADA")) : std::string(kCat[g_cat].name)));
+		std::string title = g_cat == 0 ? "HOJE" : (g_cat == 1 ? "SEMANA " + std::to_string(g_week > 0 ? g_week : g_curWeek) : (g_cat == 2 ? (g_i.hasS ? g_i.sname : std::string("TEMPORADA")) : std::string(kCat[g_cat].name)));
 		txt(X0 + (X1 - X0 - txtW(title, 26.0f)) * 0.5f, 118.0f, A(255, 255, 255, 255), fit(title, 26.0f, X1 - X0 - 20.0f), 26.0f, true);
 		int64_t secs = -1;
 		if (g_cat == 2 && g_i.hasS) secs = (int64_t)g_i.secs - (now - g_i.recvT) / 1000;
 		else { for (const Row& w : ls.rows) { secs = (int64_t)w.secs - (now - ls.recvT) / 1000; break; } }
 		if (secs >= 0)
 		{
-			const std::string tm = "Termina em " + Timer(secs);
+			const bool futW = (g_cat == 1 && g_week > g_curWeek);
+			const std::string tm = futW ? "Começa em " + Timer(secs) : (secs == 0 ? std::string("Encerrada") : "Termina em " + Timer(secs));
 			const float w = txtW(tm, 11.5f) + 28.0f, cx = (X0 + X1) * 0.5f;
 			r->drawRoundedRect(V(cx - w * 0.5f, 158), V(cx + w * 0.5f, 184), A(14, 34, 80, 235), 13.0f * u, true);
 			r->drawRoundedRect(V(cx - w * 0.5f, 158), V(cx + w * 0.5f, 184), A(110, 164, 238, 140), 13.0f * u, false, th1);
 			txt(cx - txtW(tm, 11.5f) * 0.5f, 158.0f + (26.0f - txtH(tm, 11.5f)) * 0.5f, A(200, 226, 255, 255), tm, 11.5f);
 		}
-		const char* d1 = g_cat == 0 ? "Complete as missões de hoje" : (g_cat == 1 ? "Complete as missões da semana" : (g_cat == 2 ? "Missões acumulativas da temporada" : (g_cat == 3 ? "Missões especiais por tempo limitado" : "Eventos da cidade")));
+		const char* d1 = g_cat == 0 ? "Complete as missões de hoje" : (g_cat == 1 ? "Complete as 6 missões da semana" : (g_cat == 2 ? "Missões acumulativas da temporada" : (g_cat == 3 ? "Missões especiais por tempo limitado" : "Eventos da cidade")));
 		txt((X0 + X1) * 0.5f - txtW(d1, 11.0f) * 0.5f, 200.0f, A(170, 200, 244, 230), d1, 11.0f);
 
 		// caixa da recompensa do periodo (a missao "premio" da categoria)
@@ -448,13 +491,13 @@ void MissoesPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vec
 
 	// ---- lista de missoes (rolagem) ----
 	{
-		const float LX0 = 600.0f, LX1 = 1250.0f, LY0 = 100.0f, LY1 = 650.0f, RH = 98.0f, GAP = 10.0f;
+		const float LX0 = 600.0f, LX1 = 1250.0f, LY0 = 100.0f, LY1 = 590.0f, RH = 98.0f, GAP = 10.0f;
 		g_listR[0] = V(LX0, LY0).x; g_listR[1] = V(LX0, LY0).y; g_listR[2] = V(LX1, LY1).x; g_listR[3] = V(LX1, LY1).y;
 		std::vector<const Row*> rows;
 		for (const Row& w : ls.rows) if (!w.bonus) rows.push_back(&w);
 		const float total = (float)rows.size() * (RH + GAP);
 		const float view = LY1 - LY0, maxS = std::max(0.0f, total - view);
-		g_scroll[g_cat] = std::clamp(g_scroll[g_cat], 0.0f, maxS);
+		g_scroll[Slot(g_cat)] = std::clamp(g_scroll[Slot(g_cat)], 0.0f, maxS);
 		r->pushClipRect(V(LX0, LY0), V(LX1, LY1), true);
 		if (rows.empty())
 		{
@@ -464,7 +507,7 @@ void MissoesPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vec
 		for (size_t k = 0; k < rows.size(); k++)
 		{
 			const Row& w = *rows[k];
-			const float y = LY0 + (float)k * (RH + GAP) - g_scroll[g_cat];
+			const float y = LY0 + (float)k * (RH + GAP) - g_scroll[Slot(g_cat)];
 			if (y + RH < LY0 || y > LY1) continue;
 			const bool doneRow = w.status == 3;
 			r->drawRoundedRect(V(LX0, y), V(LX1 - 12, y + RH), A(20, 52, 116, doneRow ? 170 : 225), 12.0f * u, true);
@@ -535,9 +578,19 @@ void MissoesPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vec
 			}
 		}
 		r->popClipRect();
+		{   // COLETAR TUDO (como no video): coleta de uma vez tudo que esta completo na aba/semana aberta
+			int nready = 0; for (const Row* w : rows) if (w->status == 2) nready++; if (bonus && bonus->status == 2) nready++;
+			const float bx1 = LX1 - 12.0f, bx0 = bx1 - 230.0f, by0 = 604.0f, by1 = 646.0f;
+			const bool dn = g_down.kind == K_ALL && nready > 0;
+			r->drawRoundedRect(V(bx0, by0), V(bx1, by1), nready > 0 ? A(255, 200, 40, dn ? 255 : 240) : A(60, 78, 112, 200), 10.0f * u, true);
+			r->drawRoundedRect(V(bx0, by0), V(bx1, by1), nready > 0 ? A(255, 240, 170, 240) : A(110, 140, 190, 90), 10.0f * u, false, th1);
+			const std::string al = nready > 0 ? "COLETAR TUDO (" + std::to_string(nready) + ")" : std::string("COLETAR TUDO");
+			txt((bx0 + bx1) * 0.5f - txtW(al, 14.0f) * 0.5f, by0 + (by1 - by0 - txtH(al, 14.0f)) * 0.5f, nready > 0 ? A(50, 34, 0, 255) : A(170, 190, 224, 160), al, 14.0f, true);
+			if (nready > 0) addHit(bx0, by0, bx1, by1, K_ALL, 0);
+		}
 		if (maxS > 0.0f)
 		{
-			const float tl = std::max(30.0f, view * view / total), ty = LY0 + (view - tl) * (g_scroll[g_cat] / maxS);
+			const float tl = std::max(30.0f, view * view / total), ty = LY0 + (view - tl) * (g_scroll[Slot(g_cat)] / maxS);
 			r->drawRoundedRect(V(LX1 - 6.0f, LY0), V(LX1 - 2.0f, LY1), A(120, 160, 230, 40), 2.0f * u, true);
 			r->drawRoundedRect(V(LX1 - 6.0f, ty), V(LX1 - 2.0f, ty + tl), A(170, 220, 255, 235), 2.0f * u, true);
 		}
@@ -565,7 +618,7 @@ void MissoesPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vec
 		else if (e.num == g_finger && e.type == 3)
 		{
 			if (!g_moved && (std::fabs(e.y - g_sy) > 7.0f * u || std::fabs(e.x - g_sx) > 7.0f * u)) { g_moved = true; g_down = Target(); }
-			if (g_moved && g_inList) g_scroll[g_cat] -= (e.y - g_ly) / u;
+			if (g_moved && g_inList) g_scroll[Slot(g_cat)] -= (e.y - g_ly) / u;
 			g_lx = e.x; g_ly = e.y;
 			if (!g_moved && g_down.kind != K_NONE) { const Target t = hitAt(e.x, e.y); if (t.kind != g_down.kind || t.idx != g_down.idx) g_down = Target(); }
 		}
@@ -588,6 +641,10 @@ void MissoesPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vec
 				if (g_claimBusyId == 0 || now - g_claimBusyT > 2500) { g_claimBusyId = was.idx; g_claimBusyT = now; answer = 3; arg = was.idx; return; }
 				break;
 			case K_GO: answer = 4; arg = was.idx; return;
+			case K_WEEK: if (was.idx >= 1 && was.idx <= 4 && g_week != was.idx) { g_week = was.idx; g_scroll[Slot(1)] = 0.0f; } break;
+			case K_ALL:
+				if (g_claimBusyId == 0 || now - g_claimBusyT > 2500) { g_claimBusyId = -1; g_claimBusyT = now; answer = 5; arg = g_cat | ((g_cat == 1 ? g_week : 0) << 4); return; }
+				break;
 			default: break;
 			}
 		}
@@ -597,9 +654,9 @@ void MissoesPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vec
 	// ---- pedido da lista da aba aberta (um por quadro; o servidor confere de novo). Dados velhos (apos coletar) continuam na tela ate a nova lista chegar ----
 	if (answer == 0)
 	{
-		ListState& s = g_ls[g_cat];
+		ListState& s = g_ls[Slot(g_cat)];
 		const bool need = !s.have || s.stale;
 		const bool retry = s.loading && now - s.reqT > 1500;
-		if (need && (!s.loading || retry)) { s.loading = true; s.stale = false; s.reqT = now; answer = 2; arg = g_cat; return; }
+		if (need && (!s.loading || retry)) { s.loading = true; s.stale = false; s.reqT = now; answer = 2; arg = g_cat | ((g_cat == 1 ? g_week : 0) << 4); return; }
 	}
 }

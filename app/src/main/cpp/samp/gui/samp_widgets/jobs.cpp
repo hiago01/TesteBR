@@ -133,7 +133,7 @@ namespace
 		RakNet::BitStream bs;
 		bs.Write((uint8_t)op);
 		bs.Write((uint16_t)seq);
-		if (op == 41) bs.Write((uint8_t)arg);
+		if (op == 41 || op == 45) { bs.Write((uint8_t)(arg & 15)); bs.Write((uint8_t)((arg >> 4) & 15)); }      // aba | semana << 4
 		else if (op == 42 || op == 43) bs.Write((uint16_t)arg);
 		pNetGame->GetRakClient()->RPC(&RPC_JobsRequest, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
 	}
@@ -617,6 +617,7 @@ void JobsUI::draw(ImGuiRenderer* r)
 		else if (answer == 2 && sq > 0) SendMissoes(41, sq, arg);
 		else if (answer == 3 && sq > 0) SendMissoes(42, sq, arg);
 		else if (answer == 4 && sq > 0) { SendMissoes(43, sq, arg); JobsUI::Close(true); }
+		else if (answer == 5 && sq > 0) SendMissoes(45, sq, arg);
 		return;
 	}
 	if (g_perfil.load())
