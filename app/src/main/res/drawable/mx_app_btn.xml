@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_enabled="false">
+        <shape android:shape="rectangle"><solid android:color="#44606080"/><corners android:radius="24dp"/></shape>
+    </item>
     <item android:state_pressed="true">
-        <shape android:shape="rectangle">
-            <gradient android:angle="270" android:endColor="#FF0A3FB0" android:startColor="#FF1560E0" />
-            <stroke android:width="2dp" android:color="#FF5CB8FF" />
-            <corners android:radius="24dp" />
-        </shape>
+        <layer-list>
+            <item><shape android:shape="rectangle"><gradient android:angle="270" android:startColor="#FFB5121F" android:endColor="#FF8E0E18"/><stroke android:width="1.6dp" android:color="#FFFFD27A"/><corners android:radius="24dp"/></shape></item>
+        </layer-list>
     </item>
     <item>
-        <shape android:shape="rectangle">
-            <gradient android:angle="270" android:endColor="#FF0B55E0" android:startColor="#FF35A8FF" />
-            <stroke android:width="2dp" android:color="#FF8FD6FF" />
-            <corners android:radius="24dp" />
-        </shape>
+        <layer-list>
+            <item><shape android:shape="rectangle"><solid android:color="#33FFC95A"/><corners android:radius="27dp"/></shape></item>
+            <item android:bottom="2dp" android:left="2dp" android:right="2dp" android:top="2dp"><shape android:shape="rectangle"><gradient android:angle="270" android:startColor="#FFFF5A66" android:centerColor="#FFE63946" android:endColor="#FFB5121F"/><stroke android:width="1.6dp" android:color="#FFFFE08A"/><corners android:radius="24dp"/></shape></item>
+        </layer-list>
     </item>
 </selector>

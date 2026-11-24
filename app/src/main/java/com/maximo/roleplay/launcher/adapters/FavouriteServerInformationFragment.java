@@ -60,7 +60,9 @@ public class FavouriteServerInformationFragment extends Dialog {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
         setContentView(R.layout.alertdialog_server);
+        com.maximo.roleplay.launcher.util.XmasDialogStyle.apply(this, 460);
 
         File file = new File(act.getExternalFilesDir(null), "favoriteservers.txt");
         File file2 = new File(act.getExternalFilesDir(null), "favoriteservers_temp.txt");

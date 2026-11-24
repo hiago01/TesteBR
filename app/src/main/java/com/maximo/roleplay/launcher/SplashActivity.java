@@ -339,7 +339,7 @@ public class SplashActivity extends AppCompatActivity {
                             android.text.SpannableString sp = new android.text.SpannableString(t);
                             int k = t.lastIndexOf(' ');
                             if (k > 0 && k + 1 < t.length())
-                                sp.setSpan(new android.text.style.ForegroundColorSpan(0xFF2BB5FF), k + 1, t.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                                sp.setSpan(new android.text.style.ForegroundColorSpan(0xFFFFC95A), k + 1, t.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                             ((android.widget.TextView) v.findViewById(R.id.mx_upd_app_title)).setText(sp);
                         }
                         final AlertDialog alert = new AlertDialog.Builder(SplashActivity.this)

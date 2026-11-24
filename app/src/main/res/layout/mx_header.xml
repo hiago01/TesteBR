@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:paddingStart="18dp"
-    android:paddingTop="8dp"
+    android:paddingTop="24dp"
     android:paddingBottom="4dp">
 
     <ImageView
@@ -24,7 +24,7 @@
         android:layout_marginStart="14dp"
         android:layout_marginTop="8dp"
         android:layout_marginBottom="8dp"
-        android:background="#552B6BFF"
+        android:background="#55FFD875"
         app:layout_constraintBottom_toBottomOf="@+id/mx_logo"
         app:layout_constraintStart_toEndOf="@+id/mx_logo"
         app:layout_constraintTop_toTopOf="@+id/mx_logo" />
@@ -37,7 +37,7 @@
         android:fontFamily="@font/montserrat_bold"
         android:letterSpacing="0.25"
         android:text="@string/mx_tagline_top"
-        android:textColor="#4DA3FF"
+        android:textColor="#FFD262"
         android:textSize="10sp"
         app:layout_constraintBottom_toTopOf="@+id/mx_tag_bottom"
         app:layout_constraintStart_toEndOf="@+id/mx_tag_divider"

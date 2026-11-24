@@ -68,7 +68,7 @@
             android:fontFamily="@font/montserrat_bold"
             android:singleLine="true"
             android:text="@string/mx_gm_now_playing"
-            android:textColor="#FF2F9BFF"
+            android:textColor="#FFFFD772"
             android:textSize="@dimen/_6sdp"
             app:layout_constraintEnd_toStartOf="@+id/mx_gm_close"
             app:layout_constraintStart_toEndOf="@+id/mx_gm_cover"

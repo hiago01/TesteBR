@@ -1,9 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/mx_login_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/mx_bg_panel">
+
+
+    <com.maximo.roleplay.launcher.util.HeroImageView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@null"
+        android:importantForAccessibility="no"
+        android:src="@drawable/mx_xmas_b" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/mx_bg_scrim_full" />
 
     <ScrollView
         android:layout_width="match_parent"
@@ -60,7 +74,9 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="20dp"
                 android:layout_weight="1.2"
-                android:orientation="vertical">
+                android:background="@drawable/mx_bg_glass"
+                android:orientation="vertical"
+                android:padding="16dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -182,4 +198,10 @@
             </LinearLayout>
         </LinearLayout>
     </ScrollView>
+
+    <com.maximo.roleplay.launcher.util.XmasLightsView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:xmasFlakes="60"
+        app:xmasSwags="8" />
 </FrameLayout>

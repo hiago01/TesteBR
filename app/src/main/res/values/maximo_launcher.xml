@@ -1,22 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Recursos do novo launcher Maximo RP (landscape). Textos em portugues. -->
 <resources>
-    <color name="mx_bg">#040A18</color>
-    <color name="mx_panel">#EB081327</color>
-    <color name="mx_panel_stroke">#662B6BFF</color>
-    <color name="mx_card">#F20C1A33</color>
-    <color name="mx_card_selected">#F2103466</color>
-    <color name="mx_accent">#1E90FF</color>
-    <color name="mx_accent_dark">#0B5BFF</color>
+    <color name="mx_bg">#070816</color>
+    <color name="mx_panel">#EA0B0E25</color>
+    <color name="mx_panel_stroke">#88FFC95A</color>
+    <color name="mx_card">#F2141838</color>
+    <color name="mx_card_selected">#F23A1430</color>
+    <color name="mx_accent">#FFC95A</color>
+    <color name="mx_accent_dark">#E5383B</color>
     <color name="mx_text">#FFFFFFFF</color>
-    <color name="mx_text_dim">#9FB3D1</color>
-    <color name="mx_menu_idle">#7FB2FF</color>
-    <color name="mx_online">#19E68C</color>
-    <color name="mx_offline">#FF5C6C</color>
+    <color name="mx_text_dim">#C9CCEC</color>
+    <color name="mx_menu_idle">#F7DDB0</color>
+    <color name="mx_online">#3DE08A</color>
+    <color name="mx_offline">#FF6B6B</color>
     <color name="mx_warning">#FFB547</color>
-    <color name="mx_checking">#6AA8FF</color>
-    <color name="mx_footer">#F2060E1F</color>
-    <color name="mx_notif_bg">#FF0B1426</color>
+    <color name="mx_checking">#FFC95A</color>
+    <color name="mx_footer">#F2070919</color>
+    <color name="mx_notif_bg">#FF0B0E24</color>
 
     <!-- Textos -->
     <string name="mx_tagline_top">ROLEPLAY</string>
@@ -62,8 +62,8 @@
     <string name="mx_exit_title">Sair do launcher</string>
     <string name="mx_exit_msg">Deseja fechar o Máximo RP?</string>
     <string name="mx_exit_yes">Sair</string>
-    <string name="mx_home_welcome">Bem-vindo ao Máximo RP</string>
-    <string name="mx_home_text">Escolha seu servidor, ajuste suas configurações e entre na cidade.</string>
+    <string name="mx_home_welcome">Boas Festas! Bem-vindo ao Máximo RP</string>
+    <string name="mx_home_text">Família Máximo RP, sempre juntos! Escolha seu servidor e entre na cidade iluminada.</string>
     <string name="mx_home_go_servers">VER SERVIDORES</string>
     <string name="mx_community_title">COMUNIDADE</string>
     <string name="mx_community_subtitle">Canais oficiais do Máximo RP</string>

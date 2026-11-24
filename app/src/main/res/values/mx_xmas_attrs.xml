@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- XmasLightsView: pisca-pisca e neve natalinos (nao interceptam toques) -->
+    <declare-styleable name="XmasLightsView">
+        <attr name="xmasGarland" format="boolean" />
+        <attr name="xmasSnow" format="boolean" />
+        <attr name="xmasSwags" format="integer" />
+        <attr name="xmasFlakes" format="integer" />
+    </declare-styleable>
+</resources>

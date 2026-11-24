@@ -14,12 +14,12 @@
         android:layout_height="match_parent"
         android:contentDescription="@null"
         android:importantForAccessibility="no"
-        android:src="@drawable/maximo_bg_hero" />
+        android:src="@drawable/mx_xmas_a" />
 
     <View
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#B3030816" />
+        android:background="@drawable/mx_bg_scrim_full" />
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/gpu"
@@ -105,7 +105,7 @@
             android:layout_marginTop="12dp"
             android:fontFamily="@font/montserrat_medium"
             android:text="@string/mx_update_hint"
-            android:textColor="#6F86AD"
+            android:textColor="#CC2936"
             android:textSize="9sp"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toStartOf="@+id/mx_ring_box"
@@ -164,4 +164,11 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:tint="@color/mx_text" />
     </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <com.maximo.roleplay.launcher.util.XmasLightsView
+        android:id="@+id/mx_xmas_lights"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:xmasFlakes="70"
+        app:xmasSwags="8" />
 </androidx.constraintlayout.widget.ConstraintLayout>

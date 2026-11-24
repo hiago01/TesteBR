@@ -60,7 +60,9 @@ public class ServerInformationFragment extends Dialog {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
         setContentView(R.layout.alertdialog_server);
+        com.maximo.roleplay.launcher.util.XmasDialogStyle.apply(this, 460);
 
         TextView mHostName = findViewById(R.id.server_hostname);
         TextView mIP = findViewById(R.id.server_ip);

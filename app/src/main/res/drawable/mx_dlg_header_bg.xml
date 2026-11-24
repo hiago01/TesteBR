@@ -2,13 +2,13 @@
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
-            <gradient android:angle="0" android:endColor="#FF0E2C6E" android:startColor="#FF071330" />
+            <gradient android:angle="0" android:endColor="#FF3A1974" android:startColor="#FF1A0C32" />
             <corners android:topLeftRadius="18dp" android:topRightRadius="18dp" />
         </shape>
     </item>
     <item android:gravity="bottom" android:height="2dp">
         <shape android:shape="rectangle">
-            <gradient android:angle="0" android:endColor="#552B8BFF" android:startColor="#FF35C2FF" />
+            <gradient android:angle="0" android:endColor="#55FFD875" android:startColor="#FFFFD66F" />
         </shape>
     </item>
 </layer-list>

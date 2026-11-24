@@ -5,10 +5,10 @@
   portanto nao duplicam nada.
 -->
 <resources>
-    <color name="mx_cyan">#22B8FF</color>
+    <color name="mx_cyan">#FFD97A</color>
     <color name="mx_error">#FF5C6C</color>
-    <color name="mx_loading">#6AA8FF</color>
-    <color name="mx_menu_selected">#33103466</color>
+    <color name="mx_loading">#FFCE52</color>
+    <color name="mx_menu_selected">#33381A6B</color>
 
     <string name="mx_label_mode">MODO</string>
     <string name="mx_label_address">ENDEREÇO</string>

@@ -40,7 +40,7 @@ public final class NotificationHelper {
     public static final String EXTRA_URL = "notif_url";
 
     private static final int ID_DOWNLOAD = 7001;
-    private static final int COLOR_ACCENT = 0xFF1E90FF;
+    private static final int COLOR_ACCENT = 0xFFE63946;
 
     private NotificationHelper() {}
 
