@@ -124,7 +124,7 @@ namespace CharCreate
 		const float maxScroll = std::max(0.0f, (contentH - viewH) * k);
 		float sp = std::max(0.0f, std::min(scrollPx, maxScroll));
 		{ std::lock_guard<std::mutex> l(g_m); g_scrollPx = sp; g_listX0 = lx0 * k; g_listX1 = lx1 * k; g_listY0 = vy0 * k; g_listY1 = vy1 * k; }
-		const float off = sp / k;
+		const float off = sp / k - vy0;     // o conteudo comeca no topo da area visivel (y = vy0)
 
 		r->pushClipRect(P(lx0 - 2, vy0), P(lx1 + 2, vy1), false);
 		auto addHit = [&](float x, float y, float w, float h, int id)
