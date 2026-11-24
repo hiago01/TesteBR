@@ -10,6 +10,7 @@
 #include "avatarpicker.h"
 #include "../../util/CUtil.h"
 #include "../../game/IconTexDb.h"
+#include "../../game/AmmoTexDb.h"
 #include "../../game/WeaponIconDb.h"
 #include "controlmode.h"
 #include "controlsselector.h"
@@ -251,6 +252,7 @@ namespace
 		{
 			std::string nm; { std::lock_guard<std::mutex> l(g_thm); const size_t i = (size_t)(icon - 128); if (i < g_texNames.size()) nm = g_texNames[i]; }
 			RwTexture* t = nm.empty() ? nullptr : IconTexDb::Texture(nm);
+			if (!t && !nm.empty()) t = AmmoTexDb::Texture(nm);       // icones das municoes (texdb/municao)
 			if (t && t->raster)
 			{
 				const float cw = b.x - a.x, ch = b.y - a.y;
