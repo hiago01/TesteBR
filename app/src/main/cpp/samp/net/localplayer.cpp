@@ -4,10 +4,8 @@
 #include "../game/game.h"
 #include "netgame.h"
 #include "localplayer.h"
-#include "../gui/gui.h"
 #include "../gui/samp_widgets/deathscreen.h"
-
-static bool g_deadPose = false; static uint32_t g_deadPoseAnim = 0;   // tela de morte: ped ja colocado na pose de ferido / ultima vez que a animacao foi conferida
+#include "../gui/gui.h"
 
 // voice
 #include "../voice_new/MicroIcon.h"
@@ -151,14 +149,11 @@ static void DanoFallback_Process(CLocalPlayer* lp)
 		if (lp->GetPlayerPed()->IsDead())     { g_dfDropDead++;  continue; }
 		FLog("[DANO] fallback: jogo nao gerou o dano; enviando evento (atirador %d, arma %d)", (int)p.shooter, p.weapon);
 		lp->SendTakeDamageEvent(p.shooter, WeaponDatDamage(p.weapon), p.weapon, 3);
-		// O servidor so e AVISADO (open.mp nao tira vida pelo evento: a vida vale a que o cliente sincroniza). Se o jogo nativo nao gerou o dano,
-		// aplica aqui o mesmo valor que o SA-MP entrega (weapon.dat x 0.33): primeiro o colete, depois a vida.
-		{
+		{   // a vida e' do CLIENTE (open.mp nao a reduz pelo RPC de dano): tira aqui, colete primeiro (x0.33 = dano real do SA-MP)
 			CPlayerPed* ped = lp->GetPlayerPed();
-			float dmg = WeaponDatDamage(p.weapon) * 0.33f;
-			const float arm = ped->GetArmour();
-			if (arm > 0.0f) { const float t = std::min(arm, dmg); ped->SetArmour(arm - t); dmg -= t; }
-			if (dmg > 0.0f) ped->SetHealth(std::max(0.0f, ped->GetHealth() - dmg));
+			float loss = WeaponDatDamage(p.weapon) * 0.33f, arm = ped->GetArmour();
+			if (arm > 0.0f) { const float t = std::min(arm, loss); ped->SetArmour(arm - t); loss -= t; }
+			if (loss > 0.0f) ped->SetHealth(std::max(0.0f, ped->GetHealth() - loss));
 		}
 		if (++g_dfSent % 50 == 0)
 			FLog("[DANO] resumo: registrados=%d enviados=%d nativos=%d descartados(local morto=%d, sem ped=%d, atirador invalido=%d) sobrescritos=%d",
@@ -166,9 +161,46 @@ static void DanoFallback_Process(CLocalPlayer* lp)
 	}
 }
 
+// ---- FERIDO (tela de morte): o personagem fica PARADO no local da morte, em animacao, ate o servidor soltar ----
+// O proprio GTA reinicia quem morreu no "ponto de restart" (hospital/ultimo spawn): foi isso que jogava o jogador em lugares errados.
+// Agora o restart e' fixado no local da morte (CLocalPlayer::Process) e, mesmo assim, a posicao e' reimposta a cada quadro aqui.
+static bool g_holdInit = false; static uint32_t g_holdAnimTick = 0;
+static void HoldInjured(CPlayerPed* ped)
+{
+	if (!ped || !ped->m_pPed) return;
+	float hx = 0, hy = 0, hz = 0; const bool has = DeathScreen::HoldPos(hx, hy, hz);
+	const bool releasing = DeathScreen::Releasing();
+	if (!g_holdInit)
+	{
+		g_holdInit = true; g_holdAnimTick = 0;
+		ped->SetInitialState();
+		if (has) ped->m_pPed->SetPosn(hx, hy, hz);
+		if (!releasing) ped->TogglePlayerControllable(false);
+	}
+	ped->SetHealth(100.0f);                           // so aqui no cliente; nada e' sincronizado (m_bIsActive = false)
+	if (has)
+	{
+		const CVector c = ped->m_pPed->GetPosition();
+		const float dx = c.x - hx, dy = c.y - hy, dz = c.z - hz;
+		if (dx * dx + dy * dy + dz * dz > 1.2f * 1.2f) ped->m_pPed->SetPosn(hx, hy, hz);     // nunca sai do lugar da morte
+	}
+	if (releasing) return;
+	const uint32_t now = GetTickCount();
+	if (now - g_holdAnimTick > 700)
+	{
+		g_holdAnimTick = now;
+		if (!ped->IsAnimationPlaying((char*)"sweet_injuredloop")) ped->ApplyAnimation("Sweet_injuredloop", "SWEET", 4.1f, 1, 0, 0, 0, 0);
+	}
+}
+
 bool CLocalPlayer::Process()
 {
 	DanoFallback_Process(this);
+	if (DeathScreen::TakeCleanup())                   // acabou a espera (hospital/reanimado/servidor soltou): solta animacao e controles
+	{
+		g_holdInit = false;
+		if (m_pPlayerPed && m_pPlayerPed->m_pPed) { m_pPlayerPed->ClearAllTasks(); m_pPlayerPed->TogglePlayerControllable(true); }
+	}
 	//UpdateVoice();
 
 	if (m_bIsActive && m_pPlayerPed != nullptr)
@@ -194,11 +226,16 @@ bool CLocalPlayer::Process()
 				m_LastVehicle = pNetGame->GetVehiclePool()->FindIDFromGtaPtr(m_pPlayerPed->GetGtaVehicle());
 			}
 			m_pPlayerPed->ExtinguishFire();
+			if (DeathScreen::Enabled())
+			{   // fixa o "restart" do GTA no LOCAL DA MORTE (senao ele teleporta o corpo para o hospital/ultimo spawn) e avisa a tela
+				const CVector dp = m_pPlayerPed->m_pPed->GetPosition();
+				DeathScreen::OnLocalDeath(dp.x, dp.y, dp.z);
+				CVector rp = dp; m_pPlayerPed->RestartIfWastedAt(&rp, 0.0f);
+				g_holdInit = false;
+			}
             m_pPlayerPed->SetHealth(0.0f);
             m_pPlayerPed->SetDead();
 			SendWastedNotification();
-			DeathScreen::OnLocalDeath();      // tela de morte: segura o respawn ja, sem esperar o servidor responder
-			g_deadPose = false;
 			m_bIsActive = false;
 			m_bIsWasted = true;
 			pGame->EnableZoneNames(false);
@@ -478,26 +515,7 @@ bool CLocalPlayer::Process()
 	{
         m_pPlayerPed->FlushAttach();
 
-		// TELA DE MORTE (servidor com maximo_socorro.inc): NAO faz spawn nem entra na selecao de classe. O ped fica NO LUGAR, vivo (vida 100 so aqui,
-		// o servidor ja o considera morto), sem controle, em LOOP de animacao de ferido; so a tela aparece. O servidor libera pelo op 51.
-		if (DeathScreen::Holding())
-		{
-			const uint32_t nowT = GetTickCount();
-			if (!g_deadPose || m_pPlayerPed->GetHealth() <= 0.0f)
-			{
-				m_pPlayerPed->SetInitialState();
-				m_pPlayerPed->SetHealth(100.0f);
-				m_pPlayerPed->TogglePlayerControllable(false);
-				g_deadPose = true; g_deadPoseAnim = 0;
-			}
-			if (nowT - g_deadPoseAnim > 700)
-			{
-				g_deadPoseAnim = nowT;
-				char an[] = "Sweet_injuredloop";
-				if (!m_pPlayerPed->IsAnimationPlaying(an)) m_pPlayerPed->ApplyAnimation(an, "SWEET", 4.1f, 1, 0, 0, 0, 0);   // loop; troque aqui para outra animacao de ferido
-			}
-			return true;
-		}
+		if (DeathScreen::Holding()) { HoldInjured(m_pPlayerPed); return true; }   // ferido: fica no lugar da morte, SEM tela de classes e SEM teleporte
 
 		//if (sub_100AC660(_this->m_pPlayerPed))
 		//	sub_100AC670(_this->m_pPlayerPed, 0);

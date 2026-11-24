@@ -1,0 +1,7 @@
+FERIDO (cliente) - NAO COMPILADO COM O NDK NEM TESTADO EM JOGO. Precisa do servidor-socorro-v3.
+Causa do "vai para lugares errados": o proprio GTA reinicia quem morreu no ponto de restart (hospital/ultimo spawn) e o cliente seguia dali.
+Agora: (1) o restart do GTA e' fixado no local da morte; (2) o servidor manda o local exato (op 50) e o cliente reimpoe a posicao todo quadro
+(se afastar mais de 1,2 m volta); (3) a tela de classes/spawn nao aparece mais enquanto ferido; (4) ao acabar (hospital/reanimado) o cliente solta
+animacao e controles sozinho; (5) o botao "Acionar os medicos" so funciona com medico em servico e so envia 1 vez (travado 2,5 s).
+Tambem refeitos aqui (o zip anterior se perdeu): dano de queda e de tiros (DamageRules.h + localplayer.cpp).
+Arquivos: gui/samp_widgets/deathscreen.h/.cpp (novo), jobs.cpp, net/localplayer.cpp, game/DamageRules.h

@@ -20,7 +20,6 @@
 #include "shoppanel.h"
 #include "perfilpanel.h"
 #include "missoespanel.h"
-#include "deathscreen.h"
 #include "avatar.h"
 #include "../../game/PerfilTexDb.h"
 #include "../../game/ShopTexDb.h"
@@ -29,6 +28,7 @@
 #include "carinteract.h"
 #include "waypoint3d.h"
 #include "maximomenu.h"
+#include "deathscreen.h"
 
 #include <algorithm>
 #include <chrono>
@@ -59,7 +59,6 @@ namespace
 	std::atomic<bool> g_garage{false};               // a tela aberta e a GARAGEM (RPC 245 op 13), nao a agencia
 	std::atomic<bool> g_shop{false};                 // a tela aberta e a LOJA com carrinho (RPC 245 op 18; shoppanel.cpp), nao a agencia
 	std::atomic<bool> g_perfil{false};               // a tela aberta e o MENU JOGADOR (RPC 245 op 21; perfilpanel.cpp)
-	std::atomic<bool> g_death{false};                // a tela aberta e a de MORTE (RPC 245 op 50; deathscreen.cpp)
 	std::atomic<bool> g_missoes{false};              // a tela aberta e a das MISSOES (RPC 245 op 40; missoespanel.cpp)
 	std::atomic<bool> g_invoice{false};              // a tela aberta e a NOTA FISCAL da loja (RPC 245 op 16; notafiscal.cpp), nao a agencia
 	std::atomic<bool> g_claimed[4] = {{false}, {false}, {false}, {false}};
@@ -233,7 +232,6 @@ namespace
 bool JobsUI::IsOpen() { return g_open.load(); }
 void JobsUI::Close(bool notifyServer)
 {
-	if (g_death.load()) return;                      // a tela de morte so fecha pelo servidor (op 51)
 	if (!g_open.exchange(false)) return;
 	g_confirm = 0; g_drag = Drag();
 	if (g_garage.exchange(false)) return;            // a garagem nao avisa o servidor: ele nao guarda estado dela
@@ -268,11 +266,12 @@ void JobsUI::Close(bool notifyServer)
 	if (notifyServer) Send(4);
 }
 bool JobsUI_ScooterFolded() { return g_scFolded.load(); }
-bool GarageIsOpenNow() { return g_open.load() && (g_garage.load() || g_invoice.load() || g_shop.load() || g_perfil.load() || g_missoes.load() || g_death.load()); }   // a nota fiscal esconde o HUD como a garagem
+bool GarageIsOpenNow() { return DeathScreen::Active() || (g_open.load() && (g_garage.load() || g_invoice.load() || g_shop.load() || g_perfil.load() || g_missoes.load())); }   // a nota fiscal esconde o HUD como a garagem; a tela de FERIDO tambem
 void JobsUI::Reset()
 {
+	DeathScreen::Reset();   // nova conexao: sem tela de ferido
 	RunStyle::Reset();   // nova conexao: estilo de andar/correr volta ao nativo ate o servidor mandar
-	g_open.store(false); g_garage.store(false); g_invoice.store(false); g_shop.store(false); g_perfil.store(false); g_missoes.store(false); g_death.store(false); DeathScreen::Reset(); GaragePanel::Reset(); InvoicePanel::Reset(); ShopPanel::Reset(); PerfilPanel::Reset(); MissoesPanel::Reset(); g_confirm = 0; g_drag = Drag(); g_tapReq.store(false); for (WorldTap& w : g_wt) w.valid = false;
+	g_open.store(false); g_garage.store(false); g_invoice.store(false); g_shop.store(false); g_perfil.store(false); g_missoes.store(false); GaragePanel::Reset(); InvoicePanel::Reset(); ShopPanel::Reset(); PerfilPanel::Reset(); MissoesPanel::Reset(); g_confirm = 0; g_drag = Drag(); g_tapReq.store(false); for (WorldTap& w : g_wt) w.valid = false;
 	{ std::lock_guard<std::mutex> l(g_mkMutex); g_mkNetA.clear(); g_mkNetB.clear(); g_mkNetC.clear(); g_mkNetD.clear(); g_mkNet.clear(); }
 	g_scFolded.store(false);
 	CarInteract::Reset();
@@ -296,6 +295,7 @@ bool JobsUI::OnBackPressed()
 }
 bool JobsUI::HandleRawTouch(int type, int num, int x, int y)
 {
+	if (DeathScreen::Active()) { DeathScreen::OnTouch(type, x, y); return true; }   // ferido: so o botao 'Acionar os medicos' recebe toque
 	const int n = num & 3;
 	const bool open = g_open.load();
 	if (!open && !g_claimed[n].load()) return false;
@@ -333,6 +333,17 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	uint8_t op = 0;
 	if (!bs.Read(op)) return;
 	if (op == 3) { Close(false); return; }
+	if (op == 52) { uint8_t on = 0; if (bs.Read(on)) DeathScreen::SetEnabled(on != 0); return; }      // sistema de socorro ligado/desligado (maximo_socorro.inc)
+	if (op == 50)      // FERIDO: u8 modo | u16 segundos | u8 medicos | u8 acionou | f32 x,y,z (local da morte, do servidor)
+	{
+		uint8_t mode = 0, medics = 0, called = 0; uint16_t secs = 0; float x = 0, y = 0, z = 0;
+		if (!bs.Read(mode) || !bs.Read(secs) || !bs.Read(medics) || !bs.Read(called)) return;
+		const bool hasPos = bs.Read(x) && bs.Read(y) && bs.Read(z);
+		if (g_open.load()) Close(true);
+		DeathScreen::OnState(mode, secs, medics, called, hasPos, x, y, z);
+		return;
+	}
+	if (op == 51) { uint8_t why = 0; bs.Read(why); DeathScreen::Hide(why); return; }               // fim da espera (hospital / reanimado / liberado)
 	if (op == 25) { uint8_t st = 0; if (bs.Read(st)) RunStyle::OnServer(st); return; }   // estilo de andar/correr da skin (servidor: maximo_corrida.inc); nao abre tela
 	if (op == 2) { uint8_t c = 0; if (bs.Read(c)) g_resultCode.store(c); return; }
 	if (op == 13) { GaragePanel::OnList(bs); g_garage.store(true); if (!g_open.exchange(true)) { g_flush.store(true); g_resetView.store(true); } return; }   // lista da garagem: abre a tela
@@ -369,27 +380,6 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 		g_perfil.store(true);
 		if (!g_open.exchange(true)) { g_flush.store(true); g_resetView.store(true); }
 		SendPerfil(20, PerfilPanel::Seq());
-		return;
-	}
-	if (op == 52) { uint8_t en = 0; if (bs.Read(en)) DeathScreen::SetEnabled(en != 0); return; }   // morte com contagem: servidor liga/desliga o sistema (nao abre tela)
-	if (op == 50)      // morte: mostra / atualiza a tela de contagem
-	{
-		if (!DeathScreen::OnState(bs)) { FLog("[JOBS3D] morte (op 50) invalida (%d bytes)", bytes); return; }
-		if (!g_death.load())
-		{
-			if (g_missoes.exchange(false)) MissoesPanel::Reset();
-			if (g_perfil.exchange(false)) PerfilPanel::Reset();
-			if (g_shop.exchange(false)) ShopPanel::Reset();
-			if (g_invoice.exchange(false)) InvoicePanel::Reset();
-			g_garage.store(false); g_death.store(true);
-			if (!g_open.exchange(true)) { g_flush.store(true); g_resetView.store(true); }
-		}
-		return;
-	}
-	if (op == 51)      // morte: o servidor liberou (hospital ou socorrido)
-	{
-		DeathScreen::Hide();
-		if (g_death.exchange(false)) { g_open.store(false); g_drag = Drag(); }
 		return;
 	}
 	if (op == 40)      // missoes: abre a tela (ou ATUALIZA os dados se o numero for o mesmo) e confirma ao servidor (op 40)
@@ -543,6 +533,7 @@ void JobsUI::draw(ImGuiRenderer* r)
 	const float  k   = scr.y / 540.0f;
 	const int64_t now = NowMs();
 	struct ToastGuard { ImGuiRenderer* r; float w, h; ~ToastGuard() { ShopPanel::DrawToast(r, w, h); } } toastGuard{r, scr.x, scr.y};   // o aviso "Informacao" sempre por cima, com a loja aberta ou fechada
+	if (DeathScreen::Active()) { DeathScreen::Draw(r, scr); return; }     // ferido: tela de contagem por cima de tudo
 
 	// ---- marcadores no mundo (anel no chao, circulo com icone, seta, texto sobre o NPC) ----
 	if (!g_open.load()) DrawMarkers(r, k, now);
@@ -619,17 +610,6 @@ void JobsUI::draw(ImGuiRenderer* r)
 	}
 
 	if (g_resetView.exchange(false)) { g_sel = -1; g_page = 0; g_confirm = 0; g_drag = Drag(); g_toastUntil = 0; g_seenVer = ~0u; }
-	if (g_death.load())
-	{
-		std::vector<TouchEv> evs; std::vector<ShopTouch> se;
-		{ std::lock_guard<std::mutex> l(g_evMutex); evs.swap(g_events); }
-		for (const TouchEv& e : evs) se.push_back({e.type, e.num, e.x, e.y, e.cancel});
-		int answer = 0;
-		DeathScreen::Draw(r, scr.x, scr.y, se, answer);
-		if (answer == 1 && pNetGame) pNetGame->SendChatCommand("/acionarmedicos");
-		if (!DeathScreen::Active()) { g_death.store(false); g_open.store(false); g_drag = Drag(); }     // a trava de seguranca soltou
-		return;
-	}
 	if (g_garage.load())
 	{
 		std::vector<TouchEv> evs; std::vector<GarageTouch> ge;

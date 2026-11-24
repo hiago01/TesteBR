@@ -1,167 +1,169 @@
-#include "../../main.h"
-#include "../imguirenderer.h"
-#include "../../vendor/raknet/BitStream.h"
 #include "deathscreen.h"
+#include "../../main.h"
+#include "../gui.h"
+#include "../imguirenderer.h"
+#include "../../net/netgame.h"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
-#include <cstdint>
-#include <cstdio>
-#include <string>
+#include <mutex>
 #include <vector>
 
-// Tela de morte (ver deathscreen.h). Medidas em "unidades de referencia" (1280 x 720) multiplicadas por u.
+extern CNetGame* pNetGame;
 
 namespace
 {
-	std::atomic<bool>    g_en{false};        // servidor ligou o sistema (op 52)
-	std::atomic<bool>    g_on{false};
-	std::atomic<int64_t> g_pend{0};          // instante (ms) da morte local ainda sem resposta do servidor (0 = nada pendente)
-	std::atomic<int64_t> g_t0{0};            // instante (ms) em que chegou o ultimo pacote
-	std::atomic<int>     g_secs{0};          // segundos restantes naquele instante
-	std::atomic<int>     g_medics{0};
-	std::atomic<bool>    g_called{false};
-	std::atomic<int64_t> g_shownAt{0};
-
-	int64_t NowMs() { return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
-	int Remaining() { return std::max(0, g_secs.load() - (int)((NowMs() - g_t0.load()) / 1000)); }
-
-	int     g_finger = -1;
-	bool    g_down = false;
-	ImVec2  g_btnA, g_btnB;
-	bool Inside(float x, float y) { return x >= g_btnA.x && x <= g_btnB.x && y >= g_btnA.y && y <= g_btnB.y; }
-}
-
-bool DeathScreen::OnState(RakNet::BitStream& bs)
-{
-	uint8_t mode = 0, med = 0, called = 0; uint16_t secs = 0;
-	if (!bs.Read(mode) || !bs.Read(secs) || !bs.Read(med) || !bs.Read(called)) return false;
-	if (mode != 1 && mode != 2) return false;
-	g_secs.store((int)std::min<uint16_t>(secs, 900));
-	g_t0.store(NowMs());
-	g_medics.store(med);
-	g_called.store(called != 0);
-	if (mode == 1 || !g_on.load()) g_shownAt.store(NowMs());
-	g_pend.store(0);
-	g_en.store(true);
-	g_on.store(true);
-	return true;
-}
-
-void DeathScreen::SetEnabled(bool on) { g_en.store(on); if (!on) { g_pend.store(0); g_on.store(false); } }
-
-void DeathScreen::Hide()
-{
-	g_on.store(false); g_pend.store(0); g_called.store(false); g_finger = -1; g_down = false;
-}
-
-void DeathScreen::Reset() { Hide(); g_en.store(false); }
-
-void DeathScreen::OnLocalDeath()
-{
-	if (g_en.load() && !g_on.load()) g_pend.store(NowMs());
-}
-
-bool DeathScreen::Active() { return g_on.load(); }
-
-bool DeathScreen::Holding()
-{
-	if (g_on.load())
+	int64_t NowMs()
 	{
-		if (NowMs() - g_t0.load() > ((int64_t)g_secs.load() + 25) * 1000) { g_on.store(false); return false; }   // trava de seguranca
-		return true;
+		using namespace std::chrono;
+		return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
 	}
-	const int64_t p = g_pend.load();
-	if (p != 0)
-	{
-		if (NowMs() - p < 4000) return true;       // morreu e o servidor ainda nao respondeu: segura o respawn
-		g_pend.store(0);                           // o servidor nao reconheceu a morte: segue o fluxo normal
-	}
-	return false;
+	std::mutex g_m;
+	bool    g_enabled = false, g_active = false, g_called = false, g_hasPos = false, g_cleanup = false;
+	int     g_medics = 0;
+	int64_t g_endMs = 0, g_lastPkt = 0, g_pendingUntil = 0, g_graceUntil = 0; std::atomic<int64_t> g_callLock{0};
+	float   g_px = 0, g_py = 0, g_pz = 0;
+	// botao (preenchido no desenho, lido no toque)
+	float   g_bx0 = 0, g_by0 = 0, g_bx1 = 0, g_by1 = 0; bool g_btnOn = false; std::atomic<bool> g_down{false};
+	std::atomic<bool> g_fire{false};
 }
 
-void DeathScreen::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vector<ShopTouch>& events, int& answer)
+namespace DeathScreen
 {
-	answer = 0;
-	if (!g_on.load()) return;
-	const float u = std::min(scrW / 1280.0f, scrH / 720.0f);
-	const int64_t now = NowMs();
-	const float cx = scrW * 0.5f;
-	const float fade = std::min(1.0f, (float)(now - g_shownAt.load()) / 900.0f);        // entra suave
-	auto A = [&](float a) { return (int)std::lround(a * fade); };
+	void SetEnabled(bool on) { std::lock_guard<std::mutex> l(g_m); g_enabled = on; if (!on) { g_active = false; g_pendingUntil = 0; g_graceUntil = 0; } }
+	bool Enabled() { std::lock_guard<std::mutex> l(g_m); return g_enabled; }
 
-	// fundo: escurece e tinge de azul (vinheta mais forte nas bordas)
-	r->drawRect(ImVec2(0, 0), ImVec2(scrW, scrH), ImColor(4, 12, 30, A(165)), true);
-	r->drawRectFilledMulticolor(ImVec2(0, 0), ImVec2(scrW, scrH * 0.35f), ImColor(0, 0, 0, A(150)), ImColor(0, 0, 0, A(150)), ImColor(0, 0, 0, 0), ImColor(0, 0, 0, 0));
-	r->drawRectFilledMulticolor(ImVec2(0, scrH * 0.65f), ImVec2(scrW, scrH), ImColor(0, 0, 0, 0), ImColor(0, 0, 0, 0), ImColor(0, 0, 0, A(150)), ImColor(0, 0, 0, A(150)));
-
-	// coracao azul com pulso (curva parametrica) e linha de batimento
-	const float beat = 1.0f + 0.07f * std::max(0.0f, std::sin((float)(now % 1100) * 6.2831853f / 1100.0f * 2.0f));
-	const float hy = scrH * 0.285f, hs = 2.15f * u * beat;
+	void OnState(int, int secs, int medics, int called, bool hasPos, float x, float y, float z)
 	{
-		constexpr int N = 48; ImVec2 p[N];
-		for (int i = 0; i < N; i++)
+		std::lock_guard<std::mutex> l(g_m);
+		const int64_t now = NowMs();
+		g_active = true; g_pendingUntil = 0; g_graceUntil = 0;
+		g_endMs = now + (int64_t)std::max(0, secs) * 1000;
+		g_medics = medics; g_called = called != 0; g_lastPkt = now;
+		if (called) g_callLock = 0;
+		if (hasPos) { g_px = x; g_py = y; g_pz = z; g_hasPos = true; }
+	}
+
+	void Hide(int)
+	{
+		std::lock_guard<std::mutex> l(g_m);
+		if (g_active || g_pendingUntil) { g_cleanup = true; g_graceUntil = NowMs() + 3000; }   // 3 s: o servidor ainda vai nascer o jogador (evita a tela de classes piscar)
+		g_active = false; g_pendingUntil = 0; g_called = false; g_medics = 0; g_hasPos = false;
+	}
+
+	void Reset()
+	{
+		std::lock_guard<std::mutex> l(g_m);
+		g_enabled = false; g_active = false; g_pendingUntil = 0; g_graceUntil = 0; g_called = false; g_hasPos = false; g_cleanup = false; g_medics = 0; g_down = false;
+	}
+
+	void OnLocalDeath(float x, float y, float z)
+	{
+		std::lock_guard<std::mutex> l(g_m);
+		if (!g_enabled) return;
+		if (!g_active) { g_px = x; g_py = y; g_pz = z; g_hasPos = true; }     // se o servidor ja esta contando, vale o local dele
+		g_pendingUntil = NowMs() + 5000;     // espera o servidor confirmar (op 50); sem confirmacao em 5 s o jogo segue o fluxo normal
+	}
+
+	bool Active() { std::lock_guard<std::mutex> l(g_m); return g_active; }
+
+	bool Holding()
+	{
+		std::lock_guard<std::mutex> l(g_m);
+		if (g_active)
 		{
-			const float t = (float)i * 6.2831853f / (float)N;
-			const float x = 16.0f * std::pow(std::sin(t), 3.0f);
-			const float y = 13.0f * std::cos(t) - 5.0f * std::cos(2 * t) - 2.0f * std::cos(3 * t) - std::cos(4 * t);
-			p[i] = ImVec2(cx + x * hs, hy - y * hs);
+			// servidor sumiu (queda/travada) = nao prende o jogador para sempre: 40 s sem nenhum pacote alem do tempo restante
+			if (NowMs() > g_endMs + 40000 && NowMs() - g_lastPkt > 40000) { g_active = false; g_cleanup = true; return false; }
+			return true;
 		}
-		for (int g = 3; g >= 1; g--)   // brilho
+		if (g_pendingUntil && NowMs() < g_pendingUntil) return true;
+		g_pendingUntil = 0;
+		return g_graceUntil && NowMs() < g_graceUntil;
+	}
+
+	bool Releasing() { std::lock_guard<std::mutex> l(g_m); return !g_active && g_graceUntil && NowMs() < g_graceUntil; }
+
+	bool HoldPos(float& x, float& y, float& z)
+	{
+		std::lock_guard<std::mutex> l(g_m);
+		if (!g_hasPos) return false;
+		x = g_px; y = g_py; z = g_pz; return true;
+	}
+
+	bool TakeCleanup() { std::lock_guard<std::mutex> l(g_m); const bool c = g_cleanup; g_cleanup = false; return c; }
+
+	void OnTouch(int type, int x, int y)
+	{
+		std::lock_guard<std::mutex> l(g_m);
+		const bool in = g_btnOn && x >= g_bx0 && x <= g_bx1 && y >= g_by0 && y <= g_by1;
+		if (type == 2) g_down = in;
+		else if (type == 1) { if (g_down && in) g_fire.store(true); g_down = false; }
+		else if (type == 3 && !in) g_down = false;
+	}
+
+	// coracao pulsando + linha de batimento
+	static void Heart(ImGuiRenderer* r, float cx, float cy, float s, const ImColor& col)
+	{
+		ImVec2 p[64];
+		for (int i = 0; i < 64; ++i)
 		{
-			ImVec2 q[N]; for (int i = 0; i < N; i++) q[i] = ImVec2(cx + (p[i].x - cx) * (1.0f + 0.12f * g), hy + (p[i].y - hy) * (1.0f + 0.12f * g));
-			r->drawConvexPolyFilled(q, N, ImColor(37, 99, 219, A(26)));
+			const float t = (float)i / 64.0f * 6.2831853f;
+			const float hx = 16.0f * std::pow(std::sin(t), 3.0f);
+			const float hy = 13.0f * std::cos(t) - 5.0f * std::cos(2 * t) - 2.0f * std::cos(3 * t) - std::cos(4 * t);
+			p[i] = ImVec2(cx + hx * s, cy - hy * s);
 		}
-		r->drawConvexPolyFilled(p, N, ImColor(37, 120, 240, A(235)));
-		const float w = 15.0f * hs;
-		const ImVec2 e[9] = { ImVec2(cx - w, hy - 1.0f * hs), ImVec2(cx - w * 0.45f, hy - 1.0f * hs), ImVec2(cx - w * 0.30f, hy - 5.5f * hs), ImVec2(cx - w * 0.10f, hy + 5.5f * hs),
-		                      ImVec2(cx + w * 0.05f, hy - 3.0f * hs), ImVec2(cx + w * 0.18f, hy - 1.0f * hs), ImVec2(cx + w * 0.42f, hy - 1.0f * hs), ImVec2(cx + w * 0.55f, hy - 1.0f * hs), ImVec2(cx + w, hy - 1.0f * hs) };
-		r->drawPolyline(e, 9, ImColor(255, 255, 255, A(235)), false, std::max(2.0f, 1.6f * u));
+		r->drawConvexPolyFilled(p, 64, col);
 	}
 
-	auto centered = [&](const std::string& s, float y, float fs, const ImColor& c) {
-		const ImVec2 ts = r->calculateTextSize(s, fs * u);
-		r->drawText(ImVec2(cx - ts.x * 0.5f, y), c, s, false, fs * u);
-	};
-	const int rem = Remaining();
-	centered("VOCÊ ESTÁ FERIDO E VAI PERDER A CONSCIÊNCIA EM", scrH * 0.43f, 17.0f, ImColor(240, 244, 255, A(245)));
+	void Draw(ImGuiRenderer* r, const ImVec2& scr)
 	{
-		char b[16]; std::snprintf(b, sizeof b, "%d", rem);
-		const float fs = 54.0f;
-		const ImVec2 ts = r->calculateTextSize(b, fs * u);
-		r->drawText(ImVec2(cx - ts.x * 0.5f, scrH * 0.475f), ImColor(48, 132, 255, A(255)), b, false, fs * u);
-	}
-	centered(rem == 1 ? "segundo" : "segundos", scrH * 0.595f, 13.0f, ImColor(210, 220, 240, A(220)));
-	centered("VOCÊ SÓ PODE SER SALVO POR UM MÉDICO PRÓXIMO, CASO CONTRÁRIO VOCÊ IRÁ PARA O HOSPITAL", scrH * 0.665f, 13.5f, ImColor(235, 238, 248, A(235)));
-	{
-		const int med = g_medics.load();
-		std::string s = g_called.load() ? "OS MÉDICOS FORAM AVISADOS E ESTÃO A CAMINHO" : (med > 0 ? "MÉDICOS EM SERVIÇO: " + std::to_string(med) : "NENHUM MÉDICO EM SERVIÇO NO MOMENTO");
-		centered(s, scrH * 0.705f, 12.0f, ImColor(170, 190, 225, A(215)));
-	}
+		int medics; bool called; int64_t endMs, now = NowMs();
+		{ std::lock_guard<std::mutex> l(g_m); if (!g_active) { g_btnOn = false; return; } medics = g_medics; called = g_called; endMs = g_endMs; }
+		const float k = scr.y / 540.0f;
+		const float cx = scr.x * 0.5f;
+		r->drawRect(ImVec2(0, 0), scr, ImColor(6, 10, 18, 150), true);
+		r->drawRectFilledMulticolor(ImVec2(0, 0), ImVec2(scr.x, scr.y * 0.35f), ImColor(0, 0, 0, 120), ImColor(0, 0, 0, 120), ImColor(0, 0, 0, 0), ImColor(0, 0, 0, 0));
 
-	// botao "Acionar os medicos"
-	const bool called = g_called.load();
-	const float bw = 250.0f * u, bh = 46.0f * u, by = scrH * 0.765f;
-	g_btnA = ImVec2(cx - bw * 0.5f, by); g_btnB = ImVec2(cx + bw * 0.5f, by + bh);
-	{
-		const ImColor fill = called ? ImColor(60, 70, 92, A(230)) : (g_down ? ImColor(28, 78, 190, A(255)) : ImColor(37, 110, 245, A(255)));
-		r->drawRoundedRect(g_btnA, g_btnB, fill, 10.0f * u, true);
-		const std::string t = called ? "Médicos acionados" : "Acionar os médicos";
-		const float fs = 15.0f * u; const ImVec2 ts = r->calculateTextSize(t, fs);
-		r->drawText(ImVec2(cx - ts.x * 0.5f, by + (bh - ts.y) * 0.5f), ImColor(255, 255, 255, A(called ? 170 : 255)), t, false, fs);
-	}
-
-	for (const ShopTouch& e : events)
-	{
-		if (fade < 0.6f) continue;
-		if (e.type == 2 && g_finger < 0) { g_finger = e.num; g_down = !called && Inside(e.x, e.y); }
-		else if (e.num == g_finger && e.type == 3) { if (g_down && !Inside(e.x, e.y)) g_down = false; }
-		else if (e.num == g_finger && e.type == 1)
+		// coracao (batimento) + ECG branca
+		const float beat = 1.0f + 0.07f * std::sin((float)(now % 900) / 900.0f * 6.2831853f * 1.0f);
+		const float hy = scr.y * 0.34f;
+		for (int i = 3; i >= 1; --i) Heart(r, cx, hy, 1.85f * k * beat * (1.0f + 0.12f * i), ImColor(40, 110, 255, 18));
+		Heart(r, cx, hy, 1.85f * k * beat, ImColor(38, 112, 255, 245));
 		{
-			const bool was = g_down; g_finger = -1; g_down = false;
-			if (was && !e.cancel && Inside(e.x, e.y) && !g_called.load()) { answer = 1; g_called.store(true); }   // marca na hora (o servidor confirma com o op 50)
+			ImVec2 e[9] = { {cx - 17 * k, hy - 2 * k}, {cx - 7 * k, hy - 2 * k}, {cx - 4 * k, hy - 11 * k}, {cx - 1 * k, hy + 9 * k}, {cx + 2 * k, hy - 5 * k}, {cx + 5 * k, hy - 2 * k}, {cx + 17 * k, hy - 2 * k}, {cx + 17 * k, hy - 2 * k}, {cx + 17 * k, hy - 2 * k} };
+			r->drawPolyline(e, 7, ImColor(255, 255, 255, 235), false, std::max(1.2f, 1.6f * k));
+		}
+
+		auto centered = [&](float y, const std::string& t, float fs, const ImColor& c)
+		{
+			const ImVec2 ts = r->calculateTextSize(t, fs);
+			r->drawText(ImVec2(cx - ts.x * 0.5f, y), c, t, false, fs);
+		};
+		centered(scr.y * 0.53f, "VOCÊ ESTÁ FERIDO E VAI PERDER A CONSCIÊNCIA EM", 15.0f * k, ImColor(235, 240, 250, 245));
+		const int secs = (int)std::max<int64_t>(0, (endMs - now + 999) / 1000);
+		centered(scr.y * 0.58f, std::to_string(secs), 46.0f * k, ImColor(40, 112, 255, 255));
+		centered(scr.y * 0.70f, "segundos", 10.0f * k, ImColor(210, 218, 232, 235));
+		centered(scr.y * 0.78f, "VOCÊ SÓ PODE SER SALVO POR UM MÉDICO PRÓXIMO, CASO CONTRÁRIO VOCÊ IRÁ PARA O HOSPITAL", 11.0f * k, ImColor(235, 240, 250, 240));
+		std::string st = called ? "OS MÉDICOS FORAM AVISADOS" : medics > 0 ? std::to_string(medics) + (medics == 1 ? " MÉDICO EM SERVIÇO" : " MÉDICOS EM SERVIÇO") : "NENHUM MÉDICO EM SERVIÇO NO MOMENTO";
+		centered(scr.y * 0.82f, st, 9.0f * k, medics > 0 || called ? ImColor(120, 224, 150, 235) : ImColor(150, 170, 215, 235));
+
+		// botao: so funciona com medico em servico e se ainda nao acionou (o servidor confere de novo)
+		const bool can = medics > 0 && !called && now >= g_callLock;
+		const char* lab = called ? "Médicos acionados" : medics > 0 ? "Acionar os médicos" : "Sem médicos em serviço";
+		const float bw = 250.0f * k, bh = 40.0f * k;
+		const ImVec2 a(cx - bw * 0.5f, scr.y * 0.87f), b(cx + bw * 0.5f, scr.y * 0.87f + bh);
+		{ std::lock_guard<std::mutex> l(g_m); g_bx0 = a.x; g_by0 = a.y; g_bx1 = b.x; g_by1 = b.y; g_btnOn = can; }
+		const ImColor bc = can ? (g_down ? ImColor(30, 90, 210, 255) : ImColor(40, 112, 255, 255)) : ImColor(70, 78, 96, 235);
+		r->drawRoundedRect(a, b, bc, 5.0f * k, true);
+		const float fs = 12.0f * k; const ImVec2 ts = r->calculateTextSize(lab, fs);
+		r->drawText(ImVec2(cx - ts.x * 0.5f, a.y + (bh - ts.y) * 0.5f), can ? ImColor(255, 255, 255, 255) : ImColor(170, 178, 196, 255), lab, false, fs);
+
+		if (g_fire.exchange(false) && can)
+		{
+			g_callLock = now + 2500;       // trava local contra clique repetido ate o servidor responder
+			if (pNetGame && pNetGame->GetGameState() == GAMESTATE_CONNECTED) pNetGame->SendChatCommand("/acionarmedicos");
 		}
 	}
 }

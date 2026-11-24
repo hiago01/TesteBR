@@ -10,9 +10,7 @@ namespace DamageRules
 	inline bool Ignore(bool damagerIsLocal, bool victimIsLocal, bool damagerIsNetPlayer)
 	{
 		if (damagerIsLocal) return false;                       // eu atirei: segue (SendGiveDamage etc.)
-		// A VITIMA e o ped local: segue SEMPRE (tiro de jogador remoto, mas tambem QUEDA, colisao de veiculo, fogo, afogamento: agressor nulo/veiculo).
-		// Antes so seguia se o agressor fosse um jogador da rede, e por isso a queda nunca tirava vida (agressor nulo era descartado).
-		// So continua ignorado o dano entre peds que NAO sao o local (jogador remoto x jogador remoto / actor): quem calcula e o outro cliente.
+		// CORRECAO (queda): dano em MIM vem tambem sem agressor (queda, fogo, atropelo...): so se ignora o que NAO e' no ped local.
 		(void)damagerIsNetPlayer;
 		return !victimIsLocal;
 	}
