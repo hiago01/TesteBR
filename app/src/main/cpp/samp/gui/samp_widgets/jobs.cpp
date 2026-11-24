@@ -410,6 +410,7 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	if (op == 41) { if (!MissoesPanel::OnList(bs)) FLog("[JOBS3D] missoes lista (op 41) invalida (%d bytes)", bytes); return; }
 	if (op == 42) { if (!MissoesPanel::OnClaim(bs)) FLog("[JOBS3D] missoes coleta (op 42) invalida (%d bytes)", bytes); return; }
 	if (op == 43) { if (g_missoes.load()) JobsUI::Close(false); return; }
+	if (op == 44) { MissoesPanel::OnBadge(bs); return; }   // numero de missoes completas para coletar (icone Tarefas da HUD); nao abre tela
 	if (op == 22) { if (!PerfilPanel::OnRank(bs)) FLog("[JOBS3D] ranking (op 22) invalido (%d bytes)", bytes); return; }
 	if (op == 23) { if (!PerfilPanel::OnRules(bs)) FLog("[JOBS3D] regras (op 23) invalidas (%d bytes)", bytes); return; }
 	// marcacoes 3D do GPS / sede do grupo / sedes no mapa (org.pwn). Ops 27-29: as antigas 20-22 passaram a ser da loja/menu jogador e o servidor as renumerou.

@@ -24,6 +24,7 @@ extern CGame*    pGame;
 extern UI*       pUI;
 extern volatile bool g_bTouchCancel;             // game/multitouch.cpp
 bool InventoryIsOpenNow();                       // gui/samp_widgets/inventory.cpp
+int  MissoesPendingCount();                      // gui/samp_widgets/missoespanel.cpp: missoes completas para coletar
 bool GarageIsOpenNow();                          // gui/samp_widgets/inventory.cpp / jobs.h
 
 namespace
@@ -243,28 +244,46 @@ void TabListMX::draw(ImGuiRenderer* r)
 			const TabAtlas::Rect& s = TabAtlas::kS1[i];
 			const float w = s.w * k, h = s.h * k;
 			const float cx = (L.cell[i].l + L.cell[i].r) * 0.5f;
-			const float y = L.bar.t + 10.0f * k;           // recorte do atlas comeca 10 px (ref.) abaixo do topo da pilula
+			const float y = L.cell[i].t + 10.0f * k;       // recorte do atlas comeca 10 px (ref.) abaixo do topo da pilula
 			const ImColor tint = (i == pressed) ? ImColor(255, 220, 90, 255) : white;
 			DrawSprite(r, tex, s, ImVec2(cx - w * 0.5f, y), ImVec2(cx + w * 0.5f, y + h), tint);
 		}
 	}
 	else
 	{
-		const float cyBar = (L.bar.t + L.bar.b) * 0.5f;
 		{
 			const TabAtlas::Rect& s = TabAtlas::kSep2;
 			const float w = s.w * k, h = s.h * k;
 			for (int i = 0; i < L.nSep; i++)
 				DrawSprite(r, tex, s, ImVec2(L.sepX[i] - w * 0.5f, L.sepT), ImVec2(L.sepX[i] + w * 0.5f, L.sepT + h), white);
 		}
+		float maxH = 0.0f;
+		for (int i = 0; i < TL::kTabs; i++) maxH = std::max(maxH, TabAtlas::kS2[i].h * k);
 		for (int i = 0; i < TL::kTabs; i++)
 		{
 			const TabAtlas::Rect& s = TabAtlas::kS2[i];
 			const float sc = (i == sel ? 1.12f : 1.0f) * (i == pressed ? 0.94f : 1.0f);
 			const float w = s.w * k * sc, h = s.h * k * sc;
 			const float cx = (L.cell[i].l + L.cell[i].r) * 0.5f;
+			const float bottom = (L.cell[i].t + L.cell[i].b) * 0.5f + maxH * 0.5f;      // todos os icones com a BASE alinhada (rotulos na mesma linha)
 			const ImColor tint = (i == pressed) ? ImColor(255, 220, 90, 255) : (i == sel ? white : ImColor(255, 255, 255, 215));
-			DrawSprite(r, tex, s, ImVec2(cx - w * 0.5f, cyBar - h * 0.5f), ImVec2(cx + w * 0.5f, cyBar + h * 0.5f), tint);
+			DrawSprite(r, tex, s, ImVec2(cx - w * 0.5f, bottom - h), ImVec2(cx + w * 0.5f, bottom), tint);
+		}
+	}
+	// aviso na aba Tarefas: quantas missoes estao COMPLETAS esperando para coletar (numero no canto do icone; some quando zera)
+	{
+		const int n = MissoesPendingCount();
+		if (n > 0)
+		{
+			const TL::Rect& c = L.cell[TL::Tarefas];
+			const float rad = std::max(9.0f, 10.5f * k * 1.35f);
+			const ImVec2 ctr(c.r - rad * 1.1f, c.t + rad * 0.9f + (style == 1 ? 4.0f * k : 6.0f * k));
+			const std::string t = n > 99 ? std::string("99+") : std::to_string(n);
+			r->drawRoundedRect(ImVec2(ctr.x - rad - 1.6f, ctr.y - rad - 1.6f), ImVec2(ctr.x + rad + 1.6f, ctr.y + rad + 1.6f), ImColor(255, 255, 255, 235), rad + 1.6f, true);
+			r->drawRoundedRect(ImVec2(ctr.x - rad, ctr.y - rad), ImVec2(ctr.x + rad, ctr.y + rad), ImColor(226, 54, 62, 255), rad, true);
+			const float fs = rad * (t.size() > 2 ? 0.95f : 1.25f);
+			const ImVec2 ts = r->calculateTextSize(t, fs);
+			r->drawText(ImVec2(ctr.x - ts.x * 0.5f, ctr.y - ts.y * 0.5f), ImColor(255, 255, 255, 255), t, true, fs);
 		}
 	}
 }

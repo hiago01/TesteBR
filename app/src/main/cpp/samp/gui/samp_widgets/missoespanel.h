@@ -25,6 +25,7 @@ namespace MissoesPanel
 	bool OnOpen(RakNet::BitStream& bs);    // op 40 (depois do byte da op). false = pacote invalido (a tela anterior e mantida)
 	bool OnList(RakNet::BitStream& bs);    // op 41
 	bool OnClaim(RakNet::BitStream& bs);   // op 42
+	void OnBadge(RakNet::BitStream& bs);   // op 44: u16 = missoes completas para coletar (numero no icone Tarefas da HUD)
 	void Reset();                          // desconexao / op 43: apaga a tela
 	int  Seq();                            // numero da tela (0 = nenhuma)
 

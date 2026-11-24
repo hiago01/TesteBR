@@ -53,6 +53,7 @@ namespace
 	int        g_week = 0;                         // semana mostrada no SEMANAL (1..4; 0 = ainda nao sei: o servidor responde com a atual)
 	int        g_curWeek = 1;                      // semana de hoje (vem do servidor)
 	int Slot(int cat) { return cat == 1 ? (g_week >= 1 && g_week <= 4 ? 5 + (g_week - 1) : 9) : cat; }
+	std::atomic<int> g_pending{0};                 // missoes COMPLETAS para coletar (todas as abas): numero no icone Tarefas da HUD (op 44 do servidor ou soma das abas)
 	int        g_claimBusyId = 0; int64_t g_claimBusyT = 0;
 
 	// ---- toque ----
@@ -178,12 +179,20 @@ void MissoesPanel::Reset()
 	g_netInfo = Info(); g_infoVer++; g_netLists.clear(); g_netClaims.clear(); g_seq.store(0);
 }
 
+int MissoesPendingCount() { return g_pending.load(); }          // usado pela barra de abas (tablistmx.cpp): numero no icone Tarefas
+
+void MissoesPanel::OnBadge(RakNet::BitStream& bs)               // op 44: u16 missoes completas esperando coleta (servidor manda no login / ao completar / ao coletar)
+{
+	uint16_t n = 0; if (bs.Read(n)) g_pending.store((int)std::min<uint16_t>(n, 999));
+}
+
 bool MissoesPanel::OnOpen(RakNet::BitStream& bs)
 {
 	Info in; uint16_t seq = 0, lvl = 0, lmax = 0, week = 0; uint8_t hasS = 0, nc = 0; uint32_t into = 0, need = 0, secs = 0;
 	if (!bs.Read(seq) || !bs.Read(hasS) || !RdStr(bs, in.sname) || !bs.Read(lvl) || !bs.Read(into) || !bs.Read(need) || !bs.Read(lmax) || !RdStr(bs, in.grand) || !bs.Read(secs) || !bs.Read(week) || !bs.Read(nc)) return false;
 	if (seq == 0 || nc > 16) return false;
 	for (int i = 0; i < nc; i++) { uint8_t v = 0; if (!bs.Read(v)) return false; if (i < kCats) in.ready[i] = v; }
+	{ int sum = 0; for (int i = 0; i < kCats; i++) sum += in.ready[i]; g_pending.store(sum); }
 	in.seq = seq; in.hasS = hasS != 0; in.lvl = lvl; in.lmax = lmax; in.into = into; in.need = need ? need : 1; in.secs = secs; in.week = week; in.recvT = NowMs();
 	std::lock_guard<std::mutex> l(g_mtx);
 	g_netInfo = in; g_infoVer++; g_seq.store(seq);
@@ -388,7 +397,16 @@ void MissoesPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vec
 					r->drawRoundedRect(V(SX0 + 14, y), V(SX1, y + 34), sel ? A(255, 240, 180, 230) : A(100, 146, 220, 100), 8.0f * u, false, th1);
 					const std::string wl = "SEMANA " + std::to_string(w);
 					txt(SX0 + 32.0f, y + (34.0f - txtH(wl, 11.5f)) * 0.5f, sel ? A(40, 30, 0, 255) : A(214, 230, 255, fut ? 150 : 255), wl, 11.5f, true);
-					if (now2) { const ImVec2 c = V(SX1 - 18.0f, y + 17.0f); Circle(r, c.x, c.y, 5.0f * u, sel ? A(40, 30, 0, 255) : A(60, 200, 110, 255), true, 1.0f); }
+					int wc = 0; { const ListState& wls = g_ls[5 + (w - 1)]; if (wls.have) for (const Row& rw : wls.rows) if (rw.status == 2) wc++; }
+					if (wc > 0)      // esta semana tem missao COMPLETA esperando para coletar: bolinha verde com a quantidade
+					{
+						const ImVec2 c = V(SX1 - 20.0f, y + 17.0f);
+						Circle(r, c.x, c.y, 11.0f * u, A(60, 200, 110, 255), true, 1.0f);
+						Circle(r, c.x, c.y, 11.0f * u, A(255, 255, 255, 230), false, std::max(1.0f, 1.2f * u));
+						const std::string wn = std::to_string(std::min(wc, 99));
+						txt(SX1 - 20.0f - txtW(wn, 10.5f) * 0.5f, y + (34.0f - txtH(wn, 10.5f)) * 0.5f, A(255, 255, 255, 255), wn, 10.5f, true);
+					}
+					else if (now2) { const ImVec2 c = V(SX1 - 18.0f, y + 17.0f); Circle(r, c.x, c.y, 5.0f * u, sel ? A(40, 30, 0, 255) : A(60, 200, 110, 255), true, 1.0f); }
 					addHit(SX0 + 14, y, SX1, y + 34, K_WEEK, w);
 					y += 40.0f;
 				}
@@ -669,5 +687,14 @@ void MissoesPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vec
 		const bool need = !s.have || s.stale;
 		const bool retry = s.loading && now - s.reqT > 1500;
 		if (need && (!s.loading || retry)) { s.loading = true; s.stale = false; s.reqT = now; answer = 2; arg = g_cat | ((g_cat == 1 ? g_week : 0) << 4); return; }
+		// SEMANAL: carrega tambem as outras semanas (uma por vez) para marcar no submenu qual tem missao para coletar
+		if (g_cat == 1 && s.have && !s.loading)
+			for (int w = 1; w <= std::min(4, std::max(g_curWeek, 1)); w++)
+			{
+				ListState& o = g_ls[5 + (w - 1)];
+				if (o.have && !o.stale) continue;
+				if (o.loading && now - o.reqT <= 1500) break;
+				o.loading = true; o.stale = false; o.reqT = now; answer = 2; arg = 1 | (w << 4); return;
+			}
 	}
 }
