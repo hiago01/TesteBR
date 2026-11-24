@@ -34,6 +34,7 @@ namespace PerfilPanel
 	bool OnOpen(RakNet::BitStream& bs);    // op 21 (depois do byte da op). false = pacote invalido (a tela anterior e mantida)
 	bool OnRank(RakNet::BitStream& bs);    // op 22
 	bool OnRules(RakNet::BitStream& bs);   // op 23
+	void OnOrgTag(RakNet::BitStream& bs);  // op 58: str tag da organizacao do jogador (vazio = sem organizacao); o Inicio desenha o brasao
 	void Reset();                          // desconexao / op 24: apaga o menu da tela
 	int  Seq();                            // numero da tela (0 = nenhuma)
 

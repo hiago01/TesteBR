@@ -337,6 +337,7 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	uint8_t op = 0;
 	if (!bs.Read(op)) return;
 	if (op == 3) { Close(false); return; }
+	if (op == 58) { PerfilPanel::OnOrgTag(bs); return; }   // tag da organizacao do jogador (brasao no Inicio do Menu Jogador; org.pwn)
 	if (op == 56) { if (!OrgList::OnPacket(bs)) FLog("[ORGLISTA] pacote invalido (%d bytes)", bytes); return; }   // /orglista: lista de organizacoes (org.pwn)
 	if (op == 52) { uint8_t on = 0; if (bs.Read(on)) DeathScreen::SetEnabled(on != 0); return; }      // sistema de socorro ligado/desligado (maximo_socorro.inc)
 	if (op == 50)      // FERIDO: u8 modo | u16 segundos | u8 medicos | u8 acionou | f32 x,y,z (local da morte, do servidor)

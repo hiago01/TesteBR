@@ -7,6 +7,8 @@
 #include "controlmode.h"            // botoes Inventario / Corrida-lock (ModernConfig)
 #include "avatarpicker.h"           // foto + moldura + fundo da linha (pagina Personalizar)
 #include "rankpodium.h"              // podio dos 3 primeiros do ranking
+#include "../../game/BrasaoTexDb.h"      // brasao da organizacao (Inicio)
+#include "../../game/RW/RenderWare.h"
 
 #include <algorithm>
 #include <chrono>
@@ -39,6 +41,7 @@ namespace
 	// ---- dados que chegam da rede (thread de rede) ----
 	std::mutex g_mtx;
 	Info       g_netInfo;
+	std::string g_orgTag;                     // tag da organizacao (op 58); guardada por g_mtx
 	unsigned   g_infoVer = 0;
 	struct NetRank { int seq; int cat; RankState d; };
 	struct NetRules { int seq; int tab; RuleState d; };
@@ -185,9 +188,16 @@ bool PerfilPanel::OnOpen(RakNet::BitStream& bs)
 	if (seq == 0) return false;
 	d.seq = seq;
 	std::lock_guard<std::mutex> l(g_mtx);
-	g_netInfo = std::move(d); g_infoVer++;
+	g_netInfo = std::move(d); g_infoVer++; g_orgTag.clear();
 	g_netRanks.clear(); g_netRules.clear();
 	return true;
+}
+
+void PerfilPanel::OnOrgTag(RakNet::BitStream& bs)
+{
+	std::string t; if (!RdStr(bs, t)) return;
+	if (t.size() > 24) t.resize(24);
+	std::lock_guard<std::mutex> l(g_mtx); g_orgTag = t;
 }
 
 bool PerfilPanel::OnRank(RakNet::BitStream& bs)
@@ -387,10 +397,23 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 				const float iw = txtW(ini, 22.0f), ih = txtH(ini, 22.0f);
 				txt(CX0 + 46.0f - iw * 0.5f, 154.0f - ih * 0.5f, A(40, 62, 96, 255), ini, 22.0f, true);
 			}
-			txt(CX0 + 92.0f, 128.0f, A(176, 198, 230, 220), "Nome completo", 9.5f);
+			txt(CX0 + 92.0f, 124.0f, A(206, 222, 248, 255), "Nome completo", 12.5f, true);
 			txt(CX0 + 92.0f, 147.0f, A(244, 248, 255, 255), fit(g_i.name, 14.5f, 220.0f), 14.5f, true);
-			txt(CX0 + 340.0f, 128.0f, A(176, 198, 230, 220), "RG", 9.5f);
-			txt(CX0 + 340.0f, 147.0f, A(244, 248, 255, 255), std::to_string(g_i.rg), 14.5f, true);
+			txt(CX0 + 340.0f - 58.0f, 124.0f, A(206, 222, 248, 255), "RG", 12.5f, true);
+			txt(CX0 + 340.0f - 58.0f, 147.0f, A(244, 248, 255, 255), std::to_string(g_i.rg), 14.5f, true);
+			// brasao da organizacao (canto direito do cartao); sem organizacao / sem banco de brasoes = nada
+			{
+				std::string tag; { std::lock_guard<std::mutex> l(g_mtx); tag = g_orgTag; }
+				if (!tag.empty())
+				{
+					if (RwTexture* bt = BrasaoTexDb::Texture("org_" + tag))
+						if (bt->raster)
+						{
+							const float bsz = 64.0f;
+							r->drawImage(V(X1 - 12.0f - bsz, 154.0f - bsz * 0.5f), V(X1 - 12.0f, 154.0f + bsz * 0.5f), (ImTextureID)bt->raster, ImColor(255, 255, 255, (int)(255.0f * f)), ImVec2(0, 0), ImVec2(1, 1));
+						}
+				}
+			}
 		}
 		// cartao de dados
 		card(CX0, 208.0f, X1, 360.0f);
@@ -405,7 +428,7 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 			for (int k = 0; k < 6; k++)
 			{
 				const float x = CX0 + 20.0f + (float)(k % 3) * colW, y = 208.0f + (k < 3 ? 22.0f : 90.0f);
-				txt(x, y, A(176, 198, 230, 220), cells[k].label, 9.2f);
+				txt(x, y - 2.0f, A(206, 222, 248, 255), cells[k].label, 11.8f, true);
 				txt(x, y + 20.0f, cells[k].dim ? A(170, 188, 214, 150) : A(244, 248, 255, 255), fit(cells[k].val, 12.2f, colW - 8.0f), 12.2f, !cells[k].dim);
 			}
 		}
@@ -437,8 +460,8 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 					else { ImVec2 d[4] = { ImVec2(c.x, c.y - 6 * u), ImVec2(c.x + 6 * u, c.y), ImVec2(c.x, c.y + 6 * u), ImVec2(c.x - 6 * u, c.y) }; r->drawConvexPolyFilled(d, 4, A(236, 250, 255, 255)); }
 				}
 				txt(CX0 + 54.0f, y + (21.0f - txtH(rows[k].val, 12.2f)) * 0.5f, rows[k].dim ? A(170, 188, 214, 150) : A(244, 248, 255, 255), rows[k].val, 12.2f, !rows[k].dim);
-				const float lw = txtW(rows[k].label, 8.6f);
-				txt(X1 - 18.0f - lw, y + (21.0f - txtH(rows[k].label, 8.6f)) * 0.5f, A(150, 176, 214, 170), rows[k].label, 8.6f);
+				const float lw = txtW(rows[k].label, 11.2f);
+				txt(X1 - 18.0f - lw, y + (21.0f - txtH(rows[k].label, 11.2f)) * 0.5f, A(206, 222, 248, 255), rows[k].label, 11.2f, true);
 			}
 		}
 		// banner "Painel do Grupo" (toque = /grupo): so aparece quando o jogador esta em um grupo (organizacao)
@@ -491,7 +514,7 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 		const float CW = 668.0f, X1 = CX0 + CW;
 		NavIcon(r, 2, V(CX0 + 14.0f, 134.0f).x, V(CX0 + 14.0f, 134.0f).y, 1.9f * u, A(226, 238, 255, 235));
 		txt(CX0 + 40.0f, 120.0f, A(240, 246, 255, 255), "Ranking de jogadores", 19.0f, true);
-		{ const std::string up = "Atualizado a cada 10 minutos"; txt(X1 - txtW(up, 9.0f), 128.0f, A(176, 198, 230, 180), up, 9.0f); }
+		{ const std::string up = "Atualizado a cada 10 minutos"; txt(X1 - txtW(up, 11.5f), 126.0f, A(206, 222, 248, 235), up, 11.5f, true); }
 		// abas das categorias
 		{
 			float x = CX0;
@@ -519,11 +542,27 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 				r->drawRoundedRect(V(CX0, by0), V(X1, by1), A(255, 255, 255, 70), 12.0f * u, false, std::max(1.0f, 1.0f * u));
 			}
 			// titulo + subtitulo: bloco centralizado na vertical, dentro da faixa escura da moldura (depois da figura da esquerda, antes da silhueta da direita)
-			const float tfs = btex ? 17.0f : 22.0f, sfs = btex ? 9.0f : 9.6f, gap = btex ? 5.0f : 8.0f;
-			const float tx0 = btex ? CX0 + 176.0f : CX0 + 24.0f, tw = btex ? 205.0f : CW - 48.0f;
-			const float blkH = txtH(cd.name, tfs) + gap + txtH(cd.sub, sfs), ty0 = by0 + ((by1 - by0) - blkH) * 0.5f;
-			txt(tx0, ty0, A(255, 255, 255, 245), fit(cd.name, tfs, tw), tfs, true);
-			txt(tx0, ty0 + txtH(cd.name, tfs) + gap, A(255, 255, 255, 215), fit(cd.sub, sfs, tw), sfs);
+			const float tfs = btex ? 19.0f : 22.0f, sfs = btex ? 11.5f : 11.5f, gap = btex ? 4.0f : 8.0f;
+			const float tx0 = btex ? CX0 + 176.0f : CX0 + 24.0f, tw = btex ? 215.0f : CW - 48.0f;
+			// subtitulo em ate 2 linhas (quebra por palavras) para caber no espaco da faixa escura mesmo com a fonte maior
+			std::vector<std::string> sl;
+			{
+				std::string cur, word; const std::string src = cd.sub + " ";
+				for (char ch : src)
+				{
+					if (ch != ' ') { word.push_back(ch); continue; }
+					if (word.empty()) continue;
+					const std::string t = cur.empty() ? word : cur + " " + word;
+					if (!cur.empty() && txtW(t, sfs) > tw && sl.size() < 1) { sl.push_back(cur); cur = word; } else cur = t;
+					word.clear();
+				}
+				if (!cur.empty()) sl.push_back(cur);
+			}
+			const float lh = txtH("Ag", sfs) + 1.0f;
+			const float blkH = txtH(cd.name, tfs) + gap + lh * (float)sl.size(), ty0 = by0 + ((by1 - by0) - blkH) * 0.5f;
+			txt(tx0, ty0, A(255, 255, 255, 255), fit(cd.name, tfs, tw + 10.0f), tfs, true);
+			for (size_t li = 0; li < sl.size(); li++)
+				txt(tx0, ty0 + txtH(cd.name, tfs) + gap + lh * (float)li, A(255, 255, 255, 245), fit(sl[li], sfs, tw), sfs, true);
 		}
 		// tabela
 		RankState* rs = nullptr; { auto it = g_rank.find(catId); if (it != g_rank.end()) rs = &it->second; }
@@ -544,9 +583,9 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 			RankPodium::Draw(r, po.x, po.y, CW * u, u, (double)now / 1000.0, pe);
 		}
 		card(CX0, TY0, X1, TY1);
-		txt(CX0 + 20.0f, TY0 + 10.0f, A(176, 198, 230, 210), "Posição", 8.8f);
-		txt(CX0 + 100.0f, TY0 + 10.0f, A(176, 198, 230, 210), "Jogador", 8.8f);
-		txt(X1 - 22.0f - txtW(cd.metric, 8.8f), TY0 + 10.0f, A(176, 198, 230, 210), cd.metric, 8.8f);
+		txt(CX0 + 20.0f, TY0 + 8.0f, A(206, 222, 248, 255), "Posição", 11.5f, true);
+		txt(CX0 + 100.0f, TY0 + 8.0f, A(206, 222, 248, 255), "Jogador", 11.5f, true);
+		txt(X1 - 22.0f - txtW(cd.metric, 11.5f), TY0 + 8.0f, A(206, 222, 248, 255), cd.metric, 11.5f, true);
 		if (!haveData)
 		{
 			const std::string m = "Carregando ranking...";

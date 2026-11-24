@@ -170,8 +170,8 @@ namespace OrgList
 
 		// rodape: paginas
 		const float fy = 540 - 52;
-		button(W * 0.5f - 170, fy, 96, 36, "◀ Anterior", 2, page > 0);
-		button(W * 0.5f + 74, fy, 96, 36, "Próxima ▶", 3, page + 1 < pages);
+		if (page > 0) button(W * 0.5f - 170, fy, 96, 36, "Anterior", 2, true);
+		if (page + 1 < pages) button(W * 0.5f + 74, fy, 96, 36, "Próxima", 3, true);
 		{
 			const std::string pg = "Página " + std::to_string(page + 1) + " / " + std::to_string(pages);
 			const float fs = 12.0f * k; const ImVec2 ts = r->calculateTextSize(pg, fs);
