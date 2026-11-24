@@ -16,72 +16,79 @@
         android:scaleType="centerCrop"
         android:src="@drawable/mx_loading_bg" />
 
-    <com.maximo.roleplay.game.ui.LoadingVideoView
-        android:id="@+id/mx_loading_video"
+    <View
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        android:background="@drawable/mx_bg_scrim_full" />
 
-    <androidx.constraintlayout.widget.Guideline
-        android:id="@+id/mx_ld_g_top"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        app:layout_constraintGuide_percent="0.842" />
+    <com.maximo.roleplay.launcher.util.SantaEmblemView
+        android:id="@+id/mx_loading_banner"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toTopOf="@+id/mx_loading_group"
+        app:layout_constraintDimensionRatio="1.6:1"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHeight_percent="0.56"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.5" />
 
     <LinearLayout
         android:id="@+id/mx_loading_group"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:layout_marginBottom="@dimen/_8sdp"
         android:gravity="center_horizontal"
         android:orientation="vertical"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="@+id/mx_ld_g_top"
-        app:layout_constraintWidth_percent="0.42">
+        app:layout_constraintWidth_percent="0.6">
+
+        <FrameLayout
+            android:layout_width="@dimen/_58sdp"
+            android:layout_height="@dimen/_58sdp">
+
+            <com.maximo.roleplay.game.ui.LoadingBarView
+                android:id="@+id/progressBar2"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <TextView
+                android:id="@+id/mx_loading_pct"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:fontFamily="@font/montserrat_bold"
+                android:text="0%"
+                android:textColor="#FFFFFFFF"
+                android:textSize="@dimen/_11sdp" />
+        </FrameLayout>
 
         <TextView
             android:id="@+id/mx_loading_text"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/_4sdp"
             android:fontFamily="@font/montserrat_bold"
             android:letterSpacing="0.06"
             android:text="@string/mx_loading_title"
             android:textColor="#FFFFFFFF"
             android:textSize="@dimen/_8sdp" />
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/_6sdp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <com.maximo.roleplay.game.ui.LoadingBarView
-                android:id="@+id/progressBar2"
-                android:layout_width="0dp"
-                android:layout_height="@dimen/_8sdp"
-                android:layout_weight="1" />
-
-            <TextView
-                android:id="@+id/mx_loading_pct"
-                android:layout_width="@dimen/_28sdp"
-                android:layout_height="wrap_content"
-                android:fontFamily="@font/montserrat_bold"
-                android:gravity="end"
-                android:text="0%"
-                android:textColor="#FFFFFFFF"
-                android:textSize="@dimen/_8sdp" />
-        </LinearLayout>
-
         <TextView
             android:id="@+id/mx_loading_step"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/_6sdp"
+            android:layout_marginTop="@dimen/_2sdp"
             android:fontFamily="@font/montserrat_regular"
             android:gravity="center"
             android:text="@string/mx_loading_step_start"
-            android:textColor="#FFB8C6E0"
+            android:textColor="#FFFFE9B8"
             android:textSize="@dimen/_7sdp" />
     </LinearLayout>
+
+    <com.maximo.roleplay.launcher.util.XmasLightsView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
 </androidx.constraintlayout.widget.ConstraintLayout>

@@ -19,9 +19,9 @@ import android.view.animation.LinearInterpolator;
  * indicar que o processo esta ativo; ele nao altera a porcentagem.
  */
 public class LoadingBarView extends View {
-    private static final int TRACK_COLOR = 0x990A1A33;
+    private static final int TRACK_COLOR = 0x99140A18;
     private static final int TRACK_STROKE = 0xCC4DA3FF;
-    private static final int FILL_START = 0xFF1E7CFF;
+    private static final int FILL_START = 0xFFFF3B4E;
     private static final int FILL_END = 0xFF2BD0FF;
     private static final int ERROR_COLOR = 0xFFFF5C6C;
 
@@ -116,30 +116,43 @@ public class LoadingBarView extends View {
         float w = getWidth();
         float h = getHeight();
         if (w <= 0 || h <= 0) return;
-        float r = h / 2f;
-        float inset = trackStroke.getStrokeWidth() / 2f;
-        rect.set(inset, inset, w - inset, h - inset);
-        canvas.drawRoundRect(rect, r, r, track);
-        canvas.drawRoundRect(rect, r, r, trackStroke);
+        float sw = Math.min(w, h) * 0.085f;
+        float cx = w / 2f, cy = h / 2f;
+        float rad = Math.min(w, h) / 2f - sw;
+        rect.set(cx - rad, cy - rad, cx + rad, cy + rad);
 
-        float pad = trackStroke.getStrokeWidth() * 1.6f;
-        float inner = w - 2 * pad;
-        float fw = inner * fraction;
-        if (fw <= 0f) return;
-        float ih = h - 2 * pad;
-        rect.set(pad, pad, pad + Math.max(fw, ih), h - pad);
-        canvas.drawRoundRect(rect, ih / 2f, ih / 2f, fill);
+        // disco escuro + trilho
+        track.setStyle(Paint.Style.FILL);
+        canvas.drawCircle(cx, cy, rad + sw * 0.4f, track);
+        trackStroke.setStrokeWidth(sw);
+        trackStroke.setColor(0x55FFFFFF);
+        canvas.drawArc(rect, 0, 360, false, trackStroke);
 
-        if (active && !error && fw > h * 2) {
-            float sw = Math.min(fw, w * 0.22f);
-            float x = -sw + (fw + sw) * shinePos;
-            shine.setShader(new LinearGradient(x, 0, x + sw, 0,
-                    new int[]{0x00FFFFFF, 0x66FFFFFF, 0x00FFFFFF}, null, Shader.TileMode.CLAMP));
-            int save = canvas.save();
-            rect.set(pad, pad, pad + fw, h - pad);
-            canvas.clipRect(rect);
-            canvas.drawRect(pad + x, pad, pad + x + sw, h - pad, shine);
-            canvas.restoreToCount(save);
+        // progresso real (comeca no topo, sentido horario)
+        float sweep = 360f * fraction;
+        if (sweep > 0f) {
+            fill.setStyle(Paint.Style.STROKE);
+            fill.setStrokeWidth(sw);
+            fill.setStrokeCap(Paint.Cap.ROUND);
+            if (error) {
+                fill.setShader(null);
+                fill.setColor(ERROR_COLOR);
+            } else {
+                fill.setShader(new android.graphics.SweepGradient(cx, cy,
+                        new int[]{0xFFFF3B4E, 0xFFFFC83D, 0xFF3DDC84, 0xFFFF3B4E}, null));
+            }
+            int sv = canvas.save();
+            canvas.rotate(-90f, cx, cy);
+            canvas.drawArc(rect, 0, sweep, false, fill);
+            canvas.restoreToCount(sv);
+        }
+
+        // ponto de luz girando enquanto a etapa esta ativa (nao representa progresso)
+        if (active && !error) {
+            float ang = (float) Math.toRadians(shinePos * 360f - 90f);
+            shine.setShader(null);
+            shine.setColor(0xCCFFFFFF);
+            canvas.drawCircle(cx + (float) Math.cos(ang) * (rad + sw * 1.15f), cy + (float) Math.sin(ang) * (rad + sw * 1.15f), sw * 0.32f, shine);
         }
     }
 }

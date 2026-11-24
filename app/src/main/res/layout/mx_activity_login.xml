@@ -42,10 +42,15 @@
                 android:gravity="center"
                 android:orientation="vertical">
 
+                <com.maximo.roleplay.launcher.util.SantaEmblemView
+                    android:layout_width="match_parent"
+                    android:layout_height="170dp" />
+
                 <ImageView
                     android:id="@+id/mx_login_avatar"
-                    android:layout_width="140dp"
-                    android:layout_height="140dp"
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:layout_marginTop="4dp"
                     android:contentDescription="@string/mx_login_avatar_desc"
                     android:scaleType="fitCenter"
                     android:src="@drawable/mx_avatar_default" />
