@@ -1,0 +1,5 @@
+SOCORRO v4 (cliente) - NAO COMPILADO COM O NDK NEM TESTADO EM JOGO. Precisa do servidor-socorro-v4.
+- Acabado o tempo: coracao vermelho, "VOCE PERDEU A CONSCIENCIA" e botao "Aceitar morte" (ao lado de "Acionar os medicos").
+  Com o aceita morte desativado pelo admin o botao fica cinza e o jogador permanece ferido ate um medico.
+- Voltar ao jogo ainda ferido: o cliente so segura o personagem no lugar (o servidor o mantem vivo): nao morre de novo.
+Arquivos: gui/samp_widgets/deathscreen.h/.cpp, jobs.cpp (inclui tambem a /orglista), net/localplayer.cpp

@@ -344,8 +344,9 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 		uint8_t mode = 0, medics = 0, called = 0; uint16_t secs = 0; float x = 0, y = 0, z = 0;
 		if (!bs.Read(mode) || !bs.Read(secs) || !bs.Read(medics) || !bs.Read(called)) return;
 		const bool hasPos = bs.Read(x) && bs.Read(y) && bs.Read(z);
+		uint8_t force = 0; if (hasPos) bs.Read(force);
 		if (g_open.load()) Close(true);
-		DeathScreen::OnState(mode, secs, medics, called, hasPos, x, y, z);
+		DeathScreen::OnState(mode, secs, medics, called, hasPos, x, y, z, force);
 		return;
 	}
 	if (op == 51) { uint8_t why = 0; bs.Read(why); DeathScreen::Hide(why); return; }               // fim da espera (hospital / reanimado / liberado)

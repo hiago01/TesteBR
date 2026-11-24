@@ -196,6 +196,10 @@ static void HoldInjured(CPlayerPed* ped)
 bool CLocalPlayer::Process()
 {
 	DanoFallback_Process(this);
+	if (DeathScreen::TakeForce() && m_pPlayerPed && m_pPlayerPed->m_pPed)      // voltou ao jogo ainda ferido: o servidor o manteve VIVO; so segura no lugar (sem morrer de novo)
+	{
+		m_bIsActive = false; m_bIsWasted = true; g_holdInit = false;
+	}
 	if (DeathScreen::TakeCleanup())                   // acabou a espera (hospital/reanimado/servidor soltou): solta animacao e controles
 	{
 		g_holdInit = false;
