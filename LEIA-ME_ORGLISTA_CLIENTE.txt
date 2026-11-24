@@ -1,0 +1,4 @@
+/ORGLISTA (cliente) - NAO COMPILADO COM O NDK NEM TESTADO EM JOGO. Precisa do servidor-orglista e do banco texdb/brasao (jogo-texdb-brasao).
+Tela cheia: 6 cards por pagina (3x2) com brasao, nome, local, membros e lider(es); botoes Anterior / Proxima / Fechar (o Voltar do Android tambem fecha).
+Sem o banco de brasoes, cada card mostra a inicial da organizacao.
+Arquivos: gui/samp_widgets/orglist.h/.cpp (novos), jobs.cpp (inclui tambem a tela de ferido), game/BrasaoTexDb.h, game/game.cpp (carrega o banco).

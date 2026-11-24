@@ -29,6 +29,7 @@
 #include "waypoint3d.h"
 #include "maximomenu.h"
 #include "deathscreen.h"
+#include "orglist.h"
 
 #include <algorithm>
 #include <chrono>
@@ -266,10 +267,11 @@ void JobsUI::Close(bool notifyServer)
 	if (notifyServer) Send(4);
 }
 bool JobsUI_ScooterFolded() { return g_scFolded.load(); }
-bool GarageIsOpenNow() { return DeathScreen::Active() || (g_open.load() && (g_garage.load() || g_invoice.load() || g_shop.load() || g_perfil.load() || g_missoes.load())); }   // a nota fiscal esconde o HUD como a garagem; a tela de FERIDO tambem
+bool GarageIsOpenNow() { return DeathScreen::Active() || OrgList::Active() || (g_open.load() && (g_garage.load() || g_invoice.load() || g_shop.load() || g_perfil.load() || g_missoes.load())); }   // a nota fiscal esconde o HUD como a garagem; a tela de FERIDO tambem
 void JobsUI::Reset()
 {
 	DeathScreen::Reset();   // nova conexao: sem tela de ferido
+	OrgList::Reset();       // nova conexao: sem a lista /orglista
 	RunStyle::Reset();   // nova conexao: estilo de andar/correr volta ao nativo ate o servidor mandar
 	g_open.store(false); g_garage.store(false); g_invoice.store(false); g_shop.store(false); g_perfil.store(false); g_missoes.store(false); GaragePanel::Reset(); InvoicePanel::Reset(); ShopPanel::Reset(); PerfilPanel::Reset(); MissoesPanel::Reset(); g_confirm = 0; g_drag = Drag(); g_tapReq.store(false); for (WorldTap& w : g_wt) w.valid = false;
 	{ std::lock_guard<std::mutex> l(g_mkMutex); g_mkNetA.clear(); g_mkNetB.clear(); g_mkNetC.clear(); g_mkNetD.clear(); g_mkNet.clear(); }
@@ -287,6 +289,7 @@ bool JobsUI::OnBackPressed()
 {
 	static int64_t s_last = 0;
 	const int64_t now = NowMs();
+	if (OrgList::Active()) { s_last = now; OrgList::Close(true); return true; }       // /orglista: voltar fecha
 	if (now - s_last < 400) return g_open.load();
 	if (!g_open.load()) return false;
 	s_last = now;
@@ -295,7 +298,8 @@ bool JobsUI::OnBackPressed()
 }
 bool JobsUI::HandleRawTouch(int type, int num, int x, int y)
 {
-	if (DeathScreen::Active()) { DeathScreen::OnTouch(type, x, y); return true; }   // ferido: so o botao 'Acionar os medicos' recebe toque
+	if (DeathScreen::Active()) { DeathScreen::OnTouch(type, x, y); return true; }
+	if (OrgList::Active()) { OrgList::OnTouch(type, x, y); return true; }       // /orglista: botoes Anterior/Proxima/Fechar   // ferido: so o botao 'Acionar os medicos' recebe toque
 	const int n = num & 3;
 	const bool open = g_open.load();
 	if (!open && !g_claimed[n].load()) return false;
@@ -333,6 +337,7 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 	uint8_t op = 0;
 	if (!bs.Read(op)) return;
 	if (op == 3) { Close(false); return; }
+	if (op == 56) { if (!OrgList::OnPacket(bs)) FLog("[ORGLISTA] pacote invalido (%d bytes)", bytes); return; }   // /orglista: lista de organizacoes (org.pwn)
 	if (op == 52) { uint8_t on = 0; if (bs.Read(on)) DeathScreen::SetEnabled(on != 0); return; }      // sistema de socorro ligado/desligado (maximo_socorro.inc)
 	if (op == 50)      // FERIDO: u8 modo | u16 segundos | u8 medicos | u8 acionou | f32 x,y,z (local da morte, do servidor)
 	{
@@ -533,7 +538,8 @@ void JobsUI::draw(ImGuiRenderer* r)
 	const float  k   = scr.y / 540.0f;
 	const int64_t now = NowMs();
 	struct ToastGuard { ImGuiRenderer* r; float w, h; ~ToastGuard() { ShopPanel::DrawToast(r, w, h); } } toastGuard{r, scr.x, scr.y};   // o aviso "Informacao" sempre por cima, com a loja aberta ou fechada
-	if (DeathScreen::Active()) { DeathScreen::Draw(r, scr); return; }     // ferido: tela de contagem por cima de tudo
+	if (DeathScreen::Active()) { DeathScreen::Draw(r, scr); return; }
+	if (OrgList::Active()) { OrgList::Draw(r, scr); return; }              // /orglista: lista com brasoes     // ferido: tela de contagem por cima de tudo
 
 	// ---- marcadores no mundo (anel no chao, circulo com icone, seta, texto sobre o NPC) ----
 	if (!g_open.load()) DrawMarkers(r, k, now);
