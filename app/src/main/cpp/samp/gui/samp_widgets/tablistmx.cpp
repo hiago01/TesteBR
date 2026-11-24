@@ -62,7 +62,7 @@ namespace
 	{
 		if (g_loaded.load() || !g_pszStorage) return;
 		g_loaded.store(true);
-		{ std::lock_guard<std::mutex> l0(g_cmdMu); g_cmd[TL::Perfil] = "/perfil"; g_cmd[TL::Tarefas] = "/missoes"; }      // aba Perfil abre o MENU JOGADOR (a Central da Cidade continua em /central; settings.ini cmd_perfil= troca)
+		{ std::lock_guard<std::mutex> l0(g_cmdMu); g_cmd[TL::Perfil] = "/perfil"; g_cmd[TL::Tarefas] = "/missoes"; g_cmd[TL::Ajuda] = "/ajuda"; }      // aba Perfil abre o MENU JOGADOR (a Central da Cidade continua em /central; settings.ini cmd_perfil= troca)
 		const std::string path = IniPath();
 		CSimpleIniA ini;
 		ini.SetUnicode();
@@ -73,7 +73,7 @@ namespace
 		const long py = ini.GetLongValue("tablistmx", "layout", 0) >= 2 ? ini.GetLongValue("tablistmx", "pos", TL::kDefaultPosY) : TL::kDefaultPosY;   // layout antigo (base da tela): usa a nova posicao padrao
 		g_posY.store((int)std::min<long>(std::max<long>(py, TL::kMinPosY), TL::kMaxPosY));
 		std::lock_guard<std::mutex> l(g_cmdMu);
-		for (int i = 0; i < TL::kTabs; i++) g_cmd[i] = TL::SanitizeCommand(ini.GetValue("tablistmx", kCmdKey[i], i == TL::Perfil ? "/perfil" : (i == TL::Tarefas ? "/missoes" : "")));
+		for (int i = 0; i < TL::kTabs; i++) g_cmd[i] = TL::SanitizeCommand(ini.GetValue("tablistmx", kCmdKey[i], i == TL::Perfil ? "/perfil" : (i == TL::Tarefas ? "/missoes" : (i == TL::Ajuda ? "/ajuda" : ""))));
 		if (g_cmd[TL::Perfil] == "/central") g_cmd[TL::Perfil] = "/perfil";      // settings.ini antigo (padrao da versao anterior): a aba Perfil agora abre o Menu Jogador; a Central abre pelo circulo de pessoas da HUD
 	}
 

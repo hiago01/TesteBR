@@ -54,7 +54,6 @@ public class LoadingScreen {
     private final TextView title;
     private final TextView step;
     private final TextView pctView;
-    private final LoadingVideoView video;
 
     /** Avisos para quem precisa reagir a tela aparecer/sumir (ex.: card de musica). */
     public interface Callback { void onLoadingShown(); void onLoadingHidden(); }
@@ -76,7 +75,6 @@ public class LoadingScreen {
         title = mainLayout.findViewById(R.id.mx_loading_text);
         step = mainLayout.findViewById(R.id.mx_loading_step);
         pctView = mainLayout.findViewById(R.id.mx_loading_pct);
-        video = mainLayout.findViewById(R.id.mx_loading_video);
         activity.addContentView(mainLayout, new ConstraintLayout.LayoutParams(-1, -1));
         resetVisual();
     }
@@ -89,7 +87,6 @@ public class LoadingScreen {
         mainLayout.animate().cancel();
         mainLayout.setAlpha(1f);
         mainLayout.setVisibility(View.VISIBLE);
-        if (video != null) video.resumeVideo();
         bar.setError(false);
         bar.setFraction(0f);
         bar.setActive(true);
@@ -174,7 +171,6 @@ public class LoadingScreen {
         cancelAnim();
         mainLayout.animate().cancel();
         bar.setActive(false);
-        if (video != null) video.releaseVideo();
     }
 
     // ------------------------------------------------------------------------------------
@@ -211,7 +207,6 @@ public class LoadingScreen {
                                 @Override public void run() {
                                     if (released) return;
                                     mainLayout.setVisibility(View.INVISIBLE);
-                                    if (video != null) video.pauseVideo();
                                     mainLayout.setAlpha(1f);
                                     finishing = false;
                                     if (callback != null) callback.onLoadingHidden();
