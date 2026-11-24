@@ -551,6 +551,22 @@ void ModernControls::draw(ImGuiRenderer* r)
 	}
 	const float slotsVis = s_slAnim;                                       // 0 = recolhida, 1 = aberta (anima y + opacidade)
 	const bool  slotsArrow = !editing && slHas;                            // a seta aparece enquanto a barra nao esta aberta
+	// a seta e so um AVISO: quando o 1o item aparece nos slots ela entra com animacao (sobe com um leve "pulo", como o painel da garagem), fica alguns segundos
+	// e some (invisivel). O toque nela continua funcionando (slotsMode 1) mesmo invisivel.
+	static bool s_slHasPrev = false; static int64_t s_arrT = 0;
+	if (slHas && !s_slHasPrev) s_arrT = slNow;
+	s_slHasPrev = slHas;
+	float arrAlpha = 0.0f, arrRise = 0.0f, arrScale = 1.0f;
+	{
+		const float t = (float)(slNow - s_arrT) / 1000.0f;
+		constexpr float kIn = 0.40f, kHold = 4.5f, kOut = 0.6f;
+		if (slHas && t >= 0.0f && t < kIn + kHold + kOut)
+		{
+			if (t < kIn) { const float q = t / kIn, c = q - 1.0f; arrAlpha = q; arrScale = 1.0f + 2.70158f * c * c * c + 1.70158f * c * c; arrRise = (1.0f - q) * (1.0f - q); }
+			else if (t < kIn + kHold) arrAlpha = 1.0f;
+			else arrAlpha = 1.0f - (t - kIn - kHold) / kOut;
+		}
+	}
 	g_micVeh.store(micVeh);
 	if (!show && !micVeh)
 	{
@@ -622,19 +638,16 @@ void ModernControls::draw(ImGuiRenderer* r)
 		const int A = alphaOf(i);
 		const float bk = ((((snap.blockedMask >> i) & 1u) != 0) ? 0.3f : 1.0f) * (i == B_SLOTS ? slotsVis : 1.0f);      // bloqueado (pulando/na parede): esmaecido; slots: some/aparece com a animacao
 		auto Cb = [&](int R, int G, int B2, int A2) { return ImColor(R, G, B2, (int)std::lround((float)A2 * fm * bk)); };
-		if (i == B_SLOTS && slotsArrow && slotsVis < 0.99f)      // seta azul minimalista (some conforme a barra sobe): so quando ha item equipado nos slots
+		if (i == B_SLOTS && slotsArrow && slotsVis < 0.99f && arrAlpha > 0.01f)      // seta pequena para cima dentro de um redondo (aviso: so aparece um tempo)
 		{
-			const float u = b.r, ay = SlotsArrowCy(b), topY = ay - 0.65f * u, aa = (1.0f - slotsVis) * fm;
-			const ImColor blue(37, 99, 219, (int)std::lround(225.0f * aa));
-			ImVec2 head[3] = { ImVec2(b.cx, topY), ImVec2(b.cx - 0.5f * u, topY + 0.5f * u), ImVec2(b.cx + 0.5f * u, topY + 0.5f * u) };
+			const float u = b.r, aa = (1.0f - slotsVis) * fm * arrAlpha, k = 0.62f * u * std::max(0.1f, arrScale);
+			const float cy = SlotsArrowCy(b) + arrRise * 0.9f * u;
+			circle(CtlCircle{ b.cx, cy, k }, ImColor(20, 20, 20, (int)std::lround(150.0f * aa)), ImColor(37, 99, 219, (int)std::lround(235.0f * aa)), std::max(2.0f, k * 0.09f));
+			const ImColor blue(37, 99, 219, (int)std::lround(235.0f * aa));
+			const float h = k * 0.55f;
+			ImVec2 head[3] = { ImVec2(b.cx, cy - h), ImVec2(b.cx - h * 0.75f, cy), ImVec2(b.cx + h * 0.75f, cy) };
 			r->drawConvexPolyFilled(head, 3, blue);
-			r->drawRoundedRect(ImVec2(b.cx - 0.17f * u, topY + 0.46f * u), ImVec2(b.cx + 0.17f * u, topY + 0.88f * u), blue, 0.05f * u, true);
-			static const float kTail[3] = { 0.62f, 0.42f, 0.24f };      // risquinhos de rastro (mais claros para longe da ponta), como na referencia
-			for (int t = 0; t < 3; t++)
-			{
-				const float y0 = topY + 0.98f * u + (float)t * 0.16f * u;
-				r->drawRoundedRect(ImVec2(b.cx - 0.17f * u, y0), ImVec2(b.cx + 0.17f * u, y0 + 0.09f * u), ImColor(37, 99, 219, (int)std::lround(225.0f * aa * kTail[t])), 0.03f * u, true);
-			}
+			r->drawRoundedRect(ImVec2(b.cx - h * 0.2f, cy - 0.05f * h), ImVec2(b.cx + h * 0.2f, cy + h * 0.7f), blue, 0.05f * h, true);
 		}
 		if (i == B_SLOTS && slotsVis <= 0.01f) continue;       // recolhida: nada da barra (nem a moldura/numeros)
 		if (i == B_SLOTS)       // barra de slots rapidos: MESMO visual do inventario aberto (casa quadrada translucida, moldura fina, selo numerado na borda direita), deitada
