@@ -1,0 +1,3 @@
+BRASAO NO PAINEL DE GRUPO (cliente) - nao compilado com o NDK nem testado em jogo.
+Instale tambem o zip jogo-texdb-brasao (pasta texdb/brasao). Sem ela o painel funciona, so sem brasao.
+Titulo: "PAINEL DE GRUPO | ORG - Cargo", brasao a esquerda, em todas as abas.

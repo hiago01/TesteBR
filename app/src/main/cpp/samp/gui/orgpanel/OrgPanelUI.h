@@ -45,7 +45,9 @@ namespace OrgPanel
 	public:
 		// ================= estado publico simples =================
 		bool isOpen() const { return m_open; }
-		void setLogo(uint64_t tex) { m_logo = tex; }          // textura do logo do servidor (0 = sem logo); criada pelo hospedeiro
+		void setLogo(uint64_t tex) { m_logo = tex; }
+		void setBrasao(uint64_t tex) { m_brasao = tex; }       // brasao da organizacao (0 = sem); criado pelo hospedeiro a partir de orgTag()
+		const std::string& orgTag() const { return m_home.tag; }          // textura do logo do servidor (0 = sem logo); criada pelo hospedeiro
 		std::vector<Cmd>& cmds() { return m_cmds; }
 		const Home& home() const { return m_home; }
 
@@ -125,6 +127,7 @@ namespace OrgPanel
 		// ---------- dados ----------
 		struct Load { bool loaded = false, loading = false, failed = false; };
 		uint64_t m_logo = 0;
+		uint64_t m_brasao = 0;
 		bool m_open = false; std::string m_token; int64_t m_t0 = 0, m_now = 0; float m_dt = 16;
 		Home m_home; std::vector<Member> m_members; std::vector<FarmRow> m_farm; std::vector<FarmHist> m_hist; std::vector<Tx> m_tx; std::vector<Rank> m_ranks;
 		long long m_balance = 0; bool m_canWithdraw = false;
@@ -672,12 +675,17 @@ namespace OrgPanel
 			// titulo + nome do grupo: a largura do texto manda (a fonte do jogo e a do PC tem larguras diferentes)
 			const float fs = FST(30);
 			cv.setFont(FontDisplayBold);
-			const float w1 = cv.measure("GERENCIADOR DE GRUPO", fs).x / m_u;
+			const float w1 = cv.measure("PAINEL DE GRUPO", fs).x / m_u;
 			cv.setFont(FontText);
-			T(cv, 32, 30, w1 + 8, 54, "GERENCIADOR DE GRUPO", 30, Pal::Text, Align::Left, FontDisplayBold);
-			const float sepX = 32 + w1 + 22;
+			// brasao da organizacao (texdb/brasao) a esquerda do titulo, em TODAS as abas; sem brasao o titulo fica onde sempre esteve
+			float tx = 32;
+			if (m_brasao) { cv.image(R(32, 24, 66, 66), m_brasao); tx = 32 + 66 + 14; }
+			T(cv, tx, 30, w1 + 8, 54, "PAINEL DE GRUPO", 30, Pal::Text, Align::Left, FontDisplayBold);
+			const float sepX = tx + w1 + 22;
 			cv.fillRect(R(sepX, 36, 2, 44), Color(220, 235, 255, 110), 0);
-			T(cv, sepX + 14, 30, std::max(100.0f, 950.0f - sepX - 14), 54, m_homeLoad.loaded ? upper(m_home.org) : "", 30, Pal::Text, Align::Left, FontDisplayBold);
+			// "SAMU - Cargo": organizacao e o cargo de quem esta olhando
+			const std::string orgCargo = m_homeLoad.loaded ? upper(m_home.org) + (m_home.rankName.empty() ? std::string() : " - " + m_home.rankName) : std::string();
+			T(cv, sepX + 14, 30, std::max(100.0f, 950.0f - sepX - 14), 54, orgCargo, 30, Pal::Text, Align::Left, FontDisplayBold);
 			cv.fillRect(R(32, 100, 1302, 1.4f), Color(220, 235, 255, 70), 0);
 			// pilula de resumo: [pessoas] 16 / 60  [cofre] R$ ...  [Fechar]  - largura pelo texto (de trás para frente a partir de 1334)
 			const std::string cnt = m_homeLoad.loaded ? std::to_string(m_home.members) + " / " + std::to_string(m_home.maxMembers) : "-";

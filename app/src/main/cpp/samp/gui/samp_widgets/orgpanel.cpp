@@ -9,6 +9,7 @@
 #include "../../game/RW/RenderWare.h"
 #include "../../vendor/stb/stb_image.h"   // implementacao em game/sprite2d.cpp
 #include "../orgpanel/OrgLogo.h"
+#include "../../game/BrasaoTexDb.h"
 #include "../maximoos/InputManager.h"
 #include "../maximoos/GestureTracker.h"
 #include "../orgpanel/OrgPanelUI.h"
@@ -295,6 +296,10 @@ void OrgPanelWidget::draw(ImGuiRenderer* r)
 		Gt().tick(now, touches);
 	}
 	const ImVec2 sc = pUI ? pUI->displaySize() : ImVec2(1920, 1080);
+	{   // brasao da organizacao (texdb/brasao, textura org_<tag>); sem banco/sem tag/sem textura = painel sem brasao
+		RwTexture* bt = p.orgTag().empty() ? nullptr : BrasaoTexDb::Texture("org_" + p.orgTag());
+		p.setBrasao(bt && bt->raster ? (uint64_t)(uintptr_t)bt->raster : 0);
+	}
 	p.setLogo(LogoTex());                       // so cria na primeira vez que o painel desenha (thread de desenho/GL)
 	{
 		ImGuiCanvas cv(r);

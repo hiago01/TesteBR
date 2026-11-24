@@ -13,7 +13,7 @@ import os, re, sys, zlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import skin_texdb as T
 
-DB = "municao" if "--db" in sys.argv and sys.argv[sys.argv.index("--db")+1] == "municao" else "loja"
+DB = sys.argv[sys.argv.index("--db")+1] if "--db" in sys.argv and sys.argv[sys.argv.index("--db")+1] in ("municao", "brasao") else "loja"
 NAME = re.compile(r"^[a-z0-9_]{1,31}$")
 
 def build(pack, outdir, cap=128, log=print):

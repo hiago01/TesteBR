@@ -17,7 +17,7 @@ namespace OrgPanel
 	{
 		bool ok = false;
 		std::string org; int members = 0, maxMembers = 0; long long bank = 0; int myRank = 7; std::string rankName; int perms = 0, online = 0, acct = 0;
-		std::string discord, radio; bool hasGps = false;
+		std::string tag; std::string discord, radio; bool hasGps = false;
 		std::string notice;
 		std::string farmName; long farmPrice = 0, farmGoal = 0, farmToday = 0, farmWeek = 0; int farmPos = 0; bool farmOn = false;
 		int week[7] = { 0, 0, 0, 0, 0, 0, 0 }; int todayIdx = 0;          // 0 futuro | 1 meta batida | 2 perdido | 3 hoje
@@ -102,7 +102,7 @@ namespace OrgPanel
 			if (f.empty() || f[0].size() != 1) continue;
 			switch (f[0][0])
 			{
-			case 'H': n.org = Pretty(At(f, 1)); n.members = ToInt(f, 2); n.maxMembers = ToInt(f, 3); n.bank = ToLL(f, 4); n.myRank = ToInt(f, 5); n.rankName = At(f, 6); n.perms = ToInt(f, 7); n.online = ToInt(f, 8); n.acct = ToInt(f, 9); n.ok = true; break;
+			case 'H': n.org = Pretty(At(f, 1)); n.members = ToInt(f, 2); n.maxMembers = ToInt(f, 3); n.bank = ToLL(f, 4); n.myRank = ToInt(f, 5); n.rankName = At(f, 6); n.perms = ToInt(f, 7); n.online = ToInt(f, 8); n.acct = ToInt(f, 9); n.tag = At(f, 10); n.ok = true; break;
 			case 'O': n.discord = At(f, 1); n.radio = At(f, 2); n.hasGps = ToInt(f, 3) != 0; break;
 			case 'N': n.notice = Unhex(At(f, 1)); break;
 			case 'F': n.farmName = At(f, 1); n.farmPrice = (long)ToLL(f, 2); n.farmGoal = (long)ToLL(f, 3); n.farmToday = (long)ToLL(f, 4); n.farmWeek = (long)ToLL(f, 5); n.farmPos = ToInt(f, 6); n.farmOn = ToInt(f, 7) != 0; break;
