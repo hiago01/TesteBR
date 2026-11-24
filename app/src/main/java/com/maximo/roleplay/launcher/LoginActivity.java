@@ -4,6 +4,8 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
+import android.content.Context;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
@@ -36,7 +38,7 @@ public class LoginActivity extends AppCompatActivity {
         LauncherUi.prepareWindow(this);
         setContentView(R.layout.mx_activity_login);
         LauncherUi.applyImmersive(this);
-        LauncherUi.applySafePadding(findViewById(R.id.mx_login_root));
+        LauncherUi.applySafePadding(findViewById(R.id.mx_login_scroll));   // so o conteudo respeita o notch; o fundo (banner) ocupa a tela toda
 
         mNick = findViewById(R.id.mx_login_nick);
         mEmail = findViewById(R.id.mx_login_email);
@@ -89,13 +91,25 @@ public class LoginActivity extends AppCompatActivity {
     }
 
     private void error(int res) { error(getString(res)); }
-    private void error(String s) { mStatus.setTextColor(getColor(R.color.mx_error)); mStatus.setText(s); }
+    private void error(String s) { hideKeyboard(); mStatus.setTextColor(getColor(R.color.mx_error)); mStatus.setText(s); }
+
+    /** Fecha o teclado (erro de login/registro): assim o jogador ve a mensagem. */
+    private void hideKeyboard() {
+        try {
+            View f = getCurrentFocus();
+            if (f == null) f = findViewById(R.id.mx_login_root);
+            InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm != null && f != null) imm.hideSoftInputFromWindow(f.getWindowToken(), 0);
+            if (getCurrentFocus() != null) getCurrentFocus().clearFocus();
+            LauncherUi.applyImmersive(this);
+        } catch (Throwable ignored) { }
+    }
 
     private void setBusy(boolean b) {
         mBusy = b;
         mOk.setEnabled(!b);
         mOk.setAlpha(b ? 0.55f : 1f);
-        if (b) { mStatus.setTextColor(getColor(R.color.mx_text_dim)); mStatus.setText(mCreate ? R.string.mx_acc_creating : R.string.mx_login_entering); }
+        if (b) { hideKeyboard(); mStatus.setTextColor(getColor(R.color.mx_text_dim)); mStatus.setText(mCreate ? R.string.mx_acc_creating : R.string.mx_login_entering); }
     }
 
     private static boolean passChars(String s) {

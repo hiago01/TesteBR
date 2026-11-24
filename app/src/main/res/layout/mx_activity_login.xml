@@ -20,6 +20,7 @@
         android:background="@drawable/mx_bg_scrim_full" />
 
     <ScrollView
+        android:id="@+id/mx_login_scroll"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:fillViewport="true">
