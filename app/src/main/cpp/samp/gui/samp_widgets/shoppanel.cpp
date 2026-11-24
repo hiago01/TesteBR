@@ -327,11 +327,19 @@ void ShopPanel::DrawGlyph(ImGuiRenderer* r, int g, const float a[2], const float
 	}
 }
 
+void* ShopPhotoTexture(int glyph);   // jobs.cpp: foto do banco texdb/loja (nullptr = desenha o glifo)
+
 // icone de produto: glifo desenhado por codigo (0..99) ou icone do inventario (100 + icone)
 static void DrawItem(ImGuiRenderer* r, int icon, const float a[2], const float b[2], int alpha)
 {
-	if (icon >= 100) ShopDrawItemIcon(r, icon - 100, a, b, alpha);
-	else ShopPanel::DrawGlyph(r, icon, a, b, alpha);
+	if (icon >= 100) { ShopDrawItemIcon(r, icon - 100, a, b, alpha); return; }
+	if (void* ph = ShopPhotoTexture(icon))      // foto do produto (quadrada, centralizada no espaco do icone)
+	{
+		const float w = b[0] - a[0], h = b[1] - a[1], s = std::min(w, h), cx = (a[0] + b[0]) * 0.5f, cy = (a[1] + b[1]) * 0.5f;
+		r->drawImage(ImVec2(cx - s * 0.5f, cy - s * 0.5f), ImVec2(cx + s * 0.5f, cy + s * 0.5f), (ImTextureID)ph, ImColor(255, 255, 255, std::clamp(alpha, 0, 255)));
+		return;
+	}
+	ShopPanel::DrawGlyph(r, icon, a, b, alpha);
 }
 
 // ----------------------------------------------------------------------------------------------------- a tela da loja

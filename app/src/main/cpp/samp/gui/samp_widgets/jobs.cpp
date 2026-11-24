@@ -22,6 +22,7 @@
 #include "missoespanel.h"
 #include "avatar.h"
 #include "../../game/PerfilTexDb.h"
+#include "../../game/ShopTexDb.h"
 #include "hudstate.h"
 #include "../../game/runstyle.h"
 #include "carinteract.h"
@@ -1150,6 +1151,16 @@ void JobsUI_RenderWorld()
 void ShopDrawItemIcon(ImGuiRenderer* r, int icon, const float a[2], const float b[2], int alpha)
 {
 	InventoryUI::DrawHotbarIcon(r, icon, ImVec2(a[0], a[1]), ImVec2(b[0], b[1]), alpha);
+}
+
+// foto do produto da loja (shoppanel.cpp): glifo -> textura do banco texdb/loja; nullptr = sem banco/sem foto (a loja desenha o glifo de sempre)
+void* ShopPhotoTexture(int glyph)
+{
+	static const char* const kNames[16] = { "loja_cola", "loja_lima", "loja_agua", "loja_chips", "loja_cereal", "loja_molho", "loja_pao", "loja_camiseta",
+	                                        "loja_jeans", "loja_tenis", "loja_cabide", "loja_pizza", "loja_pizza_caixa", "loja_burger_caixa", "loja_burger", "loja_batata" };
+	if (glyph < 0 || glyph >= 16) return nullptr;
+	RwTexture* t = ShopTexDb::Texture(kNames[glyph]);
+	return (t && t->raster) ? (void*)t->raster : nullptr;
 }
 
 // banner do menu jogador (perfilpanel.cpp): textura nativa do banco texdb/perfil; nullptr = sem banco (o menu desenha so com cor e texto)

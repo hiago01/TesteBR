@@ -29,6 +29,7 @@
 #include "SkinTexDb.h"
 #include "IconTexDb.h"
 #include "PerfilTexDb.h"
+#include "ShopTexDb.h"
 #include "WeaponIconDb.h"
 #include "SafeTexDb.h"
 #include <sys/stat.h>
@@ -761,10 +762,12 @@ bool CGame::InitialiseRenderWare() {
     SkinTexDb::Load();
     IconTexDb::Load();                                  // banco de icones do inventario (texdb/icones/; opcional)
     PerfilTexDb::Load();                                // banners do Menu Jogador (texdb/perfil/; opcional)
+    ShopTexDb::Load();                                  // fotos dos produtos das lojas (texdb/loja/; opcional)
     WeaponIconDb::Load();                               // icones nativos das armas SEM moldura (texdb/armas/; opcional)
     FLog("[ARMASDB] %s", WeaponIconDb::Status().c_str());
     FLog("[ICONTEXDB] %s", IconTexDb::Status().c_str());
     FLog("[PERFILTEXDB] %s", PerfilTexDb::Status().c_str());
+    FLog("[SHOPTEXDB] %s", ShopTexDb::Status().c_str());
     FLog("[SKINTEXDB] %s", SkinTexDb::Status().c_str());
     FLog("[SKINTEXDB] %s", SkinTexDb::Files().c_str());
     FLog("[SKINTEXDB] %s", SkinTexDb::GpuInfo().c_str());
