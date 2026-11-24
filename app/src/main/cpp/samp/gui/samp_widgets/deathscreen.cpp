@@ -16,7 +16,9 @@
 
 namespace
 {
+	std::atomic<bool>    g_en{false};        // servidor ligou o sistema (op 52)
 	std::atomic<bool>    g_on{false};
+	std::atomic<int64_t> g_pend{0};          // instante (ms) da morte local ainda sem resposta do servidor (0 = nada pendente)
 	std::atomic<int64_t> g_t0{0};            // instante (ms) em que chegou o ultimo pacote
 	std::atomic<int>     g_secs{0};          // segundos restantes naquele instante
 	std::atomic<int>     g_medics{0};
@@ -42,22 +44,42 @@ bool DeathScreen::OnState(RakNet::BitStream& bs)
 	g_medics.store(med);
 	g_called.store(called != 0);
 	if (mode == 1 || !g_on.load()) g_shownAt.store(NowMs());
+	g_pend.store(0);
+	g_en.store(true);
 	g_on.store(true);
 	return true;
 }
 
+void DeathScreen::SetEnabled(bool on) { g_en.store(on); if (!on) { g_pend.store(0); g_on.store(false); } }
+
 void DeathScreen::Hide()
 {
-	g_on.store(false); g_called.store(false); g_finger = -1; g_down = false;
+	g_on.store(false); g_pend.store(0); g_called.store(false); g_finger = -1; g_down = false;
+}
+
+void DeathScreen::Reset() { Hide(); g_en.store(false); }
+
+void DeathScreen::OnLocalDeath()
+{
+	if (g_en.load() && !g_on.load()) g_pend.store(NowMs());
 }
 
 bool DeathScreen::Active() { return g_on.load(); }
 
 bool DeathScreen::Holding()
 {
-	if (!g_on.load()) return false;
-	if (NowMs() - g_t0.load() > ((int64_t)g_secs.load() + 25) * 1000) { g_on.store(false); return false; }   // trava de seguranca
-	return true;
+	if (g_on.load())
+	{
+		if (NowMs() - g_t0.load() > ((int64_t)g_secs.load() + 25) * 1000) { g_on.store(false); return false; }   // trava de seguranca
+		return true;
+	}
+	const int64_t p = g_pend.load();
+	if (p != 0)
+	{
+		if (NowMs() - p < 4000) return true;       // morreu e o servidor ainda nao respondeu: segura o respawn
+		g_pend.store(0);                           // o servidor nao reconheceu a morte: segue o fluxo normal
+	}
+	return false;
 }
 
 void DeathScreen::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vector<ShopTouch>& events, int& answer)

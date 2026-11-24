@@ -272,7 +272,7 @@ bool GarageIsOpenNow() { return g_open.load() && (g_garage.load() || g_invoice.l
 void JobsUI::Reset()
 {
 	RunStyle::Reset();   // nova conexao: estilo de andar/correr volta ao nativo ate o servidor mandar
-	g_open.store(false); g_garage.store(false); g_invoice.store(false); g_shop.store(false); g_perfil.store(false); g_missoes.store(false); g_death.store(false); DeathScreen::Hide(); GaragePanel::Reset(); InvoicePanel::Reset(); ShopPanel::Reset(); PerfilPanel::Reset(); MissoesPanel::Reset(); g_confirm = 0; g_drag = Drag(); g_tapReq.store(false); for (WorldTap& w : g_wt) w.valid = false;
+	g_open.store(false); g_garage.store(false); g_invoice.store(false); g_shop.store(false); g_perfil.store(false); g_missoes.store(false); g_death.store(false); DeathScreen::Reset(); GaragePanel::Reset(); InvoicePanel::Reset(); ShopPanel::Reset(); PerfilPanel::Reset(); MissoesPanel::Reset(); g_confirm = 0; g_drag = Drag(); g_tapReq.store(false); for (WorldTap& w : g_wt) w.valid = false;
 	{ std::lock_guard<std::mutex> l(g_mkMutex); g_mkNetA.clear(); g_mkNetB.clear(); g_mkNetC.clear(); g_mkNetD.clear(); g_mkNet.clear(); }
 	g_scFolded.store(false);
 	CarInteract::Reset();
@@ -371,6 +371,7 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 		SendPerfil(20, PerfilPanel::Seq());
 		return;
 	}
+	if (op == 52) { uint8_t en = 0; if (bs.Read(en)) DeathScreen::SetEnabled(en != 0); return; }   // morte com contagem: servidor liga/desliga o sistema (nao abre tela)
 	if (op == 50)      // morte: mostra / atualiza a tela de contagem
 	{
 		if (!DeathScreen::OnState(bs)) { FLog("[JOBS3D] morte (op 50) invalida (%d bytes)", bytes); return; }

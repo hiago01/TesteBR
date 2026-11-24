@@ -7,6 +7,8 @@
 #include "../gui/gui.h"
 #include "../gui/samp_widgets/deathscreen.h"
 
+static bool g_deadPose = false; static uint32_t g_deadPoseAnim = 0;   // tela de morte: ped ja colocado na pose de ferido / ultima vez que a animacao foi conferida
+
 // voice
 #include "../voice_new/MicroIcon.h"
 #include "../voice_new/SpeakerList.h"
@@ -195,6 +197,8 @@ bool CLocalPlayer::Process()
             m_pPlayerPed->SetHealth(0.0f);
             m_pPlayerPed->SetDead();
 			SendWastedNotification();
+			DeathScreen::OnLocalDeath();      // tela de morte: segura o respawn ja, sem esperar o servidor responder
+			g_deadPose = false;
 			m_bIsActive = false;
 			m_bIsWasted = true;
 			pGame->EnableZoneNames(false);
@@ -474,10 +478,29 @@ bool CLocalPlayer::Process()
 	{
         m_pPlayerPed->FlushAttach();
 
+		// TELA DE MORTE (servidor com maximo_socorro.inc): NAO faz spawn nem entra na selecao de classe. O ped fica NO LUGAR, vivo (vida 100 so aqui,
+		// o servidor ja o considera morto), sem controle, em LOOP de animacao de ferido; so a tela aparece. O servidor libera pelo op 51.
+		if (DeathScreen::Holding())
+		{
+			const uint32_t nowT = GetTickCount();
+			if (!g_deadPose || m_pPlayerPed->GetHealth() <= 0.0f)
+			{
+				m_pPlayerPed->SetInitialState();
+				m_pPlayerPed->SetHealth(100.0f);
+				m_pPlayerPed->TogglePlayerControllable(false);
+				g_deadPose = true; g_deadPoseAnim = 0;
+			}
+			if (nowT - g_deadPoseAnim > 700)
+			{
+				g_deadPoseAnim = nowT;
+				char an[] = "Sweet_injuredloop";
+				if (!m_pPlayerPed->IsAnimationPlaying(an)) m_pPlayerPed->ApplyAnimation(an, "SWEET", 4.1f, 1, 0, 0, 0, 0);   // loop; troque aqui para outra animacao de ferido
+			}
+			return true;
+		}
+
 		//if (sub_100AC660(_this->m_pPlayerPed))
 		//	sub_100AC670(_this->m_pPlayerPed, 0);
-
-		if (DeathScreen::Holding()) return true;      // tela de morte (contagem / medicos): o servidor decide quando liberar o respawn
 
 		if (IsClearedToSpawn() && pNetGame->GetGameState() == GAMESTATE_CONNECTED)
 		{
