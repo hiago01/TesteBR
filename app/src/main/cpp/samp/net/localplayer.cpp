@@ -1,9 +1,11 @@
 ﻿#include "../main.h"
 #include <deque>
+#include <algorithm>
 #include "../game/game.h"
 #include "netgame.h"
 #include "localplayer.h"
 #include "../gui/gui.h"
+#include "../gui/samp_widgets/deathscreen.h"
 
 // voice
 #include "../voice_new/MicroIcon.h"
@@ -147,6 +149,15 @@ static void DanoFallback_Process(CLocalPlayer* lp)
 		if (lp->GetPlayerPed()->IsDead())     { g_dfDropDead++;  continue; }
 		FLog("[DANO] fallback: jogo nao gerou o dano; enviando evento (atirador %d, arma %d)", (int)p.shooter, p.weapon);
 		lp->SendTakeDamageEvent(p.shooter, WeaponDatDamage(p.weapon), p.weapon, 3);
+		// O servidor so e AVISADO (open.mp nao tira vida pelo evento: a vida vale a que o cliente sincroniza). Se o jogo nativo nao gerou o dano,
+		// aplica aqui o mesmo valor que o SA-MP entrega (weapon.dat x 0.33): primeiro o colete, depois a vida.
+		{
+			CPlayerPed* ped = lp->GetPlayerPed();
+			float dmg = WeaponDatDamage(p.weapon) * 0.33f;
+			const float arm = ped->GetArmour();
+			if (arm > 0.0f) { const float t = std::min(arm, dmg); ped->SetArmour(arm - t); dmg -= t; }
+			if (dmg > 0.0f) ped->SetHealth(std::max(0.0f, ped->GetHealth() - dmg));
+		}
 		if (++g_dfSent % 50 == 0)
 			FLog("[DANO] resumo: registrados=%d enviados=%d nativos=%d descartados(local morto=%d, sem ped=%d, atirador invalido=%d) sobrescritos=%d",
 				g_dfReg, g_dfSent, g_dfDropNative, g_dfDropDead, g_dfDropNoPed, g_dfDropShooter, g_dfOverwrite);
@@ -465,6 +476,8 @@ bool CLocalPlayer::Process()
 
 		//if (sub_100AC660(_this->m_pPlayerPed))
 		//	sub_100AC670(_this->m_pPlayerPed, 0);
+
+		if (DeathScreen::Holding()) return true;      // tela de morte (contagem / medicos): o servidor decide quando liberar o respawn
 
 		if (IsClearedToSpawn() && pNetGame->GetGameState() == GAMESTATE_CONNECTED)
 		{
