@@ -128,10 +128,8 @@ void Chat::activateEvent(bool active)
 
 void Chat::touchPopEvent()
 {
-	if (!g_chatAllowed.load()) return;   // jogador comum: o toque no chat nao abre o teclado
-	if (pUI->playertablist()->visible()) return;
-
-	pUI->keyboard()->show(this);
+	// o toque no texto do chat NAO abre mais o teclado: agora e o botao "Dialogo" (tablistmx.cpp) que abre
+	return;
 }
 
 void Chat::keyboardEvent(const std::string& input)

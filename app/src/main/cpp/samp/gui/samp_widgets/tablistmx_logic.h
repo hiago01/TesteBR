@@ -43,6 +43,8 @@ namespace TabLogic
 		int   nSep = 0;                // estilo 1: 2 (apos Dialogo e antes de Ajuda); estilo 2: 4
 		float sepT = 0, sepB = 0;      // estilo 1: linha de sepT a sepB; estilo 2: sepT = topo do sprite do separador
 		Rect  box;                     // estilo 1: caixa levantada da aba escolhida
+		Rect  pill[3];                 // estilo 1: pilulas (grupo Inventario|Perfil|Tarefas, Dialogo, Ajuda); Dialogo e Ajuda sao botoes SEPARADOS do grupo
+		int   pillOf[kTabs] = {0, 0, 0, 0, 0};
 	};
 
 	inline float Clamp(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
@@ -60,7 +62,9 @@ namespace TabLogic
 		BarLayout L;
 		if ((style != 1 && style != 2) || !(sw > 100.0f) || !(sh > 100.0f)) return L;
 		L.style = style;
-		const float refW = (style == 1) ? kS1W : kS2CellW * kTabs;
+		const float cwRef = (style == 1) ? (kS1W / (float)kTabs) : kS2CellW;
+		const float gapRef = cwRef * 0.55f;                       // espaco entre o grupo e os botoes separados (Dialogo, Ajuda)
+		const float refW = cwRef * kTabs + gapRef * 2.0f;
 		const float refH = (style == 1) ? kS1H : kS2H;
 		float H = BarHeightFor(sh);
 		float k = H / refH;
@@ -69,29 +73,34 @@ namespace TabLogic
 		const float W = refW * k; H = refH * k;
 		const float cy  = sh * (float)std::min(std::max(posY, kMinPosY), kMaxPosY) / 100.0f;
 		const float pad = 14.0f * k;
-		L.bar.l = std::max(pad, sw * 0.012f); L.bar.r = L.bar.l + W;          // encostada na esquerda (onde ficava o botao Inventario)
+		L.bar.l = std::max(pad, sw * 0.012f); L.bar.r = L.bar.l + W;          // encostada na esquerda, logo abaixo do minimapa
 		L.bar.t = Clamp(cy - H * 0.5f, pad, sh - H - pad); L.bar.b = L.bar.t + H;
-		const float cw = W / (float)kTabs;
+		const float cw = cwRef * k, gap = gapRef * k;
+		// ordem na tela: Inventario | Perfil | Tarefas (grupo)   [espaco]   Dialogo   [espaco]   Ajuda
+		const float slotX[kTabs] = { cw * 3.0f + gap, 0.0f, cw * 1.0f, cw * 2.0f, cw * 4.0f + gap * 2.0f };   // indexado por Tab: Dialogo, Inventario, Perfil, Tarefas, Ajuda
 		for (int i = 0; i < kTabs; i++)
 		{
-			L.cell[i] = { L.bar.l + cw * i, L.bar.t, L.bar.l + cw * (i + 1), L.bar.b };
+			L.cell[i] = { L.bar.l + slotX[i], L.bar.t, L.bar.l + slotX[i] + cw, L.bar.b };
 			const float ex = H * 0.14f;
 			L.hit[i] = { L.cell[i].l, L.cell[i].t - ex, L.cell[i].r, L.cell[i].b + ex };
 		}
+		L.nSep = 2;
+		L.sepX[0] = L.bar.l + cw;                // Inventario | Perfil
+		L.sepX[1] = L.bar.l + cw * 2.0f;         // Perfil | Tarefas
+		L.pill[0] = { L.bar.l, L.bar.t, L.bar.l + cw * 3.0f, L.bar.b };
+		L.pill[1] = L.cell[Dialogo];
+		L.pill[2] = L.cell[Ajuda];
+		L.pillOf[Inventario] = L.pillOf[Perfil] = L.pillOf[Tarefas] = 0; L.pillOf[Dialogo] = 1; L.pillOf[Ajuda] = 2;
 		if (style == 1)
 		{
-			L.nSep = 2;
-			L.sepX[0] = L.bar.l + cw;            // Dialogo | Inventario
-			L.sepX[1] = L.bar.l + cw * 4.0f;     // Tarefas | Ajuda
 			L.sepT = L.bar.t + 35.0f * k; L.sepB = L.bar.t + 125.0f * k;
-			const int s = std::min(std::max(sel, 0), kTabs - 1);
-			L.box = { std::max(L.cell[s].l - 6.5f * k, L.bar.l), L.bar.t - 11.0f * k,
-			          std::min(L.cell[s].r + 6.5f * k, L.bar.r), L.bar.b + 6.0f * k };
+			const int sl = std::min(std::max(sel, 0), kTabs - 1);
+			const Rect& pl = L.pill[L.pillOf[sl]];
+			L.box = { std::max(L.cell[sl].l - 6.5f * k, pl.l), L.bar.t - 11.0f * k,
+			          std::min(L.cell[sl].r + 6.5f * k, pl.r), L.bar.b + 6.0f * k };
 		}
 		else
 		{
-			L.nSep = 4;
-			for (int i = 0; i < 4; i++) L.sepX[i] = L.bar.l + cw * (float)(i + 1);
 			L.sepT = L.bar.t + 24.5f * k;
 		}
 		return L;

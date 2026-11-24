@@ -7,6 +7,8 @@
 #include "../../vendor/stb/stb_image.h"          // implementacao (STB_IMAGE_IMPLEMENTATION) esta em game/sprite2d.cpp
 #include "../../vendor/SimpleIni/SimpleIni.h"
 #include "hudstate.h"
+#include "chat.h"
+#include "keyboard.h"
 #include "tablistmx_logic.h"
 #include "tablistmx_atlas.h"
 
@@ -59,7 +61,7 @@ namespace
 	{
 		if (g_loaded.load() || !g_pszStorage) return;
 		g_loaded.store(true);
-		{ std::lock_guard<std::mutex> l0(g_cmdMu); g_cmd[TL::Perfil] = "/perfil"; }      // aba Perfil abre o MENU JOGADOR (a Central da Cidade continua em /central; settings.ini cmd_perfil= troca)
+		{ std::lock_guard<std::mutex> l0(g_cmdMu); g_cmd[TL::Perfil] = "/perfil"; g_cmd[TL::Tarefas] = "/missoes"; }      // aba Perfil abre o MENU JOGADOR (a Central da Cidade continua em /central; settings.ini cmd_perfil= troca)
 		const std::string path = IniPath();
 		CSimpleIniA ini;
 		ini.SetUnicode();
@@ -70,7 +72,7 @@ namespace
 		const long py = ini.GetLongValue("tablistmx", "layout", 0) >= 2 ? ini.GetLongValue("tablistmx", "pos", TL::kDefaultPosY) : TL::kDefaultPosY;   // layout antigo (base da tela): usa a nova posicao padrao
 		g_posY.store((int)std::min<long>(std::max<long>(py, TL::kMinPosY), TL::kMaxPosY));
 		std::lock_guard<std::mutex> l(g_cmdMu);
-		for (int i = 0; i < TL::kTabs; i++) g_cmd[i] = TL::SanitizeCommand(ini.GetValue("tablistmx", kCmdKey[i], i == TL::Perfil ? "/perfil" : ""));
+		for (int i = 0; i < TL::kTabs; i++) g_cmd[i] = TL::SanitizeCommand(ini.GetValue("tablistmx", kCmdKey[i], i == TL::Perfil ? "/perfil" : (i == TL::Tarefas ? "/missoes" : "")));
 		if (g_cmd[TL::Perfil] == "/central") g_cmd[TL::Perfil] = "/perfil";      // settings.ini antigo (padrao da versao anterior): a aba Perfil agora abre o Menu Jogador; a Central abre pelo circulo de pessoas da HUD
 	}
 
@@ -182,6 +184,11 @@ namespace
 		if (now - s_last < 300) return;
 		s_last = now;
 		g_sel.store(tab);
+		if (tab == TL::Dialogo && ChatAllowed() && pUI && pUI->keyboard() && pUI->chat())      // Dialogo = abre o teclado do chat (o toque no texto do chat nao abre mais)
+		{
+			std::string c0; { std::lock_guard<std::mutex> l(g_cmdMu); c0 = g_cmd[tab]; }
+			if (c0.empty()) { pUI->keyboard()->show(pUI->chat()); return; }
+		}
 		std::string cmd;
 		{ std::lock_guard<std::mutex> l(g_cmdMu); cmd = g_cmd[tab]; }
 		if (!cmd.empty())
@@ -220,8 +227,12 @@ void TabListMX::draw(ImGuiRenderer* r)
 	if (style == 1)
 	{
 		const float H = L.bar.h();
-		r->drawRoundedRect(ImVec2(L.bar.l, L.bar.t), ImVec2(L.bar.r, L.bar.b), ImColor(0, 0, 0, 205), H * 0.5f, true);
-		r->drawRoundedRect(ImVec2(L.bar.l, L.bar.t), ImVec2(L.bar.r, L.bar.b), white, H * 0.5f, false, lw);
+		for (int pi = 0; pi < 3; pi++)                     // grupo + Dialogo + Ajuda: cada um na sua pilula
+		{
+			const TL::Rect& pl = L.pill[pi];
+			r->drawRoundedRect(ImVec2(pl.l, pl.t), ImVec2(pl.r, pl.b), ImColor(0, 0, 0, 205), H * 0.5f, true);
+			r->drawRoundedRect(ImVec2(pl.l, pl.t), ImVec2(pl.r, pl.b), white, H * 0.5f, false, lw);
+		}
 		for (int i = 0; i < L.nSep; i++)
 			r->drawLine(ImVec2(L.sepX[i], L.sepT), ImVec2(L.sepX[i], L.sepB), white, lw);
 		// caixa da aba escolhida (cobre o pedaco da pilula e do separador atras dela)

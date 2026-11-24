@@ -441,6 +441,14 @@ namespace
 					 ImVec2(rc.x * iw, rc.y * ih), ImVec2((rc.x + rc.w) * iw, (rc.y + rc.h) * ih));
 	}
 
+	// mesma figura do atlas, mas pintada de uma cor so (usada para o contorno escuro do logo)
+	void DrawAtlasRectTint(ImGuiRenderer* r, RwRaster* tex, const HudAtlas::Rect& rc, const ImVec2& a, const ImVec2& b, const ImColor& tint)
+	{
+		const float iw = 1.0f / (float)HudAtlas::kWidth;
+		const float ih = 1.0f / (float)HudAtlas::kHeight;
+		r->drawImage(a, b, (ImTextureID)tex, tint, ImVec2(rc.x * iw, rc.y * ih), ImVec2((rc.x + rc.w) * iw, (rc.y + rc.h) * ih));
+	}
+
 	void DrawIcon(ImGuiRenderer* r, RwRaster* tex, const HudAtlas::Rect& rc, const ImVec2& c, float size)
 	{
 		if (!tex) return;
@@ -923,6 +931,12 @@ void HudInfo::draw(ImGuiRenderer* r)
 
 		if (tex)
 		{
+			// contorno/sombra escuro em volta do logo: de dia (ceu claro) o logo branco sumia; assim ele fica legivel a qualquer hora
+			const float o = std::max(1.5f, 2.2f * S);
+			static const float kDx[8] = { 1, -1, 0, 0, 0.7f, -0.7f, 0.7f, -0.7f }, kDy[8] = { 0, 0, 1, -1, 0.7f, 0.7f, -0.7f, -0.7f };
+			for (int i = 0; i < 8; i++)
+				DrawAtlasRectTint(r, tex, HudAtlas::kLogo, ImVec2(a.x + kDx[i] * o, a.y + kDy[i] * o), ImVec2(b.x + kDx[i] * o, b.y + kDy[i] * o), ImColor(8, 14, 30, 235));
+			DrawAtlasRectTint(r, tex, HudAtlas::kLogo, ImVec2(a.x, a.y + o * 1.4f), ImVec2(b.x, b.y + o * 1.4f), ImColor(0, 0, 0, 120));
 			DrawAtlasRect(r, tex, HudAtlas::kLogo, a, b);
 		}
 		else
