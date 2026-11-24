@@ -547,7 +547,7 @@ void PerfilPanel::Draw(ImGuiRenderer* r, float scrW, float scrH, const std::vect
 			// subtitulo em ate 2 linhas (quebra por palavras) para caber no espaco da faixa escura mesmo com a fonte maior
 			std::vector<std::string> sl;
 			{
-				std::string cur, word; const std::string src = cd.sub + " ";
+				std::string cur, word; const std::string src = std::string(cd.sub) + " ";
 				for (char ch : src)
 				{
 					if (ch != ' ') { word.push_back(ch); continue; }
