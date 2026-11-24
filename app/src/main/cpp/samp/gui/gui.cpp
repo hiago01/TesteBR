@@ -4,6 +4,7 @@
 #include "gui.h"
 #include "samp_widgets/phonephotos.h"
 #include "samp_widgets/celofs.h"
+#include "samp_widgets/criarpersonagem.h"
 #include "../gui/samp_widgets/hudstate.h"
 #include "../playertags.h"
 #include "../net/playerbubblepool.h"
@@ -279,7 +280,7 @@ void UI::drawList()
 	if (Hud::g.hideAll.load())
 	{
 		// jogador congelado (cutscene): nenhuma HUD; so dialogos/teclado continuam (senao o jogador ficaria preso)
-		if (JobsUI::IsOpen() && m_jobs) m_jobs->draw(renderer());      // agencia aberta pelo servidor: desenha mesmo com o jogador congelado
+		if ((JobsUI::IsOpen() || CharCreate::Active()) && m_jobs) m_jobs->draw(renderer());      // agencia aberta pelo servidor: desenha mesmo com o jogador congelado
 		if (OrgPanelWidget::IsOpen() && m_orgpanel) m_orgpanel->draw(renderer());
 		if (m_dialog && m_dialog->visible()) m_dialog->draw(renderer());
 		if (m_keyboard && m_keyboard->visible()) m_keyboard->draw(renderer());
