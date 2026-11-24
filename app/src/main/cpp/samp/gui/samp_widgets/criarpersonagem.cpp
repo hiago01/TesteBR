@@ -62,6 +62,7 @@ namespace CharCreate
 		uint8_t mode = 0, sex = 0, part = 0, sel[4] = { 255, 255, 255, 255 };
 		if (!bs.Read(mode) || !bs.Read(sex) || !bs.Read(part)) return false;
 		for (int i = 0; i < 4; ++i) if (!bs.Read(sel[i])) return false;
+		FLog("[CRIAR] pacote recebido: modo=%d sexo=%d parte=%d", (int)mode, (int)sex, (int)part);
 		std::lock_guard<std::mutex> l(g_m);
 		if (mode == 0) { g_active = false; g_hits.clear(); return true; }
 		if (!g_active) { g_scrollPx = 0.0f; g_acked = false; }

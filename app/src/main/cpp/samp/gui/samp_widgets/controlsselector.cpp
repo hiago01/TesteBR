@@ -103,6 +103,7 @@ bool ControlsSelector::IsOpen() { return g_open.load(); }
 
 void ControlsSelector::Open()
 {
+	return;   // Maximo RP: so o controle MODERNO existe; a tela de escolha nunca abre (menu, /controles e servidor)
 	std::lock_guard<std::mutex> l(g_mu);
 	if (g_open.load()) return;
 	ControlMode::EnsureLoaded();
