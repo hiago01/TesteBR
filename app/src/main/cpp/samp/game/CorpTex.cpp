@@ -1317,6 +1317,16 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& lookIn)
                 if ((leg && cPants) || (top && cTorso)) covered.insert(k);
             }
         }
+        // CORRECAO (regras de cobertura nao apareciam): o bloco "rosto, pele e cabelo" acima (feito para o masculino) ja gravou a textura
+        // de PELE em body.arm*/leg*/torso*... do modelo feminino; o laco final pula tudo que ja esta em `over`, entao `covered` nunca
+        // valia. Aqui a cobertura SOBRESCREVE: parte do corpo coberta por roupa visivel = oculta (inclusive as que ja tinham pele).
+        for (size_t i = 0; i < mats.size(); ++i) {
+            const std::string& k = keys[i];
+            if (!mats[i] || k.compare(0, 5, "body.") != 0 || !covered.count(k)) continue;
+            auto it = over.find(k);
+            if (it != over.end() && it->second == hideTex) continue;
+            over[k] = hideTex; ++nHidden;
+        }
         RwTexture* tBrow = P("eyebrown/1");
         // ---- extras do config.lua (so modelos femininos): sobrancelha, maquiagem, acessorios e tatuagens ----
         auto exItem = [&](int k) -> const FemExtraItem* { const int v = look.ex[k]; return (v >= 1 && v <= kFemEx[k].n) ? &kFemEx[k].it[v - 1] : nullptr; };
