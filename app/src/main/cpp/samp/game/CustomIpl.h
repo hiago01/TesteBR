@@ -309,6 +309,77 @@ namespace CustomIpl
         return true;
     }
 
+
+    // ----------------------------------------------------------------- troca de modelo (por id) no carregamento da instancia
+    // Arquivo: texdb/ipl/troca_modelo.txt ou SAMP/ipl/troca_modelo.txt (o de SAMP vence). Uma linha por troca:
+    //     <idOriginal> <idNovo> [dz]          ex.:  18273 12010 0.0      (# ou // = comentario)
+    // Toda instancia do <idOriginal> (IPL texto ou binario) passa a usar o <idNovo>, na mesma posicao/rotacao (+dz em Z).
+    // Se o <idNovo> nao existe no jogo a instancia fica como estava. Releitura a cada 2 s so quando o arquivo muda.
+    struct SwapTo { std::vector<int> to; float dz; };   // varios destinos: escolhe um por instancia (hash da posicao) = variedade
+    inline std::map<int, SwapTo> g_swap;
+    inline long long g_swapSig = -1;
+    inline std::chrono::steady_clock::time_point g_swapCheck{};
+    inline std::map<int, int> g_swapCount;
+
+    inline void SwapReload()
+    {
+        const std::string r = Root(); if (r.empty()) return;
+        const std::string a = r + "texdb/ipl/troca_modelo.txt", b = r + "SAMP/ipl/troca_modelo.txt";
+        struct stat sa{}, sb{};
+        const bool ha = ::stat(a.c_str(), &sa) == 0, hb = ::stat(b.c_str(), &sb) == 0;
+        const long long sig = (ha ? (long long)sa.st_mtime * 31 + sa.st_size : 0) ^ (hb ? ((long long)sb.st_mtime * 17 + sb.st_size) << 1 : 0) ^ (ha || hb ? 1 : 0);
+        if (sig == g_swapSig) return;
+        g_swapSig = sig; g_swap.clear(); g_swapCount.clear();
+        // PADRAO (sem arquivo): pedras 18273 (cw2_weefirz08) viram as pedras de mar do GTA SA (searock06/01/02/03/04/05 = 896..901), variando por posicao
+        g_swap[18273] = { { 896, 897, 898, 899, 900, 901 }, 0.f };
+        for (const std::string* pp : { &a, &b })
+        {
+            std::string txt; long long mt = 0, sz = 0;
+            if (!Exists(*pp) || !ReadFile(*pp, txt, mt, sz)) continue;
+            size_t i = 0;
+            while (i < txt.size())
+            {
+                size_t e = txt.find('\n', i); if (e == std::string::npos) e = txt.size();
+                std::string ln = txt.substr(i, e - i); i = e + 1;
+                const size_t c = ln.find('#'); if (c != std::string::npos) ln.erase(c);
+                const size_t c2 = ln.find("//"); if (c2 != std::string::npos) ln.erase(c2);
+                int from = 0, n = 0; char lst[160] = {};
+                if (std::sscanf(ln.c_str(), "%d %159s %n", &from, lst, &n) >= 2)
+                {
+                    SwapTo t{}; t.dz = (n > 0 && ln.c_str()[n]) ? (float)std::atof(ln.c_str() + n) : 0.f;
+                    for (char* q = std::strtok(lst, ","); q; q = std::strtok(nullptr, ",")) t.to.push_back(std::atoi(q));
+                    if (!t.to.empty()) { g_swap[from] = t; FLog("[IPL] troca: modelo %d -> %zu destino(s), 1o=%d (dz %.2f) [%s]", from, t.to.size(), t.to[0], t.dz, pp->c_str()); }
+                }
+            }
+        }
+    }
+
+    // devolve o id novo (ou o mesmo); ajusta pos[2] com o dz
+    inline int SwapModel(int id, float pos[3])
+    {
+        std::lock_guard<std::mutex> lk(g_m);
+        const auto now = std::chrono::steady_clock::now();
+        if (g_swapSig == -1 || now - g_swapCheck >= std::chrono::seconds(2)) { g_swapCheck = now; SwapReload(); }
+        if (g_swap.empty()) return id;
+        const auto it = g_swap.find(id); if (it == g_swap.end()) return id;
+        const auto& v = it->second.to;
+        const uint32_t h = (uint32_t)((int)(pos[0] * 10.f) * 73856093) ^ (uint32_t)((int)(pos[1] * 10.f) * 19349663);
+        int to = -1;
+        for (size_t k = 0; k < v.size(); k++)    // escolhe pelo hash; se o escolhido nao existe, pega o proximo que exista
+        {
+            const int c = v[(h + k) % v.size()];
+            if (c >= 0 && c < (int)TOTAL_DFF_MODEL_IDS && CModelInfo::ms_modelInfoPtrs[c] != nullptr) { to = c; break; }
+        }
+        if (to < 0)
+        {
+            if (++g_swapCount[id] == 1) FLog("[IPL] troca: nenhum modelo novo de %d existe no jogo -> fica como esta", id);
+            return id;
+        }
+        pos[2] += it->second.dz;
+        if (++g_swapCount[id] <= 3) FLog("[IPL] troca: instancia id=%d -> %d em (%.1f, %.1f, %.1f)", id, to, pos[0], pos[1], pos[2]);
+        return to;
+    }
+
     // Funil de TODA instancia criada pelo jogo: CFileLoader::LoadObjectInstance(CFileObjectInstance*, const char*) (0x4d20fc).
     // Confirmado no desassembly: a versao texto (0x4d206c) faz sscanf e chama este (bl 0x4d20fc); LoadIpl binario chama este via PLT.
     // Layout (lido do desassembly): +0x00 x, +0x04 y, +0x08 z (floats), +0x1C modelId (int32). Nao depende do FileLoader.cpp.
@@ -341,6 +412,11 @@ namespace CustomIpl
             }
             // SEM colisao "vazia" aqui: dar colisao a um modelo antes de o jogo atribuir a verdadeira fazia o LOD ficar com a caixa de 1 m
             // (LODs sumiam). A rede de seguranca contra CEntity::GetBoundRect fica em CEntity::Add (hooks.cpp), so' para quem realmente cairia.
+            {
+                float p3[3] = { pos[0], pos[1], 0.f }; std::memcpy(&p3[2], b + 8, sizeof(float));   // z atual (ja com o hide)
+                const int sw = SwapModel(nid, p3);
+                if (sw != nid) { nid = sw; std::memcpy(b + 8, &p3[2], sizeof(float)); }
+            }
             if (nid != id) { const int32_t v = nid; std::memcpy(b + 0x1C, &v, sizeof(v)); }
         }
         return g_origLoadObjInst ? g_origLoadObjInst(inst, name) : nullptr;
