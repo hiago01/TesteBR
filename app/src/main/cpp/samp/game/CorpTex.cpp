@@ -1317,6 +1317,14 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& lookIn)
                 if ((leg && cPants) || (top && cTorso)) covered.insert(k);
             }
         }
+        // UNIFORME FEMININO (272): sem boina/chapeu. Qualquer peca da farda com nome de chapeu/boina/bone fica oculta, qualquer corp.
+        if (cop) for (size_t i = 0; i < mats.size(); ++i) {
+            const std::string& k = keys[i];
+            if (!mats[i] || k.compare(0, 14, "fantasy_f_cop_") != 0) continue;
+            const std::string nm = k.substr(14);
+            if (nm.find("hat") != std::string::npos || nm.find("beret") != std::string::npos || nm.find("boina") != std::string::npos
+                || nm.find("cap") != std::string::npos || nm.find("helmet") != std::string::npos) { over[k] = hideTex; ++nHidden; }
+        }
         // CORRECAO (regras de cobertura nao apareciam): o bloco "rosto, pele e cabelo" acima (feito para o masculino) ja gravou a textura
         // de PELE em body.arm*/leg*/torso*... do modelo feminino; o laco final pula tudo que ja esta em `over`, entao `covered` nunca
         // valia. Aqui a cobertura SOBRESCREVE: parte do corpo coberta por roupa visivel = oculta (inclusive as que ja tinham pele).
