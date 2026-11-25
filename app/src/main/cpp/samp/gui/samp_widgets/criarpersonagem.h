@@ -19,3 +19,6 @@ namespace CharCreate
 	void Draw(ImGuiRenderer* r, const ImVec2& scr);
 	void OnTouch(int type, int x, int y);        // 2 = baixou, 3 = moveu, 1 = soltou
 }
+
+class ImGuiRenderer;
+void MxDrawSantaEmblem(ImGuiRenderer* r, float cx, float cy, float W, float H, float alpha);   // brasao Maximo RP com as maos animadas (alpha 0..1)

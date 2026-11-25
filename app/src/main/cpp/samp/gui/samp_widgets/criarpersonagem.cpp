@@ -48,7 +48,7 @@ namespace
 		}
 		r->drawTexPoly(pt, uv, 4, (ImTextureID)g_santaTex, ImColor(255, 255, 255, alpha));
 	}
-	void DrawSantaEmblem(ImGuiRenderer* r, float cxs, float cys, float W, float H)   // caixa W x H em pixels de tela, centro (cxs, cys)
+	void DrawSantaEmblem(ImGuiRenderer* r, float cxs, float cys, float W, float H, float al = 1.0f)   // caixa W x H em pixels de tela, centro (cxs, cys)
 	{
 		if (!g_santaTex && !g_santaFail) { g_santaTex = HudRasterFromPng(SantaAtlas::kPng, SantaAtlas::kPngSize); if (!g_santaTex) g_santaFail = true; }
 		if (!g_santaTex) return;
@@ -63,27 +63,27 @@ namespace
 		for (int i = 0; i < 6; ++i)
 		{
 			const float f = 1.0f - 0.14f * (float)i, rr = gr * f;
-			r->drawRoundedRect(ImVec2(cx - rr, cy - rr), ImVec2(cx + rr, cy + rr), ImColor(61, 155, 255, 16 + i * 4), rr, true);
+			r->drawRoundedRect(ImVec2(cx - rr, cy - rr), ImVec2(cx + rr, cy + rr), ImColor(61, 155, 255, (int)((16 + i * 4) * al)), rr, true);
 		}
-		SantaQuad(r, SantaAtlas::kEmblem, cx - ew * 0.5f, cy - eh * 0.5f, ew, eh, cx, cy, rot, 255);
+		SantaQuad(r, SantaAtlas::kEmblem, cx - ew * 0.5f, cy - eh * 0.5f, ew, eh, cx, cy, rot, (int)(255 * al));
 		// maos
 		const float hh = H * 0.46f;
 		const float ls = hh / SantaAtlas::kHandL.h, rs = hh / SantaAtlas::kHandR.h;
 		const float pushL = std::sin(t * 2.2f), pushR = std::sin(t * 2.2f + 1.9f);
 		const float lw = SantaAtlas::kHandL.w * ls;
 		const float lx = cx - ew * 0.5f - lw * 0.30f + pushL * W * 0.018f, ly = top + H - hh - H * 0.02f - pushL * H * 0.02f;
-		SantaQuad(r, SantaAtlas::kHandL, lx, ly, lw, hh, lx + lw * 0.2f, ly + hh, -6.0f * pushL, 255);
+		SantaQuad(r, SantaAtlas::kHandL, lx, ly, lw, hh, lx + lw * 0.2f, ly + hh, -6.0f * pushL, (int)(255 * al));
 		const float rw = SantaAtlas::kHandR.w * rs;
 		const float rx = cx + ew * 0.5f - rw * 0.72f - pushR * W * 0.018f, ry = top + H - hh - H * 0.02f - pushR * H * 0.02f;
-		SantaQuad(r, SantaAtlas::kHandR, rx, ry, rw, hh, rx + rw * 0.8f, ry + hh, 6.0f * pushR, 255);
+		SantaQuad(r, SantaAtlas::kHandR, rx, ry, rw, hh, rx + rw * 0.8f, ry + hh, 6.0f * pushR, (int)(255 * al));
 		// brilhos piscando
 		for (int i = 0; i < 6; ++i)
 		{
 			const float ph = t * 1.6f + i * 1.05f, a = 0.5f + 0.5f * std::sin(ph * 2.0f), ang = i * 1.047f + t * 0.3f;
 			const float sx = cx + std::cos(ang) * ew * 0.52f, sy = cy + std::sin(ang) * eh * 0.42f, rd = H * 0.014f * (0.6f + a);
-			r->drawRoundedRect(ImVec2(sx - rd, sy - rd), ImVec2(sx + rd, sy + rd), ImColor(255, 242, 176, (int)(a * 235)), rd, true);
-			r->drawRect(ImVec2(sx - rd * 3.2f, sy - rd * 0.25f), ImVec2(sx + rd * 3.2f, sy + rd * 0.25f), ImColor(255, 255, 255, (int)(a * 140)), true);
-			r->drawRect(ImVec2(sx - rd * 0.25f, sy - rd * 3.2f), ImVec2(sx + rd * 0.25f, sy + rd * 3.2f), ImColor(255, 255, 255, (int)(a * 140)), true);
+			r->drawRoundedRect(ImVec2(sx - rd, sy - rd), ImVec2(sx + rd, sy + rd), ImColor(255, 242, 176, (int)(a * 235 * al)), rd, true);
+			r->drawRect(ImVec2(sx - rd * 3.2f, sy - rd * 0.25f), ImVec2(sx + rd * 3.2f, sy + rd * 0.25f), ImColor(255, 255, 255, (int)(a * 140 * al)), true);
+			r->drawRect(ImVec2(sx - rd * 0.25f, sy - rd * 3.2f), ImVec2(sx + rd * 0.25f, sy + rd * 3.2f), ImColor(255, 255, 255, (int)(a * 140 * al)), true);
 		}
 	}
 
@@ -465,3 +465,6 @@ namespace CharCreate
 		}
 	}
 }
+
+// brasao animado (Maximo RP + maos) para outras telas (intro de entrada no servidor)
+void MxDrawSantaEmblem(ImGuiRenderer* r, float cx, float cy, float W, float H, float alpha) { DrawSantaEmblem(r, cx, cy, W, H, alpha); }
