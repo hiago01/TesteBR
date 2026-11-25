@@ -19,7 +19,7 @@ namespace TabLogic
 	constexpr int kTabs = 5;
 	enum Tab { Dialogo = 0, Inventario, Perfil, Tarefas, Ajuda };
 
-	constexpr int kDefaultStyle = 1;
+	constexpr int kDefaultStyle = 2;   // padrao de TODOS os jogadores: estilo 2 (icones com contorno)
 	constexpr int kDefaultSel   = Perfil;     // como no print 1: "Perfil" levantado
 	constexpr int kDefaultPosY  = 33;         // centro da barra em % da altura da tela: na altura do botao INVENTARIO (0.333), abaixo do minimapa; encostada na esquerda
 	constexpr int kMinPosY = 6, kMaxPosY = 96;

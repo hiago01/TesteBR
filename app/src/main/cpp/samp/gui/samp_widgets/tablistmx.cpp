@@ -67,7 +67,9 @@ namespace
 		CSimpleIniA ini;
 		ini.SetUnicode();
 		if (ini.LoadFile(path.c_str()) < 0) return;
-		const long st = ini.GetLongValue("tablistmx", "estilo", TL::kDefaultStyle);
+		long st = ini.GetLongValue("tablistmx", "estilo", TL::kDefaultStyle);
+		// migracao unica: quem ja tinha o estilo antigo salvo (1) volta a nascer com o estilo 2; depois disso a escolha do jogador (/tablistmx N) vale
+		if (ini.GetLongValue("tablistmx", "estilo_v", 0) < 2) { st = TL::kDefaultStyle; ini.SetLongValue("tablistmx", "estilo_v", 2); ini.SetLongValue("tablistmx", "estilo", st); ini.SaveFile(path.c_str()); }
 		g_style.store((st >= 0 && st <= 2) ? (int)st : TL::kDefaultStyle);
 		if (g_style.load() != 0) g_lastStyle.store(g_style.load());
 		const long py = ini.GetLongValue("tablistmx", "layout", 0) >= 2 ? ini.GetLongValue("tablistmx", "pos", TL::kDefaultPosY) : TL::kDefaultPosY;   // layout antigo (base da tela): usa a nova posicao padrao
@@ -85,6 +87,7 @@ namespace
 		ini.SetUnicode();
 		ini.LoadFile(path.c_str());                       // se nao existir, cria so esta secao
 		ini.SetLongValue("tablistmx", "estilo", g_style.load());
+		ini.SetLongValue("tablistmx", "estilo_v", 2);
 		ini.SetLongValue("tablistmx", "pos", g_posY.load());
 		ini.SetLongValue("tablistmx", "layout", 2);
 		if (ini.SaveFile(path.c_str()) < 0) FLog("[TABLISTMX] falha ao gravar %s", path.c_str());

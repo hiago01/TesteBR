@@ -3,9 +3,43 @@
 #include "../game/game.h"
 #include "netgame.h"
 #include "vehiclepool.h"
+#include "../game/Models/VehicleModelInfo.h"
+#include <set>
+#include <cmath>
 
 extern CGame* pGame;
 extern CNetGame* pNetGame;
+
+// Carros NOVOS (DFF sem os dummies ped_frontseat / ped_backseat): o ped que senta no banco sem dummy fica na origem do carro,
+// dentro da lataria => "some" do carro mas continua dentro. Uma vez por modelo: loga os dummies e, se faltarem, deriva posicoes plausiveis.
+static void FixSeatDummies(CVehicleGTA* v)
+{
+    static std::set<int> done;
+    if (!v) return;
+    const int model = (int)v->m_nModelIndex;
+    if (!done.insert(model).second) return;
+    CBaseModelInfo* mi = v->GetModelInfo();
+    if (!mi || !mi->GetColModel()) return;
+    CVehicleModelInfo* vmi = static_cast<CVehicleModelInfo*>(mi);
+    if (!vmi->m_pVehicleStruct) return;
+    CVector* sf = vmi->GetModelDummyPosition(DUMMY_SEAT_FRONT);
+    CVector* sr = vmi->GetModelDummyPosition(DUMMY_SEAT_REAR);
+    const CVector bmin = mi->GetColModel()->m_boundBox.m_vecMin, bmax = mi->GetColModel()->m_boundBox.m_vecMax;
+    FLog("[ASSENTO] modelo %d: frente=(%.2f %.2f %.2f) tras=(%.2f %.2f %.2f) caixa x[%.2f %.2f] y[%.2f %.2f] z[%.2f %.2f]",
+         model, sf->x, sf->y, sf->z, sr->x, sr->y, sr->z, bmin.x, bmax.x, bmin.y, bmax.y, bmin.z, bmax.z);
+    auto zero = [](const CVector* p) { return std::fabs(p->x) < 0.05f && std::fabs(p->y) < 0.05f && std::fabs(p->z) < 0.05f; };
+    const float hw = bmax.x, len = bmax.y - bmin.y;
+    if (zero(sf))      // sem ped_frontseat: banco da frente um pouco a frente do centro, alto o bastante para o ped nao entrar no chassi
+    {
+        sf->x = std::fmin(0.45f, hw * 0.45f); sf->y = bmin.y + len * 0.55f; sf->z = bmin.z + (bmax.z - bmin.z) * 0.35f;
+        FLog("[ASSENTO] modelo %d sem ped_frontseat: usando (%.2f %.2f %.2f)", model, sf->x, sf->y, sf->z);
+    }
+    if (zero(sr))      // sem ped_backseat: banco de tras ~1 m atras do da frente
+    {
+        sr->x = sf->x; sr->y = std::fmax(bmin.y + len * 0.2f, sf->y - 1.0f); sr->z = sf->z;
+        FLog("[ASSENTO] modelo %d sem ped_backseat: usando (%.2f %.2f %.2f)", model, sr->x, sr->y, sr->z);
+    }
+}
 
 CVehiclePool::CVehiclePool()
 {
@@ -53,6 +87,7 @@ bool CVehiclePool::New(NEW_VEHICLE* new_veh)
         pNewVehicle = nullptr;
     }
 
+    if (pNewVehicle) FixSeatDummies(pNewVehicle->m_pVehicle);   // carros novos sem dummies de assento: o ped nao some dentro da lataria
     CarBau::AfterCreate((int)new_veh->VehicleID, pNewVehicle ? pNewVehicle->m_pVehicle : nullptr);   // restaura o sorteio e aplica o bau pedido pelo servidor
 
     m_pVehicles[new_veh->VehicleID] = pNewVehicle;
