@@ -500,7 +500,7 @@ void VehHudWidget::draw(ImGuiRenderer* r)
 				const ImVec2 ts = r->calculateTextSize(t, 13.0f * kk);
 				r->drawText(ImVec2((scr.x - ts.x) * 0.5f, scr.y * 0.5f - ts.y * 0.5f), ImColor(150, 150, 158, 255), t, false, 13.0f * kk);
 			}
-			m_xOn = true; m_xCmd = 1; m_xVeh = 0;
+			if (ins == 1) { m_xOn = true; m_xCmd = 1; m_xVeh = 0; }   // "Sair do porta-malas" SO com o porta-malas ABERTO (fechado: tela escura, sem botao)
 		}
 		else if (g_enterVeh.load() > 0 && Hud::g.visible.load() && !UiBlocked() && !LocalVeh().ok)
 		{
