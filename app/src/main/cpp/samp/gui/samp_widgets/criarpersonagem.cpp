@@ -280,7 +280,7 @@ namespace CharCreate
 		r->drawText(P(28, 36), ImColor(255, 255, 255, 255), "PERSONAGEM", false, 24.0f * k);
 
 		// brasao animado no espaco livre a direita (area do personagem fica a esquerda/centro)
-		DrawSantaEmblem(r, scr.x * 0.70f, scr.y * 0.45f, scr.y * 0.74f * 1.1f, scr.y * 0.74f);
+		DrawSantaEmblem(r, scr.x * 0.72f, scr.y * 0.47f, scr.y * 0.66f * 1.15f, scr.y * 0.66f);
 
 		std::vector<Hit> hits;
 		Strip strips[kCats]; bool stripOn[kCats] = { false, false, false, false, false, false, false, false };
