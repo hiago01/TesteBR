@@ -9,6 +9,7 @@
 #include "../vendor/armhook/patch.h"     // CHook
 
 #include "../net/netgame.h"
+extern CNetGame* pNetGame;
 #include <atomic>
 #include <mutex>
 #include <unordered_map>
