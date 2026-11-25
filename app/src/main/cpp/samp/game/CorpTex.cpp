@@ -1283,6 +1283,20 @@ void BuildEntry(PLAYERID id, CEntityGTA* e, const Look& lookIn)
                 while (*q) { const char* e = std::strchr(q, ','); std::string part = e ? std::string(q, (size_t)(e - q)) : std::string(q); covered.insert(part); if (!e) break; q = e + 1; }
             }
         }
+        // REGRA DE HIDE (skin 9 feminina, roupas bugadas do provador): pele aparecendo em manchas/remendos por baixo de Jeans, Moletom,
+        // Cargo e Rasgada (calca) e de Camiseta/Moletom (camisa). Quando uma dessas pecas esta VISIVEL, esconde TODAS as partes do corpo
+        // da regiao (pernas 1-6 / tronco 1-6 + ombros), nao so as listadas no config.lua. So estas pecas; as demais continuam como estavam.
+        if (!cop) {
+            bool hideLegs = false, hideTorso = false;
+            for (const auto& kv : over) {
+                if (kv.second == hideTex) continue;
+                const std::string& m = kv.first;
+                if (m == "fantasy_f_pants1" || m == "fantasy_f_pants2" || m == "fantasy_f_pants4" || m == "fantasy_f_pants5") hideLegs = true;
+                else if (m == "fantasy_f_torso4" || m == "fantasy_f_torso5") hideTorso = true;
+            }
+            if (hideLegs) for (int n = 1; n <= 6; ++n) { covered.insert("body.legleft" + std::to_string(n)); covered.insert("body.legright" + std::to_string(n)); }
+            if (hideTorso) { for (int n = 1; n <= 6; ++n) covered.insert("body.torso" + std::to_string(n)); covered.insert("body.shoulderleft"); covered.insert("body.shoulderright"); }
+        }
         // REGRA SO DA 272 (policial feminina): com farda visivel, esconde o corpo exposto por baixo (pele aparecendo nas coxas, cintura,
         // bracos). Calca/short da corp -> pernas; camisa/colete da corp -> tronco, bracos e ombros. Maos, cabeca e pes continuam.
         if (cop) {
