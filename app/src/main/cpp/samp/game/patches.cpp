@@ -83,11 +83,20 @@ void DisableAutoAim()
     CHook::RET("_ZN10CPlayerPed22FindWeaponLockOnTargetEv"); // CPed::FindWeaponLockOnTarget (ค้นหาเป้าหมายการล็อกอาวุธ)
     CHook::RET("_ZN10CPlayerPed26FindNextWeaponLockOnTargetEP7CEntityb"); // CPed::FindNextWeaponLockOnTarget (ค้นหาเป้าหมายการล็อกอาวุธถัดไป)
     CHook::RET("_ZN4CPed21SetWeaponLockOnTargetEP7CEntity"); // CPed::SetWeaponLockOnTarget (ตั้งค่าเป้าหมายการล็อกอาวุธ)
+    // Maximo RP: mira que gruda (lock-on / auto-aim do mobile) e tratada como TRAPACA: nunca existe alvo travado.
+    // Funcoes que RETORNAM valor: "mov x0,#0 ; ret" (RET puro deixaria lixo em x0).
+    auto retZero = [](const char* sym) {
+        uintptr_t a = (uintptr_t)CHook::getSymSoft(sym);
+        if (a) CHook::WriteMemory(a, (uintptr_t)"\x00\x00\x80\xD2\xC0\x03\x5F\xD6", 8);
+    };
+    retZero("_ZN3CPed21GetWeaponLockOnTargetEv");      // nunca ha alvo travado (tambem some o circulo da mira no alvo)
+    retZero("_ZN14MobileSettings12IsLockOnModeEv");    // modo lock-on do mobile sempre desligado (mira livre)
 }
 
 void ApplySAMPPatchesInGame()
 {
     FLog("Installing patches (ingame)..");
+    DisableAutoAim();   // mira que gruda = trapaca: sempre desligada (independe da opcao autoaim)
 
     /* ปลดล็อกแผนที่ */
     // CTheZones::ZonesVisited[100]
