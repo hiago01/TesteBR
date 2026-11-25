@@ -26,14 +26,14 @@ namespace
 		return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
 	}
 
-	// categorias: 0 tom | 1 rosto | 2 camisa | 3 short | 4 tenis | 5 chinelo
-	const int kCats = 6;
+	// categorias: 0 tom | 1 rosto | 2 camisa | 3 short | 4 tenis | 5 chinelo | 6 cabelo (estilo 0..5, so feminino) | 7 cor do cabelo (so feminino)
+	const int kCats = 8;
 	std::mutex g_m;
 	bool g_active = false;
 	int  g_sex = 0, g_part = 0;
-	int  g_sel[kCats] = { 1, 1, 1, 1, 1, 0 };
+	int  g_sel[kCats] = { 1, 1, 1, 1, 1, 0, 1, 1 };
 	float g_scrollPx = 0.0f;               // rolagem vertical da lista (px)
-	float g_hx[kCats] = { 0, 0, 0, 0, 0, 0 };   // rolagem horizontal de cada fileira de variantes (px)
+	float g_hx[kCats] = { 0, 0, 0, 0, 0, 0, 0, 0 };   // rolagem horizontal de cada fileira de variantes (px)
 
 	// variantes de cada categoria (valores enviados ao servidor); refeito ao trocar de sexo
 	std::vector<int> g_vals[kCats];
@@ -44,7 +44,12 @@ namespace
 	std::vector<Hit> g_hits;
 	struct Strip { float x0, y0, x1, y1; };
 	Strip g_strip[kCats];
-	bool  g_stripOn[kCats] = { false, false, false, false, false, false };
+	bool  g_stripOn[kCats] = { false, false, false, false, false, false, false, false };
+	// sliders (tom de pele e cabelo): faixa de toque da trilha + valores possiveis (arrastar/tocar escolhe)
+	struct Slider { float x0, y0, x1, y1; int cat; std::vector<int> vals; };
+	std::vector<Slider> g_sliders;
+	int   g_dragSlider = -1;               // indice em g_sliders enquanto o dedo arrasta a trilha
+	int   g_pendCat = -1, g_pendVal = 0;   // valor escolhido no slider ainda nao enviado (enviado no proximo quadro livre)
 	float g_listX0 = 0, g_listX1 = 0, g_listY0 = 0, g_listY1 = 0;   // area rolavel (px)
 	bool  g_down = false, g_moved = false;
 	int   g_axis = 0;                      // 0 indefinido | 1 horizontal (fileira) | 2 vertical (lista)
@@ -66,7 +71,8 @@ namespace
 		pNetGame->GetRakClient()->RPC(&RPC_JobsRequest, &bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
 	}
 
-	const char* const kCatTitle[kCats] = { "TOM DE PELE", "ROSTO", "CAMISA", "SHORT", "TÊNIS", "CHINELO" };
+	const char* const kCatTitle[kCats] = { "TOM DE PELE", "ROSTO", "CAMISA", "SHORT", "TÊNIS", "CHINELO", "CABELO", "COR DO CABELO" };
+	const int kHairColors[6] = { 0, 6, 6, 7, 7, 5 };   // cores por estilo 1..5 (igual ao servidor)
 
 	// monta as listas de variantes. Mulher: contagens da base feminina (camisa 2 Blusa cropped, calca 6 Shorts, calcado 4 Tenis, 1 Chinelo).
 	// Homem: variantes que existem no banco (pack) de torso1 / short1 / boot1 / slipper1 (a ultima de cada pasta e a transparente: fora).
@@ -75,7 +81,9 @@ namespace
 		static const int kFaceM[7] = { 0, 6, 8, 8, 7, 5, 12 };
 		static const int kFaceF[7] = { 0, 6, 8, 8, 7, 6, 12 };
 		for (int c = 0; c < kCats; ++c) g_vals[c].clear();
-		for (int t = 1; t <= 6; ++t) g_vals[0].push_back(t);
+		if (sex) { g_vals[0].push_back(2); g_vals[0].push_back(6); }       // feminino: so os tons 2 e 6
+		else for (int t = 1; t <= 6; ++t) g_vals[0].push_back(t);
+		for (int h = 0; h <= 5; ++h) g_vals[6].push_back(h);           // cabelo: 0 = sem cabelo, estilos 1..5
 		const int tone = std::max(1, std::min(g_sel[0], 6));
 		const int fm = sex ? kFaceF[tone] : kFaceM[tone];
 		for (int f = 1; f <= fm; ++f) g_vals[1].push_back(f);
@@ -98,13 +106,26 @@ namespace
 		}
 		g_valsSex = sex; g_valsAt = NowMs();
 	}
+
+	// valor do slider pela posicao do dedo na trilha (chamado com g_m travado)
+	void SetSlider(int x)
+	{
+		if (g_dragSlider < 0 || g_dragSlider >= (int)g_sliders.size()) return;
+		const Slider& sl = g_sliders[g_dragSlider];
+		if (sl.vals.empty()) return;
+		float f = (sl.x1 > sl.x0) ? ((float)x - sl.x0) / (sl.x1 - sl.x0) : 0.0f;
+		f = std::max(0.0f, std::min(1.0f, f));
+		const int idx = (int)(f * (float)(sl.vals.size() - 1) + 0.5f);
+		const int v = sl.vals[idx];
+		if (g_sel[sl.cat] != v) { g_sel[sl.cat] = v; g_pendCat = sl.cat; g_pendVal = v; }
+	}
 }
 
 namespace CharCreate
 {
 	bool OnPacket(RakNet::BitStream& bs)
 	{
-		uint8_t mode = 0, sex = 0, part = 0, sel[kCats] = { 1, 1, 1, 1, 1, 0 };
+		uint8_t mode = 0, sex = 0, part = 0, sel[kCats] = { 1, 1, 1, 1, 1, 0, 1, 1 };
 		if (!bs.Read(mode) || !bs.Read(sex) || !bs.Read(part)) return false;
 		for (int i = 0; i < kCats; ++i) if (!bs.Read(sel[i])) return false;
 		FLog("[CRIAR] pacote recebido: modo=%d sexo=%d parte=%d", (int)mode, (int)sex, (int)part);
@@ -115,12 +136,15 @@ namespace CharCreate
 		if ((sex ? 1 : 0) != g_sex) g_valsSex = -1;
 		g_sex = sex ? 1 : 0; g_part = std::min<int>(part, 4);
 		const int oldTone = g_sel[0];
+		int oldSel[kCats]; for (int i = 0; i < kCats; ++i) oldSel[i] = g_sel[i];
 		for (int i = 0; i < kCats; ++i) g_sel[i] = sel[i];
+		if (g_dragSlider >= 0 && g_dragSlider < (int)g_sliders.size()) { const int sc = g_sliders[g_dragSlider].cat; g_sel[sc] = oldSel[sc]; }   // nao puxa o slider de volta enquanto o dedo esta nele
+		if (g_pendCat >= 0) g_sel[g_pendCat] = g_pendVal;
 		if (oldTone != g_sel[0]) g_valsSex = -1;      // o tom muda a quantidade de rostos
 		return true;
 	}
 
-	void Reset() { std::lock_guard<std::mutex> l(g_m); g_active = false; g_hits.clear(); g_down = false; g_tap = 0; g_scrollPx = 0.0f; g_acked = false; g_valsSex = -1; }
+	void Reset() { std::lock_guard<std::mutex> l(g_m); g_active = false; g_hits.clear(); g_down = false; g_tap = 0; g_scrollPx = 0.0f; g_acked = false; g_valsSex = -1; g_sliders.clear(); g_dragSlider = -1; g_pendCat = -1; }
 	bool Active() { std::lock_guard<std::mutex> l(g_m); return g_active; }
 
 	void OnTouch(int type, int x, int y)
@@ -132,10 +156,14 @@ namespace CharCreate
 		{
 			g_down = true; g_moved = false; g_axis = 0; g_dx = g_lastX = (float)x; g_dy = g_lastY = (float)y;
 			g_dragList = inList((float)x, (float)y);
-			g_dragStrip = -1;
-			for (int c = 0; c < kCats; ++c)
+			g_dragStrip = -1; g_dragSlider = -1;
+			for (size_t i = 0; i < g_sliders.size(); ++i)
+				if (inRect((float)x, (float)y, g_sliders[i].x0, g_sliders[i].y0, g_sliders[i].x1, g_sliders[i].y1)) { g_dragSlider = (int)i; g_dragList = false; break; }
+			if (g_dragSlider >= 0) SetSlider((int)x);
+			for (int c = 0; c < kCats && g_dragSlider < 0; ++c)
 				if (g_stripOn[c] && inRect((float)x, (float)y, g_strip[c].x0, g_strip[c].y0, g_strip[c].x1, g_strip[c].y1)) { g_dragStrip = c; break; }
 		}
+		else if (type == 3 && g_down && g_dragSlider >= 0) { SetSlider((int)x); g_moved = true; g_lastX = (float)x; g_lastY = (float)y; }
 		else if (type == 3 && g_down)
 		{
 			const float ax = std::fabs((float)x - g_dx), ay = std::fabs((float)y - g_dy);
@@ -158,7 +186,7 @@ namespace CharCreate
 				for (const Hit& h : g_hits)
 					if (x >= h.x0 && x <= h.x1 && y >= h.y0 && y <= h.y1) { g_tap = h.id; break; }
 			}
-			g_down = false; g_dragList = false; g_dragStrip = -1; g_axis = 0;
+			g_down = false; g_dragList = false; g_dragStrip = -1; g_dragSlider = -1; g_axis = 0;
 		}
 	}
 
@@ -174,6 +202,11 @@ namespace CharCreate
 		}
 		std::vector<int> vals[kCats];
 		{ std::lock_guard<std::mutex> l(g_m); for (int c = 0; c < kCats; ++c) vals[c] = g_vals[c]; }
+		{   // cor do cabelo: quantidade depende do estilo escolhido
+			const int hs = std::max(1, std::min(sel[6], 5));
+			vals[7].clear(); for (int v = 1; v <= kHairColors[hs]; ++v) vals[7].push_back(v);
+			if (sel[7] > kHairColors[hs]) sel[7] = kHairColors[hs];
+		}
 
 		const float k = scr.y / 540.0f;
 		auto P = [&](float x, float y) { return ImVec2(x * k, y * k); };
@@ -186,11 +219,24 @@ namespace CharCreate
 		r->drawText(P(28, 36), ImColor(255, 255, 255, 255), "PERSONAGEM", false, 24.0f * k);
 
 		std::vector<Hit> hits;
-		Strip strips[kCats]; bool stripOn[kCats] = { false, false, false, false, false, false };
+		Strip strips[kCats]; bool stripOn[kCats] = { false, false, false, false, false, false, false, false };
+		std::vector<Slider> slidersNew;
 		float hxNew[kCats];
 		const float vy0 = 84.0f, vy1 = 540.0f - 76.0f, lx0 = 20.0f, lx1 = panelW - 16.0f;
 		const float viewH = vy1 - vy0;
-		const float secH = 84.0f, contentH = 74.0f + kCats * secH;
+		const float secH = 84.0f, slH = 70.0f;
+		// ordem das secoes: tom (slider) | cabelo e cor (sliders, so feminino) | rosto, camisa, short, tenis, chinelo (fileiras)
+		static const int kOrder[kCats] = { 0, 6, 7, 1, 2, 3, 4, 5 };
+		int order[kCats], nOrd = 0;
+		for (int i = 0; i < kCats; ++i)
+		{
+			const int c = kOrder[i];
+			if ((c == 6 || c == 7) && sex == 0) continue;
+			if (c == 7 && sel[6] == 0) continue;
+			order[nOrd++] = c;
+		}
+		float contentH = 74.0f;
+		for (int i = 0; i < nOrd; ++i) contentH += (order[i] == 0 || order[i] >= 6) ? slH : secH;
 		const float maxScroll = std::max(0.0f, (contentH - viewH) * k);
 		const float sp = std::max(0.0f, std::min(scrollPx, maxScroll));
 		{ std::lock_guard<std::mutex> l(g_m); g_scrollPx = sp; g_listX0 = lx0 * k; g_listX1 = lx1 * k; g_listY0 = vy0 * k; g_listY1 = vy1 * k; for (int c = 0; c < kCats; ++c) hxNew[c] = g_hx[c]; }
@@ -220,9 +266,43 @@ namespace CharCreate
 		card(lx0 + hw + 8, y + 22, hw, 40, "Feminino", sex == 1, 2);
 		y += 74.0f;
 
-		for (int c = 0; c < kCats; ++c)
+		for (int oi = 0; oi < nOrd; ++oi)
 		{
+			const int c = order[oi];
 			const float ty = y - off;
+			if (c == 0 || c >= 6)
+			{   // ---- slider (formato: titulo + n/total, icone, <, trilha, >) ----
+				static const char* const kSlName[kCats] = { "Tom de pele", "", "", "", "", "", "Cabelo", "Cor do cabelo" };
+				const std::vector<int>& v = vals[c];
+				const float x0 = lx0, w = lx1 - lx0, h = 62.0f;
+				int idx = 0; for (size_t i = 0; i < v.size(); ++i) if (v[i] == sel[c]) idx = (int)i;
+				const int n = (int)v.size();
+				r->drawRoundedRect(P(x0, ty), P(x0 + w, ty + h), ImColor(22, 32, 52, 235), 9.0f * k, true);
+				r->drawRoundedRect(P(x0, ty), P(x0 + w, ty + h), ImColor(70, 100, 160, 110), 9.0f * k, false, std::max(1.0f, 1.2f * k));
+				r->drawText(P(x0 + 12, ty + 8), ImColor(255, 255, 255, 255), kSlName[c], false, 12.5f * k);
+				const std::string num = (c == 6 ? std::to_string(sel[6]) : std::to_string(idx + 1)) + "/" + (c == 6 ? std::string("5") : std::to_string(n));
+				const ImVec2 nts = r->calculateTextSize(num, 11.5f * k);
+				r->drawText(ImVec2((x0 + w - 12) * k - nts.x, (ty + 9) * k), ImColor(70, 200, 245, 255), num, false, 11.5f * k);
+				const float cy = ty + 42.0f;
+				r->drawRoundedRect(P(x0 + 11, cy - 9), P(x0 + 29, cy + 9), ImColor(215, 225, 245, 200), 9.0f * k, false, std::max(1.2f, 1.6f * k));
+				const float tx0 = x0 + 64.0f, tx1 = x0 + w - 40.0f;
+				const float fr = n > 1 ? (float)idx / (float)(n - 1) : 0.0f;
+				const float kx = tx0 + (tx1 - tx0) * fr;
+				r->drawText(P(x0 + 40, cy - 8), ImColor(255, 255, 255, 220), "<", false, 15.0f * k);
+				r->drawText(P(x0 + w - 28, cy - 8), ImColor(255, 255, 255, 220), ">", false, 15.0f * k);
+				r->drawRoundedRect(P(tx0, cy - 2.5f), P(tx1, cy + 2.5f), ImColor(70, 90, 130, 210), 2.5f * k, true);
+				if (kx > tx0) r->drawRoundedRect(P(tx0, cy - 2.5f), P(kx, cy + 2.5f), ImColor(0, 205, 235, 255), 2.5f * k, true);
+				r->drawRoundedRect(P(kx - 7, cy - 7), P(kx + 7, cy + 7), ImColor(225, 236, 255, 255), 7.0f * k, true);
+				// toques: seta esquerda / direita (valor vizinho) e a trilha (arrasta)
+				if (idx > 0) addHit(x0 + 34, cy - 14, x0 + 58, cy + 14, 1000 * (c + 1) + v[idx - 1]);
+				if (idx + 1 < n) addHit(x0 + w - 34, cy - 14, x0 + w - 8, cy + 14, 1000 * (c + 1) + v[idx + 1]);
+				{
+					const float a = std::max(cy - 16, vy0), b = std::min(cy + 16, vy1);
+					if (b > a) slidersNew.push_back({ (tx0 - 6) * k, a * k, (tx1 + 6) * k, b * k, c, v });
+				}
+				y += slH;
+				continue;
+			}
 			r->drawText(P(lx0, ty + 2), ImColor(150, 190, 255, 255), kCatTitle[c], false, 11.0f * k);
 			if (c == 4) r->drawText(P(lx0 + 40, ty + 3), ImColor(120, 140, 180, 255), "(calçado: tênis OU chinelo)", false, 9.0f * k);
 			const std::vector<int>& v = vals[c];
@@ -293,12 +373,24 @@ namespace CharCreate
 			std::lock_guard<std::mutex> l(g_m);
 			g_hits = hits;
 			for (int c = 0; c < kCats; ++c) { g_strip[c] = strips[c]; g_stripOn[c] = stripOn[c]; g_hx[c] = hxNew[c]; }
+			g_sliders = slidersNew;
 		}
 
 		bool needAck; { std::lock_guard<std::mutex> l(g_m); needAck = !g_acked; g_acked = true; }
 		if (needAck) Send(5, 0, 0);       // avisa o servidor: o painel abriu (sem isso ele finaliza sozinho em 9 s)
 		int tap; { std::lock_guard<std::mutex> l(g_m); tap = g_tap; g_tap = 0; }
 		const int64_t now = NowMs();
+		{   // valor arrastado num slider: envia assim que o intervalo permitir (nunca perde o ultimo valor)
+			int pc = -1, pv = 0;
+			{ std::lock_guard<std::mutex> l(g_m); pc = g_pendCat; pv = g_pendVal; }
+			if (pc >= 0 && now - g_lastSend > 120)
+			{
+				g_lastSend = now;
+				{ std::lock_guard<std::mutex> l(g_m); g_pendCat = -1; }
+				Send(2, pc, pv);
+				tap = 0;
+			}
+		}
 		if (tap && now - g_lastSend > 120)
 		{
 			g_lastSend = now;
