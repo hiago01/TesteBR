@@ -918,7 +918,7 @@ void HudDrawCinemaIntro(ImGuiRenderer* r)
 	if (!t0) t0 = now;
 	const float T = (float)(now - t0) / 1000.0f;
 	// termina quando a cutscene comeca (jogador congelado) ou a criacao de personagem abre; fail-safe 14 s (cai no jogo normal)
-	if (!tEnd && T > 1.0f && (Hud::g.hideAll.load() || CharCreate::Active())) tEnd = now + 10000;   // cutscene/criacao comecou: mantem a intro mais 10 s
+	if (!tEnd && T > 1.0f && (Hud::g.hideAll.load() || CharCreate::Active())) tEnd = now + 5000;   // cutscene/criacao comecou: mantem a intro mais 5 s
 	if (!tEnd && T > 14.0f) tEnd = now;
 	float fade = 1.0f;
 	if (tEnd && now > tEnd) fade = 1.0f - (float)(now - tEnd) / 600.0f;
