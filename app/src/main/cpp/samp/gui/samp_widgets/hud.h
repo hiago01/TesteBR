@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 
 #include "hudstate.h"
 
@@ -10,6 +11,8 @@ bool HudHandleRawTouch(int type, int num, int x, int y, bool blockNew);
 
 // Intro cinema (barras pretas + logo animada) da conexao ate a cutscene; chamada no fim de UI::drawList.
 void HudDrawCinemaIntro(ImGuiRenderer* r);
+struct RwRaster;
+RwRaster* HudRasterFromPng(const unsigned char* png, size_t pngSize);
 
 class HudInfo : public Widget
 {

@@ -257,10 +257,10 @@ namespace
 	bool      s_atlasFailed = false;
 
 	// Decodifica o PNG embutido e cria o raster (mesmo caminho do CustomSkin / radar disc).
-	RwRaster* CreateAtlasRaster()
+	RwRaster* CreateRasterFromPng(const unsigned char* png, size_t pngSize)
 	{
 		int w = 0, h = 0, ch = 0;
-		unsigned char* px = stbi_load_from_memory(HudAtlas::kPng, (int)HudAtlas::kPngSize, &w, &h, &ch, 4);
+		unsigned char* px = stbi_load_from_memory(png, (int)pngSize, &w, &h, &ch, 4);
 		if (!px)
 		{
 			FLog("[HUD] stbi falhou: %s", stbi_failure_reason());
@@ -317,6 +317,8 @@ namespace
 		FLog("[HUD] atlas %dx%d criado (raster %dx%d fmt=0x%x)", w, h, rw, rh, rf);
 		return raster;
 	}
+
+	RwRaster* CreateAtlasRaster() { return CreateRasterFromPng(HudAtlas::kPng, HudAtlas::kPngSize); }
 
 	RwRaster* GetAtlas()
 	{
@@ -895,6 +897,9 @@ bool HudHandleRawTouch(int type, int num, int x, int y, bool blockNew)
 	return true;
 }
 
+
+// PNG embutido -> raster (usado pelo brasao animado do Crie seu personagem)
+RwRaster* HudRasterFromPng(const unsigned char* png, size_t pngSize) { return CreateRasterFromPng(png, pngSize); }
 
 // =====================================================================================
 //  Intro "cinema" (Maximo RP): da conexao aceita ate a cutscene do servidor. Tela preta com a logo pulsando + barras pretas (cima/baixo)

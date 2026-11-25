@@ -164,6 +164,13 @@ void ApplyPatches_level0()
     //CHook::RET("_ZN17CEntryExitManager4InitEv"); // (เริ่มต้นตัวจัดการทางเข้า-ออก)
     //CHook::RET("_ZN17CEntryExitManager22PostEntryExitsCreationEv"); // (ดำเนินการหลังสร้างทางเข้า-ออก)
 
+    // Maximo RP (FPS): desliga as particulas de fumaca/poeira/respingo dos veiculos
+    CHook::RET("_ZN8CVehicle19AddExhaustParticlesEv");            // fumaca do escapamento (atras do carro)
+    CHook::RET("_ZN8CVehicle23AddSingleWheelParticlesE11tWheelStatejffP9CColPointP7CVectorfijPbj"); // fumaca/poeira dos pneus (derrapar, acelerar)
+    CHook::RET("_ZN8CVehicle20AddWheelDirtAndWaterER9CColPointjhh"); // poeira/agua levantada pelas rodas
+    CHook::RET("_ZN8CVehicle23AddWaterSplashParticlesEv");        // respingos de agua
+    CHook::RET("_ZN8CVehicle26AddDamagedVehicleParticlesEv");     // fumaca do capo/motor danificado
+    CHook::RET("_ZN8CVehicle14DoBoatSplashesEf");                 // espuma de barcos
     CHook::RET("_ZN10CSkidmarks6UpdateEv"); // CSkidmarks::Update (อัปเดตรอยลื่นไถล)
     CHook::RET("_ZN10CSkidmarks6RenderEv"); // CSkidmarks::Render (เรนเดอร์รอยลื่นไถล)
 

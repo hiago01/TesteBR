@@ -6,6 +6,9 @@
 #include "../../game/CorpTex.h"
 #include "../../game/SkinTexDb.h"
 #include "../../net/netgame.h"
+#include "hud.h"
+#include "santaatlas.h"
+#include "../../game/RW/RenderWare.h"
 #include "../../vendor/raknet/SAMP/SAMPRPC.h"
 #include "../../vendor/raknet/BitStream.h"
 
@@ -24,6 +27,64 @@ namespace
 	{
 		using namespace std::chrono;
 		return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+	}
+
+	// ---- brasao Maximo RP com as maos (porte do SantaEmblemView.java do launcher): flutua, balanca, brilho pulsando, maos entram/saem ----
+	RwRaster* g_santaTex = nullptr; bool g_santaFail = false;
+	void SantaQuad(ImGuiRenderer* r, const SantaAtlas::Rect& rc, float x, float y, float w, float h, float pivX, float pivY, float deg, int alpha)
+	{
+		if (!g_santaTex) return;
+		const float rad = deg * 0.0174533f, cs = std::cos(rad), sn = std::sin(rad);
+		const float px[4] = { x, x + w, x + w, x }, py[4] = { y, y, y + h, y + h };
+		ImVec2 pt[4], uv[4];
+		const float iw = 1.0f / SantaAtlas::kWidth, ih = 1.0f / SantaAtlas::kHeight;
+		const float ux[4] = { rc.x * iw, (rc.x + rc.w) * iw, (rc.x + rc.w) * iw, rc.x * iw };
+		const float uy[4] = { rc.y * ih, rc.y * ih, (rc.y + rc.h) * ih, (rc.y + rc.h) * ih };
+		for (int i = 0; i < 4; ++i)
+		{
+			const float dx = px[i] - pivX, dy = py[i] - pivY;
+			pt[i] = ImVec2(pivX + dx * cs - dy * sn, pivY + dx * sn + dy * cs);
+			uv[i] = ImVec2(ux[i], uy[i]);
+		}
+		r->drawTexPoly(pt, uv, 4, (ImTextureID)g_santaTex, ImColor(255, 255, 255, alpha));
+	}
+	void DrawSantaEmblem(ImGuiRenderer* r, float cxs, float cys, float W, float H)   // caixa W x H em pixels de tela, centro (cxs, cys)
+	{
+		if (!g_santaTex && !g_santaFail) { g_santaTex = HudRasterFromPng(SantaAtlas::kPng, SantaAtlas::kPngSize); if (!g_santaTex) g_santaFail = true; }
+		if (!g_santaTex) return;
+		static int64_t t0 = 0; if (!t0) t0 = NowMs();
+		const float t = (float)(NowMs() - t0) / 1000.0f;
+		const float left = cxs - W * 0.5f, top = cys - H * 0.5f;
+		const float eh = H * 0.86f, es = eh / SantaAtlas::kEmblem.h, ew = SantaAtlas::kEmblem.w * es;
+		const float cx = left + W * 0.5f, cy = top + H * 0.46f + std::sin(t * 1.8f) * H * 0.025f;
+		const float rot = std::sin(t * 1.2f) * 3.2f;
+		// brilho azul pulsando (aneis concentricos)
+		const float gr = eh * (0.78f + 0.06f * std::sin(t * 2.4f));
+		for (int i = 0; i < 6; ++i)
+		{
+			const float f = 1.0f - 0.14f * (float)i, rr = gr * f;
+			r->drawRoundedRect(ImVec2(cx - rr, cy - rr), ImVec2(cx + rr, cy + rr), ImColor(61, 155, 255, 16 + i * 4), rr, true);
+		}
+		SantaQuad(r, SantaAtlas::kEmblem, cx - ew * 0.5f, cy - eh * 0.5f, ew, eh, cx, cy, rot, 255);
+		// maos
+		const float hh = H * 0.46f;
+		const float ls = hh / SantaAtlas::kHandL.h, rs = hh / SantaAtlas::kHandR.h;
+		const float pushL = std::sin(t * 2.2f), pushR = std::sin(t * 2.2f + 1.9f);
+		const float lw = SantaAtlas::kHandL.w * ls;
+		const float lx = cx - ew * 0.5f - lw * 0.30f + pushL * W * 0.018f, ly = top + H - hh - H * 0.02f - pushL * H * 0.02f;
+		SantaQuad(r, SantaAtlas::kHandL, lx, ly, lw, hh, lx + lw * 0.2f, ly + hh, -6.0f * pushL, 255);
+		const float rw = SantaAtlas::kHandR.w * rs;
+		const float rx = cx + ew * 0.5f - rw * 0.72f - pushR * W * 0.018f, ry = top + H - hh - H * 0.02f - pushR * H * 0.02f;
+		SantaQuad(r, SantaAtlas::kHandR, rx, ry, rw, hh, rx + rw * 0.8f, ry + hh, 6.0f * pushR, 255);
+		// brilhos piscando
+		for (int i = 0; i < 6; ++i)
+		{
+			const float ph = t * 1.6f + i * 1.05f, a = 0.5f + 0.5f * std::sin(ph * 2.0f), ang = i * 1.047f + t * 0.3f;
+			const float sx = cx + std::cos(ang) * ew * 0.52f, sy = cy + std::sin(ang) * eh * 0.42f, rd = H * 0.014f * (0.6f + a);
+			r->drawRoundedRect(ImVec2(sx - rd, sy - rd), ImVec2(sx + rd, sy + rd), ImColor(255, 242, 176, (int)(a * 235)), rd, true);
+			r->drawRect(ImVec2(sx - rd * 3.2f, sy - rd * 0.25f), ImVec2(sx + rd * 3.2f, sy + rd * 0.25f), ImColor(255, 255, 255, (int)(a * 140)), true);
+			r->drawRect(ImVec2(sx - rd * 0.25f, sy - rd * 3.2f), ImVec2(sx + rd * 0.25f, sy + rd * 3.2f), ImColor(255, 255, 255, (int)(a * 140)), true);
+		}
 	}
 
 	// categorias: 0 tom | 1 rosto | 2 camisa | 3 short | 4 tenis | 5 chinelo | 6 cabelo (estilo 0..5, so feminino) | 7 cor do cabelo (so feminino)
@@ -217,6 +278,9 @@ namespace CharCreate
 		r->drawRect(P(panelW, 24), P(panelW + 1.2f, 516), ImColor(90, 150, 255, 90), true);
 		r->drawText(P(28, 20), ImColor(150, 190, 255, 255), "CRIE SEU", false, 12.0f * k);
 		r->drawText(P(28, 36), ImColor(255, 255, 255, 255), "PERSONAGEM", false, 24.0f * k);
+
+		// brasao animado no espaco livre a direita (area do personagem fica a esquerda/centro)
+		DrawSantaEmblem(r, scr.x * 0.70f, scr.y * 0.45f, scr.y * 0.74f * 1.1f, scr.y * 0.74f);
 
 		std::vector<Hit> hits;
 		Strip strips[kCats]; bool stripOn[kCats] = { false, false, false, false, false, false, false, false };
