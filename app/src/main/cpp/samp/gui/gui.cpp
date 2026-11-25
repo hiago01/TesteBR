@@ -272,6 +272,9 @@ void UI::drawList()
 {
 	if (!visible()) return;
 
+	// Intro cinema (barras pretas + logo): desenhada POR CIMA de tudo, em qualquer caminho de saida desta funcao
+	struct CinemaGuard { ImGuiRenderer* r; ~CinemaGuard() { HudDrawCinemaIntro(r); } } cinemaGuard{ renderer() };
+
 	/*Label* label;
 	label = new Label("1.0.11", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
 	label->setPosition(ImVec2(0.0, 0.0));

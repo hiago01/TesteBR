@@ -895,6 +895,68 @@ bool HudHandleRawTouch(int type, int num, int x, int y, bool blockNew)
 	return true;
 }
 
+
+// =====================================================================================
+//  Intro "cinema" (Maximo RP): da conexao aceita ate a cutscene do servidor. Tela preta com a logo pulsando + barras pretas (cima/baixo)
+//  que recuam ate sumir. Cobre o retangulo nativo "Loading..." do jogo. Some sozinha (fail-safe) ou quando a cutscene comeca (Hud::g.hideAll).
+// =====================================================================================
+void HudDrawCinemaIntro(ImGuiRenderer* r)
+{
+	using namespace std::chrono;
+	static int64_t t0 = 0, tEnd = 0; static bool done = false;
+	const int64_t now = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+	extern CNetGame* pNetGame;
+	const bool conn = pNetGame && pNetGame->GetGameState() == GAMESTATE_CONNECTED;
+	if (!conn) { t0 = 0; tEnd = 0; done = false; return; }
+	if (done) return;
+	if (!t0) t0 = now;
+	if (!tEnd && Hud::g.hideAll.load()) tEnd = now;     // cutscene comecou: some rapido
+	const float T = (float)(now - t0) / 1000.0f;
+	float fade = 1.0f;                                   // fade global (so no fim)
+	if (tEnd) fade = 1.0f - (float)(now - tEnd) / 450.0f;
+	else if (T > 6.5f) fade = 1.0f - (T - 6.5f) / 0.5f;
+	if (fade <= 0.0f || T > 7.2f) { done = true; return; }
+
+	const ImVec2 scr = ImGui::GetIO().DisplaySize;
+	auto sm = [](float x) { x = x < 0 ? 0 : (x > 1 ? 1 : x); return x * x * (3.0f - 2.0f * x); };
+	// fundo: preto total ate 1.4 s, depois clareia ate 4.2 s (so as barras ficam)
+	const float bgA = 1.0f - sm((T - 1.4f) / 2.8f);
+	// barras: cobrem 50% cada (tela toda) ate 1.4 s e recuam ate 0 em 5.8 s
+	const float barH = (scr.y * 0.5f) * (1.0f - sm((T - 1.4f) / 4.4f));
+	const int a255 = (int)(255.0f * fade);
+	if (bgA > 0.01f) r->drawRect(ImVec2(0, 0), scr, ImColor(0, 0, 0, (int)(255.0f * bgA * fade)), true);
+	if (barH > 0.5f)
+	{
+		r->drawRect(ImVec2(0, 0), ImVec2(scr.x, barH), ImColor(0, 0, 0, a255), true);
+		r->drawRect(ImVec2(0, scr.y - barH), scr, ImColor(0, 0, 0, a255), true);
+		// filete fino de luz na borda das barras (acabamento de cinema)
+		const int ea = (int)(70.0f * fade);
+		r->drawRect(ImVec2(0, barH - 1.0f), ImVec2(scr.x, barH), ImColor(255, 190, 80, ea), true);
+		r->drawRect(ImVec2(0, scr.y - barH), ImVec2(scr.x, scr.y - barH + 1.0f), ImColor(255, 190, 80, ea), true);
+	}
+	// logo: surge (0-0.9 s), pulsa suave, sobe um pouco e some perto do fim das barras
+	RwRaster* tex = GetAtlas();
+	if (!tex) return;
+	const float appear = sm(T / 0.9f), gone = 1.0f - sm((T - 5.0f) / 1.3f);
+	const float la = appear * gone * fade;
+	if (la <= 0.01f) return;
+	const float pulse = 1.0f + 0.035f * std::sin(T * 3.2f);
+	const float lw = scr.x * 0.34f * pulse * (0.92f + 0.08f * appear);
+	const float lh = lw * ((float)HudAtlas::kLogo.h / (float)HudAtlas::kLogo.w);
+	const float cx = scr.x * 0.5f, cy = scr.y * 0.5f - scr.y * 0.03f * sm((T - 1.4f) / 3.0f);
+	// brilho atras da logo
+	const int ga = (int)(60.0f * la * (0.6f + 0.4f * std::sin(T * 3.2f)));
+	for (int i = 0; i < 3; i++)
+	{
+		const float k = 1.0f + 0.12f * (float)(i + 1);
+		r->drawImage(ImVec2(cx - lw * 0.5f * k, cy - lh * 0.5f * k), ImVec2(cx + lw * 0.5f * k, cy + lh * 0.5f * k), (ImTextureID)tex,
+					 ImColor(255, 170, 40, ga / (i + 2)),
+					 ImVec2(HudAtlas::kLogo.x / (float)HudAtlas::kWidth, HudAtlas::kLogo.y / (float)HudAtlas::kHeight),
+					 ImVec2((HudAtlas::kLogo.x + HudAtlas::kLogo.w) / (float)HudAtlas::kWidth, (HudAtlas::kLogo.y + HudAtlas::kLogo.h) / (float)HudAtlas::kHeight));
+	}
+	DrawAtlasRect(r, tex, HudAtlas::kLogo, ImVec2(cx - lw * 0.5f, cy - lh * 0.5f), ImVec2(cx + lw * 0.5f, cy + lh * 0.5f), (int)(255.0f * la));
+}
+
 void HudInfo::draw(ImGuiRenderer* r)
 {
 	if (!Hud::g.visible.load()) return;

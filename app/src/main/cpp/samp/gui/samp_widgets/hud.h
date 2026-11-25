@@ -8,6 +8,9 @@
 // blockNew = nao comecar toque novo (menu aberto).
 bool HudHandleRawTouch(int type, int num, int x, int y, bool blockNew);
 
+// Intro cinema (barras pretas + logo animada) da conexao ate a cutscene; chamada no fim de UI::drawList.
+void HudDrawCinemaIntro(ImGuiRenderer* r);
+
 class HudInfo : public Widget
 {
 public:

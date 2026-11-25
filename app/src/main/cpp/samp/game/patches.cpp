@@ -152,6 +152,13 @@ void ApplyPatches_level0()
     // Maximo RP: a tela de loading e o fade pretos nativos do GTA ("Loading..." + faixa preta) ficavam por cima do jogo; o overlay Java ja cobre o carregamento.
     CHook::RET("_ZN14CLoadingScreen12RenderSplashEv"); // splash nativo (retangulo preto + texto)
     CHook::RET("_Z6DoFadev"); // fade nativo (preto parcial)
+    // Maximo RP: o retangulo preto com "Loading..." do inicio do jogo (depois do loading Java) vem das rotinas nativas de loading: desliga o desenho delas.
+    CHook::RET("_ZN14CLoadingScreen14DisplayMessageEPKc");   // mensagem/popup "Loading..."
+    CHook::RET("_ZN14CLoadingScreen16RenderLoadingBarEv");   // barra/retangulo de loading
+    CHook::RET("_ZN14CLoadingScreen15DoPCTitleFadeInEv");
+    CHook::RET("_ZN14CLoadingScreen16DoPCTitleFadeOutEv");
+    CHook::RET("_ZN14CLoadingScreen16DoPCScreenChangeEjj");
+    CHook::RET("_ZN14CLoadingScreen17DisplayNextSplashEv");
 
     // entryexit
     //CHook::RET("_ZN17CEntryExitManager4InitEv"); // (เริ่มต้นตัวจัดการทางเข้า-ออก)
