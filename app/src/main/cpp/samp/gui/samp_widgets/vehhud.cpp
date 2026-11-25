@@ -161,11 +161,11 @@ namespace
 		g_active.erase(std::remove_if(g_active.begin(), g_active.end(), [now](const Note& n) { return now - n.at >= n.ms; }), g_active.end());
 		if (g_active.empty()) return;
 
-		const float k = scr.y / 720.0f;
+		const float k = scr.y / 720.0f * 1.35f;   // aviso 35% maior (legibilidade); fonte e icone acompanham
 		const float W = 236.0f * k;
 		const float x1 = scr.x - 16.0f * k;
-		float y = 132.0f * k;                      // abaixo da HUD (circulos + pilulas)
-		const float fsT = 10.5f * k, fsB = 9.0f * k;
+		float y = 132.0f * (k / 1.35f);                      // abaixo da HUD (circulos + pilulas)
+		const float fsT = 11.5f * k, fsB = 10.0f * k;
 
 		for (const Note& n : g_active)
 		{
@@ -488,8 +488,9 @@ void VehHudWidget::draw(ImGuiRenderer* r)
 			CPedGTA* lped = nullptr;
 			if (pNetGame && pNetGame->GetPlayerPool() && pNetGame->GetPlayerPool()->GetLocalPlayer() && pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed())
 				lped = pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed()->m_pPed;
-			if (ins > 0 && lped) { lped->m_bIsVisible = false; s_hid = true; }
-			else if (ins == 0 && s_hid) { if (lped) lped->m_bIsVisible = true; s_hid = false; }
+			// o corpo NAO e mais escondido: o servidor congela o jogador (TogglePlayerControllable) atras da camera. So devolve a visibilidade se uma versao antiga escondeu.
+			if (s_hid && lped) { lped->m_bIsVisible = true; s_hid = false; }
+			(void)ins;
 		}
 		if (ins > 0)
 		{
