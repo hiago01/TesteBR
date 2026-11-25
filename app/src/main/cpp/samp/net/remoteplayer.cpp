@@ -778,6 +778,11 @@ void CRemotePlayer::StorePassengerFullSyncData(PASSENGER_SYNC_DATA* psSync)
     }
 
     if(!m_pPlayerPed->m_pPed->IsInVehicle()){
+        if (m_pCurrentVehicle->m_pVehicle && m_byteSeatID <= 7 && m_pCurrentVehicle->m_pVehicle->m_nMaxPassengers < m_byteSeatID)
+        {
+            FLog("[PASSAGEIRO] modelo %d: banco %d > MaxPassengers %d -> liberando", (int)m_pCurrentVehicle->m_pVehicle->m_nModelIndex, (int)m_byteSeatID, (int)m_pCurrentVehicle->m_pVehicle->m_nMaxPassengers);
+            m_pCurrentVehicle->m_pVehicle->m_nMaxPassengers = m_byteSeatID;   // carro novo sem banco de passageiro: senao o ped fica na posicao antiga
+        }
         m_byteSeatID--;
         ScriptCommand(&put_actor_in_car2, m_pPlayerPed->m_dwGTAId, m_pCurrentVehicle->m_dwGTAId, m_byteSeatID);
 //		m_byteSeatID = CCarEnterExit::ComputeTargetDoorToEnterAsPassenger(m_pCurrentVehicle->m_pVehicle, m_byteSeatID);

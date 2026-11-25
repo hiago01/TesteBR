@@ -935,7 +935,14 @@ void CPlayerPed::PutDirectlyInVehicle(uint32_t dwVehicleGTAId, uint8_t byteSeatI
 			GetVehicleSubtype(pGtaVehicle) == VEHICLE_SUBTYPE_BIKE)
 		{
 			if (byteSeatID > pGtaVehicle->m_nMaxPassengers)
-				return;
+			{
+				// Carro NOVO com m_nMaxPassengers menor que o banco pedido (ex.: 0): antes o return silencioso deixava o ped
+				// onde estava (posicao antiga: tag/balao de fala la, "sumido" do carro). Libera o banco em vez de abandonar.
+				static int s_say = 0;
+				if (s_say++ < 8) FLog("[PASSAGEIRO] modelo %d: banco %d > MaxPassengers %d -> liberando", (int)pGtaVehicle->m_nModelIndex, (int)byteSeatID, (int)pGtaVehicle->m_nMaxPassengers);
+				if (byteSeatID > 7) return;
+				pGtaVehicle->m_nMaxPassengers = byteSeatID;
+			}
 		}
 
 		if (byteSeatID == 0)

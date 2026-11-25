@@ -1,6 +1,7 @@
 #include "../game/CarBau.h"
 #include "../main.h"
 #include "../game/game.h"
+#include "../game/util.h"
 #include "netgame.h"
 #include "vehiclepool.h"
 #include "../game/Models/VehicleModelInfo.h"
@@ -87,6 +88,13 @@ bool CVehiclePool::New(NEW_VEHICLE* new_veh)
         pNewVehicle = nullptr;
     }
 
+    if (pNewVehicle && pNewVehicle->m_pVehicle)
+    {
+        CVehicleGTA* gv = pNewVehicle->m_pVehicle;
+        static std::set<int> seenMax;
+        if (seenMax.insert((int)gv->m_nModelIndex).second) FLog("[PASSAGEIRO] modelo %d: MaxPassengers=%d", (int)gv->m_nModelIndex, (int)gv->m_nMaxPassengers);
+        if (gv->m_nMaxPassengers == 0 && GetVehicleSubtype(gv) == VEHICLE_SUBTYPE_CAR) gv->m_nMaxPassengers = 3;   // carro novo sem passageiros definidos
+    }
     if (pNewVehicle) FixSeatDummies(pNewVehicle->m_pVehicle);   // carros novos sem dummies de assento: o ped nao some dentro da lataria
     CarBau::AfterCreate((int)new_veh->VehicleID, pNewVehicle ? pNewVehicle->m_pVehicle : nullptr);   // restaura o sorteio e aplica o bau pedido pelo servidor
 
