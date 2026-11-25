@@ -356,6 +356,16 @@ void JobsUI::OnServerPacket(const unsigned char* data, int bytes)
 		return;
 	}
 	if (op == 51) { uint8_t why = 0; bs.Read(why); DeathScreen::Hide(why); return; }               // fim da espera (hospital / reanimado / liberado)
+	if (op == 26)      // tabela skin->estilo de andar/correr para TODOS os jogadores (maximo_corrida.inc)
+	{
+		uint16_t n = 0; static uint16_t sk[512]; static uint8_t es[512];
+		if (!bs.Read(n)) return;
+		if (n > 512) n = 512;
+		int got = 0;
+		for (int i = 0; i < n; i++) { uint16_t a = 0; uint8_t b = 0; if (!bs.Read(a) || !bs.Read(b)) break; sk[got] = a; es[got] = b; got++; }
+		RunStyle::OnTable(sk, es, got);
+		return;
+	}
 	if (op == 25) { uint8_t st = 0; if (bs.Read(st)) RunStyle::OnServer(st); return; }   // estilo de andar/correr da skin (servidor: maximo_corrida.inc); nao abre tela
 	if (op == 2) { uint8_t c = 0; if (bs.Read(c)) g_resultCode.store(c); return; }
 	if (op == 13) { GaragePanel::OnList(bs); g_garage.store(true); if (!g_open.exchange(true)) { g_flush.store(true); g_resetView.store(true); } return; }   // lista da garagem: abre a tela
