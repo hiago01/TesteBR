@@ -24,10 +24,10 @@ public final class MaximoMusic {
     private static final String PREFS = "mx_music";
     private static final String KEY_ENABLED = "enabled";
     private static final String KEY_VOLUME = "volume";
-    /** Ordem de reproducao: 0 = Efeito Domino (toca primeiro), 1 = Tema Oficial Maximo RP. */
-    private static final int[] TRACKS = { R.raw.efeito_domino, R.raw.maximo_theme };
-    private static final int[] TITLES = { R.string.mx_music_title_1, R.string.mx_music_title };
-    private static final int[] SUBTITLES = { R.string.mx_music_subtitle_1, R.string.mx_music_subtitle };
+    /** Ordem de reproducao: 0 = DESFILE BELICO (principal, toca primeiro), 1 = Efeito Domino, 2 = Tema Oficial Maximo RP. */
+    private static final int[] TRACKS = { R.raw.desfile_belico, R.raw.efeito_domino, R.raw.maximo_theme };
+    private static final int[] TITLES = { R.string.mx_music_title_0, R.string.mx_music_title_1, R.string.mx_music_title };
+    private static final int[] SUBTITLES = { R.string.mx_music_subtitle_0, R.string.mx_music_subtitle_1, R.string.mx_music_subtitle };
 
     public interface Listener {
         void onMusicStateChanged(boolean playing, int volumePercent);
