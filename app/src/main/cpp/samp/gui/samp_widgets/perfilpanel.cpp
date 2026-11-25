@@ -41,6 +41,7 @@ namespace
 	// ---- dados que chegam da rede (thread de rede) ----
 	std::mutex g_mtx;
 	Info       g_netInfo;
+	std::string g_hudOrgTag;                   // tag da org para o brasao da HUD principal (nao some ao abrir o menu; limpa em Reset); g_mtx
 	std::string g_orgTag;                     // tag da organizacao (op 58); guardada por g_mtx
 	unsigned   g_infoVer = 0;
 	struct NetRank { int seq; int cat; RankState d; };
@@ -197,8 +198,10 @@ void PerfilPanel::OnOrgTag(RakNet::BitStream& bs)
 {
 	std::string t; if (!RdStr(bs, t)) return;
 	if (t.size() > 24) t.resize(24);
-	std::lock_guard<std::mutex> l(g_mtx); g_orgTag = t;
+	std::lock_guard<std::mutex> l(g_mtx); g_orgTag = t; g_hudOrgTag = t;
 }
+
+std::string PerfilPanel::HudOrgTag() { std::lock_guard<std::mutex> l(g_mtx); return g_hudOrgTag; }
 
 bool PerfilPanel::OnRank(RakNet::BitStream& bs)
 {

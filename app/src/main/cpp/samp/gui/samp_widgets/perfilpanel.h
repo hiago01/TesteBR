@@ -1,4 +1,5 @@
 #pragma once
+#include <string>
 
 #include <vector>
 #include "shoppanel.h"      // ShopTouch (mesmo canal de toques da loja)
@@ -35,6 +36,7 @@ namespace PerfilPanel
 	bool OnRank(RakNet::BitStream& bs);    // op 22
 	bool OnRules(RakNet::BitStream& bs);   // op 23
 	void OnOrgTag(RakNet::BitStream& bs);  // op 58: str tag da organizacao do jogador (vazio = sem organizacao); o Inicio desenha o brasao
+	std::string HudOrgTag();               // tag da org do jogador (vazio = sem org) para o brasao da HUD principal
 	void Reset();                          // desconexao / op 24: apaga o menu da tela
 	int  Seq();                            // numero da tela (0 = nenhuma)
 

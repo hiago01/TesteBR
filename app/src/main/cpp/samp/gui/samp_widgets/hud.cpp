@@ -15,6 +15,8 @@
 #include "../gfxsettings.h"
 #include "jobs.h"
 #include "criarpersonagem.h"
+#include "perfilpanel.h"
+#include "../../game/BrasaoTexDb.h"
 
 #include <atomic>
 #include <chrono>
@@ -1106,11 +1108,30 @@ void HudInfo::draw(ImGuiRenderer* r)
 			x += bl.pillW + kItemGap * S;
 		}
 
+		// ---- linha 3: brasao da ORGANIZACAO do jogador (so quem e de org; sem banco de brasoes = nada) ----
+		float badgeW = 0.0f;
+		{
+			const std::string otag = PerfilPanel::HudOrgTag();
+			if (!otag.empty())
+			{
+				if (RwTexture* bt = BrasaoTexDb::Texture("org_" + otag))
+					if (bt->raster)
+					{
+						const float bs = (kRadius * 2.0f + 14.0f) * S, bcy = y2 + (kRadius * 2.0f + kRowGap) * S + 6.0f * S;
+						const float bx1 = right - (kRingGap + kRingW) * S * 0.5f + R, bx0 = bx1 - bs;
+						// sombra/contorno escuro para ler em qualquer fundo
+						FillCircle(r, ImVec2((bx0 + bx1) * 0.5f, bcy), bs * 0.5f + 2.0f * S, ImColor(10, 16, 30, 150));
+						r->drawImage(ImVec2(bx0, bcy - bs * 0.5f), ImVec2(bx1, bcy + bs * 0.5f), (ImTextureID)bt->raster, ImColor(255, 255, 255, 255), ImVec2(0, 0), ImVec2(1, 1));
+						badgeW = bs + kItemGap * S;
+					}
+			}
+		}
+
 		// ---- linha 3: carrinho (so dentro da area de uma loja): toque = /comprar ----
 		if (Hud::g.shop.load())
 		{
 			const float cy = y2 + (kRadius * 2.0f + kRowGap) * S;
-			const float cx = right - R - (kRingGap + kRingW) * S * 0.5f;                 // alinhado ao ultimo circulo da linha 1
+			const float cx = right - R - (kRingGap + kRingW) * S * 0.5f - badgeW;        // alinhado ao ultimo circulo da linha 1 (desloca para a esquerda do brasao, se houver)
 			FillCircle(r, ImVec2(cx, cy), R, ImColor(34, 150, 90, 255));
 			DrawArc(r, ImVec2(cx, cy), R - 1.5f * S, 1.0f, ImColor(255, 255, 255, 200), 2.0f * S);
 			const ImColor wh(255, 255, 255, 255);
