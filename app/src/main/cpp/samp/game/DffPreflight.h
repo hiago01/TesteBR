@@ -40,6 +40,7 @@ namespace DffPreflight
         int      geoms          = 0;
         uint64_t tris           = 0;
         uint64_t verts          = 0;
+        uint32_t maxGeomVerts   = 0;      // MAIOR numVertices de uma geometria (o limite do jogo e' por geometria: 65535)
         int      materials      = 0;
         bool     skin           = false;
         int      bones          = 0;
@@ -156,6 +157,7 @@ namespace DffPreflight
                             const uint32_t nver  = U32(d, x.body + 8);
                             out.tris  += ntri;
                             out.verts += nver;
+                            if (nver > out.maxGeomVerts) out.maxGeomVerts = nver;
                             if (flags & 0x01000000u) out.nativeGeometry = true;
 
                             // ids de material gravados nos triângulos (formato 3.4+: sem as 3 floats de iluminação)
@@ -270,6 +272,10 @@ namespace DffPreflight
         if (out.atomics <= 0 || out.geoms <= 0) { err = "DFF sem atomic/geometria"; return false; }
         if (out.frames <= 1)                    { err = "DFF sem hierarquia de frames"; return false; }
         if (out.nativeGeometry)                 { err = "geometria 'native' (dados de plataforma); exporte como DFF PC/RenderWare normal"; return false; }
+        // libGTASA arm64 2.10: RpGeometryCreate (0x2bc7a8) devolve NULL para numVertices >= 65536 (lsr #16 / cbnz) e os indices do
+        // Bin Mesh sao truncados para uint16 em _rpMeshRead (strh 0x2c01a8). A skin usa 1 geometria; divida o DFF antes
+        // (tools/dffsplit_cli; os modelos de texdb/DFF sao divididos sozinhos pelo CustomDff).
+        if (out.maxGeomVerts > 65535u)          { err = "geometria com " + std::to_string(out.maxGeomVerts) + " vertices: o jogo aceita no maximo 65535 por geometria (RpGeometryCreate recusa); divida com tools/dffsplit_cli"; return false; }
         if (!out.skin)                          { err = "geometria sem Skin PLG: não funciona como ped"; return false; }
         if (out.hanimFrames <= 0)               { err = "frames sem HAnim PLG (IDs de osso)"; return false; }
         return true;
@@ -283,8 +289,8 @@ namespace DffPreflight
             w.push_back(std::to_string((unsigned long long)i.tris) + " triangulos (ped normal ~2k-5k): pesado no celular");
         if (i.materials > 25)
             w.push_back(std::to_string(i.materials) + " materiais (cada um vira 1 draw call por ped)");
-        if (i.verts > 65000)
-            w.push_back("mais de 65000 vertices (limite de indice 16 bits)");
+        if (i.maxGeomVerts > 65000)
+            w.push_back(std::to_string(i.maxGeomVerts) + " vertices em uma geometria (limite do jogo: 65535 por geometria; indice de 16 bits)");
         if (i.bones > 40)
             w.push_back("mais de 40 ossos no skin (limite de matrizes do shader GLES)");
         if (i.maxWeights > 4)

@@ -1,0 +1,70 @@
+DffSplit - registro dos testes (host x86_64, g++ 13, C++17)
+==============================================================================================
+O que foi executado (tools/dffsplit_test.cpp, mesmo codigo de DffSplit.h que o cliente usa):
+  * DFFs sinteticos gerados em memoria (grade de triangulos encadeados, 6 materiais, dados por vertice deterministicos);
+  * cada saida e' lida por um leitor INDEPENDENTE (nao usa DffSplit::detail) e comparada com a verdade do gerador:
+    multiconjunto de triangulos (posicao, normal, 2 UVs, cor pre-calculada, indices de osso, 4 pesos, night color, material,
+    sentido do triangulo), tamanhos de chunk, numAtomics/numGeometries, geometryIndex, esfera de contorno, 2dfx;
+  * o leitor do jogo e' SIMULADO a partir do desassembly da libGTASA arm64 2.10:
+      RpGeometryCreate (0x2bc7a8): numVertices >> 16 != 0  =>  devolve NULL      -> coluna "jogo:NULL"
+      _rpMeshRead      (0x2bff1c): cada indice uint32 do disco e' gravado com STRH (uint16) -> coluna "trunc a/b"
+  * para skin, o DffPreflight::Parse do projeto (leitor proprio, separado) tambem aceita a saida e conta o mesmo;
+  * CustomDff::Find real (com stubs de main.h/KeyGen.h) leu um DFF de 100000 vertices de texdb/DFF/ e entregou o DFF dividido.
+O que NAO foi testado (sem aparelho/emulador): renderizacao. O que da' para afirmar e' que todo indice entregue ao jogo
+e' < 65535 (nada para o strh truncar), numVertices <= 65535 em toda geometria (RpGeometryCreate aceita) e os dados por
+vertice/triangulo/material sao identicos aos de entrada. "Resultado da renderizacao" = NAO MEDIDO.
+Memoria: coluna "eng" = RpMeshHeader+RpMesh+indices uint16 pela formula do _rpMeshRead (numMeshes*0x28 + 0x18 + totalIndices*2);
+nao inclui vertex buffer GL nem textura.
+==============================================================================================
+
+== DffSplit: leitor do jogo simulado (RpGeometryCreate recusa >=65536; _rpMeshRead trunca indice para uint16) ==
+legenda: g=geometrias a=atomics v=vertices; 'jogo:NULL' = RpGeometryCreate devolveria NULL; trunc a/b = indices alterados pelo strh / indices totais
+
+-- A) tamanhos pedidos (geometria simples: pos+normal+UV+cor, 6 materiais, 1 atomic)
+plain 10000                | in:  1g   10000 v  maxIdx   9999  jogo:ok   trunc 0/29994 | out:  1g  1a   10000 v    9998 t(bin) maxIdx  9999 maxG 10000 | eng   0.06 MB | trunc 0 | inalterado
+plain 40000                | in:  1g   40000 v  maxIdx  39999  jogo:ok   trunc 0/119994 | out:  1g  1a   40000 v   39998 t(bin) maxIdx 39999 maxG 40000 | eng   0.23 MB | trunc 0 | inalterado
+plain 65000                | in:  1g   65000 v  maxIdx  64999  jogo:ok   trunc 0/194994 | out:  1g  1a   65000 v   64998 t(bin) maxIdx 64999 maxG 65000 | eng   0.37 MB | trunc 0 | inalterado
+plain 65535                | in:  1g   65535 v  maxIdx  65534  jogo:ok   trunc 0/196599 | out:  1g  1a   65535 v   65533 t(bin) maxIdx 65534 maxG 65535 | eng   0.38 MB | trunc 0 | inalterado
+plain 65536                | in:  1g   65536 v  maxIdx  65535  jogo:NULL trunc 0/196602 | out:  2g  2a   65538 v   65534 t(bin) maxIdx 65534 maxG 65535 | eng   0.38 MB | trunc 0 | DIVIDIDO
+plain 100000               | in:  1g  100000 v  maxIdx  99999  jogo:NULL trunc 103389/299994 | out:  2g  2a  100066 v   99998 t(bin) maxIdx 65534 maxG 65535 | eng   0.57 MB | trunc 0 | DIVIDIDO
+plain 150000               | in:  1g  150000 v  maxIdx 149999  jogo:NULL trunc 253389/449994 | out:  3g  3a  150140 v  149998 t(bin) maxIdx 65534 maxG 65535 | eng   0.86 MB | trunc 0 | DIVIDIDO
+
+-- B) skin (32 ossos, 4 pesos) + night colors + 2 conjuntos de UV + cor pre-calculada + 2dfx
+skin+night+2uv 65535       | in:  1g   65535 v  maxIdx  65534  jogo:ok   trunc 0/196599 | out:  1g  1a   65535 v   65533 t(bin) maxIdx 65534 maxG 65535 | eng   0.38 MB | trunc 0 | inalterado
+skin+night+2uv 65536       | in:  1g   65536 v  maxIdx  65535  jogo:NULL trunc 0/196602 | out:  2g  2a   65538 v   65534 t(bin) maxIdx 65534 maxG 65535 | eng   0.38 MB | trunc 0 | DIVIDIDO
+skin+night+2uv 100000      | in:  1g  100000 v  maxIdx  99999  jogo:NULL trunc 103389/299994 | out:  2g  2a  100066 v   99998 t(bin) maxIdx 65534 maxG 65535 | eng   0.57 MB | trunc 0 | DIVIDIDO
+skin+night+2uv 150000      | in:  1g  150000 v  maxIdx 149999  jogo:NULL trunc 253389/449994 | out:  3g  3a  150140 v  149998 t(bin) maxIdx 65534 maxG 65535 | eng   0.86 MB | trunc 0 | DIVIDIDO
+
+-- C) Bin Mesh em tri-strip (convertido em lista; sentido preservado)
+strip 40000                | in:  1g   40000 v  maxIdx  39999  jogo:ok   trunc 0/40185 | out:  1g  1a   40000 v   40173 t(bin) maxIdx 39999 maxG 40000 | eng   0.08 MB | trunc 0 | inalterado
+strip 100000               | in:  1g  100000 v  maxIdx  99999  jogo:NULL trunc 34634/100485 | out:  2g  2a  100066 v   99998 t(bin) maxIdx 65534 maxG 65535 | eng   0.57 MB | trunc 0 | DIVIDIDO
+strip 150000               | in:  1g  150000 v  maxIdx 149999  jogo:NULL trunc 84884/150735 | out:  3g  3a  150140 v  149998 t(bin) maxIdx 65534 maxG 65535 | eng   0.86 MB | trunc 0 | DIVIDIDO
+
+-- D) clump com 3 geometrias (so a 0 e' grande) e 2 atomics apontando para ela (cada um ganha copias)
+multi 40000                | in:  3g   42000 v  maxIdx  39999  jogo:ok   trunc 0/125982 | out:  3g  4a   42000 v   41994 t(bin) maxIdx 39999 maxG 40000 | eng   0.24 MB | trunc 0 | inalterado
+multi 100000               | in:  3g  102000 v  maxIdx  99999  jogo:NULL trunc 103389/305982 | out:  4g  6a  102066 v  101994 t(bin) maxIdx 65534 maxG 65535 | eng   0.58 MB | trunc 0 | DIVIDIDO
+multi 150000               | in:  3g  152000 v  maxIdx 149999  jogo:NULL trunc 253389/455982 | out:  5g  8a  152140 v  151994 t(bin) maxIdx 65534 maxG 65535 | eng   0.87 MB | trunc 0 | DIVIDIDO
+
+-- E) compactacao: 100000 vertices declarados mas so 50000 referenciados (nao precisa dividir, so descartar)
+unreferenced 100000/50000  | in:  1g  100000 v  maxIdx  49999  jogo:NULL trunc 0/149994 | out:  1g  1a   50000 v   49998 t(bin) maxIdx 49999 maxG 50000 | eng   0.29 MB | trunc 0 | DIVIDIDO
+
+-- F) recusas esperadas (nada de lixo silencioso)
+  native      -> recusado (geometria 0: geometria 'native' (dados de plataforma, ja com indices de 16 bits) nao pode ser dividida)
+  breakable   -> recusado (geometria 0: plugin Breakable (0x253F2FD) nao pode ser dividido)
+  skin split  -> recusado (geometria 0: Skin PLG dividido (numMeshes/numRLE != 0) nao suportado)
+  indice > nv -> recusado (geometria 0: indice 99999999 >= numVertices 70000)
+
+-- G) fuzz: 1500 DFFs corrompidos (truncados / bytes trocados) sobre um DFF de 66000 vertices com skin: sem crash/hang
+  1500 casos: dividiu=724 recusou=776 inalterado=0 (nenhum crash; toda saida produzida e' valida)
+
+APROVADO (0 falhas)
+exit=0
+
+==============================================================================================
+Mesma bateria sob AddressSanitizer + UBSan (sem os casos de 150000 vertices, fuzz de 120 casos): 
+
+-- G) fuzz: 120 DFFs corrompidos (truncados / bytes trocados) sobre um DFF de 66000 vertices com skin: sem crash/hang
+  120 casos: dividiu=60 recusou=60 inalterado=0 (nenhum crash; toda saida produzida e' valida)
+
+APROVADO (0 falhas)
+exit=0

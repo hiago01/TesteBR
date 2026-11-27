@@ -31,6 +31,18 @@
 //   Reprovou -> o jogo carrega o modelo ORIGINAL do IMG e o motivo vai para o log.
 //   Geometria "native" (DFF exportado da propria versao mobile) e' ACEITA, ao contrario do preflight de skin.
 //
+// GEOMETRIA COM MAIS DE 65.535 VERTICES (ver DffSplit.h, auditoria da libGTASA arm64 2.10)
+//   O jogo NAO le geometria desse tamanho: RpGeometryCreate devolve NULL para numVertices >= 65536, o Bin Mesh e'
+//   truncado para uint16 (_rpMeshRead) e o desenho usa GL_UNSIGNED_SHORT fixo (rqDrawIndexed). Por isso, depois de
+//   validado, o arquivo passa por DffSplit::Process: se alguma geometria passa de 65.535 vertices ela e' DIVIDIDA nos
+//   proprios bytes (varias Geometry + um Atomic por parte, materiais/UV/normais/cores/pesos de skin preservados).
+//   DFF com todas as geometrias <= 65.535 vertices (todos os antigos) sai IDENTICO, byte a byte.
+//   Nao deu para dividir (native, Breakable, skin com split...) -> o modelo ORIGINAL do IMG e' usado e o motivo vai ao log.
+//   So para modelos cujo SetClump guarda o clump INTEIRO: clump, veiculo e ped. Objeto/predio/time/LOD (CAtomicModelInfo) guardam
+//   1 atomic so (LoadAtomicFile @0x4d046c liga cada atomic a um modelo pelo nome do frame, FindRelatedModelInfoCB @0x5546c8, e
+//   CAtomicModelInfo::SetAtomic @0x45aa6c SUBSTITUI o anterior): la' a divisao e' recusada (Find(..., allowSplit=false)).
+//   Marcador:  dff_split_off.on = nao divide (o arquivo > 65.535 e' recusado em vez de quebrar o RpClumpStreamRead)
+//
 // MARCADORES (arquivos vazios em SAMP/):  dff_off.on = desliga tudo
 // LOG (samp_log.txt): prefixo [DFF]
 // ---------------------------------------------------------------------------
@@ -51,6 +63,7 @@
 
 #include "../main.h"   // g_pszStorage, FLog
 #include "Core/KeyGen.h"
+#include "DffSplit.h"
 
 namespace CustomDff
 {
@@ -76,6 +89,12 @@ namespace CustomDff
     {
         const std::string r = Root();
         return !r.empty() && ::access((r + "SAMP/dff_off.on").c_str(), F_OK) == 0;
+    }
+
+    inline bool SplitDisabled()
+    {
+        const std::string r = Root();
+        return !r.empty() && ::access((r + "SAMP/dff_split_off.on").c_str(), F_OK) == 0;
     }
 
     // ----------------------------------------------------------------- validacao estrutural
@@ -207,7 +226,7 @@ namespace CustomDff
 
     // Procura o DFF externo do modelo (por hash do nome). true = 'data' tem um DFF validado.
     // Em reprovacao devolve false e 'why' (vazio quando simplesmente nao ha arquivo para o modelo).
-    inline bool Find(uint32_t modelKey, std::vector<uint8_t>& data, std::string& path, std::string& why)
+    inline bool Find(uint32_t modelKey, std::vector<uint8_t>& data, std::string& path, std::string& why, bool allowSplit = true)
     {
         why.clear();
         auto& idx = Index();
@@ -221,6 +240,39 @@ namespace CustomDff
             why = "validacao reprovou: " + err;
             data.clear();
             return false;
+        }
+
+        // geometria > 65.535 vertices: o jogo a recusa/corrompe; divide nos bytes (DFF antigo sai identico)
+        DffSplit::Report rep; std::string serr; std::vector<uint8_t> split;
+        const DffSplit::Result sr = DffSplit::Process(data.data(), data.size(), split, rep, serr);
+        if (sr == DffSplit::Result::Failed)
+        {
+            // Inspect() so falha em DFF malformado; Validate ja passou, entao aqui e' limite de formato (native, Breakable...)
+            why = "DffSplit reprovou: " + serr;
+            data.clear();
+            return false;
+        }
+        if (sr == DffSplit::Result::Split)
+        {
+            if (!allowSplit)
+            {
+                // objeto/predio/time/LOD (CAtomicModelInfo): so 1 atomic e' guardado, dividir mostraria apenas uma parte
+                why = "geometria com " + std::to_string(rep.in.maxGeomVerts) + " vertices (>65535) em modelo que guarda 1 atomic so (objeto/predio): "
+                      "nao da para dividir dentro do mesmo modelo";
+                data.clear();
+                return false;
+            }
+            if (SplitDisabled())
+            {
+                why = "geometria com " + std::to_string(rep.in.maxGeomVerts) + " vertices (>65535) e SAMP/dff_split_off.on existe";
+                data.clear();
+                return false;
+            }
+            FLog("[DFF] %s: DIVIDIDO (%s) | partes novas=%d vertices descartados sem uso=%llu tri-strips convertidos=%llu | engine: mesh+indices %.2f MB",
+                 path.c_str(), DffSplit::Summary(rep).c_str(), rep.partsCreated, (unsigned long long)rep.droppedUnused,
+                 (unsigned long long)rep.stripsConverted, rep.out.engineMeshBytes / 1048576.0);
+            for (const std::string& nt : rep.notes) FLog("[DFF] %s: aviso: %s", path.c_str(), nt.c_str());
+            data.swap(split);
         }
         return true;
     }

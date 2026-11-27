@@ -189,6 +189,15 @@ namespace
     // ---- DFF por entrada (texdb/DFF/<nome-do-modelo>.dff, ver CustomDff.h) --------------------------------
     // Mesma tecnica da skin: o jogo converte um buffer NOSSO, com o tamanho real do arquivo, e o resto do fluxo
     // (clump, refs de TXD, hit-col...) e' o original. true = o modelo foi tratado aqui (resultado em 'ok').
+    // Tipos cujo SetClump guarda o clump INTEIRO (varios atomics): clump(5), veiculo(6), ped(7). Verificado na libGTASA arm64:
+    // CClumpModelInfo::SetClump (0x45b7f8) percorre todos com RpClumpForAllAtomics. Objeto/predio/time/LOD (CAtomicModelInfo)
+    // guardam 1 atomic: SetAtomic (0x45aa6c) substitui o anterior -> nesses o DffSplit nao pode ser usado.
+    static bool MultiAtomicOk(CBaseModelInfo* mi)
+    {
+        const ModelInfoType t = mi->GetModelType();
+        return t == MODEL_INFO_CLUMP || t == MODEL_INFO_VEHICLE || t == MODEL_INFO_PED;
+    }
+
     bool ConvertLoose(char* buf, int model, int a3, bool& ok)
     {
         if (model < 0 || model >= (int)TOTAL_DFF_MODEL_IDS || !CustomDff::HasAny()) return false;
@@ -196,7 +205,7 @@ namespace
         if (!mi) return false;
 
         std::vector<uint8_t> data; std::string path, why;
-        if (!CustomDff::Find(mi->m_nKey, data, path, why))
+        if (!CustomDff::Find(mi->m_nKey, data, path, why, MultiAtomicOk(mi)))
         {
             if (!why.empty()) FLog("[DFF] modelo %d: %s %s -> usando o modelo original do IMG", model, path.c_str(), why.c_str());
             return false;
@@ -302,7 +311,7 @@ namespace CustomSkinStream
             CBaseModelInfo* mi = find(e.name.c_str(), &id);
             if (!mi || id < 0) { ++bad; FLog("[DFF][AUDIT] %-24s SEM MODELO: nenhum IDE declara '%s'", e.name.c_str(), e.name.c_str()); continue; }
             std::vector<uint8_t> data; std::string path, why;
-            const bool good = CustomDff::Find(mi->m_nKey, data, path, why);
+            const bool good = CustomDff::Find(mi->m_nKey, data, path, why, MultiAtomicOk(mi));
             const CStreamingInfo& si = CStreaming::GetInfo(id);
             const uint32_t sec = (uint32_t)((data.size() + STREAMING_SECTOR_SIZE - 1) / STREAMING_SECTOR_SIZE);
             if (!good) { ++bad; FLog("[DFF][AUDIT] %-24s id=%d REPROVADO: %s", e.name.c_str(), id, why.c_str()); continue; }
